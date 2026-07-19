@@ -1,0 +1,6 @@
+# Enforce LF endings for cross-platform consistency
+*.rs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.sql text eol=lf
+*.md text eol=lf
