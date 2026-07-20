@@ -17,19 +17,19 @@ describe('App', () => {
 
   it('renders the application title', () => {
     mockInvoke.mockResolvedValue({
-      name: 'GestStock Pro',
+      name: 'Stockiha',
       version: '0.1.0',
       stage: 'Slice 0',
       status: 'Ready',
     });
 
     render(<App />);
-    expect(screen.getByText('GestStock Pro')).toBeInTheDocument();
+    expect(screen.getByText('Stockiha')).toBeInTheDocument();
   });
 
   it('renders the slice heading', () => {
     mockInvoke.mockResolvedValue({
-      name: 'GestStock Pro',
+      name: 'Stockiha',
       version: '0.1.0',
       stage: 'Slice 0',
       status: 'Ready',
@@ -41,7 +41,7 @@ describe('App', () => {
 
   it('shows connected status after successful backend call', async () => {
     mockInvoke.mockResolvedValue({
-      name: 'GestStock Pro',
+      name: 'Stockiha',
       version: '0.1.0',
       stage: 'Slice 0',
       status: 'Ready',
@@ -66,7 +66,7 @@ describe('App', () => {
 
   it('displays the not-implemented notice', () => {
     mockInvoke.mockResolvedValue({
-      name: 'GestStock Pro',
+      name: 'Stockiha',
       version: '0.1.0',
       stage: 'Slice 0',
       status: 'Ready',
@@ -78,7 +78,7 @@ describe('App', () => {
 
   it('calls get_app_info command on mount', () => {
     mockInvoke.mockResolvedValue({
-      name: 'GestStock Pro',
+      name: 'Stockiha',
       version: '0.1.0',
       stage: 'Slice 0',
       status: 'Ready',

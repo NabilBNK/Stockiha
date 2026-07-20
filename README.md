@@ -1,4 +1,4 @@
-# GestStock Pro
+# Stockiha
 
 A modular stock management, sales, procurement, and reporting desktop application built with Tauri v2, React 19, TypeScript, Vite, and Rust.
 

@@ -1,4 +1,4 @@
-You are implementing one task in GestStock Pro.
+You are implementing one task in Stockiha.
 
 Read these files first:
 - AGENTS.md

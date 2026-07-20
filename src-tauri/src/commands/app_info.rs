@@ -16,7 +16,7 @@ pub fn get_app_info(state: State<'_, AppState>) -> Result<AppInfo, AppError> {
     // If we wanted to test the error path, we could conditionally return an error.
     // For now, it returns the successful AppInfo.
     Ok(AppInfo {
-        name: "GestStock Pro".to_string(),
+        name: "Stockiha".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         stage: state.stage.clone(),
         status: "Ready".to_string(),

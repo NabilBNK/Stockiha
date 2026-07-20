@@ -21,7 +21,7 @@ function App() {
 
   return (
     <main className="container">
-      <h1>GestStock Pro</h1>
+      <h1>Stockiha</h1>
       <h2>Slice 0 — Technical Foundation</h2>
 
       <div className="status-panel">

@@ -1,4 +1,4 @@
-# GestStock Pro — Agent Rules and Constraints
+# Stockiha — Agent Rules and Constraints
 
 These rules are authoritative and must be adhered to by all developers and AI agents working on this repository:
 

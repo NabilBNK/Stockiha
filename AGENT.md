@@ -1,4 +1,4 @@
-# GestStock Pro Agent Rules
+# Stockiha Agent Rules
 
 ## Source of truth
 

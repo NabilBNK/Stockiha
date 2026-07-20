@@ -1,4 +1,4 @@
-# GestStock Pro — Slice 0 Tasks
+# Stockiha — Slice 0 Tasks
 
 - [x] S0-001 Repository foundation and Tauri scaffold
 - [ ] S0-002 Development configuration and typed error foundation

@@ -34,7 +34,7 @@ mod tests {
         let state = app.state::<AppState>();
         let result = get_app_info(state).unwrap();
 
-        assert_eq!(result.name, "GestStock Pro");
+        assert_eq!(result.name, "Stockiha");
         assert_eq!(result.stage, "Slice 0");
         assert_eq!(result.status, "Ready");
     }
