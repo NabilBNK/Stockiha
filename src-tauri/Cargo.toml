@@ -20,7 +20,19 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
+# S0-003: PostgreSQL connectivity proof. Minimal feature set by mandate:
+# - runtime-tokio: matches Tauri's Tokio runtime.
+# - postgres: the only target driver (PostgreSQL 18.x).
+# Deliberately excluded until a task needs them: TLS (loopback-only for now),
+# macros/offline (no compile-time queries), migrate (S0-004+), and the
+# uuid/chrono/rust_decimal type integrations (no domain types yet).
+sqlx = { version = "0.8.6", default-features = false, features = [
+    "runtime-tokio",
+    "postgres",
+] }
 
 [dev-dependencies]
 # Used only by unit tests to assert the exact serialized wire shape of `IpcError`.
 serde_json = "1"
+# S0-003: async runtime for the opt-in PostgreSQL integration tests only.
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
