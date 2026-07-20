@@ -1,63 +1,116 @@
-# Stockiha — Agent Rules and Constraints
+# Stockiha — AI Engineering Rules
 
-These rules are authoritative and must be adhered to by all developers and AI agents working on this repository.
+## Purpose
+Work only on Stockiha and only on the explicitly assigned task. Prefer the smallest complete, testable change. Do not work ahead.
 
-## Source of Truth
+## Sources of truth
+Read in this order:
+1. `final-architecture.md`
+2. `AGENTS.md`
+3. `CURRENT_SLICE.md`
+4. `TASKS.md`
+5. Relevant companion specs under `docs/`
+6. Accepted ADRs under `docs/decisions/`
+7. Existing code and tests
 
-Read these files before making any changes:
+Repository documents override conversation memory and agent summaries. Do not modify `final-architecture.md` without an approved ADR and explicit user approval.
 
-1. `final-architecture.md` — Architectural decision baseline (authoritative)
-2. `CURRENT_SLICE.md` — Active slice and task scope
-3. `TASKS.md` — Task tracker
+## Quota and cost discipline
+- Keep planning responses under 700 words unless a blocker requires more.
+- Do not repeat large repository sections.
+- Search within files before reading long files in full.
+- Read only files relevant to the task.
+- Do not browse unless current official documentation is necessary.
+- In plan-only mode, do not install dependencies or run builds.
+- During implementation, install dependencies once.
+- Run targeted tests while developing and the applicable full verification set once at the end.
+- Do not run Tauri packaging unless the task affects packaging, capabilities, configuration, or releases.
+- Do not create speculative code, placeholders, unused abstractions, or future-slice scaffolding.
+- Ask at most one consolidated clarification question when blocked.
 
-Do not silently change approved architecture decisions.
+## Workflow
 
-## Working Rules
-
-- `final-architecture.md` is the architectural source of truth.
-- Work on one explicitly assigned task only. Do not work ahead.
-- Do not implement future slices.
-- Do not modify unrelated files.
-- Do not use floating-point values for money, quantities, tax, WAC, or journal values. Always use exact decimal types (e.g. `rust_decimal` in Rust).
-- Do not place authoritative financial logic in React. The backend is the source of truth.
-- Do not permit direct modification of immutable ledgers. Day-to-day operations must go through public database posting functions.
-- Do not weaken database roles or SECURITY DEFINER protections.
-- Do not bypass application-session validation or idempotency.
-- Do not log secrets, passwords, PINs, tokens, hashes, or database credentials.
-- Do not introduce placeholder business logic presented as complete.
-- Do not expose raw backend error details in the React UI. Use sanitized user-facing messages.
-- Every future posting operation must have integration tests.
-- Architecture changes require an explicit Architecture Decision Record (ADR) and user approval.
-- Never permit negative confirmed stock.
-- Every financial operation must be atomic.
-- Every confirmed document must be reversible using a new linked document.
-- Printing failure must not roll back a confirmed business document.
-
-## Before Implementation
-
+### Before editing
 Report:
+- interpretation
+- in-scope and out-of-scope work
+- exact files expected to change
+- database and security impact
+- tests to add
+- unresolved blockers
 
-- Your interpretation of the task
-- Files you intend to change
-- Database changes (if any)
-- Security implications
-- Tests you will add or modify
+Do not edit until the user approves the plan.
 
-Stop and report if requirements conflict.
+### During implementation
+- Use a dedicated `task/...` branch after approval.
+- Modify only task-related files.
+- Do not silently upgrade major dependencies.
+- Add no dependency without justification.
+- Keep Tauri commands thin and reusable logic testable.
+- Keep authoritative business logic out of React.
 
-## After Implementation
+### After implementation
+Report concisely:
+- files changed
+- design decisions
+- commands and actual results
+- tests
+- security/database impact
+- Linux limitations
+- Windows/manual checks
+- `git diff --stat`
+- `git status --short`
+- verdict: `PASS`, `PASS WITH MANUAL CHECKS`, or `BLOCKED`
 
-Run and report real results for:
+Do not commit or push until the user approves the report.
 
-- `cargo fmt --check`
-- `cargo clippy --all-targets --all-features -- -D warnings`
-- `cargo test`
-- `npm run lint`
-- `npm run typecheck`
-- `npm test`
-- `npm run build`
-- SQL migration tests where relevant
+## Git safety
+- Never commit directly to `main`.
+- Never force-push or merge.
+- Stop for unexpected working-tree changes.
+- Show the diff before commit approval.
+- Preserve `package-lock.json` and `src-tauri/Cargo.lock`.
+- Never commit build outputs, secrets, `.env` files, dumps, or machine paths.
 
-List all changed files and any unresolved concerns.
+Confirmation is required before commit, push, PR creation, destructive Git operations, releases, or tags.
 
-Do not create or push a commit until the verification report is complete and passing.
+## Stockiha constraints
+- Stack: Tauri v2, React 19, TypeScript, Vite, Rust, PostgreSQL 18.x, SQLx, Typst, ESC/POS.
+- Windows is the primary target.
+- Never use floating point for authoritative money, tax, quantity, WAC, inventory value, or journals.
+- React is not authoritative for financial, inventory, permission, or posting decisions.
+- Posted ledgers are immutable.
+- Confirmed negative stock is forbidden.
+- Financial operations must be atomic and idempotent.
+- Protected operations validate sessions and permissions.
+- Journals must balance.
+- Corrections use linked reversals or adjustments.
+- Printing failure must not roll back a confirmed document.
+- Historical imports must not silently affect live ledgers.
+- Do not weaken DB roles, posting functions, or `SECURITY DEFINER`.
+- Never expose or log passwords, PINs, raw tokens, hashes, credentials, or sensitive internal errors.
+
+Architecture changes require an ADR, alternatives and risks, explicit approval, then an approved architecture update.
+
+## Verification
+Run only checks applicable to changed areas.
+
+Frontend:
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+Rust:
+```bash
+cargo fmt --check
+cargo check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+```
+
+Run relevant integration, migration, security, concurrency, rollback, or document tests when applicable.
+
+A Linux sandbox cannot prove Windows runtime, WebView2, Credential Manager, Windows Service, MSI/NSIS, Windows spooler, physical ESC/POS output, Arabic thermal output, or cash-drawer behavior. Mark these for Windows or hardware verification.
