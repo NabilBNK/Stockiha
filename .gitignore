@@ -15,6 +15,13 @@ dist/
 dist-ssr/
 out/
 
+# TypeScript incremental build artifacts (generated, not source)
+*.tsbuildinfo
+
+# Vite generated config artifacts (source is vite.config.ts)
+vite.config.js
+vite.config.d.ts
+
 # Rust compiled files and executables
 target/
 src-tauri/target/

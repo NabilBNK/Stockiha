@@ -1,4 +1,4 @@
-# GestStock Pro — Architecture Decision Baseline v5.1 (Patched)
+# Stockiha — Architecture Decision Baseline v5.1 (Patched)
 
 > **Architecture & Implementation Baseline** — Updated based on critical peer review. Patched with session-token identity, idempotency concurrency, tax/fiscal/numbering rules, corrected return costing, complete queue state machines, and procurement variance splits.
 
@@ -6,7 +6,7 @@
 
 ## 1. Executive Summary & Stack
 
-GestStock Pro is a modular monolith stock, sales, procurement, and reporting system.
+Stockiha is a modular monolith stock, sales, procurement, and reporting system.
 - **Desktop Client:** Tauri v2
 - **Frontend:** React 19 + TypeScript + Vite
 - **Backend/Application Layer:** Rust (Tokio async runtime, modularly decoupled for future LAN standalone API)
@@ -19,11 +19,11 @@ GestStock Pro is a modular monolith stock, sales, procurement, and reporting sys
 
 ## 2. Core Integrity & Security Policies
 
-1. **Atomic Posting Boundary:** The database runtime role `geststock_runtime` lacks direct modification permissions (`INSERT`, `UPDATE`, `DELETE`) on core ledgers (movements, payments, journals, positions). Day-to-day operations are executed exclusively through public database posting functions that act as atomic transaction entry points (e.g., `sales.confirm_cash_sale`).
+1. **Atomic Posting Boundary:** The database runtime role `stockiha_runtime` lacks direct modification permissions (`INSERT`, `UPDATE`, `DELETE`) on core ledgers (movements, payments, journals, positions). Day-to-day operations are executed exclusively through public database posting functions that act as atomic transaction entry points (e.g., `sales.confirm_cash_sale`).
 2. **SECURITY DEFINER Protections:** All public posting database functions run under `SECURITY DEFINER` and are configured with:
   - A fixed, trusted `search_path` (e.g., `SET search_path = pg_catalog, sales, inventory, finance, core`).
-  - `EXECUTE` privileges revoked from `PUBLIC` and granted specifically to `geststock_runtime`.
-  - Function owner is a dedicated non-login role (`geststock_owner`). Runtime cannot modify function dependencies.
+  - `EXECUTE` privileges revoked from `PUBLIC` and granted specifically to `stockiha_runtime`.
+  - Function owner is a dedicated non-login role (`stockiha_owner`). Runtime cannot modify function dependencies.
 3. **Validated Application-Session Identity:** Posting functions do **not** receive a trusted `actor_user_id`. Instead, every protected call receives an opaque `application_session_token`. The database resolves the token against `iam.application_sessions` (which stores only `token_hash`, never the raw token) to retrieve the authenticated `user_id`, `workstation_id`, and active permissions. Rust authenticates the application user and issues the session token; the database validates it and records the resolved actor snapshot in audit and document records.
   - **Session table:** `iam.application_sessions` (`id`, `token_hash`, `user_id`, `workstation_id`, `created_at`, `expires_at`, `revoked_at`).
   - Every posting function verifies: token exists, is not expired, is not revoked, and the resolved user holds the required permission for the operation.
@@ -140,7 +140,7 @@ All monetary and quantity calculations must use exact decimal types (`rust_decim
 ## 4. Development Plan: Vertical Slices
 
 - [ ] **Slice 0: Technical Feasibility & Proofs**
-  - PostgreSQL bootstrap utility, creating roles (`geststock_owner`, `geststock_migrator`, `geststock_runtime`, `geststock_backup`).
+  - PostgreSQL bootstrap utility, creating roles (`stockiha_owner`, `stockiha_migrator`, `stockiha_runtime`, `stockiha_backup`).
   - Windows Credential Manager integration in Rust.
   - Basic `SECURITY DEFINER` function with fixed search path and session-token validation.
   - Typst French/Arabic PDF rendering & ESC/POS Windows RAW spooler integration.

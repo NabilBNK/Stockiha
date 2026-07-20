@@ -15,7 +15,7 @@ describe('App', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the application title', () => {
+  it('renders the application title', async () => {
     mockInvoke.mockResolvedValue({
       name: 'Stockiha',
       version: '0.1.0',
@@ -25,9 +25,10 @@ describe('App', () => {
 
     render(<App />);
     expect(screen.getByText('Stockiha')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Connected/)).toBeInTheDocument());
   });
 
-  it('renders the slice heading', () => {
+  it('renders the slice heading', async () => {
     mockInvoke.mockResolvedValue({
       name: 'Stockiha',
       version: '0.1.0',
@@ -37,6 +38,7 @@ describe('App', () => {
 
     render(<App />);
     expect(screen.getByText('Slice 0 — Technical Foundation')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Connected/)).toBeInTheDocument());
   });
 
   it('shows connected status after successful backend call', async () => {
@@ -54,17 +56,17 @@ describe('App', () => {
     });
   });
 
-  it('shows error status when backend call fails', async () => {
+  it('shows sanitized error message when backend call fails', async () => {
     mockInvoke.mockRejectedValue(new Error('IPC error'));
 
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Error/)).toBeInTheDocument();
+      expect(screen.getByText('Unable to connect to the Stockiha backend.')).toBeInTheDocument();
     });
   });
 
-  it('displays the not-implemented notice', () => {
+  it('displays the not-implemented notice', async () => {
     mockInvoke.mockResolvedValue({
       name: 'Stockiha',
       version: '0.1.0',
@@ -74,9 +76,10 @@ describe('App', () => {
 
     render(<App />);
     expect(screen.getByText(/Business modules.*not implemented/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Connected/)).toBeInTheDocument());
   });
 
-  it('calls get_app_info command on mount', () => {
+  it('calls get_app_info command on mount', async () => {
     mockInvoke.mockResolvedValue({
       name: 'Stockiha',
       version: '0.1.0',
@@ -86,5 +89,6 @@ describe('App', () => {
 
     render(<App />);
     expect(mockInvoke).toHaveBeenCalledWith('get_app_info');
+    await waitFor(() => expect(screen.getByText(/Connected/)).toBeInTheDocument());
   });
 });

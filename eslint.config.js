@@ -5,6 +5,6 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['dist', 'node_modules', 'src-tauri'],
+    ignores: ['dist', 'node_modules', 'src-tauri', 'vite.config.js', 'vite.config.d.ts'],
   }
 );

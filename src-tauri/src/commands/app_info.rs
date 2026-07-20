@@ -1,9 +1,8 @@
-use crate::error::AppError;
 use crate::state::AppState;
 use serde::Serialize;
 use tauri::State;
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct AppInfo {
     pub name: String,
     pub version: String,
@@ -11,14 +10,30 @@ pub struct AppInfo {
     pub status: String,
 }
 
+pub fn build_app_info(stage: &str) -> AppInfo {
+    AppInfo {
+        name: "Stockiha".to_owned(),
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        stage: stage.to_owned(),
+        status: "Ready".to_owned(),
+    }
+}
+
 #[tauri::command]
-pub fn get_app_info(state: State<'_, AppState>) -> Result<AppInfo, AppError> {
-    // If we wanted to test the error path, we could conditionally return an error.
-    // For now, it returns the successful AppInfo.
-    Ok(AppInfo {
-        name: "Stockiha".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        stage: state.stage.clone(),
-        status: "Ready".to_string(),
-    })
+pub fn get_app_info(state: State<'_, AppState>) -> AppInfo {
+    build_app_info(&state.stage)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_app_info() {
+        let info = build_app_info("Slice 0");
+        assert_eq!(info.name, "Stockiha");
+        assert_eq!(info.version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(info.stage, "Slice 0");
+        assert_eq!(info.status, "Ready");
+    }
 }

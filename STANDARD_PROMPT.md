@@ -3,7 +3,7 @@ You are implementing one task in Stockiha.
 Read these files first:
 - AGENTS.md
 - CURRENT_SLICE.md
-- docs/architecture/implementation-plan-v5.1.md
+- final-architecture.md
 - the issue-specific companion documents
 
 Task:
@@ -28,7 +28,7 @@ Before editing:
 
 After editing:
 1. Run formatting, linting, type checks and tests.
-2. Show the exact commands executed.
+2. Show the exact commands executed and their outputs.
 3. Report changed files.
 4. Report any skipped tests or unresolved risks.
 5. Do not commit until the verification results are shown.

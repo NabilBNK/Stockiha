@@ -16,7 +16,9 @@ function App() {
   useEffect(() => {
     invoke<AppInfo>('get_app_info')
       .then(info => setAppInfo(info))
-      .catch(err => setError(String(err)));
+      .catch(() => {
+        setError('Unable to connect to the Stockiha backend.');
+      });
   }, []);
 
   return (
