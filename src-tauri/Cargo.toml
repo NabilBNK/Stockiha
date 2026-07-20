@@ -20,3 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# Used only by unit tests to assert the exact serialized wire shape of `IpcError`.
+serde_json = "1"

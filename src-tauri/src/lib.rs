@@ -1,4 +1,8 @@
 pub mod commands;
+// S0-002 defines the typed error contract before the first genuinely fallible
+// command consumes it. Remove this exemption when the first consumer is added.
+#[cfg_attr(not(test), allow(dead_code))]
+mod error;
 pub mod state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

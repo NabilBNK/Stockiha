@@ -56,14 +56,50 @@ describe('App', () => {
     });
   });
 
-  it('shows sanitized error message when backend call fails', async () => {
+  it('shows a safe, fixed message for an unknown rejection value', async () => {
+    // An Error carries no allowlisted `code`, so it resolves to UNKNOWN_ERROR.
     mockInvoke.mockRejectedValue(new Error('IPC error'));
 
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Unable to connect to the Stockiha backend.')).toBeInTheDocument();
+      expect(
+        screen.getByText('An unexpected error occurred. Please try again.'),
+      ).toBeInTheDocument();
     });
+    // The raw rejection text must never be rendered.
+    expect(screen.queryByText(/IPC error/)).not.toBeInTheDocument();
+  });
+
+  it('resolves a recognized backend code to its safe internal message', async () => {
+    mockInvoke.mockRejectedValue({ code: 'INTERNAL_ERROR' });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('An internal error occurred. Please try again.'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('never renders secret-like diagnostic properties from a rejection', async () => {
+    mockInvoke.mockRejectedValue({
+      code: 'INTERNAL_ERROR',
+      message: 'DO_NOT_EXPOSE_DIAGNOSTIC',
+      details: 'DO_NOT_EXPOSE_DIAGNOSTIC',
+      stack: 'DO_NOT_EXPOSE_DIAGNOSTIC',
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('An internal error occurred. Please try again.'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/DO_NOT_EXPOSE_DIAGNOSTIC/)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('DO_NOT_EXPOSE_DIAGNOSTIC');
   });
 
   it('displays the not-implemented notice', async () => {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { resolveErrorMessage } from './shared/utils/tauriError';
 import './App.css';
 
 interface AppInfo {
@@ -16,8 +17,10 @@ function App() {
   useEffect(() => {
     invoke<AppInfo>('get_app_info')
       .then(info => setAppInfo(info))
-      .catch(() => {
-        setError('Unable to connect to the Stockiha backend.');
+      .catch((err: unknown) => {
+        // Defensive: never surface raw rejection contents. The parser reduces any
+        // unknown value to a known code and resolves it to a safe, fixed message.
+        setError(resolveErrorMessage(err));
       });
   }, []);
 
