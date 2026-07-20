@@ -1,8 +1,8 @@
 # Stockiha — Slice 0 Tasks
 
 - [x] S0-001 Repository foundation and Tauri scaffold
-- [ ] S0-002 Development configuration and typed error foundation
-  - [ ] S0-002a Configure restrictive Tauri v2 Content Security Policy (CSP hardening — deferred from S0-001)
+- [x] S0-002 Development configuration and typed error foundation
+  - [x] S0-002a Configure restrictive Tauri v2 Content Security Policy (CSP hardening — deferred from S0-001)
 - [ ] S0-003 Local PostgreSQL and SQLx connectivity proof
 - [ ] S0-004 Database-role bootstrap proof
 - [ ] S0-005 Windows Credential Manager proof
