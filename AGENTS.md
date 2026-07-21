@@ -28,6 +28,17 @@ Repository documents override conversation memory and agent summaries. Do not mo
 - Do not create speculative code, placeholders, unused abstractions, or future-slice scaffolding.
 - Ask at most one consolidated clarification question when blocked.
 
+## Deadline Mode Execution Rules
+For every remaining task:
+1. **One implementation plan only**: Do not repeatedly revise plans; incorporate essential requirements in the initial proposal.
+2. **One implementation pass**: Build the feature cleanly in a single targeted effort.
+3. **One blocker-focused review**: Review strictly for correctness, security, or blocking bugs. Do not review harmless naming or visibility preferences.
+4. **One Windows verification pass**: Execute applicable checks once at the end of implementation.
+   - **No frontend tests** when no frontend files changed.
+   - **No repeated full test suites** after documentation-only or comment edits.
+   - **No extra tests** beyond essential acceptance criteria.
+5. **Commit and continue**: Upon passing verification, commit immediately and advance. Useful but nonessential improvements go into a backlog.
+
 ## Workflow
 
 ### Before editing
