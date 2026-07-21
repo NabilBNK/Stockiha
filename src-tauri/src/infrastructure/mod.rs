@@ -9,3 +9,8 @@ pub(crate) mod bootstrap;
 #[cfg_attr(not(test), allow(dead_code))]
 mod credentials;
 pub mod db;
+// S0-006: SECURITY DEFINER / session-token proof. Crate-private and
+// consumer-free (no command, no IPC); dead code in non-test builds until a
+// later slice consumes session validation. The exemption is removed then.
+#[cfg_attr(not(test), allow(dead_code))]
+mod session_proof;

@@ -6,7 +6,7 @@
 - [x] S0-003 Local PostgreSQL and SQLx connectivity proof
 - [x] S0-004 Database-role bootstrap proof
 - [x] S0-005 Windows Credential Manager proof
-- [ ] S0-006 SECURITY DEFINER and session-token proof
+- [x] S0-006 SECURITY DEFINER and session-token proof
 - [ ] S0-007 Typst French/Arabic PDF proof
 - [ ] S0-008 ESC/POS Windows RAW spooler proof
 - [ ] S0-009 Backup bundle creation proof
