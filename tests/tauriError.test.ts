@@ -14,6 +14,11 @@ describe('parseTauriError', () => {
     expect(parseTauriError({ code: 'INTERNAL_ERROR' })).toBe('INTERNAL_ERROR');
   });
 
+  it('accepts the S0-003 database codes', () => {
+    expect(parseTauriError({ code: 'CONFIGURATION_ERROR' })).toBe('CONFIGURATION_ERROR');
+    expect(parseTauriError({ code: 'DATABASE_UNAVAILABLE' })).toBe('DATABASE_UNAVAILABLE');
+  });
+
   it('ignores extra secret-like properties and keeps only the code', () => {
     expect(
       parseTauriError({
@@ -94,6 +99,15 @@ describe('resolveErrorMessage', () => {
     );
   });
 
+  it('returns fixed, detail-free messages for the S0-003 database codes', () => {
+    expect(resolveErrorMessage({ code: 'CONFIGURATION_ERROR' })).toBe(
+      'The application configuration is missing or invalid.',
+    );
+    expect(resolveErrorMessage({ code: 'DATABASE_UNAVAILABLE' })).toBe(
+      'The database is currently unavailable.',
+    );
+  });
+
   it('returns the fixed unknown message for unrecognized values', () => {
     const unknownMsg = 'An unexpected error occurred. Please try again.';
     expect(resolveErrorMessage(new Error(SENTINEL))).toBe(unknownMsg);
@@ -126,6 +140,10 @@ describe('resolveErrorMessage', () => {
 describe('resolveErrorMessageKey', () => {
   it('maps recognized and unknown values to stable i18n keys', () => {
     expect(resolveErrorMessageKey({ code: 'INTERNAL_ERROR' })).toBe('errors.internal');
+    expect(resolveErrorMessageKey({ code: 'CONFIGURATION_ERROR' })).toBe('errors.configuration');
+    expect(resolveErrorMessageKey({ code: 'DATABASE_UNAVAILABLE' })).toBe(
+      'errors.databaseUnavailable',
+    );
     expect(resolveErrorMessageKey(new Error('x'))).toBe('errors.unknown');
   });
 });

@@ -61,6 +61,8 @@ export function parseTauriError(error: unknown): AppErrorCode {
  */
 const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   INTERNAL_ERROR: 'An internal error occurred. Please try again.',
+  CONFIGURATION_ERROR: 'The application configuration is missing or invalid.',
+  DATABASE_UNAVAILABLE: 'The database is currently unavailable.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

@@ -16,7 +16,12 @@
  * Must stay in sync with the Rust `ErrorCode` enum. Add a code here only when a
  * matching Rust variant and its `From<AppError>` mapping are added.
  */
-export const BACKEND_ERROR_CODES = ['INTERNAL_ERROR'] as const;
+export const BACKEND_ERROR_CODES = [
+  'INTERNAL_ERROR',
+  // S0-003 — database connectivity proof.
+  'CONFIGURATION_ERROR',
+  'DATABASE_UNAVAILABLE',
+] as const;
 
 /** A code known to originate from the backend contract. */
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -33,6 +38,8 @@ export type AppErrorCode = BackendErrorCode | typeof UNKNOWN_ERROR;
  */
 export const ERROR_MESSAGE_KEYS = {
   INTERNAL_ERROR: 'errors.internal',
+  CONFIGURATION_ERROR: 'errors.configuration',
+  DATABASE_UNAVAILABLE: 'errors.databaseUnavailable',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 

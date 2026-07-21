@@ -1,4 +1,4 @@
-//! Typed error foundation for Stockiha (S0-002).
+//! Typed error foundation for Stockiha (S0-002, extended by S0-003).
 //!
 //! This module establishes a strict boundary between two error types:
 //!
@@ -10,13 +10,18 @@
 //!   responsible for logging and redaction policy.
 //! * [`IpcError`] — the *only* serializable error type. It carries a stable,
 //!   public [`ErrorCode`] and nothing else. Its wire shape is exactly
-//!   `{"code":"INTERNAL_ERROR"}`.
+//!   `{"code":"<ERROR_CODE>"}`.
 //!
 //! Conversion from `AppError` to `IpcError` is explicit and **exhaustive**
 //! (see [`From<AppError> for IpcError`]). Every future `AppError` variant must be
 //! consciously classified to a public `ErrorCode`; a missing arm is a compile
 //! error. Do not add a catch-all (`_`) arm — that would silently leak future
 //! variants as `INTERNAL_ERROR` without review.
+//!
+//! S0-003 adds the database connectivity variants. Their diagnostics may contain
+//! raw SQLx/PostgreSQL text or configuration parse detail; that content stays
+//! internal and is dropped at the IPC boundary exactly like every other
+//! diagnostic.
 
 use serde::Serialize;
 use std::fmt;
@@ -33,6 +38,12 @@ use std::fmt;
 pub enum ErrorCode {
     /// A generic, non-attributable internal failure. Carries no detail.
     InternalError,
+    /// Required configuration is missing or invalid (S0-003: the database
+    /// connection configuration). Carries no detail.
+    ConfigurationError,
+    /// The database could not be reached or did not answer in time (S0-003).
+    /// Carries no detail.
+    DatabaseUnavailable,
 }
 
 /// Internal application error. Not serialized; does not cross the IPC boundary.
@@ -46,7 +57,32 @@ pub enum AppError {
     /// An unexpected internal failure. The contained string is diagnostic
     /// context for trusted in-crate handling; it is not serialized across IPC
     /// and is not exposed by `Debug`/`Display`.
+    ///
+    /// Remove this temporary allowance when a genuine production consumer reads
+    /// or constructs this item.
+    #[cfg_attr(not(test), allow(dead_code))]
     Internal(String),
+    /// The database connection configuration is missing or could not be
+    /// parsed (S0-003). The diagnostic is a fixed, input-independent constant
+    /// that never incorporates the URL value, credentials, hostnames, database
+    /// names, or the underlying parser's details, so no secret can leak. It is
+    /// never serialized across IPC nor exposed by `Debug`/`Display`.
+    DatabaseConfiguration {
+        /// Remove this temporary allowance when a genuine production consumer
+        /// reads or constructs this item.
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    /// The database could not be reached, refused the connection, failed
+    /// authentication, or timed out (S0-003). The diagnostic may retain trusted
+    /// internal SQLx/PostgreSQL context for backend debugging, but standard
+    /// Debug/Display and IPC conversion remain redacted and drop it.
+    DatabaseUnavailable {
+        /// Remove this temporary allowance when a genuine production consumer
+        /// reads or constructs this item.
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
 }
 
 impl AppError {
@@ -54,8 +90,26 @@ impl AppError {
     ///
     /// The diagnostic is retained for trusted in-crate handling; it is not
     /// serialized across IPC and is not exposed by `Debug`/`Display`.
+    ///
+    /// Remove this temporary allowance when a genuine production consumer reads
+    /// or constructs this item.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn internal(diagnostic: impl Into<String>) -> Self {
         AppError::Internal(diagnostic.into())
+    }
+
+    /// Construct an [`AppError::DatabaseConfiguration`] with diagnostic context.
+    pub fn database_configuration(diagnostic: impl Into<String>) -> Self {
+        AppError::DatabaseConfiguration {
+            diagnostic: diagnostic.into(),
+        }
+    }
+
+    /// Construct an [`AppError::DatabaseUnavailable`] with diagnostic context.
+    pub fn database_unavailable(diagnostic: impl Into<String>) -> Self {
+        AppError::DatabaseUnavailable {
+            diagnostic: diagnostic.into(),
+        }
     }
 }
 
@@ -65,6 +119,12 @@ impl fmt::Debug for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AppError::Internal(_) => f.write_str("AppError::Internal(<redacted>)"),
+            AppError::DatabaseConfiguration { .. } => {
+                f.write_str("AppError::DatabaseConfiguration(<redacted>)")
+            }
+            AppError::DatabaseUnavailable { .. } => {
+                f.write_str("AppError::DatabaseUnavailable(<redacted>)")
+            }
         }
     }
 }
@@ -74,6 +134,8 @@ impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AppError::Internal(_) => f.write_str("internal error"),
+            AppError::DatabaseConfiguration { .. } => f.write_str("database configuration error"),
+            AppError::DatabaseUnavailable { .. } => f.write_str("database unavailable"),
         }
     }
 }
@@ -83,7 +145,7 @@ impl std::error::Error for AppError {}
 /// Public, serializable IPC error payload — the only error type allowed across
 /// the Tauri IPC boundary.
 ///
-/// Wire shape: `{"code":"INTERNAL_ERROR"}`. It contains only the stable public
+/// Wire shape: `{"code":"<ERROR_CODE>"}`. It contains only the stable public
 /// [`ErrorCode`]; no message, source, or diagnostic is ever serialized.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct IpcError {
@@ -107,6 +169,8 @@ impl From<AppError> for IpcError {
     fn from(err: AppError) -> Self {
         match err {
             AppError::Internal(_) => IpcError::new(ErrorCode::InternalError),
+            AppError::DatabaseConfiguration { .. } => IpcError::new(ErrorCode::ConfigurationError),
+            AppError::DatabaseUnavailable { .. } => IpcError::new(ErrorCode::DatabaseUnavailable),
         }
     }
 }
@@ -128,6 +192,10 @@ mod tests {
     fn error_code_is_stable_screaming_snake_case() {
         let json = serde_json::to_string(&ErrorCode::InternalError).unwrap();
         assert_eq!(json, r#""INTERNAL_ERROR""#);
+        let json = serde_json::to_string(&ErrorCode::ConfigurationError).unwrap();
+        assert_eq!(json, r#""CONFIGURATION_ERROR""#);
+        let json = serde_json::to_string(&ErrorCode::DatabaseUnavailable).unwrap();
+        assert_eq!(json, r#""DATABASE_UNAVAILABLE""#);
     }
 
     #[test]
@@ -138,25 +206,64 @@ mod tests {
     }
 
     #[test]
+    fn explicit_conversion_maps_database_configuration_to_configuration_error() {
+        let ipc: IpcError = AppError::database_configuration(SENTINEL).into();
+        assert_eq!(ipc, IpcError::new(ErrorCode::ConfigurationError));
+    }
+
+    #[test]
+    fn explicit_conversion_maps_database_unavailable_to_database_unavailable() {
+        let ipc: IpcError = AppError::database_unavailable(SENTINEL).into();
+        assert_eq!(ipc, IpcError::new(ErrorCode::DatabaseUnavailable));
+    }
+
+    #[test]
     fn conversion_omits_private_diagnostics_from_wire() {
-        let ipc: IpcError = AppError::internal(SENTINEL).into();
-        let json = serde_json::to_string(&ipc).unwrap();
-        assert_eq!(json, r#"{"code":"INTERNAL_ERROR"}"#);
-        assert!(
-            !json.contains(SENTINEL),
-            "serialized IpcError must not contain private diagnostics"
-        );
+        for err in [
+            AppError::internal(SENTINEL),
+            AppError::database_configuration(SENTINEL),
+            AppError::database_unavailable(SENTINEL),
+        ] {
+            let ipc: IpcError = err.into();
+            let json = serde_json::to_string(&ipc).unwrap();
+            assert!(
+                !json.contains(SENTINEL),
+                "serialized IpcError must not contain private diagnostics"
+            );
+            assert!(
+                json.starts_with(r#"{"code":""#) && json.ends_with(r#""}"#),
+                "wire shape must be exactly {{\"code\":\"...\"}}, got {json}"
+            );
+        }
     }
 
     #[test]
     fn redacted_debug_and_display_never_expose_diagnostics() {
-        let err = AppError::internal(SENTINEL);
-        let debug = format!("{err:?}");
-        let display = format!("{err}");
-        assert!(!debug.contains(SENTINEL), "Debug must be redacted");
-        assert!(!display.contains(SENTINEL), "Display must be redacted");
-        assert_eq!(debug, "AppError::Internal(<redacted>)");
-        assert_eq!(display, "internal error");
+        let cases = [
+            (
+                AppError::internal(SENTINEL),
+                "AppError::Internal(<redacted>)",
+                "internal error",
+            ),
+            (
+                AppError::database_configuration(SENTINEL),
+                "AppError::DatabaseConfiguration(<redacted>)",
+                "database configuration error",
+            ),
+            (
+                AppError::database_unavailable(SENTINEL),
+                "AppError::DatabaseUnavailable(<redacted>)",
+                "database unavailable",
+            ),
+        ];
+        for (err, expected_debug, expected_display) in cases {
+            let debug = format!("{err:?}");
+            let display = format!("{err}");
+            assert!(!debug.contains(SENTINEL), "Debug must be redacted");
+            assert!(!display.contains(SENTINEL), "Display must be redacted");
+            assert_eq!(debug, expected_debug);
+            assert_eq!(display, expected_display);
+        }
     }
 
     #[test]
@@ -166,6 +273,19 @@ mod tests {
             AppError::Internal(diagnostic) => {
                 assert_eq!(diagnostic, SENTINEL);
             }
+            _ => panic!("expected AppError::Internal"),
+        }
+    }
+
+    #[test]
+    fn database_diagnostics_remain_available_to_trusted_rust_code() {
+        match AppError::database_configuration(SENTINEL) {
+            AppError::DatabaseConfiguration { diagnostic } => assert_eq!(diagnostic, SENTINEL),
+            _ => panic!("expected AppError::DatabaseConfiguration"),
+        }
+        match AppError::database_unavailable(SENTINEL) {
+            AppError::DatabaseUnavailable { diagnostic } => assert_eq!(diagnostic, SENTINEL),
+            _ => panic!("expected AppError::DatabaseUnavailable"),
         }
     }
 }

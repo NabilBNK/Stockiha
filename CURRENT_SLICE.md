@@ -2,10 +2,10 @@
 
 ## Active Context
 - **Current Phase:** Slice 0 — Technical Feasibility and Proofs
-- **Current Task:** S0-003 — Local PostgreSQL and SQLx Connectivity Proof
+- **Current Task:** S0-004 — Database-role bootstrap proof
 
-## Out of Scope for S0-003
-- Database-role bootstrap implementation (S0-004)
+## Out of Scope for S0-004
+- Windows Credential Manager proof (S0-005)
 - Session validation and SECURITY DEFINER (S0-006)
 - Business schemas, domain tables, migrations, and posting functions
 - Authentication
