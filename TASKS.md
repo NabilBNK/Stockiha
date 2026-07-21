@@ -5,7 +5,7 @@
   - [x] S0-002a Configure restrictive Tauri v2 Content Security Policy (CSP hardening — deferred from S0-001)
 - [x] S0-003 Local PostgreSQL and SQLx connectivity proof
 - [x] S0-004 Database-role bootstrap proof
-- [ ] S0-005 Windows Credential Manager proof
+- [x] S0-005 Windows Credential Manager proof
 - [ ] S0-006 SECURITY DEFINER and session-token proof
 - [ ] S0-007 Typst French/Arabic PDF proof
 - [ ] S0-008 ESC/POS Windows RAW spooler proof

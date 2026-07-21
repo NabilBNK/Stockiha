@@ -2,12 +2,11 @@
 
 ## Active Context
 - **Current Phase:** Slice 0 — Technical Feasibility and Proofs
-- **Current Task:** S0-005 — Windows Credential Manager proof
+- **Current Task:** S0-006 — SECURITY DEFINER and session-token proof
 
-## Out of Scope for S0-005
-- Session validation and SECURITY DEFINER (S0-006)
+## Out of Scope for S0-006
 - Business schemas, domain tables, migrations, and posting functions
-- Authentication
+- Full authentication & user management UI
 - Inventory and WAC
 - Sales and cash sessions
 - Accounting and SCF
