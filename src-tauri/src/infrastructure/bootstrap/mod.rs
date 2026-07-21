@@ -26,7 +26,7 @@ pub(crate) const REQUIRED_CONFIRMATION_VALUE: &str = "YES";
 pub(crate) const REQUIRED_TEST_DATABASE_NAME: &str = "stockiha_role_bootstrap_test";
 
 /// Crate-private non-serializable error type for bootstrap failures.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub(crate) enum BootstrapError {
     /// Remove this temporary allowance when a genuine production consumer reads or constructs this item.
     #[cfg_attr(not(test), allow(dead_code))]
@@ -51,26 +51,54 @@ pub(crate) enum BootstrapError {
     VerificationFailure(String),
 }
 
+impl fmt::Debug for BootstrapError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BootstrapError::MissingEnvironmentVariable(_) => {
+                f.write_str("BootstrapError::MissingEnvironmentVariable(<redacted>)")
+            }
+            BootstrapError::InvalidConfirmationValue(_) => {
+                f.write_str("BootstrapError::InvalidConfirmationValue(<redacted>)")
+            }
+            BootstrapError::DatabaseNameMismatch(_) => {
+                f.write_str("BootstrapError::DatabaseNameMismatch(<redacted>)")
+            }
+            BootstrapError::PostgresVersionMismatch(_) => {
+                f.write_str("BootstrapError::PostgresVersionMismatch(<redacted>)")
+            }
+            BootstrapError::SuperuserRequired(_) => {
+                f.write_str("BootstrapError::SuperuserRequired(<redacted>)")
+            }
+            BootstrapError::Database(_) => f.write_str("BootstrapError::Database(<redacted>)"),
+            BootstrapError::VerificationFailure(_) => {
+                f.write_str("BootstrapError::VerificationFailure(<redacted>)")
+            }
+        }
+    }
+}
+
 impl fmt::Display for BootstrapError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BootstrapError::MissingEnvironmentVariable(var) => {
-                write!(f, "missing required environment variable: {var}")
+            BootstrapError::MissingEnvironmentVariable(_) => {
+                f.write_str("missing required environment variable")
             }
-            BootstrapError::InvalidConfirmationValue(val) => write!(
-                f,
-                "invalid confirmation value '{val}'; expected '{REQUIRED_CONFIRMATION_VALUE}'"
-            ),
-            BootstrapError::DatabaseNameMismatch(name) => write!(
-                f,
-                "database name '{name}' does not match required target '{REQUIRED_TEST_DATABASE_NAME}'"
-            ),
-            BootstrapError::PostgresVersionMismatch(ver) => {
-                write!(f, "PostgreSQL version '{ver}' does not meet requirement (must be major version 18)")
+            BootstrapError::InvalidConfirmationValue(_) => {
+                f.write_str("invalid cluster bootstrap confirmation value")
             }
-            BootstrapError::SuperuserRequired(msg) => write!(f, "superuser requirement failed: {msg}"),
-            BootstrapError::Database(msg) => write!(f, "database error during bootstrap: {msg}"),
-            BootstrapError::VerificationFailure(msg) => write!(f, "catalog verification failed: {msg}"),
+            BootstrapError::DatabaseNameMismatch(_) => {
+                f.write_str("database name mismatch for role bootstrap")
+            }
+            BootstrapError::PostgresVersionMismatch(_) => {
+                f.write_str("PostgreSQL major version mismatch")
+            }
+            BootstrapError::SuperuserRequired(_) => {
+                f.write_str("superuser session required for role bootstrap")
+            }
+            BootstrapError::Database(_) => f.write_str("database error during role bootstrap"),
+            BootstrapError::VerificationFailure(_) => {
+                f.write_str("catalog verification failed during role bootstrap")
+            }
         }
     }
 }
@@ -82,9 +110,8 @@ impl std::error::Error for BootstrapError {}
 /// Remove this temporary allowance when a genuine production consumer reads or constructs this item.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn verify_bootstrap_environment_guards() -> Result<(), BootstrapError> {
-    let confirmation = std::env::var(BOOTSTRAP_CONFIRMATION_ENV).map_err(|_| {
-        BootstrapError::MissingEnvironmentVariable(BOOTSTRAP_CONFIRMATION_ENV)
-    })?;
+    let confirmation = std::env::var(BOOTSTRAP_CONFIRMATION_ENV)
+        .map_err(|_| BootstrapError::MissingEnvironmentVariable(BOOTSTRAP_CONFIRMATION_ENV))?;
 
     if confirmation != REQUIRED_CONFIRMATION_VALUE {
         return Err(BootstrapError::InvalidConfirmationValue(confirmation));
@@ -105,7 +132,9 @@ pub(crate) async fn verify_connection_guards(
     let current_db_row = sqlx::query("SELECT current_database()")
         .fetch_one(&mut *conn)
         .await
-        .map_err(|e| BootstrapError::Database(format!("failed to query current_database(): {e}")))?;
+        .map_err(|e| {
+            BootstrapError::Database(format!("failed to query current_database(): {e}"))
+        })?;
     let db_name: String = current_db_row.get(0);
 
     let expected_db = required_db_name.unwrap_or(REQUIRED_TEST_DATABASE_NAME);
@@ -141,10 +170,14 @@ pub(crate) async fn verify_connection_guards(
     let version_row = sqlx::query("SHOW server_version_num")
         .fetch_one(&mut *conn)
         .await
-        .map_err(|e| BootstrapError::Database(format!("failed to query server_version_num: {e}")))?;
+        .map_err(|e| {
+            BootstrapError::Database(format!("failed to query server_version_num: {e}"))
+        })?;
     let version_num_str: String = version_row.get(0);
     let version_num: u32 = u32::from_str(&version_num_str).map_err(|_| {
-        BootstrapError::PostgresVersionMismatch(format!("unparseable version num: {version_num_str}"))
+        BootstrapError::PostgresVersionMismatch(format!(
+            "unparseable version num: {version_num_str}"
+        ))
     })?;
 
     // PostgreSQL 18.x has server_version_num >= 180000 and < 190000
@@ -200,9 +233,9 @@ pub(crate) async fn bootstrap_database_roles(
     verification::verify_role_attributes(tx.as_mut()).await?;
     verification::verify_role_memberships(tx.as_mut()).await?;
 
-    tx.commit()
-        .await
-        .map_err(|e| BootstrapError::Database(format!("failed to commit bootstrap transaction: {e}")))?;
+    tx.commit().await.map_err(|e| {
+        BootstrapError::Database(format!("failed to commit bootstrap transaction: {e}"))
+    })?;
 
     Ok(())
 }
@@ -239,6 +272,33 @@ mod tests {
         std::env::remove_var(BOOTSTRAP_CONFIRMATION_ENV);
     }
 
+    #[test]
+    fn bootstrap_error_redacted_debug_and_display_never_expose_sentinel() {
+        const SENTINEL: &str = "DO_NOT_EXPOSE_DIAGNOSTIC_SECRET";
+        let cases = [
+            BootstrapError::MissingEnvironmentVariable(BOOTSTRAP_CONFIRMATION_ENV),
+            BootstrapError::InvalidConfirmationValue(SENTINEL.to_string()),
+            BootstrapError::DatabaseNameMismatch(SENTINEL.to_string()),
+            BootstrapError::PostgresVersionMismatch(SENTINEL.to_string()),
+            BootstrapError::SuperuserRequired(SENTINEL.to_string()),
+            BootstrapError::Database(SENTINEL.to_string()),
+            BootstrapError::VerificationFailure(SENTINEL.to_string()),
+        ];
+
+        for err in cases {
+            let debug = format!("{err:?}");
+            let display = format!("{err}");
+            assert!(
+                !debug.contains(SENTINEL),
+                "Debug must not contain sentinel: {debug}"
+            );
+            assert!(
+                !display.contains(SENTINEL),
+                "Display must not contain sentinel: {display}"
+            );
+        }
+    }
+
     /// Helper to get test admin connection option.
     fn get_test_admin_url() -> Option<String> {
         std::env::var(BOOTSTRAP_ADMIN_URL_ENV).ok()
@@ -248,8 +308,11 @@ mod tests {
     #[ignore = "requires live PostgreSQL 18 server and STOCKIHA_BOOTSTRAP_ADMIN_DATABASE_URL"]
     async fn bootstrap_executes_idempotently_against_role_bootstrap_test_database() {
         std::env::set_var(BOOTSTRAP_CONFIRMATION_ENV, "YES");
-        let admin_url = get_test_admin_url().expect("STOCKIHA_BOOTSTRAP_ADMIN_DATABASE_URL required");
-        let mut conn = PgConnection::connect(&admin_url).await.expect("must connect to admin db");
+        let admin_url =
+            get_test_admin_url().expect("STOCKIHA_BOOTSTRAP_ADMIN_DATABASE_URL required");
+        let mut conn = PgConnection::connect(&admin_url)
+            .await
+            .expect("must connect to admin db");
 
         // Run 1
         bootstrap_database_roles(&mut conn, Some(REQUIRED_TEST_DATABASE_NAME))
@@ -279,7 +342,8 @@ mod tests {
     #[ignore = "requires live PostgreSQL 18 server and STOCKIHA_BOOTSTRAP_ADMIN_DATABASE_URL"]
     async fn concurrent_bootstrap_runs_safely_under_advisory_lock() {
         std::env::set_var(BOOTSTRAP_CONFIRMATION_ENV, "YES");
-        let admin_url = get_test_admin_url().expect("STOCKIHA_BOOTSTRAP_ADMIN_DATABASE_URL required");
+        let admin_url =
+            get_test_admin_url().expect("STOCKIHA_BOOTSTRAP_ADMIN_DATABASE_URL required");
 
         let url1 = admin_url.clone();
         let url2 = admin_url.clone();
@@ -305,8 +369,11 @@ mod tests {
     #[ignore = "requires live PostgreSQL 18 server and STOCKIHA_BOOTSTRAP_ADMIN_DATABASE_URL"]
     async fn permission_probe_tests_verify_exact_role_restrictions() {
         std::env::set_var(BOOTSTRAP_CONFIRMATION_ENV, "YES");
-        let admin_url = get_test_admin_url().expect("STOCKIHA_BOOTSTRAP_ADMIN_DATABASE_URL required");
-        let mut admin_conn = PgConnection::connect(&admin_url).await.expect("admin connect");
+        let admin_url =
+            get_test_admin_url().expect("STOCKIHA_BOOTSTRAP_ADMIN_DATABASE_URL required");
+        let mut admin_conn = PgConnection::connect(&admin_url)
+            .await
+            .expect("admin connect");
 
         // 1. Run bootstrap first to ensure roles exist
         bootstrap_database_roles(&mut admin_conn, Some(REQUIRED_TEST_DATABASE_NAME))
@@ -335,13 +402,18 @@ mod tests {
             .unwrap();
 
         // Create table as owner (using SET SESSION AUTHORIZATION)
-        let mut owner_conn = PgConnection::connect(&admin_url).await.expect("owner session connect");
+        let mut owner_conn = PgConnection::connect(&admin_url)
+            .await
+            .expect("owner session connect");
         sqlx::query("SET SESSION AUTHORIZATION 'stockiha_owner';")
             .execute(&mut owner_conn)
             .await
             .unwrap();
 
-        let session_user: String = sqlx::query_scalar("SELECT session_user;").fetch_one(&mut owner_conn).await.unwrap();
+        let session_user: String = sqlx::query_scalar("SELECT session_user;")
+            .fetch_one(&mut owner_conn)
+            .await
+            .unwrap();
         assert_eq!(session_user, "stockiha_owner");
 
         sqlx::query("CREATE TABLE s0_004_probe.test_table (id INT);")
@@ -368,7 +440,10 @@ mod tests {
                 .execute(&mut runtime_conn)
                 .await
                 .unwrap();
-            let session_user: String = sqlx::query_scalar("SELECT session_user;").fetch_one(&mut runtime_conn).await.unwrap();
+            let session_user: String = sqlx::query_scalar("SELECT session_user;")
+                .fetch_one(&mut runtime_conn)
+                .await
+                .unwrap();
             assert_eq!(session_user, "stockiha_runtime");
 
             let res = sqlx::query("CREATE SCHEMA s0_004_runtime_forbidden_schema;")

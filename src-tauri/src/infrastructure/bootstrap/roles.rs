@@ -55,6 +55,8 @@ ALTER ROLE stockiha_backup LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE N
 /// Remove this temporary allowance when a genuine production consumer reads or constructs this item.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const SQL_ENFORCE_MEMBERSHIPS: &str = r#"
+REVOKE stockiha_owner FROM stockiha_runtime;
+REVOKE stockiha_owner FROM stockiha_backup;
 GRANT stockiha_owner TO stockiha_migrator WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
 "#;
 
