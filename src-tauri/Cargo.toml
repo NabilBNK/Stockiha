@@ -30,6 +30,16 @@ sqlx = { version = "0.8.6", default-features = false, features = [
     "runtime-tokio",
     "postgres",
 ] }
+# S0-005: zeroize the in-memory secret buffers read from the credential store.
+zeroize = "1.9.0"
+
+# S0-005: Windows Credential Manager access (Win32 generic credentials). Scoped
+# to Windows targets and to only the two feature groups the proof needs.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security_Credentials",
+] }
 
 [dev-dependencies]
 # Used only by unit tests to assert the exact serialized wire shape of `IpcError`.
