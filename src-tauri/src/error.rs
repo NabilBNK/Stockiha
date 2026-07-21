@@ -57,17 +57,32 @@ pub enum AppError {
     /// An unexpected internal failure. The contained string is diagnostic
     /// context for trusted in-crate handling; it is not serialized across IPC
     /// and is not exposed by `Debug`/`Display`.
+    ///
+    /// Remove this temporary allowance when a genuine production consumer reads
+    /// or constructs this item.
+    #[cfg_attr(not(test), allow(dead_code))]
     Internal(String),
     /// The database connection configuration is missing or could not be
-    /// parsed (S0-003). The diagnostic may reference the environment variable
-    /// name or a parse failure; it must never contain a secret value and is
+    /// parsed (S0-003). The diagnostic is a fixed, input-independent constant
+    /// that never incorporates the URL value, credentials, hostnames, database
+    /// names, or the underlying parser's details, so no secret can leak. It is
     /// never serialized across IPC nor exposed by `Debug`/`Display`.
-    DatabaseConfiguration { diagnostic: String },
+    DatabaseConfiguration {
+        /// Remove this temporary allowance when a genuine production consumer
+        /// reads or constructs this item.
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
     /// The database could not be reached, refused the connection, failed
-    /// authentication, or timed out (S0-003). The diagnostic may contain raw
-    /// SQLx/PostgreSQL error text; it is never serialized across IPC nor
-    /// exposed by `Debug`/`Display`.
-    DatabaseUnavailable { diagnostic: String },
+    /// authentication, or timed out (S0-003). The diagnostic may retain trusted
+    /// internal SQLx/PostgreSQL context for backend debugging, but standard
+    /// Debug/Display and IPC conversion remain redacted and drop it.
+    DatabaseUnavailable {
+        /// Remove this temporary allowance when a genuine production consumer
+        /// reads or constructs this item.
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
 }
 
 impl AppError {
@@ -75,6 +90,10 @@ impl AppError {
     ///
     /// The diagnostic is retained for trusted in-crate handling; it is not
     /// serialized across IPC and is not exposed by `Debug`/`Display`.
+    ///
+    /// Remove this temporary allowance when a genuine production consumer reads
+    /// or constructs this item.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn internal(diagnostic: impl Into<String>) -> Self {
         AppError::Internal(diagnostic.into())
     }

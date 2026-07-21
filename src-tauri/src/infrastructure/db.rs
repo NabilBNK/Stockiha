@@ -35,7 +35,8 @@ pub const DEV_DATABASE_URL_ENV: &str = "STOCKIHA_DEV_DATABASE_URL";
 /// The connectivity tests require the parsed database name to end in `_test`.
 /// That guard reduces the risk of accidentally targeting a development or
 /// production database; it is a safety reduction, not an absolute guarantee.
-pub const TEST_DATABASE_URL_ENV: &str = "STOCKIHA_TEST_DATABASE_URL";
+#[cfg(test)]
+const TEST_DATABASE_URL_ENV: &str = "STOCKIHA_TEST_DATABASE_URL";
 
 /// Maximum pool connections for the connectivity proof (S0-003 mandate).
 pub const MAX_CONNECTIONS: u32 = 5;
