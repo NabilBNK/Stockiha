@@ -163,12 +163,14 @@ in this sandbox's package repository, and actual spooler I/O requires Windows
 
 ## Windows / manual verification
 
-Unverified here: real `OpenPrinterW`/`StartDocPrinterW`/… linkage and runtime
-behavior, `GetLastError()` code values for real failure conditions (invalid
-printer name, printer offline, access denied), and physical spooler/printer
-behavior. Run the verification block above on Windows, including the live
-proof against a real locally installed printer, and confirm the paper output
-shows the expected text with no cut and no drawer pulse.
+- Windows fmt/check/clippy/test passed.
+- 69 tests passed, 0 failed.
+- Physical ESC/POS printer was unavailable.
+- Live RAW spooler and paper-output validation is deferred.
+- Future validation requires:
+  STOCKIHA_ALLOW_ESCPOS_PROOF=YES
+  STOCKIHA_ESCPOS_PROOF_PRINTER=<exact installed printer name>
+- The deferred hardware test does not block subsequent development.
 
 ## Tracker
 
