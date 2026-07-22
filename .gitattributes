@@ -4,3 +4,8 @@
 *.tsx text eol=lf
 *.sql text eol=lf
 *.md text eol=lf
+
+# S0-007: vendored OFL font assets kept byte-exact (upstream). Mark the font
+# binary and exclude the license text from whitespace normalization/checks.
+src-tauri/src/infrastructure/pdf_proof/fonts/*.ttf binary
+src-tauri/src/infrastructure/pdf_proof/fonts/OFL.txt -whitespace
