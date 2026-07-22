@@ -1,13 +1,14 @@
 # Current Slice Status
 
 ## Active Context
-- **Current Phase:** Slice 0 — Technical Feasibility and Proofs
-- **Current Task:** S0-010 — Temporary-database restore and reconciliation proof
+- **Current Phase:** Slice 1 — The Golden Transaction Chain
+- **Current Task:** S1-001 — Minimal schemas and models for products, warehouse stock, cash sales, journal entries, fiscal periods, and document sequences
 
-## Out of Scope for S0-010
-- Business schemas, domain tables, migrations, and posting functions
+## Out of Scope for S1-001
+- Touchscreen POS UI
 - Full authentication & user management UI
-- Inventory and WAC
-- Sales and cash sessions
-- Accounting and SCF
-- Business UI screens
+- Advanced catalog variants, attributes, and barcodes (Slice 2)
+- Purchase Orders & Goods Receipts (Slice 3)
+- Foreign currency clearing & landed cost (Slice 3)
+- Cash session variance approvals (Slice 4)
+- Stock transfers (Slice 5)

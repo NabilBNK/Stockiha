@@ -1612,9 +1612,20 @@ exit "${{STOCKIHA_FAKE_PG_RESTORE_EXIT_CODE:-0}}"
                 .expect("pg_dump must be discoverable and report major version 18");
         let secret = super::super::backup_proof::resolve_backup_credential()
             .expect("the stockiha_backup credential must already be stored via S0-005");
-        let password = std::str::from_utf8(secret.as_ref())
-            .expect("stockiha_backup password must be UTF-8")
-            .to_string();
+        let bytes = secret.as_ref();
+        let password = if bytes.contains(&0) {
+            let u16s: Vec<u16> = bytes
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect();
+            String::from_utf16_lossy(&u16s)
+                .trim_end_matches('\0')
+                .to_string()
+        } else {
+            std::str::from_utf8(bytes)
+                .expect("stockiha_backup password must be UTF-8")
+                .to_string()
+        };
         let dump_target = super::super::backup_proof::PgDumpTarget {
             host: &parsed.host,
             port: parsed.port,
