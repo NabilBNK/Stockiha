@@ -31,6 +31,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 
@@ -127,6 +128,39 @@ pub(crate) enum BackupProofError {
     CredentialUnavailable(CredentialErrorSummary),
     /// The final atomic rename failed.
     RenameFailed,
+    /// The bundle root, or a required entry inside it, is missing, is not
+    /// the expected file/directory type, or the manifest's recorded dump
+    /// filename does not match [`DUMP_FILENAME`]. Used only by
+    /// [`validate_bundle`].
+    BundleLayoutInvalid,
+    /// `manifest.json` does not exist, is not a regular file, or could not
+    /// be read. Used only by [`validate_bundle`].
+    ManifestNotFound,
+    /// `manifest.json` exists but is not valid JSON, or does not match the
+    /// expected schema. Used only by [`validate_bundle`].
+    ManifestParseFailed,
+    /// `checksums.sha256` does not exist, is not a regular file, or could
+    /// not be read. Used only by [`validate_bundle`].
+    ChecksumsNotFound,
+    /// `checksums.sha256` exists but a line could not be parsed (wrong
+    /// column count, or a hash that is not 64 hex characters). Used only by
+    /// [`validate_bundle`].
+    ChecksumsParseFailed,
+    /// A recomputed SHA-256 does not match `manifest.json`, does not match
+    /// `checksums.sha256`, or `checksums.sha256` is missing an entry it must
+    /// have. Used only by [`validate_bundle`].
+    ChecksumMismatch,
+    /// A manifest-listed relative path is absolute, empty, or contains a
+    /// `.`/`..` component, or resolves outside the bundle root after
+    /// canonicalization. Used only by [`validate_bundle`].
+    PathEscapesBundleRoot,
+    /// The manifest's `bundle_format_version` does not match
+    /// [`BUNDLE_FORMAT_VERSION`]. The detail is retained only in
+    /// [`BackupProofError::diagnostic`]. Used only by [`validate_bundle`].
+    BundleFormatVersionMismatch(u32),
+    /// `database.dump` exists but is zero bytes. Used only by
+    /// [`validate_bundle`].
+    DumpIsEmpty,
 }
 
 /// A redacted, `'static`-owned summary of a [`CredentialError`], retained so
@@ -166,6 +200,17 @@ impl BackupProofError {
             BackupProofError::CredentialNotUtf8 => "BACKUP_PROOF_CREDENTIAL_NOT_UTF8",
             BackupProofError::CredentialUnavailable(_) => "BACKUP_PROOF_CREDENTIAL_UNAVAILABLE",
             BackupProofError::RenameFailed => "BACKUP_PROOF_RENAME_FAILED",
+            BackupProofError::BundleLayoutInvalid => "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID",
+            BackupProofError::ManifestNotFound => "BACKUP_PROOF_MANIFEST_NOT_FOUND",
+            BackupProofError::ManifestParseFailed => "BACKUP_PROOF_MANIFEST_PARSE_FAILED",
+            BackupProofError::ChecksumsNotFound => "BACKUP_PROOF_CHECKSUMS_NOT_FOUND",
+            BackupProofError::ChecksumsParseFailed => "BACKUP_PROOF_CHECKSUMS_PARSE_FAILED",
+            BackupProofError::ChecksumMismatch => "BACKUP_PROOF_CHECKSUM_MISMATCH",
+            BackupProofError::PathEscapesBundleRoot => "BACKUP_PROOF_PATH_ESCAPES_BUNDLE_ROOT",
+            BackupProofError::BundleFormatVersionMismatch(_) => {
+                "BACKUP_PROOF_BUNDLE_FORMAT_VERSION_MISMATCH"
+            }
+            BackupProofError::DumpIsEmpty => "BACKUP_PROOF_DUMP_IS_EMPTY",
         }
     }
 
@@ -184,6 +229,9 @@ impl BackupProofError {
                 None => "pg_dump terminated without an exit code".to_string(),
             },
             BackupProofError::CredentialUnavailable(summary) => summary.0.clone(),
+            BackupProofError::BundleFormatVersionMismatch(found) => {
+                format!("found bundle_format_version {found}, expected {BUNDLE_FORMAT_VERSION}")
+            }
             other => other.code().to_string(),
         }
     }
@@ -355,15 +403,23 @@ fn is_reparse_point(_meta: &fs::Metadata) -> bool {
     false
 }
 
+/// The one symlink/Windows-reparse-point check in this module. Used by
+/// [`validate_input_file`] (backup inputs) and by [`validate_bundle`]
+/// (every path inside an existing bundle) — never reimplemented.
+fn reject_symlink_or_reparse_point(meta: &fs::Metadata) -> Result<(), BackupProofError> {
+    if meta.file_type().is_symlink() || is_reparse_point(meta) {
+        return Err(BackupProofError::RejectedSymlinkInput);
+    }
+    Ok(())
+}
+
 /// Validate a candidate input file before it is ever copied: it must exist,
 /// must not be a symlink or Windows reparse point (checked via
 /// `symlink_metadata`, which never follows links), and must be a regular
 /// file.
 fn validate_input_file(path: &Path) -> Result<(), BackupProofError> {
     let meta = fs::symlink_metadata(path).map_err(|_| BackupProofError::InputNotFound)?;
-    if meta.file_type().is_symlink() || is_reparse_point(&meta) {
-        return Err(BackupProofError::RejectedSymlinkInput);
-    }
+    reject_symlink_or_reparse_point(&meta)?;
     if !meta.is_file() {
         return Err(BackupProofError::InputNotAFile);
     }
@@ -732,6 +788,220 @@ where
     fs::rename(&temp_path, &final_path).map_err(|_| BackupProofError::RenameFailed)?;
 
     Ok(final_path)
+}
+
+// ---------------------------------------------------------------------------
+// Bundle preflight validation (platform-neutral; the single authoritative
+// validator — every future consumer, starting with S0-010's restore proof,
+// must call this and never re-parse the manifest/checksums independently)
+// ---------------------------------------------------------------------------
+
+/// A structurally and cryptographically validated bundle: every file the
+/// manifest lists exists, is a regular file (not a symlink/reparse point),
+/// resolves inside `bundle_dir` (no path traversal), and its recomputed
+/// SHA-256 matches both `manifest.json` and `checksums.sha256`.
+///
+/// This is the entire preflight surface a consumer needs — it deliberately
+/// exposes only the small set of fields a restore actually has to act on,
+/// not the raw parsed manifest.
+pub(crate) struct ValidatedBundle {
+    pub(crate) bundle_dir: PathBuf,
+    pub(crate) dump_path: PathBuf,
+    pub(crate) bundle_format_version: u32,
+    pub(crate) application_version: String,
+    pub(crate) schema_version: String,
+    pub(crate) postgres_major_version: u32,
+}
+
+#[derive(Deserialize)]
+struct ManifestFileEntryDe {
+    path: String,
+    size_bytes: u64,
+    sha256: String,
+}
+
+#[derive(Deserialize)]
+struct ManifestDe {
+    bundle_format_version: u32,
+    application_version: String,
+    schema_version: String,
+    database_dump_filename: String,
+    files: Vec<ManifestFileEntryDe>,
+}
+
+/// Reject a manifest-listed relative path that could escape `bundle_dir`:
+/// empty, absolute, or containing a `.`/`..` component. Manifest paths are
+/// always written with forward slashes (see `normalize_relative_path`), so
+/// splitting on `/` is sufficient regardless of platform.
+fn reject_path_traversal(relative_path: &str) -> Result<(), BackupProofError> {
+    if relative_path.is_empty() || relative_path.starts_with('/') {
+        return Err(BackupProofError::PathEscapesBundleRoot);
+    }
+    for component in relative_path.split('/') {
+        if component.is_empty() || component == "." || component == ".." {
+            return Err(BackupProofError::PathEscapesBundleRoot);
+        }
+    }
+    Ok(())
+}
+
+/// Validate an existing bundle directory before it is ever restored from.
+///
+/// Checks, in order: `bundle_dir` itself is a real directory, not a
+/// symlink/reparse point; `manifest.json` and `checksums.sha256` exist as
+/// regular files and parse (`manifest.json` via `serde_json` — never
+/// hand-parsed); every manifest-listed relative path is free of traversal,
+/// resolves inside `bundle_dir` after canonicalization, is not a
+/// symlink/reparse point, and its recomputed size/SHA-256 matches the
+/// manifest *and* `checksums.sha256`; `checksums.sha256` covers
+/// `manifest.json` itself (by hash) but never covers itself; the four
+/// required files (`database.dump` plus the three version files) are
+/// present, the three fixed asset directories exist and are not
+/// symlinks/reparse points, `database.dump` is non-empty, and the recorded
+/// PostgreSQL major version equals [`REQUIRED_PG_MAJOR_VERSION`].
+pub(crate) fn validate_bundle(bundle_dir: &Path) -> Result<ValidatedBundle, BackupProofError> {
+    let root_meta =
+        fs::symlink_metadata(bundle_dir).map_err(|_| BackupProofError::BundleLayoutInvalid)?;
+    reject_symlink_or_reparse_point(&root_meta)?;
+    if !root_meta.is_dir() {
+        return Err(BackupProofError::BundleLayoutInvalid);
+    }
+
+    let manifest_path = bundle_dir.join(MANIFEST_FILENAME);
+    validate_input_file(&manifest_path).map_err(|_| BackupProofError::ManifestNotFound)?;
+    let manifest_text =
+        fs::read_to_string(&manifest_path).map_err(|_| BackupProofError::ManifestNotFound)?;
+    let manifest: ManifestDe =
+        serde_json::from_str(&manifest_text).map_err(|_| BackupProofError::ManifestParseFailed)?;
+    if manifest.bundle_format_version != BUNDLE_FORMAT_VERSION {
+        return Err(BackupProofError::BundleFormatVersionMismatch(
+            manifest.bundle_format_version,
+        ));
+    }
+    if manifest.database_dump_filename != DUMP_FILENAME {
+        return Err(BackupProofError::BundleLayoutInvalid);
+    }
+
+    let checksums_path = bundle_dir.join(CHECKSUMS_FILENAME);
+    validate_input_file(&checksums_path).map_err(|_| BackupProofError::ChecksumsNotFound)?;
+    let checksums_text =
+        fs::read_to_string(&checksums_path).map_err(|_| BackupProofError::ChecksumsNotFound)?;
+    let mut checksums: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for line in checksums_text.lines() {
+        let mut parts = line.splitn(2, "  ");
+        let hash = parts.next().ok_or(BackupProofError::ChecksumsParseFailed)?;
+        let path = parts.next().ok_or(BackupProofError::ChecksumsParseFailed)?;
+        if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(BackupProofError::ChecksumsParseFailed);
+        }
+        checksums.insert(path.to_string(), hash.to_lowercase());
+    }
+    if checksums.contains_key(CHECKSUMS_FILENAME) {
+        // checksums.sha256 must never list itself.
+        return Err(BackupProofError::ChecksumsParseFailed);
+    }
+
+    // The three fixed asset directories must exist (may be empty) and must
+    // not themselves be symlinks/reparse points.
+    for dir in [ATTACHMENTS_DIR, GENERATED_DOCUMENTS_DIR, COMPANY_ASSETS_DIR] {
+        let dir_path = bundle_dir.join(dir);
+        let meta =
+            fs::symlink_metadata(&dir_path).map_err(|_| BackupProofError::BundleLayoutInvalid)?;
+        reject_symlink_or_reparse_point(&meta)?;
+        if !meta.is_dir() {
+            return Err(BackupProofError::BundleLayoutInvalid);
+        }
+    }
+
+    // manifest.json must be covered by checksums.sha256.
+    let recomputed_manifest_hash = hash_bytes(manifest_text.as_bytes());
+    match checksums.get(MANIFEST_FILENAME) {
+        Some(h) if *h == recomputed_manifest_hash => {}
+        _ => return Err(BackupProofError::ChecksumMismatch),
+    }
+
+    let canonical_root = bundle_dir
+        .canonicalize()
+        .map_err(|_| BackupProofError::BundleLayoutInvalid)?;
+
+    let mut seen_required = std::collections::HashSet::new();
+    for entry in &manifest.files {
+        reject_path_traversal(&entry.path)?;
+        let resolved = bundle_dir.join(&entry.path);
+        // Propagate `validate_input_file`'s own error directly — it already
+        // distinguishes "missing" from "is a symlink/reparse point" from
+        // "not a regular file"; collapsing all three into one generic code
+        // here would silently discard exactly the symlink-rejection detail
+        // this validator exists to surface.
+        validate_input_file(&resolved)?;
+
+        // Defense in depth beyond the syntactic check above: an
+        // intermediate directory component (e.g. `attachments`) could in
+        // principle be replaced by a symlink pointing outside the bundle —
+        // already excluded above for the three fixed directories, but
+        // canonicalizing and confirming containment here costs little and
+        // catches any future case that adds more directory levels.
+        let canonical_resolved = resolved
+            .canonicalize()
+            .map_err(|_| BackupProofError::BundleLayoutInvalid)?;
+        if !canonical_resolved.starts_with(&canonical_root) {
+            return Err(BackupProofError::PathEscapesBundleRoot);
+        }
+
+        let (sha256, size_bytes) = hash_file(&resolved)?;
+        if sha256 != entry.sha256 || size_bytes != entry.size_bytes {
+            return Err(BackupProofError::ChecksumMismatch);
+        }
+        match checksums.get(&entry.path) {
+            Some(h) if *h == sha256 => {}
+            _ => return Err(BackupProofError::ChecksumMismatch),
+        }
+
+        if entry.path == DUMP_FILENAME
+            || entry.path == SCHEMA_VERSION_FILENAME
+            || entry.path == APPLICATION_VERSION_FILENAME
+            || entry.path == POSTGRES_VERSION_FILENAME
+        {
+            seen_required.insert(entry.path.clone());
+        }
+    }
+
+    for required in [
+        DUMP_FILENAME,
+        SCHEMA_VERSION_FILENAME,
+        APPLICATION_VERSION_FILENAME,
+        POSTGRES_VERSION_FILENAME,
+    ] {
+        if !seen_required.contains(required) {
+            return Err(BackupProofError::BundleLayoutInvalid);
+        }
+    }
+
+    let dump_path = bundle_dir.join(DUMP_FILENAME);
+    let dump_size = fs::metadata(&dump_path)
+        .map_err(|_| BackupProofError::Io)?
+        .len();
+    if dump_size == 0 {
+        return Err(BackupProofError::DumpIsEmpty);
+    }
+
+    let postgres_version_text = fs::read_to_string(bundle_dir.join(POSTGRES_VERSION_FILENAME))
+        .map_err(|_| BackupProofError::Io)?;
+    let postgres_major_version = parse_pg_dump_major_version(postgres_version_text.trim())?;
+    if postgres_major_version != REQUIRED_PG_MAJOR_VERSION {
+        return Err(BackupProofError::PgDumpVersionMismatch(
+            postgres_major_version,
+        ));
+    }
+
+    Ok(ValidatedBundle {
+        bundle_dir: bundle_dir.to_path_buf(),
+        dump_path,
+        bundle_format_version: manifest.bundle_format_version,
+        application_version: manifest.application_version,
+        schema_version: manifest.schema_version,
+        postgres_major_version,
+    })
 }
 
 // ===========================================================================
@@ -1536,6 +1806,196 @@ exit "${{STOCKIHA_FAKE_PG_DUMP_EXIT_CODE:-0}}"
         );
 
         let _ = fs::remove_dir_all(&fixtures_dir);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    // ---- validate_bundle: the single shared preflight validator (S0-010's
+    // restore proof calls this directly and must never reimplement it) -----
+
+    #[test]
+    fn validate_bundle_accepts_a_real_bundle_and_reports_its_fields() {
+        let root = scratch_dir("validate-bundle-ok");
+        let bundle = create_backup_bundle(
+            &root,
+            fixed_now(),
+            "pg_dump (PostgreSQL) 18.5",
+            &BackupInputs::empty(),
+            fake_dump(b"validate-bundle-ok-dump"),
+        )
+        .unwrap();
+
+        let validated = validate_bundle(&bundle).expect("a real bundle must validate");
+        assert_eq!(validated.bundle_dir, bundle);
+        assert_eq!(validated.dump_path, bundle.join(DUMP_FILENAME));
+        assert_eq!(validated.bundle_format_version, BUNDLE_FORMAT_VERSION);
+        assert_eq!(validated.application_version, APPLICATION_VERSION);
+        assert_eq!(validated.schema_version, SCHEMA_VERSION);
+        assert_eq!(validated.postgres_major_version, 18);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn validate_bundle_rejects_malformed_manifest_json() {
+        let root = scratch_dir("validate-bundle-malformed-manifest");
+        let bundle = create_backup_bundle(
+            &root,
+            fixed_now(),
+            "pg_dump (PostgreSQL) 18.0",
+            &BackupInputs::empty(),
+            fake_dump(b"dump"),
+        )
+        .unwrap();
+
+        fs::write(bundle.join(MANIFEST_FILENAME), b"{ not valid json ").unwrap();
+
+        assert!(matches!(
+            validate_bundle(&bundle),
+            Err(BackupProofError::ManifestParseFailed)
+        ));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn validate_bundle_rejects_a_tampered_payload_file() {
+        let root = scratch_dir("validate-bundle-tampered");
+        let bundle = create_backup_bundle(
+            &root,
+            fixed_now(),
+            "pg_dump (PostgreSQL) 18.0",
+            &BackupInputs::empty(),
+            fake_dump(b"original dump bytes"),
+        )
+        .unwrap();
+
+        // Tamper with the dump after the bundle was sealed, without touching
+        // the manifest or checksums — exactly what a corrupted bundle looks
+        // like on disk.
+        fs::write(bundle.join(DUMP_FILENAME), b"tampered dump bytes").unwrap();
+
+        assert!(matches!(
+            validate_bundle(&bundle),
+            Err(BackupProofError::ChecksumMismatch)
+        ));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn validate_bundle_rejects_a_missing_required_file() {
+        let root = scratch_dir("validate-bundle-missing-file");
+        let bundle = create_backup_bundle(
+            &root,
+            fixed_now(),
+            "pg_dump (PostgreSQL) 18.0",
+            &BackupInputs::empty(),
+            fake_dump(b"dump"),
+        )
+        .unwrap();
+
+        fs::remove_file(bundle.join(SCHEMA_VERSION_FILENAME)).unwrap();
+
+        // A genuinely missing file surfaces `InputNotFound` — the specific
+        // error `validate_input_file` itself reports, propagated directly
+        // rather than collapsed into a generic layout error.
+        assert!(matches!(
+            validate_bundle(&bundle),
+            Err(BackupProofError::InputNotFound)
+        ));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn validate_bundle_rejects_a_symlink_replacing_a_listed_file() {
+        use std::os::unix::fs::symlink;
+
+        let root = scratch_dir("validate-bundle-symlink");
+        let bundle = create_backup_bundle(
+            &root,
+            fixed_now(),
+            "pg_dump (PostgreSQL) 18.0",
+            &BackupInputs::empty(),
+            fake_dump(b"dump"),
+        )
+        .unwrap();
+
+        let victim = bundle.join(APPLICATION_VERSION_FILENAME);
+        let elsewhere = root.join("elsewhere.txt");
+        fs::write(&elsewhere, "not the real content").unwrap();
+        fs::remove_file(&victim).unwrap();
+        symlink(&elsewhere, &victim).unwrap();
+
+        assert!(matches!(
+            validate_bundle(&bundle),
+            Err(BackupProofError::RejectedSymlinkInput)
+        ));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn validate_bundle_rejects_bundle_format_version_mismatch() {
+        let root = scratch_dir("validate-bundle-format-version");
+        let bundle = create_backup_bundle(
+            &root,
+            fixed_now(),
+            "pg_dump (PostgreSQL) 18.0",
+            &BackupInputs::empty(),
+            fake_dump(b"dump"),
+        )
+        .unwrap();
+
+        // Rewrite manifest.json with a different bundle_format_version, then
+        // recompute checksums.sha256 so the tamper is isolated to exactly
+        // the field under test (otherwise the checksum check would fire
+        // first, masking what this test is actually proving).
+        let manifest_text = fs::read_to_string(bundle.join(MANIFEST_FILENAME)).unwrap();
+        let tampered = manifest_text.replacen(
+            "\"bundle_format_version\":1",
+            "\"bundle_format_version\":99",
+            1,
+        );
+        assert_ne!(
+            tampered, manifest_text,
+            "the version field must be present to tamper with"
+        );
+        fs::write(bundle.join(MANIFEST_FILENAME), &tampered).unwrap();
+        let new_manifest_hash = hash_bytes(tampered.as_bytes());
+        let checksums_text = fs::read_to_string(bundle.join(CHECKSUMS_FILENAME)).unwrap();
+        let new_checksums: String = checksums_text
+            .lines()
+            .map(|line| {
+                if line.ends_with(MANIFEST_FILENAME) {
+                    format!("{new_manifest_hash}  {MANIFEST_FILENAME}\n")
+                } else {
+                    format!("{line}\n")
+                }
+            })
+            .collect();
+        fs::write(bundle.join(CHECKSUMS_FILENAME), new_checksums).unwrap();
+
+        assert!(matches!(
+            validate_bundle(&bundle),
+            Err(BackupProofError::BundleFormatVersionMismatch(99))
+        ));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn validate_bundle_rejects_non_18_postgres_major_version() {
+        let root = scratch_dir("validate-bundle-pg-version");
+        let bundle = create_backup_bundle(
+            &root,
+            fixed_now(),
+            "pg_dump (PostgreSQL) 17.4",
+            &BackupInputs::empty(),
+            fake_dump(b"dump"),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            validate_bundle(&bundle),
+            Err(BackupProofError::PgDumpVersionMismatch(17))
+        ));
         let _ = fs::remove_dir_all(&root);
     }
 

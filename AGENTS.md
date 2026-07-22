@@ -15,6 +15,18 @@ Read in this order:
 
 Repository documents override conversation memory and agent summaries. Do not modify `final-architecture.md` without an approved ADR and explicit user approval.
 
+## Slice implementation boundary
+
+Slice 0 consists of isolated technical feasibility proofs.
+
+Slices 1 through 9 are production vertical implementation slices. Work must use
+the intended production architecture, migrations, domain models, application
+services, database posting functions, IPC boundaries, frontend workflows and
+end-to-end tests.
+
+Do not create proof-only modules, toy implementations, placeholder workflows
+or temporary parallel architectures for Slices 1 through 9.
+
 ## Quota and cost discipline
 - Keep planning responses under 700 words unless a blocker requires more.
 - Do not repeat large repository sections.

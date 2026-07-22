@@ -56,6 +56,16 @@ typst-assets = { version = "=0.15.1", features = ["fonts"] }
 sha2 = "=0.10.9"
 time = { version = "=0.3.53", default-features = false, features = ["std"] }
 
+# S0-010: temporary-database restore and reconciliation proof. `serde_json`
+# is promoted here from `[dev-dependencies]` (added back in S0-002 for a
+# test-only assertion) to a normal dependency, pinned exactly to the version
+# already resolved for `stockiha-backend` in the existing `Cargo.lock` (no
+# version change, no lock churn) — it is now needed at runtime (not just in
+# tests) to parse `manifest.json` during bundle preflight validation
+# (`backup_proof::validate_bundle`), which must use a real JSON parser
+# rather than hand-parsing.
+serde_json = "=1.0.150"
+
 # S0-005: Windows Credential Manager access (Win32 generic credentials).
 # S0-008: adds `Win32_Graphics_Printing` (OpenPrinterW/StartDocPrinterW/
 # StartPagePrinter/WritePrinter/EndPagePrinter/EndDocPrinter/AbortPrinter/
@@ -75,7 +85,5 @@ windows-sys = { version = "0.61.2", features = [
 ] }
 
 [dev-dependencies]
-# Used only by unit tests to assert the exact serialized wire shape of `IpcError`.
-serde_json = "1"
 # S0-003: async runtime for the opt-in PostgreSQL integration tests only.
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
