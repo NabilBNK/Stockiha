@@ -23,12 +23,35 @@ serde = { version = "1", features = ["derive"] }
 # S0-003: PostgreSQL connectivity proof. Minimal feature set by mandate:
 # - runtime-tokio: matches Tauri's Tokio runtime.
 # - postgres: the only target driver (PostgreSQL 18.x).
-# Deliberately excluded until a task needs them: TLS (loopback-only for now),
-# macros/offline (no compile-time queries), migrate (S0-004+), and the
-# uuid/chrono/rust_decimal type integrations (no domain types yet).
+# S1-001 adds the first real migrations and domain/persistence types, so the
+# feature set grows accordingly:
+# - migrate: runs the new `migrations/*.sql` files (sqlx::migrate!) — this
+#   repository had no migration runner before S1-001.
+# - macros: derives `sqlx::FromRow` for the new persistence row types.
+# - rust_decimal: exact decimal encode/decode for money, quantity, WAC,
+#   debit/credit — final-architecture.md section 3.D-ter forbids f32/f64 for
+#   any of these.
+# - time: encode/decode for `date`/`timestamptz` columns using the `time`
+#   crate already pinned below (S0-009) rather than adding `chrono` as a
+#   second, redundant date/time dependency.
+# Deliberately still excluded: TLS (loopback-only for now) and the `uuid`
+# type integration — every new table uses `bigint GENERATED ALWAYS AS
+# IDENTITY` primary keys (matching the S0-006 proof's own convention), so no
+# UUID column exists yet.
 sqlx = { version = "0.8.6", default-features = false, features = [
     "runtime-tokio",
     "postgres",
+    "migrate",
+    "macros",
+    "rust_decimal",
+    "time",
+] }
+# S1-001: exact decimal type for every authoritative money/quantity/cost/
+# debit/credit value (final-architecture.md section 3.D-ter — never f32/f64).
+# `serde` support is enabled because the domain value types derive
+# `serde::Serialize`/`Deserialize` alongside the rest of the crate's types.
+rust_decimal = { version = "=1.38.0", default-features = false, features = [
+    "serde",
 ] }
 # S0-005: zeroize the in-memory secret buffers read from the credential store.
 zeroize = "1.9.0"

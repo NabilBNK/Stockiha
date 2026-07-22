@@ -4,6 +4,16 @@ pub mod commands;
 // stays crate-private: the typed error contract and the database infrastructure
 // are internal API. The connectivity tests live inside the crate
 // (`infrastructure::db` `#[cfg(test)]`), so no external test crate needs access.
+// S1-001: domain value types, typed identifiers, status enums, and
+// validation constructors for the new production schemas (products,
+// warehouse stock, cash sales, journal entries, fiscal periods, document
+// sequences). Crate-private and consumer-free (no Tauri command, no IPC,
+// no application service reads/writes the database through it yet); dead
+// code in non-test builds until a later slice's application service is a
+// real consumer. The exemption is removed then — same posture as every
+// Slice 0 proof module below.
+#[cfg_attr(not(test), allow(dead_code))]
+mod domain;
 mod error;
 mod infrastructure;
 pub mod state;
