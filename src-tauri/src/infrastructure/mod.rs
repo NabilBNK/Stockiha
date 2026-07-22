@@ -9,6 +9,14 @@ pub(crate) mod bootstrap;
 #[cfg_attr(not(test), allow(dead_code))]
 mod credentials;
 pub mod db;
+// S0-008: ESC/POS Windows RAW spooler proof. Crate-private and consumer-free
+// (no Tauri command, no IPC); dead code in non-test builds until a later
+// slice sends real receipts. The exemption is removed then. The module is
+// NOT cfg(windows)-gated: `SpoolerJob`, validation, the redacted error, and
+// the harmless payload builder are platform-neutral and unit-tested on every
+// platform. Only the Win32 FFI writer and the live proof are cfg(windows).
+#[cfg_attr(not(test), allow(dead_code))]
+mod escpos_proof;
 // S0-007: Typst French/Arabic PDF generation proof. Crate-private and
 // consumer-free (no Tauri command, no IPC); dead code in non-test builds until
 // a later slice renders real documents. The exemption is removed then.

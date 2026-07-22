@@ -46,12 +46,22 @@ typst-layout = "=0.15.1"
 typst-pdf = "=0.15.1"
 typst-assets = { version = "=0.15.1", features = ["fonts"] }
 
-# S0-005: Windows Credential Manager access (Win32 generic credentials). Scoped
-# to Windows targets and to only the two feature groups the proof needs.
+# S0-005: Windows Credential Manager access (Win32 generic credentials).
+# S0-008: adds `Win32_Graphics_Printing` (OpenPrinterW/StartDocPrinterW/
+# StartPagePrinter/WritePrinter/EndPagePrinter/EndDocPrinter/AbortPrinter/
+# ClosePrinter) for the RAW spooler proof. `Win32_Graphics_Gdi` is also
+# required: in windows-sys 0.61.2, `OpenPrinterW`'s own binding is gated on
+# that feature because its `PRINTER_DEFAULTSW` parameter type lives behind it
+# (confirmed by compiling against the real crate source, not assumed) — no
+# GDI/DEVMODE value is ever constructed or used, only the type must resolve.
+# Same existing crate, no new dependency — only the feature list grows,
+# scoped to Windows targets.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security_Credentials",
+    "Win32_Graphics_Printing",
+    "Win32_Graphics_Gdi",
 ] }
 
 [dev-dependencies]
