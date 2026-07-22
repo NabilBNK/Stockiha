@@ -23,15 +23,69 @@ serde = { version = "1", features = ["derive"] }
 # S0-003: PostgreSQL connectivity proof. Minimal feature set by mandate:
 # - runtime-tokio: matches Tauri's Tokio runtime.
 # - postgres: the only target driver (PostgreSQL 18.x).
-# Deliberately excluded until a task needs them: TLS (loopback-only for now),
-# macros/offline (no compile-time queries), migrate (S0-004+), and the
-# uuid/chrono/rust_decimal type integrations (no domain types yet).
+# S1-001 adds the first real migrations and domain/persistence types, so the
+# feature set grows accordingly:
+# - migrate: runs the new `migrations/*.sql` files (sqlx::migrate!) — this
+#   repository had no migration runner before S1-001.
+# - macros: derives `sqlx::FromRow` for the new persistence row types.
+# - rust_decimal: exact decimal encode/decode for money, quantity, WAC,
+#   debit/credit — final-architecture.md section 3.D-ter forbids f32/f64 for
+#   any of these.
+# - time: encode/decode for `date`/`timestamptz` columns using the `time`
+#   crate already pinned below (S0-009) rather than adding `chrono` as a
+#   second, redundant date/time dependency.
+# Deliberately still excluded: TLS (loopback-only for now) and the `uuid`
+# type integration — every new table uses `bigint GENERATED ALWAYS AS
+# IDENTITY` primary keys (matching the S0-006 proof's own convention), so no
+# UUID column exists yet.
+# Slice 1 MVP batch adds `json`: `sales.confirm_cash_sale`'s line array is
+# bound as a single `jsonb` parameter (a `serde_json::Value`) rather than a
+# Postgres composite array type, so the encode/decode impl this feature
+# provides is required, not optional.
 sqlx = { version = "0.8.6", default-features = false, features = [
     "runtime-tokio",
     "postgres",
+    "migrate",
+    "macros",
+    "rust_decimal",
+    "time",
+    "json",
+] }
+# S1-001: exact decimal type for every authoritative money/quantity/cost/
+# debit/credit value (final-architecture.md section 3.D-ter — never f32/f64).
+# `serde` support is enabled because the domain value types derive
+# `serde::Serialize`/`Deserialize` alongside the rest of the crate's types.
+rust_decimal = { version = "=1.38.0", default-features = false, features = [
+    "serde",
 ] }
 # S0-005: zeroize the in-memory secret buffers read from the credential store.
 zeroize = "1.9.0"
+
+# Slice 1 MVP batch: password/PIN hashing for `iam.users.password_hash`
+# (task requirement: "password/PIN verification as defined by
+# architecture"). `argon2` (RustCrypto, audited, minimal transitive
+# dependencies) is the industry-standard choice for this — a fast hash like
+# the existing `sha2`/`Sha256` dependency is deliberately unsuitable for
+# passwords (no work factor, trivially brute-forced), so this is a genuine
+# new essential dependency, not a preference. The database only ever stores
+# and compares the resulting self-describing hash string; it never computes
+# or verifies a hash itself. `std` is the only feature enabled (no `alloc`
+# WASM target, no `zeroize` integration beyond what `argon2` already does
+# for its own internal buffers).
+argon2 = { version = "=0.5.3", default-features = false, features = ["std"] }
+# Slice 1 MVP batch: CSPRNG for opaque session tokens (never a raw token is
+# persisted — only its SHA-256 hash — but generating it needs a real OS
+# random source). Not reached via `argon2::password_hash::rand_core::OsRng`:
+# that path requires `rand_core`'s own `getrandom` feature, which nothing in
+# this dependency graph actually turns on (verified by reading `argon2` and
+# `password-hash`'s own `Cargo.toml` feature tables directly, not assumed) —
+# relying on it would be the same "hope a transitive feature happens to be
+# on" risk already avoided for JSON canonicalization elsewhere in this
+# batch. `getrandom` is the minimal, standard, cross-platform (Windows
+# included) primitive this is built on anyway. Pinned to the exact version
+# already resolved transitively elsewhere in this dependency graph, so this
+# adds zero new package versions to `Cargo.lock`.
+getrandom = { version = "=0.2.17", default-features = false, features = ["std"] }
 
 # S0-007: backend PDF generation proof. Embedded Typst compiler pipeline,
 # pinned exactly (offline, in-process; no `typst` CLI, no browser, no cloud).
@@ -54,7 +108,20 @@ typst-assets = { version = "=0.15.1", features = ["fonts"] }
 # transitively locked by the existing dependency graph at these exact
 # versions, so pinning them here adds zero new packages and zero lock churn.
 sha2 = "=0.10.9"
-time = { version = "=0.3.53", default-features = false, features = ["std"] }
+# Slice 1 MVP batch adds `serde-well-known`: IPC responses that carry a
+# timestamp (e.g. a login's session expiry) serialize it via
+# `time::serde::rfc3339` for the frontend, rather than `time`'s internal
+# field-by-field default representation. This pulls in `formatting` and
+# `parsing`, which are pure feature flags inside the already-pinned `time`
+# crate — zero new external packages, confirmed by reading `time`'s own
+# `Cargo.toml` feature table directly. Calendar dates (`time::Date`) in this
+# batch's IPC layer are still plain `"YYYY-MM-DD"` strings parsed manually
+# via `Date::from_calendar_date` (already used elsewhere in this crate), so
+# no Date-specific serde support is needed.
+time = { version = "=0.3.53", default-features = false, features = [
+    "std",
+    "serde-well-known",
+] }
 
 # S0-010: temporary-database restore and reconciliation proof. `serde_json`
 # is promoted here from `[dev-dependencies]` (added back in S0-002 for a

@@ -44,6 +44,32 @@ pub enum ErrorCode {
     /// The database could not be reached or did not answer in time (S0-003).
     /// Carries no detail.
     DatabaseUnavailable,
+    /// Slice 1 MVP batch: the session token is missing, malformed, expired,
+    /// or revoked (`iam.resolve_session` / `iam.resolve_session_with_permission`,
+    /// SQLSTATE `28000`). Carries no detail — never echoes the token.
+    SessionInvalid,
+    /// Slice 1 MVP batch: the session resolved to a real user, but that user
+    /// lacks the permission the operation requires (SQLSTATE `42501`).
+    PermissionDenied,
+    /// Slice 1 MVP batch: the request's own input failed a posting
+    /// function's validation (negative quantity, invalid cost, unknown
+    /// warehouse/variant/fiscal period, malformed line, ... — SQLSTATE
+    /// `22023`). Carries no detail; the specific reason is a private
+    /// diagnostic only.
+    ValidationError,
+    /// Slice 1 MVP batch: the request is well-formed but the system is not
+    /// in a state that allows it right now — a closed fiscal period, a cash
+    /// session that is not open, insufficient stock (SQLSTATE `55000`).
+    PreconditionFailed,
+    /// Slice 1 MVP batch: the same idempotency key was already used with a
+    /// different payload (SQLSTATE `23505` from
+    /// `core.reserve_idempotent_request`) — the caller must not retry with
+    /// the same request id and different contents.
+    IdempotencyConflict,
+    /// Slice 1 MVP batch: an attempt was made to mutate a posted/reversed/
+    /// closed/immutable record (SQLSTATE `0A000` from one of this crate's
+    /// `forbid_*_mutation` triggers).
+    ImmutableRecord,
 }
 
 /// Internal application error. Not serialized; does not cross the IPC boundary.
@@ -83,6 +109,18 @@ pub enum AppError {
         #[cfg_attr(not(test), allow(dead_code))]
         diagnostic: String,
     },
+    /// Slice 1 MVP batch: see [`ErrorCode::SessionInvalid`].
+    SessionInvalid { diagnostic: String },
+    /// Slice 1 MVP batch: see [`ErrorCode::PermissionDenied`].
+    PermissionDenied { diagnostic: String },
+    /// Slice 1 MVP batch: see [`ErrorCode::ValidationError`].
+    ValidationError { diagnostic: String },
+    /// Slice 1 MVP batch: see [`ErrorCode::PreconditionFailed`].
+    PreconditionFailed { diagnostic: String },
+    /// Slice 1 MVP batch: see [`ErrorCode::IdempotencyConflict`].
+    IdempotencyConflict { diagnostic: String },
+    /// Slice 1 MVP batch: see [`ErrorCode::ImmutableRecord`].
+    ImmutableRecord { diagnostic: String },
 }
 
 impl AppError {
@@ -111,6 +149,46 @@ impl AppError {
             diagnostic: diagnostic.into(),
         }
     }
+
+    /// Classifies a `sqlx::Error` returned by one of this crate's posting
+    /// functions (`inventory.confirm_stock_receipt`,
+    /// `sales.confirm_cash_sale`, `sales.open_cash_session`, ...) into the
+    /// right [`AppError`] variant, by reading the underlying PostgreSQL
+    /// `SQLSTATE` the function's own `RAISE EXCEPTION ... USING ERRCODE =
+    /// ...` set. Falls back to [`AppError::Internal`] for anything that
+    /// does not carry a recognized, database-reported code (a genuinely
+    /// unexpected failure, not a business-rule rejection).
+    ///
+    /// The full PostgreSQL error text is retained as the diagnostic for
+    /// trusted in-crate logging only — never serialized across IPC (see
+    /// this module's own top-level documentation).
+    pub fn from_posting_error(err: sqlx::Error) -> Self {
+        let message = err.to_string();
+        let Some(db_err) = err.as_database_error() else {
+            return AppError::Internal(message);
+        };
+        match db_err.code().as_deref() {
+            Some("28000") => AppError::SessionInvalid {
+                diagnostic: message,
+            },
+            Some("42501") => AppError::PermissionDenied {
+                diagnostic: message,
+            },
+            Some("22023") => AppError::ValidationError {
+                diagnostic: message,
+            },
+            Some("55000") => AppError::PreconditionFailed {
+                diagnostic: message,
+            },
+            Some("23505") => AppError::IdempotencyConflict {
+                diagnostic: message,
+            },
+            Some("0A000") => AppError::ImmutableRecord {
+                diagnostic: message,
+            },
+            _ => AppError::Internal(message),
+        }
+    }
 }
 
 /// Redacted `Debug`: never prints variant payloads, so `{:?}` (including panic
@@ -125,6 +203,22 @@ impl fmt::Debug for AppError {
             AppError::DatabaseUnavailable { .. } => {
                 f.write_str("AppError::DatabaseUnavailable(<redacted>)")
             }
+            AppError::SessionInvalid { .. } => f.write_str("AppError::SessionInvalid(<redacted>)"),
+            AppError::PermissionDenied { .. } => {
+                f.write_str("AppError::PermissionDenied(<redacted>)")
+            }
+            AppError::ValidationError { .. } => {
+                f.write_str("AppError::ValidationError(<redacted>)")
+            }
+            AppError::PreconditionFailed { .. } => {
+                f.write_str("AppError::PreconditionFailed(<redacted>)")
+            }
+            AppError::IdempotencyConflict { .. } => {
+                f.write_str("AppError::IdempotencyConflict(<redacted>)")
+            }
+            AppError::ImmutableRecord { .. } => {
+                f.write_str("AppError::ImmutableRecord(<redacted>)")
+            }
         }
     }
 }
@@ -136,6 +230,12 @@ impl fmt::Display for AppError {
             AppError::Internal(_) => f.write_str("internal error"),
             AppError::DatabaseConfiguration { .. } => f.write_str("database configuration error"),
             AppError::DatabaseUnavailable { .. } => f.write_str("database unavailable"),
+            AppError::SessionInvalid { .. } => f.write_str("invalid, expired, or revoked session"),
+            AppError::PermissionDenied { .. } => f.write_str("permission denied"),
+            AppError::ValidationError { .. } => f.write_str("validation error"),
+            AppError::PreconditionFailed { .. } => f.write_str("precondition failed"),
+            AppError::IdempotencyConflict { .. } => f.write_str("idempotency conflict"),
+            AppError::ImmutableRecord { .. } => f.write_str("record is immutable"),
         }
     }
 }
@@ -171,6 +271,12 @@ impl From<AppError> for IpcError {
             AppError::Internal(_) => IpcError::new(ErrorCode::InternalError),
             AppError::DatabaseConfiguration { .. } => IpcError::new(ErrorCode::ConfigurationError),
             AppError::DatabaseUnavailable { .. } => IpcError::new(ErrorCode::DatabaseUnavailable),
+            AppError::SessionInvalid { .. } => IpcError::new(ErrorCode::SessionInvalid),
+            AppError::PermissionDenied { .. } => IpcError::new(ErrorCode::PermissionDenied),
+            AppError::ValidationError { .. } => IpcError::new(ErrorCode::ValidationError),
+            AppError::PreconditionFailed { .. } => IpcError::new(ErrorCode::PreconditionFailed),
+            AppError::IdempotencyConflict { .. } => IpcError::new(ErrorCode::IdempotencyConflict),
+            AppError::ImmutableRecord { .. } => IpcError::new(ErrorCode::ImmutableRecord),
         }
     }
 }

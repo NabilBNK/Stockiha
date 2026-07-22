@@ -159,6 +159,22 @@ pub async fn health_check_state(state: &DatabaseState) -> Result<(), AppError> {
     }
 }
 
+/// Slice 1 MVP batch: extracts the ready pool from managed state, or the
+/// same fixed configuration diagnostics [`health_check_state`] would report
+/// — the one place every new IPC command needs to turn `DatabaseState` into
+/// a `&PgPool` before delegating to `crate::application`.
+pub fn pool_or_unavailable(state: &DatabaseState) -> Result<&PgPool, AppError> {
+    match state {
+        DatabaseState::Unconfigured => {
+            Err(AppError::database_configuration(DIAGNOSTIC_NOT_CONFIGURED))
+        }
+        DatabaseState::InvalidConfiguration => {
+            Err(AppError::database_configuration(DIAGNOSTIC_INVALID))
+        }
+        DatabaseState::Configured(pool) => Ok(pool),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

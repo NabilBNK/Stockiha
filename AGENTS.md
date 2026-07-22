@@ -51,6 +51,14 @@ For every remaining task:
    - **No extra tests** beyond essential acceptance criteria.
 5. **Commit and continue**: Upon passing verification, commit immediately and advance. Useful but nonessential improvements go into a backlog.
 
+## MVP Batch Execution Rule
+For an explicitly approved multi-task MVP batch spanning an entire vertical slice or major subsystem (e.g. "implement the complete backend transaction chain for Slice 1"):
+1. **Treat the batch as one unit of work.** Do not pause for per-task plan approval between the individual tasks that make up an approved batch.
+2. **Fix ordinary implementation problems autonomously.** Bugs, missing grants, naming corrections, failing tests, and similar routine issues discovered during the batch are corrected in place without stopping to ask.
+3. **Stop only for a genuine blocker**: an architecture conflict, an accounting-integrity conflict, a security conflict, a data-loss risk, a credential requirement, or an environment limitation that has no safe workaround. Routine implementation decisions are not blockers.
+4. **Preserve and correct useful existing work** already staged for the batch rather than discarding and restarting it.
+5. **Batch mode does not waive Git safety or any other non-negotiable confirmation gate.** The full workflow, verification, and diff are still reported at the end of the batch, and explicit approval is still required before any commit, push, merge, PR, or destructive operation, exactly as in the Git safety section below.
+
 ## Workflow
 
 ### Before editing
@@ -62,7 +70,7 @@ Report:
 - tests to add
 - unresolved blockers
 
-Do not edit until the user approves the plan.
+Do not edit until the user approves the plan. Under an approved MVP Batch (see above), this plan-approval step applies once, to the batch as a whole, not to each task inside it.
 
 ### During implementation
 - Use a dedicated `task/...` branch after approval.
@@ -119,21 +127,66 @@ Architecture changes require an ADR, alternatives and risks, explicit approval, 
 Run only checks applicable to changed areas.
 
 Frontend:
-```bash
+
 npm run typecheck
 npm run lint
 npm test
 npm run build
-```
+
 
 Rust:
-```bash
+
 cargo fmt --check
 cargo check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
-```
+
 
 Run relevant integration, migration, security, concurrency, rollback, or document tests when applicable.
 
 A Linux sandbox cannot prove Windows runtime, WebView2, Credential Manager, Windows Service, MSI/NSIS, Windows spooler, physical ESC/POS output, Arabic thermal output, or cash-drawer behavior. Mark these for Windows or hardware verification.
+# MVP Batch Execution Rule
+
+## Authority
+
+This rule applies to Slice 1 and to any later slice explicitly placed in MVP
+batch mode.
+
+It overrides the previous one-task-at-a-time workflow for the affected slice.
+
+`final-architecture.md` remains the authoritative source for technical,
+financial, security, and data-integrity decisions.
+
+## Primary objective
+
+Deliver a complete, usable MVP as quickly as possible without creating
+temporary, fake, or structurally incorrect implementations.
+
+Prefer a coherent production implementation of the main business workflow over
+perfect completion of every optional feature.
+
+Optional features may be deferred, but they must be cleanly omitted. Do not
+replace deferred features with placeholders, mock workflows, fake persistence,
+temporary schemas, or parallel architectures.
+
+## Slice 1 execution structure
+
+Slice 1 must be completed in no more than two major implementation batches.
+
+### Batch A — Production backend transaction engine
+
+Build the complete backend foundation and transaction chain:
+
+
+Product
+→ Stock receipt
+→ Warehouse-specific WAC update
+→ Cash-session opening
+→ Cash sale
+→ Stock issue
+→ Cash movement
+→ Balanced accounting journal
+→ Official document number
+→ Document generation job
+→ Print job
+→ Drawer-pulse job

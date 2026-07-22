@@ -19,3 +19,12 @@ This skill enforces streamlined, fast-paced execution across all development tas
    - Do **NOT** write speculative or nonessential test cases beyond required criteria.
 5. **Commit and Continue**: Commit and push immediately upon passing essential verification checks, then move directly to the next task.
 6. **Backlog Nonessentials**: Log nice-to-have refactorings or secondary enhancements in a backlog rather than delaying task completion.
+
+## MVP Batch Mode
+
+When a task explicitly invokes MVP Batch Mode for an approved multi-part batch (e.g. an entire vertical slice's backend transaction chain):
+
+1. Apply Core Rules 1–4 to the **batch as a whole**, not to each part of the batch individually — do not stop for a fresh plan/approval cycle between the tasks that make up one approved batch.
+2. Correct ordinary implementation problems found while working through the batch (bugs, missing grants, naming mismatches, failing tests) without pausing to ask — that is expected, routine batch work.
+3. Only pause mid-batch for a genuine architecture, accounting, security, data-loss, credential, or environment blocker — something with no safe implementation path forward, not a routine decision.
+4. Core Rule 5 ("Commit and Continue") still ends in a **stop**, not a push: batch mode never removes the requirement for explicit human approval before a commit, push, merge, PR, or any destructive Git operation. Present the full diff and verification report for the completed batch and wait for that approval before touching the remote branch.
