@@ -11,3 +11,11 @@
 - [x] S0-008 ESC/POS Windows RAW spooler proof (software verified; physical printer validation deferred)
 - [x] S0-009 Backup bundle creation proof
 - [x] S0-010 Temporary-database restore and reconciliation proof
+
+# Stockiha — Slice 1 Tasks
+
+- [x] S1-001a Implement backend MVP transaction engine (Golden Transaction Chain: product, stock receipt, WAC, cash session, cash sale, stock issue, cash movement, double-entry journal, print queue, drawer pulse)
+- [x] S1-001b Implement core request idempotency and session validation
+- [x] S1-001c Implement backup/restore database reconciliation for the Golden Chain
+- [ ] S1-002 Implement Slice 1 MVP frontend batch (User-facing setup, login, product, stock receipt, cash-session, POS, and receipt workflows)
+
