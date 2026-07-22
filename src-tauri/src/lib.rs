@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 pub mod commands;
 // S0-003: the error contract gained its first genuine fallible consumer
 // (`check_db_health`), so the S0-002 dead-code exemption is removed. The module
@@ -49,6 +48,18 @@ pub fn run() {
             commands::cash_session::open_cash_session,
             commands::cash_session::inspect_active_cash_session,
             commands::cash_session::close_cash_session,
+            commands::setup::get_setup_status,
+            commands::setup::bootstrap_first_admin,
+            commands::catalog::create_product,
+            commands::catalog::list_products,
+            commands::warehouse::create_warehouse,
+            commands::warehouse::list_warehouses,
+            commands::reference::list_fiscal_periods,
+            commands::reference::get_open_fiscal_period,
+            commands::reference::get_dashboard_summary,
+            commands::documents::get_sale_document,
+            commands::documents::list_sale_lines,
+            commands::documents::list_document_jobs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

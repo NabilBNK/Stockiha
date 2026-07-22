@@ -17,7 +17,13 @@
 pub(crate) mod auth;
 pub(crate) mod cash_sale;
 pub(crate) mod cash_session;
+pub(crate) mod catalog;
+pub(crate) mod dashboard;
+pub(crate) mod documents;
+pub(crate) mod fiscal;
+pub(crate) mod setup;
 pub(crate) mod stock_receipt;
+pub(crate) mod warehouse;
 
 use time::Date;
 
