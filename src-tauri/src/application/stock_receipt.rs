@@ -165,7 +165,7 @@ mod tests {
         format!(
             "{:08x}-{:04x}-4{:03x}-8{:03x}-{:012x}",
             (nanos >> 32) as u32,
-            (nanos >> 16) as u16 & 0xffff,
+            (nanos >> 16) as u16,
             nanos as u16 & 0x0fff,
             (nanos >> 48) as u16 & 0x0fff,
             nanos & 0xffff_ffff_ffff

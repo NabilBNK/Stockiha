@@ -88,6 +88,7 @@ pub(crate) struct BusinessDocument {
 }
 
 impl BusinessDocument {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         document_type: DocumentType,
         status: BusinessDocumentStatus,
