@@ -7,7 +7,7 @@
 - [x] S0-004 Database-role bootstrap proof
 - [x] S0-005 Windows Credential Manager proof
 - [x] S0-006 SECURITY DEFINER and session-token proof
-- [ ] S0-007 Typst French/Arabic PDF proof
+- [x] S0-007 Typst French/Arabic PDF proof
 - [ ] S0-008 ESC/POS Windows RAW spooler proof
 - [ ] S0-009 Backup bundle creation proof
 - [ ] S0-010 Temporary-database restore and reconciliation proof
