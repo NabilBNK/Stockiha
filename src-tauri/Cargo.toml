@@ -46,6 +46,16 @@ typst-layout = "=0.15.1"
 typst-pdf = "=0.15.1"
 typst-assets = { version = "=0.15.1", features = ["fonts"] }
 
+# S0-009: backup bundle creation proof. `sha2` computes the manifest/checksums
+# SHA-256 digests (audited, minimal, no unsafe). `time` renders the UTC bundle
+# directory name (`GestStock-Backup-YYYYMMDD-HHMMSS`) without hand-rolled
+# calendar math; only the `std` feature is enabled (no `formatting`/`macros`
+# — the timestamp is built from plain field accessors). Both are already
+# transitively locked by the existing dependency graph at these exact
+# versions, so pinning them here adds zero new packages and zero lock churn.
+sha2 = "=0.10.9"
+time = { version = "=0.3.53", default-features = false, features = ["std"] }
+
 # S0-005: Windows Credential Manager access (Win32 generic credentials).
 # S0-008: adds `Win32_Graphics_Printing` (OpenPrinterW/StartDocPrinterW/
 # StartPagePrinter/WritePrinter/EndPagePrinter/EndDocPrinter/AbortPrinter/

@@ -28,11 +28,16 @@ use core::fmt;
 use zeroize::Zeroizing;
 
 // The Win32 operations `write_secret` / `read_secret` / `delete_secret` live in
-// this submodule. No crate-level re-export is added yet: there is no consumer
-// (proof only), and an unused re-export would be dead scaffolding. The first
-// consumer (S0-006+) adds `pub(crate) use windows::{...}` when it wires these in.
+// this submodule.
 #[cfg(windows)]
-mod windows;
+pub(crate) mod windows;
+
+// S0-009 is the first real consumer: it reads the `stockiha_backup` password
+// to authenticate `pg_dump` without ever putting it in argv or a connection
+// URL. `write_secret`/`delete_secret` still have no consumer, so they stay
+// reachable only via `windows::` and are not re-exported here.
+#[cfg(windows)]
+pub(crate) use windows::read_secret;
 
 /// Maximum secret blob size accepted for a write, in bytes.
 ///

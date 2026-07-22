@@ -1,11 +1,18 @@
 //! Infrastructure layer — technical adapters that connect the application to
 //! external systems (S0-003: PostgreSQL via SQLx). No business logic lives here.
 
+// S0-009: Backup bundle creation proof. Crate-private and consumer-free (no
+// Tauri command, no IPC); dead code in non-test builds until a later slice
+// runs real scheduled backups. The exemption is removed then.
+#[cfg_attr(not(test), allow(dead_code))]
+mod backup_proof;
 pub(crate) mod bootstrap;
-// S0-005: Windows Credential Manager proof. Crate-private and consumer-free for
-// now (no Tauri command, no IPC), so it is dead code in non-test builds until
-// the first consumer wires credential-backed connections (S0-006+). The
-// exemption is removed when that consumer lands.
+// S0-005: Windows Credential Manager proof. Crate-private. S0-009 is a real
+// consumer of `CredentialTarget::Backup` / `read_secret` on Windows, but most
+// of this module's surface (`write_secret`, `delete_secret`, the `Runtime`/
+// `Migrator` targets, etc.) still has no consumer on any platform, so the
+// dead-code exemption stays in place until a later slice needs those paths
+// too.
 #[cfg_attr(not(test), allow(dead_code))]
 mod credentials;
 pub mod db;
