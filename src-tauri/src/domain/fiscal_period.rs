@@ -11,7 +11,7 @@ use time::Date;
 
 use super::error::DomainError;
 
-/// Mirrors the `core.fiscal_periods.status` `CHECK` constraint exactly.
+/// Mirrors the `finance.fiscal_periods.status` `CHECK` constraint exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum FiscalPeriodStatus {
     Open,
@@ -20,7 +20,7 @@ pub(crate) enum FiscalPeriodStatus {
 }
 
 impl FiscalPeriodStatus {
-    /// The exact `text` value stored in `core.fiscal_periods.status`.
+    /// The exact `text` value stored in `finance.fiscal_periods.status`.
     pub(crate) const fn as_db_str(self) -> &'static str {
         match self {
             FiscalPeriodStatus::Open => "OPEN",

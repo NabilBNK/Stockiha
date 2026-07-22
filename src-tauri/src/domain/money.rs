@@ -92,7 +92,7 @@ impl Quantity {
         Ok(Self(value.round_dp(Self::SCALE)))
     }
 
-    /// A quantity *delta* (stock ledger movements may be negative — an
+    /// A quantity *delta* (inventory movements may be negative — an
     /// issue reduces stock). Only the scale is validated; sign is
     /// meaningful and left to the caller.
     pub(crate) fn new_delta(value: Decimal) -> Result<Self, DomainError> {
@@ -119,7 +119,7 @@ impl Quantity {
     }
 }
 
-/// A cost/valuation amount at 4 decimal places, used for warehouse stock
+/// A cost/valuation amount at 4 decimal places, used for warehouse positions
 /// `total_value`, stock-ledger `inventory_value_delta`, and a sale line's
 /// `unit_cost_snapshot`. Matches every `numeric(18, 4)` column.
 #[derive(
@@ -163,7 +163,7 @@ impl CostAmount {
 }
 
 /// A weighted-average-cost rate at 6 decimal places
-/// (`inventory.warehouse_stock.last_known_wac`). Kept as its own type,
+/// (`inventory.positions.last_known_wac`). Kept as its own type,
 /// distinct from [`CostAmount`], because architecture section 3.C stores it
 /// "separately to prevent rounding residuals from leaving dangling values"
 /// — it is a per-unit rate, not a value total, and needs more precision.

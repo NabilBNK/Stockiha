@@ -1,49 +1,26 @@
-//! S1-001 — cash sale status and the `SaleLine` value type (cash-only
-//! scope: final-architecture.md section 4, Slice 1 — no credit, returns,
-//! refunds, discounts, taxes, or split payments).
+//! S1-001 (corrected) — the `SaleLine` value type (cash-only scope:
+//! final-architecture.md section 4, Slice 1 — no credit, returns, refunds,
+//! discounts, taxes, or split payments).
+//!
+//! Correction from the first pass: `CashSaleStatus` moved to
+//! [`super::business_document::BusinessDocumentStatus`] — `sales.
+//! cash_sales` no longer has its own `status` column, since it is now a
+//! thin subtype of `core.business_documents`. Snapshot fields are renamed
+//! from `product_*_snapshot` to `variant_*_snapshot`: sale lines now key
+//! off `catalog.product_variants`, not a bare product id.
 
 use super::error::DomainError;
 use super::money::{CostAmount, Money, Quantity};
 
-/// Mirrors `sales.cash_sales.status` exactly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum CashSaleStatus {
-    Draft,
-    Confirmed,
-}
-
-impl CashSaleStatus {
-    pub(crate) const fn as_db_str(self) -> &'static str {
-        match self {
-            CashSaleStatus::Draft => "DRAFT",
-            CashSaleStatus::Confirmed => "CONFIRMED",
-        }
-    }
-
-    pub(crate) fn from_db_str(value: &str) -> Result<Self, DomainError> {
-        match value {
-            "DRAFT" => Ok(CashSaleStatus::Draft),
-            "CONFIRMED" => Ok(CashSaleStatus::Confirmed),
-            _ => Err(DomainError::UnknownStatus),
-        }
-    }
-
-    /// Mirrors `forbid_confirmed_cash_sale_mutation` /
-    /// `..._sale_line_mutation`: once CONFIRMED, the row is immutable.
-    pub(crate) const fn is_immutable(self) -> bool {
-        matches!(self, CashSaleStatus::Confirmed)
-    }
-}
-
 /// A single sale line, carrying the historical snapshots the task requires
-/// (product identity, code/name snapshot, quantity, unit price, cost
+/// (variant identity, SKU/name snapshot, quantity, unit price, cost
 /// snapshot, line total). Construction enforces the same derived-total
-/// invariant as `sale_lines_line_total_matches_quantity_and_price`:
+/// invariant as `cash_sale_lines_line_total_matches_quantity_and_price`:
 /// `line_total = round(quantity * unit_price, 2)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SaleLine {
-    product_sku_snapshot: String,
-    product_name_snapshot: String,
+    variant_sku_snapshot: String,
+    variant_name_snapshot: String,
     quantity: Quantity,
     unit_price: Money,
     unit_cost_snapshot: CostAmount,
@@ -52,15 +29,15 @@ pub(crate) struct SaleLine {
 
 impl SaleLine {
     pub(crate) fn new(
-        product_sku_snapshot: impl Into<String>,
-        product_name_snapshot: impl Into<String>,
+        variant_sku_snapshot: impl Into<String>,
+        variant_name_snapshot: impl Into<String>,
         quantity: Quantity,
         unit_price: Money,
         unit_cost_snapshot: CostAmount,
     ) -> Result<Self, DomainError> {
-        let product_sku_snapshot = product_sku_snapshot.into();
-        let product_name_snapshot = product_name_snapshot.into();
-        if product_sku_snapshot.trim().is_empty() || product_name_snapshot.trim().is_empty() {
+        let variant_sku_snapshot = variant_sku_snapshot.into();
+        let variant_name_snapshot = variant_name_snapshot.into();
+        if variant_sku_snapshot.trim().is_empty() || variant_name_snapshot.trim().is_empty() {
             return Err(DomainError::BlankField);
         }
 
@@ -68,8 +45,8 @@ impl SaleLine {
         let line_total = Money::new_non_negative(line_total_value)?;
 
         Ok(Self {
-            product_sku_snapshot,
-            product_name_snapshot,
+            variant_sku_snapshot,
+            variant_name_snapshot,
             quantity,
             unit_price,
             unit_cost_snapshot,
@@ -83,8 +60,8 @@ impl SaleLine {
     /// checked here instead of recomputed, since the database is the
     /// source of truth for a persisted line.
     pub(crate) fn from_persisted(
-        product_sku_snapshot: impl Into<String>,
-        product_name_snapshot: impl Into<String>,
+        variant_sku_snapshot: impl Into<String>,
+        variant_name_snapshot: impl Into<String>,
         quantity: Quantity,
         unit_price: Money,
         unit_cost_snapshot: CostAmount,
@@ -94,14 +71,14 @@ impl SaleLine {
         if expected != line_total.value() {
             return Err(DomainError::LineTotalMismatch);
         }
-        let product_sku_snapshot = product_sku_snapshot.into();
-        let product_name_snapshot = product_name_snapshot.into();
-        if product_sku_snapshot.trim().is_empty() || product_name_snapshot.trim().is_empty() {
+        let variant_sku_snapshot = variant_sku_snapshot.into();
+        let variant_name_snapshot = variant_name_snapshot.into();
+        if variant_sku_snapshot.trim().is_empty() || variant_name_snapshot.trim().is_empty() {
             return Err(DomainError::BlankField);
         }
         Ok(Self {
-            product_sku_snapshot,
-            product_name_snapshot,
+            variant_sku_snapshot,
+            variant_name_snapshot,
             quantity,
             unit_price,
             unit_cost_snapshot,
@@ -141,15 +118,6 @@ mod tests {
 
     fn cost(unscaled: i64, scale: u32) -> CostAmount {
         CostAmount::new_non_negative(Decimal::new(unscaled, scale)).unwrap()
-    }
-
-    #[test]
-    fn status_round_trips_and_immutability_matches_architecture() {
-        assert!(!CashSaleStatus::Draft.is_immutable());
-        assert!(CashSaleStatus::Confirmed.is_immutable());
-        for status in [CashSaleStatus::Draft, CashSaleStatus::Confirmed] {
-            assert_eq!(CashSaleStatus::from_db_str(status.as_db_str()), Ok(status));
-        }
     }
 
     #[test]

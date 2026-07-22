@@ -12,7 +12,7 @@
 use super::error::DomainError;
 use super::money::{CostAmount, Quantity};
 
-/// Mirrors `inventory.stock_ledger.movement_type` exactly.
+/// Mirrors `inventory.movements.movement_type` exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum StockMovementType {
     Receipt,
@@ -46,8 +46,8 @@ impl StockMovementType {
 /// "When the physical quantity reaches exactly zero, `quantity_on_hand` and
 /// `total_value` are set to `0`" — i.e. a positive value may never coexist
 /// with zero quantity. Mirrors the
-/// `warehouse_stock_zero_quantity_zero_value` /
-/// `stock_ledger_zero_quantity_zero_value` database checks exactly.
+/// `positions_zero_quantity_zero_value` /
+/// `movements_zero_quantity_zero_value` database checks exactly.
 pub(crate) fn validate_zero_quantity_invariant(
     quantity_on_hand: Quantity,
     total_value: CostAmount,

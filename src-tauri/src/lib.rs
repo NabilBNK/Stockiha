@@ -14,6 +14,12 @@ pub mod commands;
 // Slice 0 proof module below.
 #[cfg_attr(not(test), allow(dead_code))]
 mod domain;
+// Slice 1 MVP batch: application services (auth, stock receipt, cash sale,
+// cash session) sitting between `commands` (Tauri IPC, this file's
+// `invoke_handler`) and the SQL posting functions. Has real consumers in
+// `commands` from this same batch, so — unlike `domain` above — it carries
+// no dead-code exemption.
+mod application;
 mod error;
 mod infrastructure;
 pub mod state;
@@ -22,7 +28,7 @@ pub mod state;
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState {
-            stage: "Slice 0".to_string(),
+            stage: "Slice 1".to_string(),
         })
         // Safe on missing/invalid configuration: the app starts and the health
         // command reports the state. The URL value itself is never logged.
@@ -34,7 +40,14 @@ pub fn run() {
         }))
         .invoke_handler(tauri::generate_handler![
             commands::app_info::get_app_info,
-            commands::db_health::check_db_health
+            commands::db_health::check_db_health,
+            commands::auth::login,
+            commands::auth::logout,
+            commands::stock_receipt::post_stock_receipt,
+            commands::cash_sale::confirm_cash_sale,
+            commands::cash_session::open_cash_session,
+            commands::cash_session::inspect_active_cash_session,
+            commands::cash_session::close_cash_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

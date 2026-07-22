@@ -1,40 +1,63 @@
-//! S1-001 — the `Product` domain value type.
+//! S1-001 (corrected) — `Product` (catalog identity) and `ProductVariant`
+//! (the stocked, sellable, priced unit).
 //!
-//! Deliberately minimal, matching `inventory.products`: identity (sku),
-//! display name, sale price, and active status. No cost field: valuation is
-//! warehouse-specific WAC (final-architecture.md section 1), which lives on
-//! `inventory.warehouse_stock`, not on the product itself — see
-//! [`super::stock`].
+//! Correction from the first pass: `sku`/`sale_price` moved off `Product`
+//! entirely, onto `ProductVariant` — "price, availability, stock, and WAC
+//! attach to the stocked variant where required". `catalog.products` is
+//! now just the grouping identity above the sellable unit; valuation still
+//! lives on `inventory.positions` (warehouse-specific WAC), not on the
+//! variant itself either.
 
 use super::error::DomainError;
 use super::money::Money;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Product {
-    sku: String,
     name: String,
-    sale_price: Money,
     is_active: bool,
 }
 
 impl Product {
+    pub(crate) fn new(name: impl Into<String>, is_active: bool) -> Result<Self, DomainError> {
+        let name = name.into();
+        if name.trim().is_empty() {
+            return Err(DomainError::BlankField);
+        }
+        Ok(Self { name, is_active })
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.is_active
+    }
+}
+
+/// The actual sellable/stocked unit. Minimal grain only — no attributes,
+/// barcodes, or unit conversions (those stay Slice 2 work); this exists at
+/// all in S1-001 only because inventory positions/movements and sale lines
+/// need a stable `variant_id` to key off of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProductVariant {
+    sku: String,
+    sale_price: Money,
+    is_active: bool,
+}
+
+impl ProductVariant {
     pub(crate) fn new(
         sku: impl Into<String>,
-        name: impl Into<String>,
         sale_price: Money,
         is_active: bool,
     ) -> Result<Self, DomainError> {
         let sku = sku.into();
-        let name = name.into();
         if sku.trim().is_empty() {
-            return Err(DomainError::BlankField);
-        }
-        if name.trim().is_empty() {
             return Err(DomainError::BlankField);
         }
         Ok(Self {
             sku,
-            name,
             sale_price,
             is_active,
         })
@@ -42,10 +65,6 @@ impl Product {
 
     pub(crate) fn sku(&self) -> &str {
         &self.sku
-    }
-
-    pub(crate) fn name(&self) -> &str {
-        &self.name
     }
 
     pub(crate) fn sale_price(&self) -> Money {
@@ -63,24 +82,33 @@ mod tests {
     use rust_decimal::Decimal;
 
     #[test]
-    fn rejects_blank_sku_and_name() {
+    fn product_rejects_blank_name() {
+        assert_eq!(Product::new("", true), Err(DomainError::BlankField));
+        assert_eq!(Product::new("   ", true), Err(DomainError::BlankField));
+    }
+
+    #[test]
+    fn product_accepts_valid_name() {
+        let product = Product::new("Widget", true).unwrap();
+        assert_eq!(product.name(), "Widget");
+        assert!(product.is_active());
+    }
+
+    #[test]
+    fn variant_rejects_blank_sku() {
         let price = Money::new_non_negative(Decimal::new(1000, 2)).unwrap();
         assert_eq!(
-            Product::new("", "Name", price, true),
-            Err(DomainError::BlankField)
-        );
-        assert_eq!(
-            Product::new("SKU-1", "  ", price, true),
+            ProductVariant::new("", price, true),
             Err(DomainError::BlankField)
         );
     }
 
     #[test]
-    fn accepts_valid_product() {
-        let price = Money::new_non_negative(Decimal::new(1000, 2)).unwrap();
-        let product = Product::new("SKU-1", "Widget", price, true).unwrap();
-        assert_eq!(product.sku(), "SKU-1");
-        assert_eq!(product.name(), "Widget");
-        assert!(product.is_active());
+    fn variant_accepts_valid_sku_and_price() {
+        let price = Money::new_non_negative(Decimal::new(1999, 2)).unwrap();
+        let variant = ProductVariant::new("SKU-1", price, true).unwrap();
+        assert_eq!(variant.sku(), "SKU-1");
+        assert_eq!(variant.sale_price(), price);
+        assert!(variant.is_active());
     }
 }

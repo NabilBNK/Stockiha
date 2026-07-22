@@ -1,55 +1,18 @@
-//! S1-001 — journal entry status and the `JournalLine` value type
+//! S1-001 (corrected) — the `JournalLine` value type
 //! (final-architecture.md section 3.D).
 //!
-//! The posting *workflow* (validate ≥ 2 lines, verify total debit = total
-//! credit, flip DRAFT -> POSTED, allocate a document number) is a future
-//! atomic posting function and out of scope here. This module only captures
-//! the fixed state vocabulary and the single-line invariant the
-//! `journal_lines_exactly_one_side` database check also enforces — the
-//! cross-line balance invariant is enforced by the deferred constraint
-//! trigger added in the same migration, not by this Rust type, since it is
-//! inherently a property of a set of lines, not of one line in isolation.
+//! Correction from the first pass: `JournalEntryStatus` moved to
+//! [`super::business_document::BusinessDocumentStatus`] — `finance.
+//! journal_entries` no longer has its own `status` column, since it is now
+//! a thin subtype of `core.business_documents`. This module only captures
+//! the single-line invariant the `journal_lines_exactly_one_side` database
+//! check also enforces — the cross-line balance/line-count invariants are
+//! enforced by the deferred constraint trigger added in the same migration,
+//! not by this Rust type, since they are inherently properties of a set of
+//! lines, not of one line in isolation.
 
 use super::error::DomainError;
 use super::money::Money;
-
-/// Mirrors `finance.journal_entries.status` exactly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum JournalEntryStatus {
-    Draft,
-    Posted,
-    Reversed,
-}
-
-impl JournalEntryStatus {
-    pub(crate) const fn as_db_str(self) -> &'static str {
-        match self {
-            JournalEntryStatus::Draft => "DRAFT",
-            JournalEntryStatus::Posted => "POSTED",
-            JournalEntryStatus::Reversed => "REVERSED",
-        }
-    }
-
-    pub(crate) fn from_db_str(value: &str) -> Result<Self, DomainError> {
-        match value {
-            "DRAFT" => Ok(JournalEntryStatus::Draft),
-            "POSTED" => Ok(JournalEntryStatus::Posted),
-            "REVERSED" => Ok(JournalEntryStatus::Reversed),
-            _ => Err(DomainError::UnknownStatus),
-        }
-    }
-
-    /// Once POSTED or REVERSED, the row is immutable at the database layer
-    /// (`forbid_posted_journal_entry_mutation` / `..._journal_line_mutation`
-    /// triggers). Exposed here so callers can fail fast in Rust before ever
-    /// attempting a doomed UPDATE.
-    pub(crate) const fn is_immutable(self) -> bool {
-        matches!(
-            self,
-            JournalEntryStatus::Posted | JournalEntryStatus::Reversed
-        )
-    }
-}
 
 /// A single journal line. Construction enforces exactly the same rule as
 /// the `journal_lines_exactly_one_side` database check: debit and credit
@@ -119,23 +82,6 @@ mod tests {
 
     fn money(unscaled: i64, scale: u32) -> Money {
         Money::new_non_negative(Decimal::new(unscaled, scale)).unwrap()
-    }
-
-    #[test]
-    fn status_round_trips_and_immutability_matches_architecture() {
-        assert!(!JournalEntryStatus::Draft.is_immutable());
-        assert!(JournalEntryStatus::Posted.is_immutable());
-        assert!(JournalEntryStatus::Reversed.is_immutable());
-        for status in [
-            JournalEntryStatus::Draft,
-            JournalEntryStatus::Posted,
-            JournalEntryStatus::Reversed,
-        ] {
-            assert_eq!(
-                JournalEntryStatus::from_db_str(status.as_db_str()),
-                Ok(status)
-            );
-        }
     }
 
     #[test]
