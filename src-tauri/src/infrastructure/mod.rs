@@ -29,6 +29,11 @@ mod escpos_proof;
 // a later slice renders real documents. The exemption is removed then.
 #[cfg_attr(not(test), allow(dead_code))]
 mod pdf_proof;
+// S0-010: temporary-database restore and reconciliation proof. Crate-private
+// and consumer-free (no Tauri command, no IPC); dead code in non-test builds
+// until a later slice runs real restores. The exemption is removed then.
+#[cfg_attr(not(test), allow(dead_code))]
+mod restore_proof;
 // S0-006: SECURITY DEFINER / session-token proof. Crate-private and
 // consumer-free (no command, no IPC); dead code in non-test builds until a
 // later slice consumes session validation. The exemption is removed then.
