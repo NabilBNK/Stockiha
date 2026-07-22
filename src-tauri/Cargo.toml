@@ -33,6 +33,19 @@ sqlx = { version = "0.8.6", default-features = false, features = [
 # S0-005: zeroize the in-memory secret buffers read from the credential store.
 zeroize = "1.9.0"
 
+# S0-007: backend PDF generation proof. Embedded Typst compiler pipeline,
+# pinned exactly (offline, in-process; no `typst` CLI, no browser, no cloud).
+# Justification per crate: `typst` = compiler core + `World`/`Library`/fonts;
+# `typst-layout` = the `PagedDocument` output type (page count/size); `typst-pdf`
+# = PDF export; `typst-assets` (feature `fonts`) = OFL Latin fonts baked in for
+# deterministic Latin/French. Arabic uses the bundled OFL Amiri face
+# (`include_bytes!`), so no system fonts are searched (keeps output identical
+# on every machine). No `rust_decimal`/`chrono`/`tempfile` are pulled in.
+typst = "=0.15.1"
+typst-layout = "=0.15.1"
+typst-pdf = "=0.15.1"
+typst-assets = { version = "=0.15.1", features = ["fonts"] }
+
 # S0-005: Windows Credential Manager access (Win32 generic credentials). Scoped
 # to Windows targets and to only the two feature groups the proof needs.
 [target.'cfg(windows)'.dependencies]
