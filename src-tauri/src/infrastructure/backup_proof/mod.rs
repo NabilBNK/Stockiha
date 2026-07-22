@@ -566,7 +566,10 @@ fn copy_asset_group(
         }
         let dest = subdir.join(file_name);
         fs::copy(input, &dest).map_err(|_| BackupProofError::Io)?;
-        let f = fs::File::open(&dest).map_err(|_| BackupProofError::Io)?;
+        let f = fs::OpenOptions::new()
+            .write(true)
+            .open(&dest)
+            .map_err(|_| BackupProofError::Io)?;
         f.sync_all().map_err(|_| BackupProofError::Io)?;
         copied.push(dest);
     }
@@ -625,7 +628,10 @@ where
     let dump_path = temp_path.join(DUMP_FILENAME);
     produce_dump(&dump_path)?;
     {
-        let f = fs::File::open(&dump_path).map_err(|_| BackupProofError::Io)?;
+        let f = fs::OpenOptions::new()
+            .write(true)
+            .open(&dump_path)
+            .map_err(|_| BackupProofError::Io)?;
         f.sync_all().map_err(|_| BackupProofError::Io)?;
     }
     copy_asset_group(&temp_path, ATTACHMENTS_DIR, &inputs.attachments)?;
@@ -1420,12 +1426,10 @@ exit "${{STOCKIHA_FAKE_PG_DUMP_EXIT_CODE:-0}}"
         let unicode_file = fixtures_dir.join(unicode_name);
         fs::write(&unicode_file, "unicode content").unwrap();
 
-        // A filename containing a double quote and a backslash. The input
-        // model (`validate_input_file`) does not restrict filename
-        // characters — only symlinks/reparse points and non-files are
-        // rejected — and Unix filenames permit both characters (only `/`
-        // and NUL are forbidden), so this is accepted.
+        #[cfg(not(windows))]
         let quoted_name = "weird\"name\\with-backslash.txt";
+        #[cfg(windows)]
+        let quoted_name = "weird-name-on-windows-é.txt";
         let quoted_file = fixtures_dir.join(quoted_name);
         fs::write(&quoted_file, "quoted content").unwrap();
 
@@ -1576,9 +1580,20 @@ exit "${{STOCKIHA_FAKE_PG_DUMP_EXIT_CODE:-0}}"
 
         let secret =
             resolve_backup_credential().expect("stockiha_backup credential must be stored");
-        let password = std::str::from_utf8(secret.as_ref())
-            .expect("stockiha_backup password must be UTF-8")
-            .to_string();
+        let bytes = secret.as_ref();
+        let password = if bytes.contains(&0) {
+            let u16s: Vec<u16> = bytes
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect();
+            String::from_utf16_lossy(&u16s)
+                .trim_end_matches('\0')
+                .to_string()
+        } else {
+            std::str::from_utf8(bytes)
+                .expect("stockiha_backup password must be UTF-8")
+                .to_string()
+        };
 
         let target = PgDumpTarget {
             host: "localhost",
