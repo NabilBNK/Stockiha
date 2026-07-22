@@ -127,21 +127,66 @@ Architecture changes require an ADR, alternatives and risks, explicit approval, 
 Run only checks applicable to changed areas.
 
 Frontend:
-```bash
+
 npm run typecheck
 npm run lint
 npm test
 npm run build
-```
+
 
 Rust:
-```bash
+
 cargo fmt --check
 cargo check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
-```
+
 
 Run relevant integration, migration, security, concurrency, rollback, or document tests when applicable.
 
 A Linux sandbox cannot prove Windows runtime, WebView2, Credential Manager, Windows Service, MSI/NSIS, Windows spooler, physical ESC/POS output, Arabic thermal output, or cash-drawer behavior. Mark these for Windows or hardware verification.
+# MVP Batch Execution Rule
+
+## Authority
+
+This rule applies to Slice 1 and to any later slice explicitly placed in MVP
+batch mode.
+
+It overrides the previous one-task-at-a-time workflow for the affected slice.
+
+`final-architecture.md` remains the authoritative source for technical,
+financial, security, and data-integrity decisions.
+
+## Primary objective
+
+Deliver a complete, usable MVP as quickly as possible without creating
+temporary, fake, or structurally incorrect implementations.
+
+Prefer a coherent production implementation of the main business workflow over
+perfect completion of every optional feature.
+
+Optional features may be deferred, but they must be cleanly omitted. Do not
+replace deferred features with placeholders, mock workflows, fake persistence,
+temporary schemas, or parallel architectures.
+
+## Slice 1 execution structure
+
+Slice 1 must be completed in no more than two major implementation batches.
+
+### Batch A — Production backend transaction engine
+
+Build the complete backend foundation and transaction chain:
+
+
+Product
+→ Stock receipt
+→ Warehouse-specific WAC update
+→ Cash-session opening
+→ Cash sale
+→ Stock issue
+→ Cash movement
+→ Balanced accounting journal
+→ Official document number
+→ Document generation job
+→ Print job
+→ Drawer-pulse job
