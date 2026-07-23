@@ -11,7 +11,7 @@
 export type Locale = 'fr' | 'ar' | 'en';
 
 export const LOCALES: Locale[] = ['fr', 'ar', 'en'];
-export const DEFAULT_LOCALE: Locale = 'fr';
+export const DEFAULT_LOCALE: Locale = 'en';
 export const RTL_LOCALES: Locale[] = ['ar'];
 
 /** The canonical key set is French; the others must define the same keys. */

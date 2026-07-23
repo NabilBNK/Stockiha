@@ -30,15 +30,15 @@ function Probe() {
 }
 
 describe('i18n', () => {
-  it('defaults to French and localizes navigation', () => {
+  it('defaults to English and localizes navigation', () => {
     render(
       <I18nProvider>
         <Probe />
       </I18nProvider>,
     );
-    expect(screen.getByTestId('locale').textContent).toBe('fr');
+    expect(screen.getByTestId('locale').textContent).toBe('en');
     expect(screen.getByTestId('dir').textContent).toBe('ltr');
-    expect(screen.getByTestId('nav').textContent).toBe('Point de vente');
+    expect(screen.getByTestId('nav').textContent).toBe('Point of sale');
   });
 
   it('interpolates variables', () => {
@@ -73,7 +73,7 @@ describe('i18n', () => {
       </I18nProvider>,
     );
     act(() => {
-      screen.getByText('en').click();
+      screen.getByRole('button', { name: 'en' }).click();
     });
     expect(screen.getByTestId('nav').textContent).toBe('Point of sale');
     expect(document.documentElement.getAttribute('dir')).toBe('ltr');
@@ -85,9 +85,9 @@ describe('i18n', () => {
         <Probe />
       </I18nProvider>,
     );
-    // French default message for PERMISSION_DENIED.
+    // English default message for PERMISSION_DENIED.
     expect(screen.getByTestId('err').textContent).toBe(
-      'Vous n’avez pas l’autorisation d’effectuer cette action.',
+      'You do not have permission to perform this action.',
     );
   });
 });

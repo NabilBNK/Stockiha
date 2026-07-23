@@ -51,8 +51,8 @@ describe('setup-state routing', () => {
       }),
     });
     render(<App />);
-    // French default setup title.
-    expect(await screen.findByText('Configuration initiale')).toBeInTheDocument();
+    // English default setup title.
+    expect(await screen.findByText('Initial setup')).toBeInTheDocument();
   });
 
   it('routes to login when initialized but no session', async () => {
@@ -66,7 +66,7 @@ describe('setup-state routing', () => {
       }),
     });
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Connexion' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
   });
 });
 
@@ -87,13 +87,13 @@ describe('login', () => {
       },
     });
     render(<App />);
-    await screen.findByRole('heading', { name: 'Connexion' });
-    fireEvent.change(screen.getByLabelText('Nom d’utilisateur'), { target: { value: 'admin' } });
-    fireEvent.change(screen.getByLabelText('Mot de passe'), { target: { value: 'bad' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Se connecter' }));
+    await screen.findByRole('heading', { name: 'Sign in' });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'bad' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
     const banner = await screen.findByTestId('login-error');
-    expect(banner.textContent).toBe('Votre session a expiré. Veuillez vous reconnecter.');
+    expect(banner.textContent).toBe('Your session has expired. Please sign in again.');
     expect(banner.textContent).not.toContain('DO_NOT_LEAK');
   });
 
@@ -120,10 +120,10 @@ describe('login', () => {
       }),
     });
     render(<App />);
-    await screen.findByRole('heading', { name: 'Connexion' });
-    fireEvent.change(screen.getByLabelText('Nom d’utilisateur'), { target: { value: 'admin' } });
-    fireEvent.change(screen.getByLabelText('Mot de passe'), { target: { value: 'good' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Se connecter' }));
+    await screen.findByRole('heading', { name: 'Sign in' });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'good' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
     // Dashboard renders with the backend-provided product count.
     await waitFor(() => expect(screen.getAllByText('3')[0]).toBeInTheDocument());
