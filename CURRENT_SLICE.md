@@ -1,10 +1,11 @@
 # Current Slice Status
 
 ## Active Context
-- **Current Phase:** Slice 1 MVP frontend batch
-- **Current Task:** S1-002 — User-facing setup, login, product, stock receipt, cash-session, POS, and receipt workflows
+- **Current Phase:** Slice 1 MVP complete
+- **Current Task:** Golden Transaction Chain available through the production UI
+- **Next Active Work:** MVP stabilization and prioritized remaining business features
 
-## Out of Scope for S1-002
+## Out of Scope for MVP
 - Variant catalog, attributes, units, barcodes management workflow (Slice 2)
 - Advanced inventory adjustment workflow (Slice 2)
 - Purchase Orders & Goods Receipts (Slice 3)
