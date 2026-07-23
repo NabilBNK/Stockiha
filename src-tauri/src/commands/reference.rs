@@ -9,7 +9,6 @@ use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct FiscalPeriodResponse {
     pub id: i64,
     pub period_code: String,
@@ -19,7 +18,6 @@ pub(crate) struct FiscalPeriodResponse {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct OpenFiscalPeriodResponse {
     pub id: i64,
     pub period_code: String,
@@ -28,7 +26,6 @@ pub(crate) struct OpenFiscalPeriodResponse {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct DashboardSummaryResponse {
     pub product_count: i64,
     pub variant_count: i64,

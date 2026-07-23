@@ -9,7 +9,6 @@ use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct SaleDocumentResponse {
     pub document_id: i64,
     pub document_type: String,
@@ -22,7 +21,6 @@ pub(crate) struct SaleDocumentResponse {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct SaleLineResponse {
     pub line_number: i32,
     pub variant_sku_snapshot: String,
@@ -33,7 +31,6 @@ pub(crate) struct SaleLineResponse {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct DocumentJobResponse {
     pub job_kind: String,
     pub id: i64,

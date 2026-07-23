@@ -48,6 +48,7 @@ pub fn run() {
             commands::cash_session::open_cash_session,
             commands::cash_session::inspect_active_cash_session,
             commands::cash_session::close_cash_session,
+            commands::cash_session::get_cash_session,
             commands::setup::get_setup_status,
             commands::setup::bootstrap_first_admin,
             commands::catalog::create_product,

@@ -11,14 +11,12 @@ use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct CreatedProductResponse {
     pub product_id: i64,
     pub variant_id: i64,
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct ProductListItemResponse {
     pub product_id: i64,
     pub variant_id: i64,

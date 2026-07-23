@@ -8,7 +8,6 @@ use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct SetupStatusResponse {
     pub initialized: bool,
     pub administrator_exists: bool,

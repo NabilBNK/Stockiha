@@ -9,7 +9,6 @@ use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct WarehouseResponse {
     pub id: i64,
     pub code: String,
