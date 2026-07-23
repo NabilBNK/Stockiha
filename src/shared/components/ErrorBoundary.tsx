@@ -23,6 +23,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true };
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   componentDidCatch(_error: Error, _info: ErrorInfo): void {
     // Intentionally swallow the error contents. A production build would send
     // a redacted signal to a local log sink; it must never surface raw

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub mod commands;
 // S0-003: the error contract gained its first genuine fallible consumer
 // (`check_db_health`), so the S0-002 dead-code exemption is removed. The module

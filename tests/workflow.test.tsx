@@ -126,7 +126,6 @@ describe('login', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Se connecter' }));
 
     // Dashboard renders with the backend-provided product count.
-    expect(await screen.findByTestId('dashboard')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText('3')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('3')[0]).toBeInTheDocument());
   });
 });

@@ -54,7 +54,6 @@ export function ProductsScreen() {
 
   useEffect(() => {
     void load(search);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWarehouseId]);
 
   const priceInvalid = price !== '' && !DECIMAL_RE.test(price);

@@ -277,7 +277,7 @@ mod tests {
         format!(
             "{:08x}-{:04x}-4{:03x}-8{:03x}-{:012x}",
             (n >> 32) as u32,
-            (n >> 16) as u16 & 0xffff,
+            (n >> 16) as u16,
             n as u16 & 0x0fff,
             (n >> 48) as u16 & 0x0fff,
             n & 0xffff_ffff_ffff
