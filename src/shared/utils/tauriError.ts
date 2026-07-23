@@ -63,6 +63,12 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   INTERNAL_ERROR: 'An internal error occurred. Please try again.',
   CONFIGURATION_ERROR: 'The application configuration is missing or invalid.',
   DATABASE_UNAVAILABLE: 'The database is currently unavailable.',
+  SESSION_INVALID: 'Your session has expired. Please sign in again.',
+  PERMISSION_DENIED: 'You do not have permission to perform this action.',
+  VALIDATION_ERROR: 'Some of the entered values are invalid.',
+  PRECONDITION_FAILED: 'This action is not allowed in the current state.',
+  IDEMPOTENCY_CONFLICT: 'This request conflicts with a previous one. Start over.',
+  IMMUTABLE_RECORD: 'This record has been finalized and cannot be changed.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

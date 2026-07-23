@@ -73,3 +73,41 @@ pub(crate) async fn close_cash_session(
         .await
         .map_err(IpcError::from)
 }
+
+#[derive(Serialize)]
+pub(crate) struct CashSessionDetailResponse {
+    pub id: i64,
+    pub warehouse_id: i64,
+    pub status: String,
+    pub opening_float: String,
+    pub expected_amount: Option<String>,
+    pub counted_amount: Option<String>,
+    pub variance_amount: Option<String>,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+}
+
+#[tauri::command]
+pub(crate) async fn get_cash_session(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    cash_session_id: i64,
+) -> Result<Option<CashSessionDetailResponse>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::get_cash_session(pool, &session_token, cash_session_id)
+        .await
+        .map(|maybe| {
+            maybe.map(|d| CashSessionDetailResponse {
+                id: d.id,
+                warehouse_id: d.warehouse_id,
+                status: d.status,
+                opening_float: d.opening_float,
+                expected_amount: d.expected_amount,
+                counted_amount: d.counted_amount,
+                variance_amount: d.variance_amount,
+                opened_at: d.opened_at,
+                closed_at: d.closed_at,
+            })
+        })
+        .map_err(IpcError::from)
+}

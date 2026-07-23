@@ -21,6 +21,13 @@ export const BACKEND_ERROR_CODES = [
   // S0-003 — database connectivity proof.
   'CONFIGURATION_ERROR',
   'DATABASE_UNAVAILABLE',
+  // Slice 1 — transaction engine + command surface (see src-tauri/src/error.rs).
+  'SESSION_INVALID',
+  'PERMISSION_DENIED',
+  'VALIDATION_ERROR',
+  'PRECONDITION_FAILED',
+  'IDEMPOTENCY_CONFLICT',
+  'IMMUTABLE_RECORD',
 ] as const;
 
 /** A code known to originate from the backend contract. */
@@ -40,6 +47,12 @@ export const ERROR_MESSAGE_KEYS = {
   INTERNAL_ERROR: 'errors.internal',
   CONFIGURATION_ERROR: 'errors.configuration',
   DATABASE_UNAVAILABLE: 'errors.databaseUnavailable',
+  SESSION_INVALID: 'errors.sessionInvalid',
+  PERMISSION_DENIED: 'errors.permissionDenied',
+  VALIDATION_ERROR: 'errors.validation',
+  PRECONDITION_FAILED: 'errors.preconditionFailed',
+  IDEMPOTENCY_CONFLICT: 'errors.idempotencyConflict',
+  IMMUTABLE_RECORD: 'errors.immutableRecord',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 

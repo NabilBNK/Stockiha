@@ -79,3 +79,65 @@ pub(crate) async fn close_cash_session(
         .map_err(AppError::from_posting_error)?;
     Ok(closed_id)
 }
+
+/// A full cash session (open or closed) with the immutable
+/// expected/counted/variance snapshot, so the UI can show the
+/// backend-authoritative figures after closing. Decimal fields are exact
+/// strings; the expected/counted/variance triple is present only once closed.
+pub(crate) struct CashSessionDetail {
+    pub id: i64,
+    pub warehouse_id: i64,
+    pub status: String,
+    pub opening_float: String,
+    pub expected_amount: Option<String>,
+    pub counted_amount: Option<String>,
+    pub variance_amount: Option<String>,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+}
+
+pub(crate) async fn get_cash_session(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+) -> Result<Option<CashSessionDetail>, AppError> {
+    let row = sqlx::query_as::<
+        _,
+        (
+            i64,
+            i64,
+            String,
+            Decimal,
+            Option<Decimal>,
+            Option<Decimal>,
+            Option<Decimal>,
+            OffsetDateTime,
+            Option<OffsetDateTime>,
+        ),
+    >(
+        "SELECT id, warehouse_id, status, opening_float, expected_amount, counted_amount, \
+         variance_amount, opened_at, closed_at FROM sales.get_cash_session($1, $2)",
+    )
+    .bind(session_token)
+    .bind(cash_session_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    let rfc3339 = |t: OffsetDateTime| {
+        t.format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default()
+    };
+
+    Ok(row.map(|r| CashSessionDetail {
+        id: r.0,
+        warehouse_id: r.1,
+        status: r.2,
+        opening_float: r.3.to_string(),
+        expected_amount: r.4.map(|d| d.to_string()),
+        counted_amount: r.5.map(|d| d.to_string()),
+        variance_amount: r.6.map(|d| d.to_string()),
+        opened_at: rfc3339(r.7),
+        closed_at: r.8.map(rfc3339),
+    }))
+}
