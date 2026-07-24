@@ -135,3 +135,35 @@ export interface CreatedProductWithVariants { product_id: number; variant_ids: n
 // Input payloads (sent as JSON; snake_case; string decimals):
 export interface AltUnitInput { unit_id: number; conversion_factor: string; }
 export interface VariantInput { sku: string; sale_price: string; is_active: boolean; base_unit_id?: number; attribute_value_ids?: number[]; barcodes?: string[]; alternate_units?: AltUnitInput[]; }
+
+// S2-002 — stock adjustment DTOs. Every decimal remains a string.
+export type StockAdjustmentReasonCode =
+  | 'DAMAGE'
+  | 'SHRINKAGE'
+  | 'EXPIRED'
+  | 'FOUND_STOCK'
+  | 'RECORDING_ERROR'
+  | 'OTHER';
+
+export interface StockAdjustmentUnit {
+  unit_id: number;
+  unit_code: string;
+  unit_name: string;
+  conversion_factor: string;
+  is_base: boolean;
+}
+
+export interface StockAdjustmentResult {
+  document_id: number;
+  document_number: string;
+  movement_id: number;
+  journal_document_id: number | null;
+  journal_document_number: string | null;
+  warehouse_id: number;
+  variant_id: number;
+  quantity_delta: string;
+  inventory_value_delta: string;
+  resulting_quantity_on_hand: string;
+  resulting_total_value: string;
+  reason_code: StockAdjustmentReasonCode;
+}

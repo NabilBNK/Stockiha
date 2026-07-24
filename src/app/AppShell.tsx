@@ -9,12 +9,20 @@ import { Button } from '../shared/components';
 import { LOCALES, useI18n, type Locale, type MessageKey } from '../shared/i18n';
 import { useSession } from '../shared/session/SessionContext';
 
-export type AppView = 'dashboard' | 'products' | 'stock' | 'pos' | 'session' | 'documents';
+export type AppView =
+  | 'dashboard'
+  | 'products'
+  | 'stock'
+  | 'adjustment'
+  | 'pos'
+  | 'session'
+  | 'documents';
 
 const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard' },
   { view: 'products', labelKey: 'nav.products' },
   { view: 'stock', labelKey: 'nav.stockReceipt' },
+  { view: 'adjustment', labelKey: 'nav.stockAdjustment' },
   { view: 'pos', labelKey: 'nav.pos' },
   { view: 'session', labelKey: 'nav.cashSession' },
   { view: 'documents', labelKey: 'nav.documents' },

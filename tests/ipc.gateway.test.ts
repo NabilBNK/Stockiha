@@ -58,6 +58,45 @@ describe('gateway command routing + payloads', () => {
     expect(args.cashSessionId).toBe(3);
   });
 
+  it('confirmStockAdjustment sends signed exact quantity and a stable reason code', async () => {
+    invokeMock.mockResolvedValue({
+      document_id: 80,
+      document_number: 'SA-2026-000001',
+      movement_id: 81,
+      journal_document_id: 82,
+      journal_document_number: 'JE-2026-000001',
+      warehouse_id: 1,
+      variant_id: 7,
+      quantity_delta: '-12.500',
+      inventory_value_delta: '-125.0000',
+      resulting_quantity_on_hand: '20.000',
+      resulting_total_value: '200.0000',
+      reason_code: 'DAMAGE',
+    });
+    await ipc.confirmStockAdjustment('tok', {
+      requestId: 'req-adjustment',
+      warehouseId: 1,
+      variantId: 7,
+      unitId: 3,
+      quantityDelta: '-12.500',
+      reasonCode: 'DAMAGE',
+      fiscalPeriodId: 4,
+      documentDate: '2026-07-24',
+    });
+    expect(invokeMock).toHaveBeenCalledWith(COMMANDS.CONFIRM_STOCK_ADJUSTMENT, {
+      sessionToken: 'tok',
+      requestId: 'req-adjustment',
+      warehouseId: 1,
+      variantId: 7,
+      unitId: 3,
+      quantityDelta: '-12.500',
+      reasonCode: 'DAMAGE',
+      note: null,
+      fiscalPeriodId: 4,
+      documentDate: '2026-07-24',
+    });
+  });
+
   it('newRequestId returns distinct UUID-shaped strings', () => {
     const a = ipc.newRequestId();
     const b = ipc.newRequestId();
@@ -87,6 +126,22 @@ describe('gateway error normalization', () => {
         lines: [],
       }),
     ).rejects.toBeInstanceOf(GatewayError);
+  });
+
+  it('preserves the safe zero-stock valuation error code', async () => {
+    invokeMock.mockRejectedValue({ code: 'UNSAFE_ZERO_STOCK_VALUATION' });
+    await expect(
+      ipc.confirmStockAdjustment('tok', {
+        requestId: 'r',
+        warehouseId: 1,
+        variantId: 1,
+        unitId: 1,
+        quantityDelta: '1.000',
+        reasonCode: 'FOUND_STOCK',
+        fiscalPeriodId: 1,
+        documentDate: '2026-07-24',
+      }),
+    ).rejects.toMatchObject({ code: 'UNSAFE_ZERO_STOCK_VALUATION' });
   });
 
   it('collapses an unknown/hostile rejection to UNKNOWN_ERROR without leaking it', async () => {
