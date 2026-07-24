@@ -12,6 +12,7 @@ mod journal;
 mod money;
 mod product;
 mod queue;
+pub(crate) mod residual;
 mod sale;
 pub(crate) mod stock;
 mod warehouse;

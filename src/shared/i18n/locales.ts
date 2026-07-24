@@ -212,6 +212,9 @@ const fr = {
   'errors.idempotencyConflict': 'Cette requ\u00eate entre en conflit avec une pr\u00e9c\u00e9dente. Recommencez.',
   'errors.immutableRecord': 'Cet enregistrement est finalis\u00e9 et ne peut pas \u00eatre modifi\u00e9.',
   'errors.unsafeZeroStockValuation': "Cette augmentation ne peut pas \u00eatre valoris\u00e9e car l'article n'a pas de CMP utilisable.",
+  // S2-003: Zero-quantity safeguards
+  'inventory.zeroQtyWarning.title': 'Attention : stock z\u00e9ro',
+  'inventory.zeroQtyWarning.message': '"{variant}" a un stock confirm\u00e9 de z\u00e9ro et aucun co\u00fbt moyen pond\u00e9r\u00e9 ant\u00e9rieur enregistr\u00e9. Une augmentation positive n\u00e9cessite une base de co\u00fbts approuv\u00e9e.',
   'errors.unknown': "Une erreur inattendue s'est produite. R\u00e9essayez.",
 };
 
@@ -630,6 +633,9 @@ const en: Record<MessageKey, string> = {
   'errors.idempotencyConflict': 'This request conflicts with a previous one. Start over.',
   'errors.immutableRecord': 'This record has been finalized and cannot be changed.',
   'errors.unsafeZeroStockValuation': 'This increase cannot be valued because the item has no usable WAC.',
+  // S2-003: Zero-quantity safeguards
+  'inventory.zeroQtyWarning.title': 'Warning: Zero Quantity',
+  'inventory.zeroQtyWarning.message': '"{variant}" has zero confirmed stock and no prior weighted-average cost on record. A positive adjustment requires an approved cost basis.',
   'errors.unknown': 'An unexpected error occurred. Please try again.',
 };
 
