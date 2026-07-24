@@ -3,19 +3,22 @@
 ## Active Context
 - **Current Phase:** Slice 2 Catalog & Advanced Inventory
 - **Current Task:** S2-002 — Implement advanced posting handler `inventory.confirm_stock_adjustment`
-- **Implementation Status:** Not started
+- **Implementation Status:** Implemented on `task/s2-002-stock-adjustment-posting`; verification pending
 
 ## Objective
-Implement the authoritative SECURITY DEFINER database posting function `inventory.confirm_stock_adjustment` and application layer integration for manual stock counts, damage write-offs, and initial inventory adjustments.
+Implement the authoritative SECURITY DEFINER posting function `inventory.confirm_stock_adjustment` and the complete PostgreSQL → Rust → Tauri → React workflow for signed manual stock adjustments.
 
 ## Included Task ID
 - `S2-002`
 
 ## Database Scope
 - Implement `inventory.confirm_stock_adjustment` SECURITY DEFINER posting function.
-- Update inventory positions and log immutable inventory movements (`INVENTORY_ADJUSTMENT`).
-- Create balanced double-entry accounting journals for inventory gain/loss against variance accounts.
-- Enforce caller session authentication (`MANAGE_INVENTORY` permission).
+- Use one signed exact `quantity_delta` contract in base units: positive increases, negative decreases, zero rejects.
+- Convert configured alternate units exactly before posting and persist the conversion snapshot.
+- Update locked inventory positions and append immutable `ADJUSTMENT` movements.
+- Create balanced journals using `INVENTORY_MERCHANDISE`, `INVENTORY_ADJUSTMENT_GAIN`, and `INVENTORY_ADJUSTMENT_LOSS`.
+- Allocate official `STOCK_ADJUSTMENT` document numbers transactionally.
+- Enforce authenticated `MANAGE_INVENTORY` sessions and idempotent requests.
 
 ## Rust/Tauri Scope
 - Add application service methods and IPC Tauri commands for stock adjustments.
@@ -23,13 +26,16 @@ Implement the authoritative SECURITY DEFINER database posting function `inventor
 - Request idempotency validation (`core.request_idempotency`).
 
 ## React Scope
-- Implement stock adjustment form in inventory section (quantity delta / count input, reason selection, provisional totals).
-- Form validation and backend error handling.
+- Present `Increase stock` / `Decrease stock` with a positive exact quantity input.
+- Convert direction to the signed decimal IPC string without client-side balance or valuation calculations.
+- Submit stable localized reason codes; `OTHER` requires a non-blank note.
+- Prevent duplicate submission and preserve the idempotency key for uncertain retries.
 
 ## Tests and Validation
-- SQL integration assertions for gain, loss, permission failure, negative stock guard, and balanced journals.
-- Rust unit and integration tests.
-- React workflow tests for adjustment submission.
+- SQL integration assertions cover gain/loss, exact valuation, movement, journals, numbering, validation, rollback, idempotency, regressions, and security.
+- Dedicated concurrency assertions cover duplicate requests and competing negative adjustments.
+- Rust tests cover the reason vocabulary, canonical signed payload, note normalization, and cohesive response mapping.
+- React tests cover signed direction conversion, alternate units, reasons, duplicate-submit prevention, safe errors, and Arabic RTL.
 
 ## Production Invariants
 - Confirmed negative stock is forbidden.
@@ -37,7 +43,8 @@ Implement the authoritative SECURITY DEFINER database posting function `inventor
 - Movements and journals are immutable once posted.
 
 ## Explicit Exclusions
-- S2-003 zero-quantity WAC safeguards and residual clearance handlers.
+- Counted-quantity, physical-count, and submitted-final-stock contracts.
+- Estimated-cost input or S2-003 zero-quantity valuation/residual handlers; S2-002 instead rejects unsafe zero-stock gains.
 - Inter-warehouse transfers (deferred to Slice 5).
 - Procurement / Goods Receipts (deferred to Slice 3).
 - Broad UI redesign.
