@@ -23,5 +23,9 @@
 
 - [x] S2-001 Implement variant catalog, attributes, units, and barcodes
 - [x] S2-002 Implement advanced posting handler `inventory.confirm_stock_adjustment`
-- [ ] S2-003 Implement zero-quantity safeguards and rounding residual handlers
+- [x] S2-003 Implement zero-quantity safeguards and rounding residual handlers
+
+# Stockiha — Slice 3 Tasks: Procurement & Supplier Purchasing
+
+- [ ] S3-001 Implement supplier master, purchase order workflow, and goods receipt posting
 
