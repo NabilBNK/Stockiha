@@ -2,41 +2,42 @@
 
 ## Active Context
 - **Current Phase:** Slice 2 Catalog & Advanced Inventory
-- **Current Task:** S2-001 — Implement variant catalog, attributes, units, and barcodes
-- **Implementation Status:** Implemented on branch `task/s2-catalog-and-advanced-inventory` (pending review/merge). Database layer (migrations, constraints, SECURITY DEFINER functions, backfill, concurrency) validated against a local PostgreSQL 15 standards-proxy with a full SQL assertion suite. Rust `cargo fmt --check` passes; Rust compile/clippy/tests and the frontend typecheck/lint/vitest/build are deferred to local PostgreSQL 18 / Antigravity because the sandbox lacks a C linker, the Tauri WebKitGTK libraries, and npm registry access. See the batch report for exact evidence and deferred checks.
+- **Current Task:** S2-002 — Implement advanced posting handler `inventory.confirm_stock_adjustment`
+- **Implementation Status:** Not started
 
 ## Objective
-Implement product variant catalog tracking with attributes, variant SKU, single/multiple barcodes per variant, active/inactive status, base units, and alternate unit conversions.
+Implement the authoritative SECURITY DEFINER database posting function `inventory.confirm_stock_adjustment` and application layer integration for manual stock counts, damage write-offs, and initial inventory adjustments.
 
 ## Included Task ID
-- `S2-001`
+- `S2-002`
 
 ## Database Scope
-- Extension of product catalog schema (e.g. `catalog.product_variants`, `catalog.attributes`, `catalog.attribute_values`, `catalog.variant_attribute_values`, `catalog.variant_barcodes`).
-- Database constraints for barcode uniqueness and active state.
+- Implement `inventory.confirm_stock_adjustment` SECURITY DEFINER posting function.
+- Update inventory positions and log immutable inventory movements (`INVENTORY_ADJUSTMENT`).
+- Create balanced double-entry accounting journals for inventory gain/loss against variance accounts.
+- Enforce caller session authentication (`MANAGE_INVENTORY` permission).
 
 ## Rust/Tauri Scope
-- Rust domain models for variants, attributes, units, and barcodes.
-- SQLx queries/repositories for catalog operations.
-- Tauri commands to add, edit, query, and search variants (including barcode scan lookup).
+- Add application service methods and IPC Tauri commands for stock adjustments.
+- Enforce exact decimal math (`rust_decimal`) for quantities, unit costs, and journal amounts.
+- Request idempotency validation (`core.request_idempotency`).
 
 ## React Scope
-- Extend product catalog forms to allow configuration of attributes, base units, and alternate units.
-- Extend POS UI to support searching and scanning variants by barcode or text.
+- Implement stock adjustment form in inventory section (quantity delta / count input, reason selection, provisional totals).
+- Form validation and backend error handling.
 
 ## Tests and Validation
-- Unit tests for unit conversion factors (exact decimal representation).
-- Database constraint integration tests for uniqueness/integrity.
-- IPC integration tests for commands.
+- SQL integration assertions for gain, loss, permission failure, negative stock guard, and balanced journals.
+- Rust unit and integration tests.
+- React workflow tests for adjustment submission.
 
 ## Production Invariants
-- Enforce exact decimal math (no floating point) for unit conversion factors.
-- Global barcode uniqueness verification.
+- Confirmed negative stock is forbidden.
+- Journal entries must balance (Debits = Credits).
+- Movements and journals are immutable once posted.
 
 ## Explicit Exclusions
-- S2-002 stock-adjustment posting handler.
-- S2-003 zero-quantity WAC safeguards and rounding residual handlers.
-- Warehouse transfers (deferred to Slice 5).
-- Procurement, Goods Receipts, POs, and Supplier Invoices (deferred to Slice 3).
+- S2-003 zero-quantity WAC safeguards and residual clearance handlers.
+- Inter-warehouse transfers (deferred to Slice 5).
+- Procurement / Goods Receipts (deferred to Slice 3).
 - Broad UI redesign.
-- Cosmetic UI polish.
