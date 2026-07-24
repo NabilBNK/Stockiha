@@ -28,7 +28,6 @@ export function ProductsScreen() {
       void catalog.loadProducts(search || undefined);
     }
     // intentionally only re-run when view changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
   function handleSearch(e: FormEvent) {

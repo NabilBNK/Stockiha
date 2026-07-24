@@ -65,7 +65,6 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
     } else if (!isEdit) {
       void catalog.loadRefData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
 
   // Populate product form when detail loads
