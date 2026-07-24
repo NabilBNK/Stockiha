@@ -54,6 +54,12 @@ DECLARE
     v_inactive_variant bigint;
     v_base_unit bigint;
     v_pack bigint;
+    v_size bigint;
+    v_color bigint;
+    v_s bigint;
+    v_m bigint;
+    v_w bigint;
+    v_b bigint;
     v_doc jsonb;
     v_doc_id bigint;
     v_journal bigint;
@@ -68,17 +74,25 @@ BEGIN
     SELECT id INTO v_base_unit FROM catalog.units WHERE normalized_code = 'UNIT';
     v_pack := catalog.create_unit('s2adj-admin-token', 'S2PACK', 'S2 Pack');
 
+    v_size := catalog.create_attribute('s2adj-admin-token', 'S2 Size');
+    v_color := catalog.create_attribute('s2adj-admin-token', 'S2 Color');
+    v_s := catalog.add_attribute_value('s2adj-admin-token', v_size, 'Small');
+    v_m := catalog.add_attribute_value('s2adj-admin-token', v_size, 'Medium');
+    v_w := catalog.add_attribute_value('s2adj-admin-token', v_color, 'White');
+    v_b := catalog.add_attribute_value('s2adj-admin-token', v_color, 'Black');
+
     v_product := catalog.create_product_with_variants(
         's2adj-admin-token', 'S2 Adjustment Product', true,
         jsonb_build_array(
             jsonb_build_object(
                 'sku', 'S2ADJ-ACTIVE', 'sale_price', '50.00', 'is_active', true,
+                'attribute_value_ids', jsonb_build_array(v_s, v_w),
                 'alternate_units', jsonb_build_array(
                     jsonb_build_object('unit_id', v_pack, 'conversion_factor', '4.000000')
                 )
             ),
-            jsonb_build_object('sku', 'S2ADJ-ZERO', 'sale_price', '10.00', 'is_active', true),
-            jsonb_build_object('sku', 'S2ADJ-INACTIVE', 'sale_price', '10.00', 'is_active', false)
+            jsonb_build_object('sku', 'S2ADJ-ZERO', 'sale_price', '10.00', 'is_active', true, 'attribute_value_ids', jsonb_build_array(v_m, v_w)),
+            jsonb_build_object('sku', 'S2ADJ-INACTIVE', 'sale_price', '10.00', 'is_active', false, 'attribute_value_ids', jsonb_build_array(v_s, v_b))
         )
     );
     v_variant := ((v_product -> 'variant_ids') ->> 0)::bigint;
