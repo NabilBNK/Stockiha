@@ -221,4 +221,28 @@ describe('stock adjustment workflow', () => {
     expect(screen.getByLabelText('زيادة المخزون')).toBeInTheDocument();
     expect(screen.getByLabelText('إنقاص المخزون')).toBeInTheDocument();
   });
+
+  it('displays zero-quantity warning when selecting an item with 0 stock and no WAC for an increase adjustment', async () => {
+    wireInvoke(
+      handlers({
+        list_products: () => [
+          {
+            product_id: 1,
+            variant_id: 7,
+            sku: 'SKU-ZERO',
+            name: 'Zero Stock Item',
+            sale_price: '10.00',
+            is_active: true,
+            quantity_on_hand: '0.000',
+            last_known_wac: '0.000000',
+          },
+        ],
+      }),
+    );
+    render(<App />);
+    await loginAndNavigate();
+    const warning = await screen.findByTestId('zero-qty-warning');
+    expect(warning).toHaveTextContent('Warning: Zero Quantity');
+    expect(warning).toHaveTextContent('Zero Stock Item');
+  });
 });
