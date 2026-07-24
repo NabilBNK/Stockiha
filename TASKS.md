@@ -19,9 +19,3 @@
 - [x] S1-001c Implement backup/restore database reconciliation for the Golden Chain
 - [x] S1-002 Implement Slice 1 MVP frontend batch (User-facing setup, login, product, stock receipt, cash-session, POS, and receipt workflows)
 
-# Stockiha — Slice 2 Tasks: Catalog & Advanced Inventory
-
-- [ ] S2-001 Implement variant catalog, attributes, units, and barcodes
-- [ ] S2-002 Implement advanced posting handler `inventory.confirm_stock_adjustment`
-- [ ] S2-003 Implement zero-quantity safeguards and rounding residual handlers
-
