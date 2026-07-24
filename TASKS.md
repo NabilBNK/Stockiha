@@ -22,6 +22,6 @@
 # Stockiha — Slice 2 Tasks: Catalog & Advanced Inventory
 
 - [x] S2-001 Implement variant catalog, attributes, units, and barcodes
-- [ ] S2-002 Implement advanced posting handler `inventory.confirm_stock_adjustment`
+- [x] S2-002 Implement advanced posting handler `inventory.confirm_stock_adjustment`
 - [ ] S2-003 Implement zero-quantity safeguards and rounding residual handlers
 
