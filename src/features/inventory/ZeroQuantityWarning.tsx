@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTranslation } from '@/shared/i18n';
+import { useI18n } from '../../shared/i18n';
 
 interface ZeroQuantityWarningProps {
   variantName: string;
@@ -14,19 +14,18 @@ export const ZeroQuantityWarning: React.FC<ZeroQuantityWarningProps> = ({
   variantName,
   hasUsableWAC,
 }) => {
-  const { t } = useTranslation();
+  const { t } = useI18n();
 
   if (hasUsableWAC) {
     return null;
   }
 
   return (
-    <div className="alert alert-warning" role="alert">
+    <div className="sk-banner sk-banner--warning" role="alert" data-testid="zero-qty-warning">
       <strong>{t('inventory.zeroQtyWarning.title')}</strong>
       <p>
         {t('inventory.zeroQtyWarning.message', {
-          defaultValue: `"${variantName}" has zero confirmed stock and no prior weighted-average cost on record. A positive adjustment requires an approved cost basis.`,
-          values: { variant: variantName },
+          variant: variantName,
         })}
       </p>
     </div>

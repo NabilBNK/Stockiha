@@ -425,6 +425,8 @@ const ar: Record<MessageKey, string> = {
   'errors.idempotencyConflict': '\u064a\u062a\u0639\u0627\u0631\u0636 \u0647\u0630\u0627 \u0627\u0644\u0637\u0644\u0628 \u0645\u0639 \u0637\u0644\u0628 \u0633\u0627\u0628\u0642. \u0627\u0628\u062f\u0623 \u0645\u0646 \u062c\u062f\u064a\u062f.',
   'errors.immutableRecord': '\u0647\u0630\u0627 \u0627\u0644\u0633\u062c\u0644 \u0646\u0647\u0627\u0626\u064a \u0648\u0644\u0627 \u064a\u0645\u0643\u0646 \u062a\u063a\u064a\u064a\u0631\u0647.',
   'errors.unsafeZeroStockValuation': 'لا يمكن تقييم هذه الزيادة لأن الصنف لا يملك متوسط تكلفة صالحًا.',
+  'inventory.zeroQtyWarning.title': 'تحذير مخزون منعدم',
+  'inventory.zeroQtyWarning.message': '"{variant}" يملك مخزونًا مؤكدًا منعدمًا ولا يملك متوسط تكلفة موازنًا سابقًا مسجلاً. تتطلب الزيادة قاعدة تكلفة معتمدة.',
   'errors.unknown': '\u062d\u062f\u062b \u062e\u0637\u0623 \u063a\u064a\u0631 \u0645\u062a\u0648\u0642\u0639. \u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629.',
 };
 

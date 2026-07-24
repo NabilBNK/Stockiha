@@ -115,11 +115,15 @@ BEGIN
     END IF;
 
     -- 6. Create sale header (DRAFT).
+    INSERT INTO core.business_documents (document_type, document_date, fiscal_period_id, fiscal_year)
+        VALUES ('CASH_SALE', p_document_date, p_fiscal_period_id, v_fiscal_year)
+        RETURNING id INTO v_document_id;
+
     INSERT INTO sales.cash_sales (
-        cash_session_id, warehouse_id, subtotal, total_amount
+        document_id, warehouse_id, subtotal, total_amount
     ) VALUES (
-        p_cash_session_id, p_warehouse_id, 0, 0
-    ) RETURNING document_id INTO v_document_id;
+        v_document_id, p_warehouse_id, 0, 0
+    );
 
     -- 7. Process each line: validate, lock position, issue stock, accumulate COGS.
     FOR v_line IN SELECT jsonb_array_elements(p_lines)
@@ -180,12 +184,9 @@ BEGIN
         -- S2-003: Handle zero-quantity residuals.
         IF v_new_qty = 0 THEN
             -- Check for material residuals (>= 0.01).
-            IF v_new_value <> 0 THEN
-                IF v_new_value >= 0.01 OR v_new_value <= -0.01 THEN
-                    RAISE EXCEPTION 'sale line % would result in a material unresolved inventory residual',
-                        v_line_number USING ERRCODE = '55000';
-                END IF;
-                v_new_value := 0;
+            IF abs(v_new_value) >= 0.01 THEN
+                RAISE EXCEPTION 'sale line % would result in a material unresolved inventory residual',
+                    v_line_number USING ERRCODE = '55000';
             END IF;
         ELSIF v_new_value < 0 THEN
             RAISE EXCEPTION 'sale line % would make inventory value negative', v_line_number
@@ -193,7 +194,8 @@ BEGIN
         END IF;
 
         UPDATE inventory.positions
-            SET quantity_on_hand = v_new_qty, total_value = v_new_value
+            SET quantity_on_hand = v_new_qty,
+                total_value = CASE WHEN v_new_qty = 0 THEN 0 ELSE v_new_value END
             WHERE warehouse_id = p_warehouse_id AND variant_id = v_variant_id;
 
         INSERT INTO inventory.movements (
@@ -201,7 +203,7 @@ BEGIN
             resulting_quantity_on_hand, resulting_total_value, reference_type, reference_id
         ) VALUES (
             p_warehouse_id, v_variant_id, 'ISSUE', -v_quantity, -round(v_quantity * v_wac, 4),
-            v_new_qty, v_new_value, 'CASH_SALE_LINE', v_document_id
+            v_new_qty, CASE WHEN v_new_qty = 0 THEN 0 ELSE v_new_value END, 'CASH_SALE_LINE', v_document_id
         ) RETURNING id INTO v_movement_id;
 
         -- S2-003: Handle residual clearance if qty=0 with residual remaining.
@@ -210,10 +212,6 @@ BEGIN
                 p_warehouse_id, v_variant_id, v_movement_id, v_new_value,
                 p_fiscal_period_id, p_document_date
             );
-            v_new_value := 0;
-            UPDATE inventory.positions
-            SET total_value = 0
-            WHERE warehouse_id = p_warehouse_id AND variant_id = v_variant_id;
         END IF;
 
         INSERT INTO sales.cash_sale_lines (

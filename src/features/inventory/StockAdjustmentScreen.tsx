@@ -6,6 +6,7 @@ import { codeForError, useErrorText } from '../../shared/hooks/useErrorText';
 import { useSession } from '../../shared/session/SessionContext';
 import { useAppData } from '../../app/AppDataContext';
 import * as ipc from '../../shared/ipc/gateway';
+import { ZeroQuantityWarning } from './ZeroQuantityWarning';
 import type {
   ProductListItem,
   StockAdjustmentReasonCode,
@@ -104,6 +105,13 @@ export function StockAdjustmentScreen() {
       active = false;
     };
   }, [token, variantId]);
+
+  const selectedVariant = variants.find((item) => item.variant_id === variantId);
+  const isZeroQty = selectedVariant != null && Number(selectedVariant.quantity_on_hand) === 0;
+  const hasUsableWAC =
+    selectedVariant != null &&
+    selectedVariant.last_known_wac != null &&
+    Number(selectedVariant.last_known_wac) > 0;
 
   const quantityValid = isPositiveExactQuantity(quantity);
   const noteValid = reasonCode !== 'OTHER' || note.trim() !== '';
@@ -224,6 +232,13 @@ export function StockAdjustmentScreen() {
             ))}
           </select>
         </div>
+
+        {selectedVariant && direction === 'increase' && isZeroQty ? (
+          <ZeroQuantityWarning
+            variantName={selectedVariant.name}
+            hasUsableWAC={hasUsableWAC}
+          />
+        ) : null}
 
         <fieldset className="sk-choice-group">
           <legend className="sk-field__label">{t('adjustment.direction')}</legend>

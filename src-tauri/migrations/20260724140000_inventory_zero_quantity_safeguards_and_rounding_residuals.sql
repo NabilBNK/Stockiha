@@ -41,8 +41,8 @@ CREATE TABLE inventory.residual_clearances (
     -- Optional journal entry that reversed the residual (e.g., debit INVENTORY_ADJUSTMENT_LOSS / credit INVENTORY_MERCHANDISE).
     clearing_journal_document_id bigint UNIQUE REFERENCES finance.journal_entries (document_id),
     created_at                  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT residual_clearances_detected_positive CHECK (detected_residual_value > 0),
-    CONSTRAINT residual_clearances_detected_sub_centime CHECK (detected_residual_value < 0.01)
+    CONSTRAINT residual_clearances_detected_nonzero CHECK (abs(detected_residual_value) > 0),
+    CONSTRAINT residual_clearances_detected_sub_centime CHECK (abs(detected_residual_value) < 0.01)
 );
 
 -- Immutability: residual clearance audit records are historical facts.
@@ -92,7 +92,7 @@ DECLARE
     v_document_number text;
 BEGIN
     -- Only detect residuals if remaining value is non-zero but small (sub-centime).
-    IF p_remaining_value <= 0 OR p_remaining_value >= 0.01 THEN
+    IF abs(p_remaining_value) = 0 OR abs(p_remaining_value) >= 0.01 THEN
         RETURN NULL;
     END IF;
 

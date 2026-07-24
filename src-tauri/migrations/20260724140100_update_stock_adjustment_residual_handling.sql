@@ -172,11 +172,10 @@ BEGIN
     -- S2-003: Handle zero-quantity residuals.
     IF v_new_quantity = 0 AND v_new_value <> 0 THEN
         -- Material residual (>= 0.01) is an error; sub-centime will be cleared.
-        IF v_new_value >= 0.01 OR v_new_value <= -0.01 THEN
+        IF abs(v_new_value) >= 0.01 THEN
             RAISE EXCEPTION 'stock adjustment would result in a material unresolved inventory residual'
                 USING ERRCODE = '55000';
         END IF;
-        v_new_value := 0;
     ELSIF v_new_value < 0 THEN
         RAISE EXCEPTION 'stock adjustment would make inventory value negative'
             USING ERRCODE = '55000';
@@ -190,7 +189,7 @@ BEGIN
 
     UPDATE inventory.positions
     SET quantity_on_hand = v_new_quantity,
-        total_value = v_new_value
+        total_value = CASE WHEN v_new_quantity = 0 THEN 0 ELSE v_new_value END
     WHERE warehouse_id = p_warehouse_id AND variant_id = p_variant_id;
 
     INSERT INTO inventory.movements (
@@ -199,7 +198,7 @@ BEGIN
         resulting_total_value, reference_type, reference_id
     ) VALUES (
         p_warehouse_id, p_variant_id, 'ADJUSTMENT', v_base_delta,
-        v_value_delta, v_new_quantity, v_new_value,
+        v_value_delta, v_new_quantity, CASE WHEN v_new_quantity = 0 THEN 0 ELSE v_new_value END,
         'STOCK_ADJUSTMENT', v_document_id
     ) RETURNING id INTO v_movement_id;
 
@@ -209,10 +208,6 @@ BEGIN
             p_warehouse_id, p_variant_id, v_movement_id, v_new_value,
             p_fiscal_period_id, p_document_date
         );
-        v_new_value := 0;
-        UPDATE inventory.positions
-        SET total_value = 0
-        WHERE warehouse_id = p_warehouse_id AND variant_id = p_variant_id;
     END IF;
 
     -- Money journals use the repository's existing two-decimal finance model.

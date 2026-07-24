@@ -4,149 +4,184 @@
 -- - Database schema from migrations up through S2-003
 -- - A product variant, warehouse, and fiscal period in OPEN status
 
--- Create test fixtures (assumes the database supports manual setup)
+SET client_min_messages = notice;
+
 DO $$
 DECLARE
     v_admin_user_id bigint;
-    v_admin_session_token text;
+    v_manager_user_id bigint;
+    v_session_token text := 's2_003_test_session_token';
     v_product_id bigint;
     v_variant_id bigint;
     v_warehouse_id bigint;
     v_fiscal_period_id bigint;
-    v_manager_user_id bigint;
-    v_manager_session_token text;
+    v_cash_session_id bigint;
+    v_adjustment_result jsonb;
+    v_sale_doc_id bigint;
+    v_res_count integer;
+    v_res_val numeric(18, 4);
+    v_res_move_type text;
 BEGIN
-    -- Setup: Create an admin user and manager user for testing
-    -- (Assumes the schema has iam.users and can hash passwords)
-    INSERT INTO iam.users (username, email, hashed_password, role_id)
-    SELECT 'testadmin', 'testadmin@test.local', 'hashed_password', r.id
-    FROM iam.roles r WHERE r.code = 'ADMIN'
+    -- 1. Setup Fixtures
+    INSERT INTO iam.users (username, display_name, password_hash)
+    VALUES ('s2_003_admin', 'Admin User', 'hashed_password')
     RETURNING id INTO v_admin_user_id;
 
-    INSERT INTO iam.users (username, email, hashed_password, role_id)
-    SELECT 'testmanager', 'testmanager@test.local', 'hashed_password', r.id
-    FROM iam.roles r WHERE r.code = 'MANAGER'
+    INSERT INTO iam.users (username, display_name, password_hash)
+    VALUES ('s2_003_manager', 'Manager User', 'hashed_password')
     RETURNING id INTO v_manager_user_id;
 
-    -- Create application session for manager
-    INSERT INTO iam.application_sessions (user_id, workstation_id, token_hash, expires_at)
-    VALUES (v_manager_user_id, 'TEST_WKS', 'test_hash_123', now() + interval '1 hour')
-    RETURNING token INTO v_manager_session_token;
+    INSERT INTO iam.user_roles (user_id, role_id)
+    SELECT v_manager_user_id, r.id FROM iam.roles r WHERE r.code IN ('ADMIN', 'MANAGER');
 
-    -- Create a test product and variant
-    INSERT INTO catalog.products (name, is_active) VALUES ('Test Product', true) RETURNING id INTO v_product_id;
-    INSERT INTO catalog.product_variants (product_id, base_unit_id, sku, is_active)
-    VALUES (v_product_id, 1, 'TESTVAR001', true)
+    INSERT INTO iam.role_permissions (role_id, permission_id)
+    SELECT r.id, p.id FROM iam.roles r CROSS JOIN iam.permissions p WHERE r.code IN ('ADMIN', 'MANAGER')
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO iam.application_sessions (user_id, workstation_id, token_hash, expires_at)
+    VALUES (v_manager_user_id, 'TEST_WKS', sha256(v_session_token::bytea), now() + interval '1 hour');
+
+    INSERT INTO catalog.products (name, is_active) VALUES ('S2-003 Test Product', true) RETURNING id INTO v_product_id;
+    INSERT INTO catalog.product_variants (product_id, base_unit_id, sku, sale_price, is_active)
+    VALUES (v_product_id, 1, 'SKU-S2003', 100.00, true)
     RETURNING id INTO v_variant_id;
 
-    -- Create a test warehouse
-    INSERT INTO inventory.warehouses (code, name, is_active) VALUES ('TEST', 'Test Warehouse', true)
+    INSERT INTO inventory.warehouses (code, name, is_active) VALUES ('W2003', 'S2-003 Warehouse', true)
     RETURNING id INTO v_warehouse_id;
 
-    -- Create a test fiscal period (OPEN)
-    INSERT INTO finance.fiscal_periods (year, quarter, status, starts_on, ends_on)
-    VALUES (2026, 1, 'OPEN', '2026-01-01'::date, '2026-03-31'::date)
+    INSERT INTO finance.fiscal_periods (period_code, status, starts_on, ends_on)
+    VALUES ('2026-Q1', 'OPEN', '2026-01-01'::date, '2026-03-31'::date)
     RETURNING id INTO v_fiscal_period_id;
 
-    -- Test 1: Receipt followed by sale that reaches zero quantity with sub-centime residual
-    -- Receipt 1 unit at 10.00 = 10.0000 total
+    INSERT INTO sales.cash_sessions (warehouse_id, workstation_id, opened_by_user_id, opening_float, status)
+    VALUES (v_warehouse_id, 'TEST_WKS', v_manager_user_id, 1000.00, 'OPEN')
+    RETURNING id INTO v_cash_session_id;
+
+    ----------------------------------------------------------------------------
+    -- Test 1: Adjustment reaching zero quantity clears sub-centime residual
+    ----------------------------------------------------------------------------
+    -- Seed position with 1.000 unit, total_value = 10.0035 DZD, WAC = 10.000000
     INSERT INTO inventory.positions (warehouse_id, variant_id, quantity_on_hand, total_value, last_known_wac)
-    VALUES (v_warehouse_id, v_variant_id, 1, 10.0000, 10.000000);
+    VALUES (v_warehouse_id, v_variant_id, 1.000, 10.0035, 10.000000);
 
-    -- Sale 1 unit at 10.00 cost should reduce to qty=0, value=0
-    -- WAC = 10.000000, sale value delta = round(1 * 10.000000, 4) = 10.0000
-    -- new_value = 10.0000 - 10.0000 = 0.0000 ✓
-
-    INSERT INTO inventory.movements (
-        warehouse_id, variant_id, movement_type, quantity_delta, inventory_value_delta,
-        resulting_quantity_on_hand, resulting_total_value, reference_type, reference_id
-    ) VALUES (
-        v_warehouse_id, v_variant_id, 'ISSUE', -1, -10.0000, 0, 0, 'TEST', 1
+    -- Confirm stock adjustment reducing quantity by -1.000
+    v_adjustment_result := inventory.confirm_stock_adjustment(
+        v_session_token,
+        '11111111-1111-1111-1111-111111111111'::uuid,
+        '\x010203'::bytea,
+        v_warehouse_id,
+        v_variant_id,
+        1, -- base unit
+        -1.000,
+        'DAMAGE',
+        NULL,
+        v_fiscal_period_id,
+        '2026-01-15'::date
     );
 
-    -- Verify zero-quantity invariant
+    -- Verify position quantity = 0 and total_value = 0
+    ASSERT (SELECT quantity_on_hand FROM inventory.positions WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id) = 0,
+        'Test 1 FAILED: position quantity_on_hand != 0';
     ASSERT (SELECT total_value FROM inventory.positions WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id) = 0,
-        'Test 1 FAILED: quantity=0 but value<>0';
+        'Test 1 FAILED: position total_value != 0';
+    ASSERT (SELECT last_known_wac FROM inventory.positions WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id) = 10.000000,
+        'Test 1 FAILED: last_known_wac was not preserved at zero stock';
 
-    RAISE NOTICE 'Test 1 PASSED: Receipt->Sale->Zero qty, no residual';
-
-    -- Test 2: Receipt with odd price that creates sub-centime residual on sale
-    -- Receipt 1 unit at 10.003 = 10.0030 (stored as 4-decimal)
-    -- Sale 1 unit: value_delta = round(1 * 10.003, 4) = 10.0030
-    -- But WAC calculated as 10.003000 (6-decimal)
-    -- On sale: new_value = 10.0030 - round(1 * 10.003, 4) = 0 ✓
-
-    DELETE FROM inventory.movements WHERE reference_id = 1;
-    UPDATE inventory.positions SET quantity_on_hand = 1, total_value = 10.0030, last_known_wac = 10.003000
+    -- Verify residual audit record was created
+    SELECT count(*), max(detected_residual_value) INTO v_res_count, v_res_val
+    FROM inventory.residual_clearances
     WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id;
 
-    INSERT INTO inventory.movements (
-        warehouse_id, variant_id, movement_type, quantity_delta, inventory_value_delta,
-        resulting_quantity_on_hand, resulting_total_value, reference_type, reference_id
-    ) VALUES (
-        v_warehouse_id, v_variant_id, 'ISSUE', -1, -10.0030, 0, 0, 'TEST', 2
+    ASSERT v_res_count = 1, 'Test 1 FAILED: residual clearance audit row was not created';
+    ASSERT v_res_val = 0.0035, 'Test 1 FAILED: detected_residual_value != 0.0035';
+
+    -- Verify clearing movement exists
+    SELECT movement_type INTO v_res_move_type
+    FROM inventory.movements
+    WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id AND movement_type = 'RESIDUAL_CLEARANCE';
+
+    ASSERT v_res_move_type = 'RESIDUAL_CLEARANCE', 'Test 1 FAILED: RESIDUAL_CLEARANCE movement missing';
+
+    RAISE NOTICE 'Test 1 PASSED: Adjustment zero-qty sub-centime residual clearance and audit logging verified';
+
+    ----------------------------------------------------------------------------
+    -- Test 2: Positive adjustment from zero stock with preserved WAC succeeds
+    ----------------------------------------------------------------------------
+    v_adjustment_result := inventory.confirm_stock_adjustment(
+        v_session_token,
+        '22222222-2222-2222-2222-222222222222'::uuid,
+        '\x010203'::bytea,
+        v_warehouse_id,
+        v_variant_id,
+        1,
+        2.000,
+        'FOUND_STOCK',
+        NULL,
+        v_fiscal_period_id,
+        '2026-01-16'::date
     );
 
-    -- Verify zero-quantity with computed WAC
-    ASSERT (SELECT total_value FROM inventory.positions WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id) = 0,
-        'Test 2 FAILED: qty=0 but value<>0 on WAC rounding';
+    ASSERT (SELECT quantity_on_hand FROM inventory.positions WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id) = 2.000,
+        'Test 2 FAILED: position quantity_on_hand != 2.000';
 
-    RAISE NOTICE 'Test 2 PASSED: Receipt->Sale->Zero qty with WAC rounding';
+    RAISE NOTICE 'Test 2 PASSED: Positive adjustment from zero with preserved WAC succeeded';
 
-    -- Test 3: Positive adjustment at zero stock without usable WAC should fail
-    -- Reset position to zero, no WAC
+    ----------------------------------------------------------------------------
+    -- Test 3: Positive adjustment from zero stock WITHOUT usable WAC throws P2002
+    ----------------------------------------------------------------------------
     UPDATE inventory.positions SET quantity_on_hand = 0, total_value = 0, last_known_wac = 0
     WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id;
 
-    -- Try to add stock: should fail because WAC=0
     BEGIN
-        INSERT INTO inventory.movements (
-            warehouse_id, variant_id, movement_type, quantity_delta, inventory_value_delta,
-            resulting_quantity_on_hand, resulting_total_value, reference_type, reference_id
-        ) VALUES (
-            v_warehouse_id, v_variant_id, 'ADJUSTMENT', 1, 0, 1, 0, 'TEST', 3
+        v_adjustment_result := inventory.confirm_stock_adjustment(
+            v_session_token,
+            '33333333-3333-3333-3333-333333333333'::uuid,
+            '\x010203'::bytea,
+            v_warehouse_id,
+            v_variant_id,
+            1,
+            1.000,
+            'FOUND_STOCK',
+            NULL,
+            v_fiscal_period_id,
+            '2026-01-17'::date
         );
-        RAISE EXCEPTION 'Test 3 FAILED: Positive adjustment at zero stock should have been blocked earlier in application';
-    EXCEPTION WHEN OTHERS THEN
-        RAISE NOTICE 'Test 3 PASSED: Positive adjustment at zero stock blocked in application layer';
+        RAISE EXCEPTION 'Test 3 FAILED: Positive adjustment at zero stock without WAC should have thrown P2002';
+    EXCEPTION WHEN SQLSTATE 'P2002' THEN
+        RAISE NOTICE 'Test 3 PASSED: P2002 raised for positive adjustment without WAC';
     END;
 
-    -- Test 4: RESIDUAL_CLEARANCE movement only at zero quantity
-    -- Create a residual scenario manually
-    UPDATE inventory.positions SET quantity_on_hand = 0, total_value = 0.0001, last_known_wac = 10.000000
+    ----------------------------------------------------------------------------
+    -- Test 4: Cash sale reaching zero quantity with sub-centime residual
+    ----------------------------------------------------------------------------
+    -- Seed position with stock = 1.000, total_value = 50.0020, last_known_wac = 50.002000
+    UPDATE inventory.positions SET quantity_on_hand = 1.000, total_value = 50.0020, last_known_wac = 50.002000
     WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id;
 
-    -- Try to insert COST_ONLY at zero qty (should fail)
-    BEGIN
-        INSERT INTO inventory.movements (
-            warehouse_id, variant_id, movement_type, quantity_delta, inventory_value_delta,
-            resulting_quantity_on_hand, resulting_total_value, reference_type, reference_id
-        ) VALUES (
-            v_warehouse_id, v_variant_id, 'COST_ONLY', 0, -0.0001, 0, 0, 'TEST', 4
-        );
-        RAISE EXCEPTION 'Test 4 FAILED: COST_ONLY at zero qty should violate constraint';
-    EXCEPTION WHEN OTHERS THEN
-        RAISE NOTICE 'Test 4 PASSED: COST_ONLY blocked at zero qty (use RESIDUAL_CLEARANCE instead)';
-    END;
-
-    -- Insert RESIDUAL_CLEARANCE (should succeed)
-    INSERT INTO inventory.movements (
-        warehouse_id, variant_id, movement_type, quantity_delta, inventory_value_delta,
-        resulting_quantity_on_hand, resulting_total_value, reference_type, reference_id
-    ) VALUES (
-        v_warehouse_id, v_variant_id, 'RESIDUAL_CLEARANCE', 0, -0.0001, 0, 0, 'RESIDUAL_CLEARANCE', 4
+    v_sale_doc_id := sales.confirm_cash_sale(
+        v_session_token,
+        '44444444-4444-4444-4444-444444444444'::uuid,
+        '\x010203'::bytea,
+        v_cash_session_id,
+        v_warehouse_id,
+        v_fiscal_period_id,
+        '2026-01-18'::date,
+        jsonb_build_array(
+            jsonb_build_object(
+                'variant_id', v_variant_id,
+                'quantity', 1.000,
+                'unit_price', 60.00
+            )
+        )
     );
 
-    -- Verify the position is now clean
+    ASSERT (SELECT quantity_on_hand FROM inventory.positions WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id) = 0,
+        'Test 4 FAILED: sale position quantity_on_hand != 0';
     ASSERT (SELECT total_value FROM inventory.positions WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id) = 0,
-        'Test 4 FAILED: RESIDUAL_CLEARANCE did not clear the value';
+        'Test 4 FAILED: sale position total_value != 0';
 
-    RAISE NOTICE 'Test 4 PASSED: RESIDUAL_CLEARANCE clears sub-centime at zero qty';
+    RAISE NOTICE 'Test 4 PASSED: Cash sale zero-quantity sub-centime residual handling verified';
 
-    -- Cleanup
-    DELETE FROM iam.application_sessions WHERE token = v_manager_session_token;
-    DELETE FROM iam.users WHERE id IN (v_admin_user_id, v_manager_user_id);
-
-    RAISE NOTICE 'All S2-003 integration tests PASSED';
+    RAISE NOTICE 'ALL S2-003 INTEGRATION DB ASSERTIONS PASSED';
 END;
 $$;

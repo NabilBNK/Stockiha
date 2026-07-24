@@ -22,7 +22,7 @@ impl InventoryResidual {
         let threshold = Decimal::from_str_exact(Self::MATERIAL_THRESHOLD)
             .expect("MATERIAL_THRESHOLD is a valid decimal");
 
-        if remaining_value > Decimal::ZERO && remaining_value < threshold {
+        if remaining_value.abs() > Decimal::ZERO && remaining_value.abs() < threshold {
             Some(remaining_value)
         } else {
             None
@@ -52,4 +52,47 @@ pub enum ResidualCheckResult {
     SubCentimeDetected(Decimal),
     /// Material residual (>= 0.01) that cannot be resolved — posting must fail.
     MaterialDiscrepancy(Decimal),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_detect_at_zero_quantity_sub_centime() {
+        let val = Decimal::from_str("0.0035").unwrap();
+        assert_eq!(InventoryResidual::detect_at_zero_quantity(val), Some(val));
+
+        let neg_val = Decimal::from_str("-0.0035").unwrap();
+        assert_eq!(InventoryResidual::detect_at_zero_quantity(neg_val), Some(neg_val));
+    }
+
+    #[test]
+    fn test_detect_at_zero_quantity_zero_or_material() {
+        assert_eq!(InventoryResidual::detect_at_zero_quantity(Decimal::ZERO), None);
+
+        let mat = Decimal::from_str("0.01").unwrap();
+        assert_eq!(InventoryResidual::detect_at_zero_quantity(mat), None);
+
+        let mat_large = Decimal::from_str("5.50").unwrap();
+        assert_eq!(InventoryResidual::detect_at_zero_quantity(mat_large), None);
+    }
+
+    #[test]
+    fn test_is_material_discrepancy() {
+        assert!(!InventoryResidual::is_material_discrepancy(Decimal::ZERO));
+        assert!(!InventoryResidual::is_material_discrepancy(Decimal::from_str("0.0099").unwrap()));
+        assert!(InventoryResidual::is_material_discrepancy(Decimal::from_str("0.01").unwrap()));
+        assert!(InventoryResidual::is_material_discrepancy(Decimal::from_str("-0.01").unwrap()));
+    }
+
+    #[test]
+    fn test_to_journal_amount() {
+        let sub = Decimal::from_str("0.0035").unwrap();
+        assert_eq!(InventoryResidual::to_journal_amount(sub), Decimal::ZERO);
+
+        let mat = Decimal::from_str("0.0150").unwrap();
+        assert_eq!(InventoryResidual::to_journal_amount(mat), Decimal::from_str("0.02").unwrap());
+    }
 }
