@@ -22,6 +22,8 @@ pub fn run() {
             commands::auth::login,
             commands::auth::logout,
             commands::stock_receipt::post_stock_receipt,
+            commands::stock_adjustment::confirm_stock_adjustment,
+            commands::stock_adjustment::list_stock_adjustment_units,
             commands::cash_sale::confirm_cash_sale,
             commands::cash_session::open_cash_session,
             commands::cash_session::inspect_active_cash_session,

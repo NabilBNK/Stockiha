@@ -25,6 +25,9 @@ import type {
   SaleDocument,
   SaleLine,
   SetupStatus,
+  StockAdjustmentReasonCode,
+  StockAdjustmentResult,
+  StockAdjustmentUnit,
   Unit,
   VariantInput,
   Warehouse,
@@ -137,6 +140,46 @@ export function postStockReceipt(sessionToken: string, input: StockReceiptInput)
     unitCost: input.unitCost,
     fiscalPeriodId: input.fiscalPeriodId,
     documentDate: input.documentDate,
+  });
+}
+
+export interface StockAdjustmentInput {
+  requestId: string;
+  warehouseId: number;
+  variantId: number;
+  unitId: number;
+  quantityDelta: string;
+  reasonCode: StockAdjustmentReasonCode;
+  note?: string;
+  fiscalPeriodId: number;
+  documentDate: string;
+}
+
+export function confirmStockAdjustment(
+  sessionToken: string,
+  input: StockAdjustmentInput,
+): Promise<StockAdjustmentResult> {
+  return call<StockAdjustmentResult>(COMMANDS.CONFIRM_STOCK_ADJUSTMENT, {
+    sessionToken,
+    requestId: input.requestId,
+    warehouseId: input.warehouseId,
+    variantId: input.variantId,
+    unitId: input.unitId,
+    quantityDelta: input.quantityDelta,
+    reasonCode: input.reasonCode,
+    note: input.note ?? null,
+    fiscalPeriodId: input.fiscalPeriodId,
+    documentDate: input.documentDate,
+  });
+}
+
+export function listStockAdjustmentUnits(
+  sessionToken: string,
+  variantId: number,
+): Promise<StockAdjustmentUnit[]> {
+  return call<StockAdjustmentUnit[]>(COMMANDS.LIST_STOCK_ADJUSTMENT_UNITS, {
+    sessionToken,
+    variantId,
   });
 }
 

@@ -42,6 +42,43 @@ impl StockMovementType {
     }
 }
 
+/// Closed, stable reason-code vocabulary for confirmed stock adjustments.
+/// Display labels are localized by React; PostgreSQL persists only these codes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum StockAdjustmentReason {
+    Damage,
+    Shrinkage,
+    Expired,
+    FoundStock,
+    RecordingError,
+    Other,
+}
+
+impl StockAdjustmentReason {
+    pub(crate) const fn as_db_str(self) -> &'static str {
+        match self {
+            StockAdjustmentReason::Damage => "DAMAGE",
+            StockAdjustmentReason::Shrinkage => "SHRINKAGE",
+            StockAdjustmentReason::Expired => "EXPIRED",
+            StockAdjustmentReason::FoundStock => "FOUND_STOCK",
+            StockAdjustmentReason::RecordingError => "RECORDING_ERROR",
+            StockAdjustmentReason::Other => "OTHER",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, DomainError> {
+        match value {
+            "DAMAGE" => Ok(StockAdjustmentReason::Damage),
+            "SHRINKAGE" => Ok(StockAdjustmentReason::Shrinkage),
+            "EXPIRED" => Ok(StockAdjustmentReason::Expired),
+            "FOUND_STOCK" => Ok(StockAdjustmentReason::FoundStock),
+            "RECORDING_ERROR" => Ok(StockAdjustmentReason::RecordingError),
+            "OTHER" => Ok(StockAdjustmentReason::Other),
+            _ => Err(DomainError::UnknownStatus),
+        }
+    }
+}
+
 /// Validates the zero-quantity safeguard from architecture section 3.C:
 /// "When the physical quantity reaches exactly zero, `quantity_on_hand` and
 /// `total_value` are set to `0`" — i.e. a positive value may never coexist
@@ -97,5 +134,20 @@ mod tests {
         let qty = Quantity::new_positive(Decimal::new(10, 0)).unwrap();
         let value = CostAmount::new_non_negative(Decimal::new(500, 2)).unwrap();
         assert!(validate_zero_quantity_invariant(qty, value).is_ok());
+    }
+
+    #[test]
+    fn stock_adjustment_reason_codes_round_trip() {
+        for reason in [
+            StockAdjustmentReason::Damage,
+            StockAdjustmentReason::Shrinkage,
+            StockAdjustmentReason::Expired,
+            StockAdjustmentReason::FoundStock,
+            StockAdjustmentReason::RecordingError,
+            StockAdjustmentReason::Other,
+        ] {
+            assert_eq!(StockAdjustmentReason::parse(reason.as_db_str()), Ok(reason));
+        }
+        assert!(StockAdjustmentReason::parse("ARBITRARY").is_err());
     }
 }

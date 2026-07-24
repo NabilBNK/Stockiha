@@ -69,6 +69,7 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   PRECONDITION_FAILED: 'This action is not allowed in the current state.',
   IDEMPOTENCY_CONFLICT: 'This request conflicts with a previous one. Start over.',
   IMMUTABLE_RECORD: 'This record has been finalized and cannot be changed.',
+  UNSAFE_ZERO_STOCK_VALUATION: 'This increase cannot be valued because the item has no usable WAC.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

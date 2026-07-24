@@ -28,6 +28,7 @@ export const BACKEND_ERROR_CODES = [
   'PRECONDITION_FAILED',
   'IDEMPOTENCY_CONFLICT',
   'IMMUTABLE_RECORD',
+  'UNSAFE_ZERO_STOCK_VALUATION',
 ] as const;
 
 /** A code known to originate from the backend contract. */
@@ -53,6 +54,7 @@ export const ERROR_MESSAGE_KEYS = {
   PRECONDITION_FAILED: 'errors.preconditionFailed',
   IDEMPOTENCY_CONFLICT: 'errors.idempotencyConflict',
   IMMUTABLE_RECORD: 'errors.immutableRecord',
+  UNSAFE_ZERO_STOCK_VALUATION: 'errors.unsafeZeroStockValuation',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 

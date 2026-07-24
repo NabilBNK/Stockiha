@@ -13,5 +13,5 @@ mod money;
 mod product;
 mod queue;
 mod sale;
-mod stock;
+pub(crate) mod stock;
 mod warehouse;

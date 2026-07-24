@@ -70,6 +70,9 @@ pub enum ErrorCode {
     /// closed/immutable record (SQLSTATE `0A000` from one of this crate's
     /// `forbid_*_mutation` triggers).
     ImmutableRecord,
+    /// S2-002: a positive adjustment at zero stock has no usable WAC. S2-003
+    /// estimated-cost valuation is deliberately not accepted here.
+    UnsafeZeroStockValuation,
 }
 
 /// Internal application error. Not serialized; does not cross the IPC boundary.
@@ -121,6 +124,8 @@ pub enum AppError {
     IdempotencyConflict { diagnostic: String },
     /// Slice 1 MVP batch: see [`ErrorCode::ImmutableRecord`].
     ImmutableRecord { diagnostic: String },
+    /// S2-002: see [`ErrorCode::UnsafeZeroStockValuation`].
+    UnsafeZeroStockValuation { diagnostic: String },
 }
 
 impl AppError {
@@ -186,6 +191,9 @@ impl AppError {
             Some("0A000") => AppError::ImmutableRecord {
                 diagnostic: message,
             },
+            Some("P2002") => AppError::UnsafeZeroStockValuation {
+                diagnostic: message,
+            },
             _ => AppError::Internal(message),
         }
     }
@@ -219,6 +227,9 @@ impl fmt::Debug for AppError {
             AppError::ImmutableRecord { .. } => {
                 f.write_str("AppError::ImmutableRecord(<redacted>)")
             }
+            AppError::UnsafeZeroStockValuation { .. } => {
+                f.write_str("AppError::UnsafeZeroStockValuation(<redacted>)")
+            }
         }
     }
 }
@@ -236,6 +247,7 @@ impl fmt::Display for AppError {
             AppError::PreconditionFailed { .. } => f.write_str("precondition failed"),
             AppError::IdempotencyConflict { .. } => f.write_str("idempotency conflict"),
             AppError::ImmutableRecord { .. } => f.write_str("record is immutable"),
+            AppError::UnsafeZeroStockValuation { .. } => f.write_str("unsafe zero-stock valuation"),
         }
     }
 }
@@ -277,6 +289,9 @@ impl From<AppError> for IpcError {
             AppError::PreconditionFailed { .. } => IpcError::new(ErrorCode::PreconditionFailed),
             AppError::IdempotencyConflict { .. } => IpcError::new(ErrorCode::IdempotencyConflict),
             AppError::ImmutableRecord { .. } => IpcError::new(ErrorCode::ImmutableRecord),
+            AppError::UnsafeZeroStockValuation { .. } => {
+                IpcError::new(ErrorCode::UnsafeZeroStockValuation)
+            }
         }
     }
 }
@@ -302,6 +317,8 @@ mod tests {
         assert_eq!(json, r#""CONFIGURATION_ERROR""#);
         let json = serde_json::to_string(&ErrorCode::DatabaseUnavailable).unwrap();
         assert_eq!(json, r#""DATABASE_UNAVAILABLE""#);
+        let json = serde_json::to_string(&ErrorCode::UnsafeZeroStockValuation).unwrap();
+        assert_eq!(json, r#""UNSAFE_ZERO_STOCK_VALUATION""#);
     }
 
     #[test]
@@ -321,6 +338,20 @@ mod tests {
     fn explicit_conversion_maps_database_unavailable_to_database_unavailable() {
         let ipc: IpcError = AppError::database_unavailable(SENTINEL).into();
         assert_eq!(ipc, IpcError::new(ErrorCode::DatabaseUnavailable));
+    }
+
+    #[test]
+    fn unsafe_zero_stock_valuation_is_redacted_and_stable() {
+        let app = AppError::UnsafeZeroStockValuation {
+            diagnostic: SENTINEL.to_owned(),
+        };
+        assert!(!format!("{app:?}").contains(SENTINEL));
+        let ipc: IpcError = app.into();
+        assert_eq!(ipc, IpcError::new(ErrorCode::UnsafeZeroStockValuation));
+        assert_eq!(
+            serde_json::to_string(&ipc).unwrap(),
+            r#"{"code":"UNSAFE_ZERO_STOCK_VALUATION"}"#
+        );
     }
 
     #[test]

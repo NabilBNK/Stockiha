@@ -20,6 +20,7 @@ import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { ProductsScreen } from '../features/products/ProductsScreen';
+import { StockAdjustmentScreen } from '../features/inventory/StockAdjustmentScreen';
 import { StockReceiptScreen } from '../features/inventory/StockReceiptScreen';
 import { PosScreen } from '../features/pos/PosScreen';
 import { CashSessionScreen } from '../features/cash-session/CashSessionScreen';
@@ -104,6 +105,7 @@ function AuthenticatedApp() {
       {view === 'dashboard' && <DashboardScreen />}
       {view === 'products' && <ProductsScreen />}
       {view === 'stock' && <StockReceiptScreen />}
+      {view === 'adjustment' && <StockAdjustmentScreen />}
       {view === 'pos' && <PosScreen />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}
