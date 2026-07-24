@@ -1,22 +1,5 @@
 /**
  * Slice 1 — the single typed gateway for every Tauri IPC command.
- *
- * Design rules (enforced by keeping ALL `invoke` calls here):
- * - No `invoke()` anywhere else in the UI; components call these functions.
- * - Every rejection is normalized to a stable {@link AppErrorCode} via
- *   {@link parseTauriError} and re-thrown as {@link GatewayError} — raw
- *   backend diagnostics, SQL, paths, and stack traces never reach the UI.
- * - Exact-decimal arguments (price, quantity, cost, float, counted amount)
- *   are sent as STRINGS, never JS numbers, so no authoritative value passes
- *   through IEEE-754. `rust_decimal` deserializes these strings exactly.
- * - Client request UUIDs for idempotent posting are generated here.
- *
- * Casing note (requires Windows/Tauri verification): Tauri v2 maps
- * camelCase JS command-argument keys to snake_case Rust parameters, so the
- * top-level arg objects below use camelCase. Nested payload objects (the
- * cash-sale `lines`) are deserialized by serde directly and therefore use
- * snake_case field names. Response payloads are snake_case (serde default),
- * matching the DTOs in `./dto`.
  */
 import { invoke } from '@tauri-apps/api/core';
 
@@ -25,22 +8,28 @@ import type { AppErrorCode } from '../types/errors';
 import { COMMANDS, type CommandName } from './commands';
 import type {
   ActiveCashSession,
+  AttributeDefinition,
   CashSaleLineInput,
   CashSessionDetail,
+  CatalogProduct,
   CreatedProduct,
+  CreatedProductWithVariants,
   DashboardSummary,
   DocumentJob,
   FiscalPeriod,
   LoginResult,
   OpenFiscalPeriod,
+  ProductDetail,
   ProductListItem,
+  ResolvedBarcode,
   SaleDocument,
   SaleLine,
   SetupStatus,
+  Unit,
+  VariantInput,
   Warehouse,
 } from './dto';
 
-/** A safe, UI-facing error carrying only a normalized code (never raw text). */
 export class GatewayError extends Error {
   readonly code: AppErrorCode;
   constructor(code: AppErrorCode) {
@@ -50,7 +39,6 @@ export class GatewayError extends Error {
   }
 }
 
-/** Invoke a command, normalizing any rejection to a {@link GatewayError}. */
 async function call<T>(command: CommandName, args?: Record<string, unknown>): Promise<T> {
   try {
     return await invoke<T>(command, args);
@@ -59,12 +47,9 @@ async function call<T>(command: CommandName, args?: Record<string, unknown>): Pr
   }
 }
 
-/** Generates a client request UUID for idempotent posting commands. */
 export function newRequestId(): string {
   return crypto.randomUUID();
 }
-
-// ---- Setup (unauthenticated) ---------------------------------------------
 
 export function getSetupStatus(): Promise<SetupStatus> {
   return call<SetupStatus>(COMMANDS.GET_SETUP_STATUS);
@@ -96,13 +81,7 @@ export function bootstrapFirstAdmin(input: BootstrapAdminInput): Promise<number>
   });
 }
 
-// ---- Auth ----------------------------------------------------------------
-
-export function login(
-  username: string,
-  password: string,
-  workstationId: string,
-): Promise<LoginResult> {
+export function login(username: string, password: string, workstationId: string): Promise<LoginResult> {
   return call<LoginResult>(COMMANDS.LOGIN, { username, password, workstationId });
 }
 
@@ -110,51 +89,21 @@ export function logout(sessionToken: string): Promise<void> {
   return call<void>(COMMANDS.LOGOUT, { sessionToken });
 }
 
-// ---- Catalog -------------------------------------------------------------
-
-export function createProduct(
-  sessionToken: string,
-  name: string,
-  sku: string,
-  salePrice: string,
-  isActive: boolean,
-): Promise<CreatedProduct> {
-  return call<CreatedProduct>(COMMANDS.CREATE_PRODUCT, {
-    sessionToken,
-    name,
-    sku,
-    salePrice,
-    isActive,
-  });
+export function createProduct(sessionToken: string, name: string, sku: string, salePrice: string, isActive: boolean): Promise<CreatedProduct> {
+  return call<CreatedProduct>(COMMANDS.CREATE_PRODUCT, { sessionToken, name, sku, salePrice, isActive });
 }
 
-export function listProducts(
-  sessionToken: string,
-  warehouseId: number,
-  search?: string,
-): Promise<ProductListItem[]> {
-  return call<ProductListItem[]>(COMMANDS.LIST_PRODUCTS, {
-    sessionToken,
-    warehouseId,
-    search: search ?? null,
-  });
+export function listProducts(sessionToken: string, warehouseId: number, search?: string): Promise<ProductListItem[]> {
+  return call<ProductListItem[]>(COMMANDS.LIST_PRODUCTS, { sessionToken, warehouseId, search: search ?? null });
 }
 
-// ---- Warehouses ----------------------------------------------------------
-
-export function createWarehouse(
-  sessionToken: string,
-  code: string,
-  name: string,
-): Promise<number> {
+export function createWarehouse(sessionToken: string, code: string, name: string): Promise<number> {
   return call<number>(COMMANDS.CREATE_WAREHOUSE, { sessionToken, code, name });
 }
 
 export function listWarehouses(sessionToken: string): Promise<Warehouse[]> {
   return call<Warehouse[]>(COMMANDS.LIST_WAREHOUSES, { sessionToken });
 }
-
-// ---- Reference data + dashboard ------------------------------------------
 
 export function listFiscalPeriods(sessionToken: string): Promise<FiscalPeriod[]> {
   return call<FiscalPeriod[]>(COMMANDS.LIST_FISCAL_PERIODS, { sessionToken });
@@ -164,14 +113,9 @@ export function getOpenFiscalPeriod(sessionToken: string): Promise<OpenFiscalPer
   return call<OpenFiscalPeriod | null>(COMMANDS.GET_OPEN_FISCAL_PERIOD, { sessionToken });
 }
 
-export function getDashboardSummary(
-  sessionToken: string,
-  workstationId: string,
-): Promise<DashboardSummary> {
+export function getDashboardSummary(sessionToken: string, workstationId: string): Promise<DashboardSummary> {
   return call<DashboardSummary>(COMMANDS.GET_DASHBOARD_SUMMARY, { sessionToken, workstationId });
 }
-
-// ---- Posting: stock receipt ----------------------------------------------
 
 export interface StockReceiptInput {
   requestId: string;
@@ -183,10 +127,7 @@ export interface StockReceiptInput {
   documentDate: string;
 }
 
-export function postStockReceipt(
-  sessionToken: string,
-  input: StockReceiptInput,
-): Promise<number> {
+export function postStockReceipt(sessionToken: string, input: StockReceiptInput): Promise<number> {
   return call<number>(COMMANDS.POST_STOCK_RECEIPT, {
     sessionToken,
     requestId: input.requestId,
@@ -199,55 +140,21 @@ export function postStockReceipt(
   });
 }
 
-// ---- Cash session --------------------------------------------------------
-
-export function openCashSession(
-  sessionToken: string,
-  warehouseId: number,
-  workstationId: string,
-  openingFloat: string,
-): Promise<number> {
-  return call<number>(COMMANDS.OPEN_CASH_SESSION, {
-    sessionToken,
-    warehouseId,
-    workstationId,
-    openingFloat,
-  });
+export function openCashSession(sessionToken: string, warehouseId: number, workstationId: string, openingFloat: string): Promise<number> {
+  return call<number>(COMMANDS.OPEN_CASH_SESSION, { sessionToken, warehouseId, workstationId, openingFloat });
 }
 
-export function inspectActiveCashSession(
-  sessionToken: string,
-  workstationId: string,
-): Promise<ActiveCashSession | null> {
-  return call<ActiveCashSession | null>(COMMANDS.INSPECT_ACTIVE_CASH_SESSION, {
-    sessionToken,
-    workstationId,
-  });
+export function inspectActiveCashSession(sessionToken: string, workstationId: string): Promise<ActiveCashSession | null> {
+  return call<ActiveCashSession | null>(COMMANDS.INSPECT_ACTIVE_CASH_SESSION, { sessionToken, workstationId });
 }
 
-export function closeCashSession(
-  sessionToken: string,
-  cashSessionId: number,
-  countedAmount: string,
-): Promise<number> {
-  return call<number>(COMMANDS.CLOSE_CASH_SESSION, {
-    sessionToken,
-    cashSessionId,
-    countedAmount,
-  });
+export function closeCashSession(sessionToken: string, cashSessionId: number, countedAmount: string): Promise<number> {
+  return call<number>(COMMANDS.CLOSE_CASH_SESSION, { sessionToken, cashSessionId, countedAmount });
 }
 
-export function getCashSession(
-  sessionToken: string,
-  cashSessionId: number,
-): Promise<CashSessionDetail | null> {
-  return call<CashSessionDetail | null>(COMMANDS.GET_CASH_SESSION, {
-    sessionToken,
-    cashSessionId,
-  });
+export function getCashSession(sessionToken: string, cashSessionId: number): Promise<CashSessionDetail | null> {
+  return call<CashSessionDetail | null>(COMMANDS.GET_CASH_SESSION, { sessionToken, cashSessionId });
 }
-
-// ---- Posting: cash sale --------------------------------------------------
 
 export interface CashSaleInput {
   requestId: string;
@@ -266,17 +173,11 @@ export function confirmCashSale(sessionToken: string, input: CashSaleInput): Pro
     warehouseId: input.warehouseId,
     fiscalPeriodId: input.fiscalPeriodId,
     documentDate: input.documentDate,
-    // Nested payload: serde deserializes these by snake_case field name.
     lines: input.lines,
   });
 }
 
-// ---- Posted documents / jobs ---------------------------------------------
-
-export function getSaleDocument(
-  sessionToken: string,
-  documentId: number,
-): Promise<SaleDocument | null> {
+export function getSaleDocument(sessionToken: string, documentId: number): Promise<SaleDocument | null> {
   return call<SaleDocument | null>(COMMANDS.GET_SALE_DOCUMENT, { sessionToken, documentId });
 }
 
@@ -284,9 +185,84 @@ export function listSaleLines(sessionToken: string, documentId: number): Promise
   return call<SaleLine[]>(COMMANDS.LIST_SALE_LINES, { sessionToken, documentId });
 }
 
-export function listDocumentJobs(
-  sessionToken: string,
-  documentId: number,
-): Promise<DocumentJob[]> {
+export function listDocumentJobs(sessionToken: string, documentId: number): Promise<DocumentJob[]> {
   return call<DocumentJob[]>(COMMANDS.LIST_DOCUMENT_JOBS, { sessionToken, documentId });
+}
+
+// Slice 2 — variant catalog gateway wrappers
+
+export function createProductWithVariants(sessionToken: string, name: string, isActive: boolean, variants: VariantInput[]): Promise<CreatedProductWithVariants> {
+  return call<CreatedProductWithVariants>(COMMANDS.CREATE_PRODUCT_WITH_VARIANTS, { sessionToken, name, isActive, variants });
+}
+
+export function addVariant(sessionToken: string, productId: number, variant: VariantInput): Promise<number> {
+  return call<number>(COMMANDS.ADD_VARIANT, { sessionToken, productId, variant });
+}
+
+export function updateVariant(sessionToken: string, variantId: number, sku: string, salePrice: string, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_VARIANT, { sessionToken, variantId, sku, salePrice, isActive });
+}
+
+export function setVariantActive(sessionToken: string, variantId: number, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.SET_VARIANT_ACTIVE, { sessionToken, variantId, isActive });
+}
+
+export function updateProduct(sessionToken: string, productId: number, name: string, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_PRODUCT, { sessionToken, productId, name, isActive });
+}
+
+export function createAttribute(sessionToken: string, name: string): Promise<number> {
+  return call<number>(COMMANDS.CREATE_ATTRIBUTE, { sessionToken, name });
+}
+
+export function addAttributeValue(sessionToken: string, attributeId: number, value: string): Promise<number> {
+  return call<number>(COMMANDS.ADD_ATTRIBUTE_VALUE, { sessionToken, attributeId, value });
+}
+
+export function listAttributes(sessionToken: string): Promise<AttributeDefinition[]> {
+  return call<AttributeDefinition[]>(COMMANDS.LIST_ATTRIBUTES, { sessionToken });
+}
+
+export function createUnit(sessionToken: string, code: string, name: string): Promise<number> {
+  return call<number>(COMMANDS.CREATE_UNIT, { sessionToken, code, name });
+}
+
+export function listUnits(sessionToken: string): Promise<Unit[]> {
+  return call<Unit[]>(COMMANDS.LIST_UNITS, { sessionToken });
+}
+
+export function setVariantAttributes(sessionToken: string, variantId: number, attributeValueIds: number[]): Promise<void> {
+  return call<void>(COMMANDS.SET_VARIANT_ATTRIBUTES, { sessionToken, variantId, attributeValueIds });
+}
+
+export function addVariantBarcode(sessionToken: string, variantId: number, barcode: string): Promise<number> {
+  return call<number>(COMMANDS.ADD_VARIANT_BARCODE, { sessionToken, variantId, barcode });
+}
+
+export function removeVariantBarcode(sessionToken: string, barcodeId: number): Promise<void> {
+  return call<void>(COMMANDS.REMOVE_VARIANT_BARCODE, { sessionToken, barcodeId });
+}
+
+export function addVariantAltUnit(sessionToken: string, variantId: number, unitId: number, conversionFactor: string): Promise<number> {
+  return call<number>(COMMANDS.ADD_VARIANT_ALT_UNIT, { sessionToken, variantId, unitId, conversionFactor });
+}
+
+export function removeVariantAltUnit(sessionToken: string, variantUnitId: number): Promise<void> {
+  return call<void>(COMMANDS.REMOVE_VARIANT_ALT_UNIT, { sessionToken, variantUnitId });
+}
+
+export function setVariantBaseUnit(sessionToken: string, variantId: number, unitId: number): Promise<void> {
+  return call<void>(COMMANDS.SET_VARIANT_BASE_UNIT, { sessionToken, variantId, unitId });
+}
+
+export async function resolveBarcode(sessionToken: string, barcode: string): Promise<ResolvedBarcode | null> {
+  return call<ResolvedBarcode | null>(COMMANDS.RESOLVE_BARCODE, { sessionToken, barcode });
+}
+
+export function listCatalogProducts(sessionToken: string, search?: string): Promise<CatalogProduct[]> {
+  return call<CatalogProduct[]>(COMMANDS.LIST_CATALOG_PRODUCTS, { sessionToken, search: search ?? null });
+}
+
+export function getProductDetail(sessionToken: string, productId: number): Promise<ProductDetail> {
+  return call<ProductDetail>(COMMANDS.GET_PRODUCT_DETAIL, { sessionToken, productId });
 }
