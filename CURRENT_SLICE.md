@@ -3,7 +3,7 @@
 ## Active Context
 - **Current Phase:** Slice 2 Catalog & Advanced Inventory
 - **Current Task:** S2-001 — Implement variant catalog, attributes, units, and barcodes
-- **Implementation Status:** Not started
+- **Implementation Status:** Implemented on branch `task/s2-catalog-and-advanced-inventory` (pending review/merge). Database layer (migrations, constraints, SECURITY DEFINER functions, backfill, concurrency) validated against a local PostgreSQL 15 standards-proxy with a full SQL assertion suite. Rust `cargo fmt --check` passes; Rust compile/clippy/tests and the frontend typecheck/lint/vitest/build are deferred to local PostgreSQL 18 / Antigravity because the sandbox lacks a C linker, the Tauri WebKitGTK libraries, and npm registry access. See the batch report for exact evidence and deferred checks.
 
 ## Objective
 Implement product variant catalog tracking with attributes, variant SKU, single/multiple barcodes per variant, active/inactive status, base units, and alternate unit conversions.

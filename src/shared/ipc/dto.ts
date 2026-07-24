@@ -1,13 +1,5 @@
 /**
  * Slice 1 — TypeScript DTOs mirroring the backend's serialized IPC payloads.
- *
- * Field names are snake_case because that is exactly what the Rust command
- * response structs serialize to (serde default; verified against
- * `src-tauri/src/commands/*.rs`). Exact-decimal values (money, quantity,
- * WAC, prices, totals) are carried as STRINGS — never JS numbers — so no
- * authoritative value round-trips through IEEE-754 in the browser. React
- * may parse them for provisional display, but the backend result is
- * authoritative.
  */
 
 export interface SetupStatus {
@@ -20,7 +12,6 @@ export interface SetupStatus {
 
 export interface LoginResult {
   session_token: string;
-  /** RFC3339 timestamp. */
   expires_at: string;
 }
 
@@ -34,12 +25,9 @@ export interface ProductListItem {
   variant_id: number;
   sku: string;
   name: string;
-  /** Exact decimal string. */
   sale_price: string;
   is_active: boolean;
-  /** Exact decimal string. */
   quantity_on_hand: string;
-  /** Exact decimal string. */
   last_known_wac: string;
 }
 
@@ -69,7 +57,6 @@ export interface ActiveCashSession {
   id: number;
   warehouse_id: number;
   opened_by_user_id: number;
-  /** Exact decimal string. */
   opening_float: string;
   opened_at: string;
 }
@@ -78,13 +65,9 @@ export interface CashSessionDetail {
   id: number;
   warehouse_id: number;
   status: string;
-  /** Exact decimal string. */
   opening_float: string;
-  /** Exact decimal string; present once closed. */
   expected_amount: string | null;
-  /** Exact decimal string; present once closed. */
   counted_amount: string | null;
-  /** Exact decimal string; present once closed. */
   variance_amount: string | null;
   opened_at: string;
   closed_at: string | null;
@@ -107,9 +90,7 @@ export interface SaleDocument {
   document_number: string | null;
   document_date: string;
   posted_at: string | null;
-  /** Exact decimal string. */
   subtotal: string;
-  /** Exact decimal string. */
   total_amount: string;
 }
 
@@ -117,11 +98,8 @@ export interface SaleLine {
   line_number: number;
   variant_sku_snapshot: string;
   variant_name_snapshot: string;
-  /** Exact decimal string. */
   quantity: string;
-  /** Exact decimal string. */
   unit_price: string;
-  /** Exact decimal string. */
   line_total: string;
 }
 
@@ -134,9 +112,26 @@ export interface DocumentJob {
   attempt_count: number;
 }
 
-/** One POS cart line as sent to `confirm_cash_sale` (decimals as strings). */
 export interface CashSaleLineInput {
   variant_id: number;
   quantity: string;
   unit_price: string;
 }
+
+// Slice 2 — variant catalog DTOs (snake_case, decimals as strings)
+
+export interface AttributeValue { id: number; value: string; }
+export interface AttributeDefinition { attribute_id: number; name: string; attribute_values: AttributeValue[]; }
+export interface Unit { id: number; code: string; name: string; }
+export interface CatalogProduct { product_id: number; name: string; is_active: boolean; variant_count: number; active_variant_count: number; }
+export interface ResolvedBarcode { variant_id: number; product_id: number; sku: string; product_name: string; sale_price: string; base_unit_id: number; variant_is_active: boolean; product_is_active: boolean; }
+export interface VariantAttribute { attribute_id: number; attribute_name: string; attribute_value_id: number; value: string; }
+export interface VariantAltUnit { id: number; unit_id: number; unit_code: string; conversion_factor: string; }
+export interface VariantBarcode { id: number; barcode: string; }
+export interface VariantDetail { variant_id: number; sku: string; sale_price: string; is_active: boolean; base_unit_id: number; base_unit_code: string; attribute_signature: string; attributes: VariantAttribute[]; alternate_units: VariantAltUnit[]; barcodes: VariantBarcode[]; }
+export interface ProductDetail { product_id: number; name: string; is_active: boolean; variants: VariantDetail[]; }
+export interface CreatedProductWithVariants { product_id: number; variant_ids: number[]; }
+
+// Input payloads (sent as JSON; snake_case; string decimals):
+export interface AltUnitInput { unit_id: number; conversion_factor: string; }
+export interface VariantInput { sku: string; sale_price: string; is_active: boolean; base_unit_id?: number; attribute_value_ids?: number[]; barcodes?: string[]; alternate_units?: AltUnitInput[]; }

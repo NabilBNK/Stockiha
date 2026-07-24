@@ -1,26 +1,8 @@
 #![allow(dead_code)]
+mod application;
 pub mod commands;
-// S0-003: the error contract gained its first genuine fallible consumer
-// (`check_db_health`), so the S0-002 dead-code exemption is removed. The module
-// stays crate-private: the typed error contract and the database infrastructure
-// are internal API. The connectivity tests live inside the crate
-// (`infrastructure::db` `#[cfg(test)]`), so no external test crate needs access.
-// S1-001: domain value types, typed identifiers, status enums, and
-// validation constructors for the new production schemas (products,
-// warehouse stock, cash sales, journal entries, fiscal periods, document
-// sequences). Crate-private and consumer-free (no Tauri command, no IPC,
-// no application service reads/writes the database through it yet); dead
-// code in non-test builds until a later slice's application service is a
-// real consumer. The exemption is removed then — same posture as every
-// Slice 0 proof module below.
 #[cfg_attr(not(test), allow(dead_code))]
 mod domain;
-// Slice 1 MVP batch: application services (auth, stock receipt, cash sale,
-// cash session) sitting between `commands` (Tauri IPC, this file's
-// `invoke_handler`) and the SQL posting functions. Has real consumers in
-// `commands` from this same batch, so — unlike `domain` above — it carries
-// no dead-code exemption.
-mod application;
 mod error;
 mod infrastructure;
 pub mod state;
@@ -31,11 +13,6 @@ pub fn run() {
         .manage(state::AppState {
             stage: "Slice 1".to_string(),
         })
-        // Safe on missing/invalid configuration: the app starts and the health
-        // command reports the state. The URL value itself is never logged.
-        // block_on provides the Tokio context SQLx requires to spawn the
-        // pool's background maintenance task at construction (the pool itself
-        // stays lazy — no connection is attempted here).
         .manage(tauri::async_runtime::block_on(async {
             infrastructure::db::database_state_from_env()
         }))
@@ -54,6 +31,25 @@ pub fn run() {
             commands::setup::bootstrap_first_admin,
             commands::catalog::create_product,
             commands::catalog::list_products,
+            commands::catalog::create_product_with_variants,
+            commands::catalog::add_variant,
+            commands::catalog::update_variant,
+            commands::catalog::set_variant_active,
+            commands::catalog::update_product,
+            commands::catalog::create_attribute,
+            commands::catalog::add_attribute_value,
+            commands::catalog::list_attributes,
+            commands::catalog::create_unit,
+            commands::catalog::list_units,
+            commands::catalog::set_variant_attributes,
+            commands::catalog::add_variant_barcode,
+            commands::catalog::remove_variant_barcode,
+            commands::catalog::add_variant_alt_unit,
+            commands::catalog::remove_variant_alt_unit,
+            commands::catalog::set_variant_base_unit,
+            commands::catalog::resolve_barcode,
+            commands::catalog::list_catalog_products,
+            commands::catalog::get_product_detail,
             commands::warehouse::create_warehouse,
             commands::warehouse::list_warehouses,
             commands::reference::list_fiscal_periods,
