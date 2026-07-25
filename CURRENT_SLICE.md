@@ -1,42 +1,40 @@
 # Current Slice Status
 
 ## Active Context
-- **Current Phase:** Slice 3 Procurement & Supplier Purchasing
-- **Current Task:** S3-001 — Implement supplier master, purchase order workflow, and goods receipt posting
+- **Current Phase:** Slice 4 Customer Master & Credit Limits
+- **Current Task:** S4-001 — Implement customer directory, credit limit enforcement, and customer ledger tracking
 - **Implementation Status:** Not started
 
 ## Objective
-Implement the complete supplier procurement workflow: supplier directory management, purchase order generation (`PO-YYYY-XXXXXX`), purchase order line items, purchase receipt confirmation (`inventory.confirm_purchase_receipt`), warehouse-specific WAC recalculation, inventory position increments, supplier payables tracking, and double-entry accounting journals (`Dr INVENTORY_MERCHANDISE / Cr ACCOUNTS_PAYABLE`).
+Implement the complete customer management foundation: customer directory management (code, name, tax ID / NIF, contact details, active status), credit limit enforcement (`max_credit_limit`), customer ledger balance tracking (`current_balance`), customer risk categorization, and stored RPC procedures for customer operations.
 
 ## Included Task ID
-- `S3-001`
+- `S4-001`
 
 ## Database Scope
-- `procurement.suppliers`: Supplier master directory (code, name, tax ID / NIF, contact details, active status).
-- `procurement.purchase_orders` & `procurement.purchase_order_lines`: Purchase order header and lines (unit price, quantity, line total).
-- `procurement.purchase_receipts`: Official purchase receipt document (`PR-YYYY-XXXXXX`).
-- `inventory.confirm_purchase_receipt`: `SECURITY DEFINER` function posting purchase receipt, recalculating WAC, creating `RECEIPT` movements, and recording balanced journals (`Dr INVENTORY_MERCHANDISE / Cr ACCOUNTS_PAYABLE`).
-- Permissions: `MANAGE_PROCUREMENT`, `POST_PURCHASE_RECEIPT`.
+- `sales.customers`: Customer master directory (code, name, tax ID, credit limit, current balance, active status).
+- `sales.customer_ledgers`: Customer ledger transaction log.
+- Stored procedures: `create_customer`, `update_customer`, `list_customers`, `get_customer_detail`.
+- Permissions: `MANAGE_CUSTOMERS`.
 
 ## Rust/Tauri Scope
-- DTOs and commands for supplier directory CRUD, purchase order management, and purchase receipt posting.
-- Error mapping for invalid suppliers, unapproved POs, or unit mismatches.
+- Customer domain types, payloads, and application service.
+- Tauri IPC commands for customer management.
 
 ## React Scope
-- Suppliers screen (list, add, edit).
-- Purchase Order screen (create, view, receive stock).
-- Navigation integration under Procurement section.
+- Customers screen (directory list, create customer, edit customer, view credit limit & current balance).
+- Navigation integration under Customers section.
 
 ## Tests and Validation
-- SQL assertions for purchase receipt posting, WAC updates, movement creation, and journal balancing.
-- Cargo tests for procurement domain types.
-- Frontend workflow tests for purchase order and receipt UI.
+- SQL assertions for customer creation, unique code enforcement, and credit limit validation.
+- Cargo unit tests for customer domain types.
+- Frontend workflow tests for customer management UI.
 
 ## Production Invariants
-- Confirmed negative stock is forbidden.
-- Journal entries must balance (Debits = Credits).
-- Posted ledgers are immutable.
+- Customer credit limits cannot be negative.
+- Customer code must be unique.
+- Authoritative credit limit checks live in PostgreSQL (`SECURITY DEFINER`), not React.
 
 ## Explicit Exclusions
-- Supplier payments and cash disbursements (deferred to Slice 4 / Slice 6).
+- Customer payments & invoice settlement workflows (deferred to Slice 6).
 - Broad UI redesign.
