@@ -373,3 +373,57 @@ export interface SupplierLiabilityDto {
   due_date: string | null;
   created_at: string;
 }
+
+export interface CreateSupplierReturnLinePayload {
+  variant_id: number;
+  quantity: string;
+  unit_cost: string;
+}
+
+export interface CreateSupplierReturnPayload {
+  supplier_id: number;
+  warehouse_id: number;
+  purchase_order_id?: number | null;
+  reason_code?: string | null;
+  note?: string | null;
+  lines: CreateSupplierReturnLinePayload[];
+}
+
+export interface ConfirmSupplierReturnPayload {
+  request_id: string;
+  return_document_id: number;
+  fiscal_period_id: number;
+  document_date: string;
+}
+
+export interface PostSupplierPaymentPayload {
+  request_id: string;
+  supplier_id: number;
+  liability_id?: number | null;
+  amount: string;
+  payment_method: string;
+  fiscal_period_id: number;
+  document_date: string;
+  note?: string | null;
+}
+
+export interface SupplierReturnSummary {
+  document_id: number;
+  document_number: string | null;
+  supplier_id: number;
+  supplier_name: string;
+  warehouse_id: number;
+  status: string;
+  reason_code: string;
+  created_at: string;
+}
+
+export interface SupplierPaymentDto {
+  document_id: number;
+  document_number: string | null;
+  supplier_id: number;
+  supplier_name: string;
+  payment_method: string;
+  amount: string;
+  created_at: string;
+}

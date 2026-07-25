@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { listSupplierLiabilities } from '../../shared/ipc/gateway';
 import type { SupplierLiabilityDto } from '../../shared/ipc/dto';
+import { SupplierPaymentModal } from './SupplierPaymentModal';
 
 interface SupplierLiabilitiesScreenProps {
   sessionToken: string;
@@ -10,6 +11,7 @@ export const SupplierLiabilitiesScreen: React.FC<SupplierLiabilitiesScreenProps>
   const [liabilities, setLiabilities] = useState<SupplierLiabilityDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedLiability, setSelectedLiability] = useState<SupplierLiabilityDto | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -71,6 +73,7 @@ export const SupplierLiabilitiesScreen: React.FC<SupplierLiabilitiesScreenProps>
                 <th style={{ padding: '12px' }}>Original Amount</th>
                 <th style={{ padding: '12px' }}>Outstanding Balance</th>
                 <th style={{ padding: '12px' }}>Due Date</th>
+                <th style={{ padding: '12px' }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -81,11 +84,28 @@ export const SupplierLiabilitiesScreen: React.FC<SupplierLiabilitiesScreenProps>
                   <td style={{ padding: '12px' }}>{l.original_amount} DZD</td>
                   <td style={{ padding: '12px', fontWeight: 600, color: '#f87171' }}>{l.remaining_amount} DZD</td>
                   <td style={{ padding: '12px' }}>{l.due_date || 'N/A'}</td>
+                  <td style={{ padding: '12px' }}>
+                    <button
+                      onClick={() => setSelectedLiability(l)}
+                      style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', backgroundColor: '#2563eb', color: '#fff', fontSize: '0.85rem', cursor: 'pointer' }}
+                    >
+                      Pay Supplier
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {selectedLiability && (
+        <SupplierPaymentModal
+          liability={selectedLiability}
+          sessionToken={sessionToken}
+          onClose={() => setSelectedLiability(null)}
+          onPaymentPosted={loadData}
+        />
       )}
     </div>
   );

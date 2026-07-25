@@ -76,6 +76,11 @@ pub fn run() {
             commands::procurement::confirm_supplier_invoice,
             commands::procurement::list_supplier_invoices,
             commands::procurement::list_supplier_liabilities,
+            commands::procurement::create_supplier_return_draft,
+            commands::procurement::confirm_supplier_return,
+            commands::procurement::post_supplier_payment,
+            commands::procurement::list_supplier_returns,
+            commands::procurement::list_supplier_payments,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

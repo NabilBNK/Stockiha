@@ -219,6 +219,66 @@ impl CreatePurchaseOrderPayload {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSupplierReturnLinePayload {
+    pub variant_id: i64,
+    pub quantity: String,
+    pub unit_cost: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSupplierReturnPayload {
+    pub supplier_id: i64,
+    pub warehouse_id: i64,
+    pub purchase_order_id: Option<i64>,
+    pub reason_code: Option<String>,
+    pub note: Option<String>,
+    pub lines: Vec<CreateSupplierReturnLinePayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmSupplierReturnPayload {
+    pub return_document_id: i64,
+    pub fiscal_period_id: i64,
+    pub document_date: String,
+    pub request_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostSupplierPaymentPayload {
+    pub supplier_id: i64,
+    pub liability_id: Option<i64>,
+    pub amount: String,
+    pub payment_method: String,
+    pub fiscal_period_id: i64,
+    pub document_date: String,
+    pub note: Option<String>,
+    pub request_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupplierReturnSummary {
+    pub document_id: i64,
+    pub document_number: Option<String>,
+    pub supplier_id: i64,
+    pub supplier_name: String,
+    pub warehouse_id: i64,
+    pub status: String,
+    pub reason_code: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupplierPaymentDto {
+    pub document_id: i64,
+    pub document_number: Option<String>,
+    pub supplier_id: i64,
+    pub supplier_name: String,
+    pub payment_method: String,
+    pub amount: String,
+    pub created_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

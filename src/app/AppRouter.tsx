@@ -29,6 +29,7 @@ import SuppliersScreen from '../features/procurement/SuppliersScreen';
 import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
 import { SupplierInvoicesScreen } from '../features/procurement/SupplierInvoicesScreen';
 import { SupplierLiabilitiesScreen } from '../features/procurement/SupplierLiabilitiesScreen';
+import { SupplierReturnsScreen } from '../features/procurement/SupplierReturnsScreen';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
 
@@ -123,6 +124,9 @@ function AuthenticatedApp() {
       )}
       {view === 'supplier_liabilities' && (
         <SupplierLiabilitiesScreen sessionToken={user?.token ?? ''} />
+      )}
+      {view === 'supplier_returns' && (
+        <SupplierReturnsScreen sessionToken={user?.token ?? ''} />
       )}
     </AppShell>
   );
