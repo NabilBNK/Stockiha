@@ -27,6 +27,8 @@ import { CashSessionScreen } from '../features/cash-session/CashSessionScreen';
 import { DocumentsScreen } from '../features/documents/DocumentsScreen';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
 import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
+import { SupplierInvoicesScreen } from '../features/procurement/SupplierInvoicesScreen';
+import { SupplierLiabilitiesScreen } from '../features/procurement/SupplierLiabilitiesScreen';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
 
@@ -87,7 +89,7 @@ export function AppRouter() {
 
 function AuthenticatedApp() {
   const { user, refreshActiveCashSession, clearSession } = useSession();
-  const { error } = useAppData();
+  const { error, openFiscalPeriod } = useAppData();
   const [view, setView] = useState<AppView>('dashboard');
 
   useEffect(() => {
@@ -113,6 +115,15 @@ function AuthenticatedApp() {
       {view === 'documents' && <DocumentsScreen />}
       {view === 'suppliers' && <SuppliersScreen sessionToken={user?.token ?? ''} />}
       {view === 'purchase_orders' && <PurchaseOrdersScreen sessionToken={user?.token ?? ''} />}
+      {view === 'supplier_invoices' && (
+        <SupplierInvoicesScreen
+          sessionToken={user?.token ?? ''}
+          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
+        />
+      )}
+      {view === 'supplier_liabilities' && (
+        <SupplierLiabilitiesScreen sessionToken={user?.token ?? ''} />
+      )}
     </AppShell>
   );
 }

@@ -383,3 +383,44 @@ export function listPurchaseReceipts(
     purchaseOrderId: purchaseOrderId ?? null,
   });
 }
+
+export function allocateLandedCost(
+  sessionToken: string,
+  payload: import('./dto').AllocateLandedCostPayload
+): Promise<unknown> {
+  return call(COMMANDS.ALLOCATE_LANDED_COST, { sessionToken, payload });
+}
+
+export function createSupplierInvoiceDraft(
+  sessionToken: string,
+  payload: import('./dto').CreateSupplierInvoicePayload
+): Promise<unknown> {
+  return call(COMMANDS.CREATE_SUPPLIER_INVOICE_DRAFT, { sessionToken, payload });
+}
+
+export function confirmSupplierInvoice(
+  sessionToken: string,
+  payload: import('./dto').ConfirmSupplierInvoicePayload
+): Promise<unknown> {
+  return call(COMMANDS.CONFIRM_SUPPLIER_INVOICE, { sessionToken, payload });
+}
+
+export function listSupplierInvoices(
+  sessionToken: string,
+  supplierId?: number | null
+): Promise<import('./dto').SupplierInvoiceSummary[]> {
+  return call<import('./dto').SupplierInvoiceSummary[]>(COMMANDS.LIST_SUPPLIER_INVOICES, {
+    sessionToken,
+    supplierId: supplierId ?? null,
+  });
+}
+
+export function listSupplierLiabilities(
+  sessionToken: string,
+  supplierId?: number | null
+): Promise<import('./dto').SupplierLiabilityDto[]> {
+  return call<import('./dto').SupplierLiabilityDto[]>(COMMANDS.LIST_SUPPLIER_LIABILITIES, {
+    sessionToken,
+    supplierId: supplierId ?? null,
+  });
+}

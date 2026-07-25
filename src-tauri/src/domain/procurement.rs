@@ -123,6 +123,71 @@ pub struct ConfirmPurchaseReceiptResult {
     pub posted_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AllocateLandedCostPayload {
+    pub request_id: String,
+    pub receipt_id: i64,
+    pub landed_cost_amount: String,
+    pub allocation_method: String,
+    pub fiscal_period_id: i64,
+    pub document_date: String,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSupplierInvoiceLinePayload {
+    pub line_number: i32,
+    pub po_line_id: Option<i64>,
+    pub receipt_line_id: Option<i64>,
+    pub variant_id: i64,
+    pub quantity: String,
+    pub unit_cost: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSupplierInvoicePayload {
+    pub supplier_id: i64,
+    pub purchase_order_id: Option<i64>,
+    pub currency_code: Option<String>,
+    pub exchange_rate_to_dzd: Option<String>,
+    pub note: Option<String>,
+    pub lines: Vec<CreateSupplierInvoiceLinePayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmSupplierInvoicePayload {
+    pub request_id: String,
+    pub invoice_doc_id: i64,
+    pub fiscal_period_id: i64,
+    pub document_date: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupplierInvoiceSummary {
+    pub document_id: i64,
+    pub document_number: Option<String>,
+    pub supplier_id: i64,
+    pub supplier_name: String,
+    pub status: String,
+    pub currency_code: String,
+    pub foreign_total_amount: String,
+    pub base_total_amount: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupplierLiabilityDto {
+    pub id: i64,
+    pub supplier_id: i64,
+    pub supplier_code: String,
+    pub supplier_name: String,
+    pub document_id: Option<i64>,
+    pub original_amount: String,
+    pub remaining_amount: String,
+    pub due_date: Option<String>,
+    pub created_at: String,
+}
+
 impl CreatePurchaseOrderPayload {
     pub fn validate(&self) -> Result<(), String> {
         if self.supplier_id <= 0 {

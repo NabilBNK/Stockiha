@@ -148,3 +148,63 @@ pub(crate) async fn list_purchase_receipts(
     .await
     .map_err(IpcError::from)
 }
+
+#[tauri::command]
+pub(crate) async fn allocate_landed_cost(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    payload: crate::domain::procurement::AllocateLandedCostPayload,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::allocate_landed_cost(pool, &session_token, payload)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn create_supplier_invoice_draft(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    payload: crate::domain::procurement::CreateSupplierInvoicePayload,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::create_supplier_invoice_draft(pool, &session_token, payload)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn confirm_supplier_invoice(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    payload: crate::domain::procurement::ConfirmSupplierInvoicePayload,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::confirm_supplier_invoice(pool, &session_token, payload)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn list_supplier_invoices(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    supplier_id: Option<i64>,
+) -> Result<Vec<crate::domain::procurement::SupplierInvoiceSummary>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::list_supplier_invoices(pool, &session_token, supplier_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn list_supplier_liabilities(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    supplier_id: Option<i64>,
+) -> Result<Vec<crate::domain::procurement::SupplierLiabilityDto>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::list_supplier_liabilities(pool, &session_token, supplier_id)
+        .await
+        .map_err(IpcError::from)
+}

@@ -293,3 +293,141 @@ pub(crate) async fn list_purchase_receipts(
         .map_err(|e| AppError::internal(format!("Failed to parse purchase receipts: {e}")))?;
     Ok(receipts)
 }
+
+pub(crate) async fn allocate_landed_cost(
+    pool: &PgPool,
+    session_token: &str,
+    payload: crate::domain::procurement::AllocateLandedCostPayload,
+) -> Result<JsonValue, AppError> {
+    let canonical = json!({
+        "receipt_id": payload.receipt_id,
+        "landed_cost_amount": payload.landed_cost_amount,
+        "allocation_method": payload.allocation_method,
+        "fiscal_period_id": payload.fiscal_period_id,
+        "document_date": payload.document_date
+    });
+    let hash = payload_hash(&canonical);
+    let doc_date = parse_iso_date(&payload.document_date)?;
+    let landed_cost: rust_decimal::Decimal =
+        payload
+            .landed_cost_amount
+            .parse()
+            .map_err(|_| AppError::ValidationError {
+                diagnostic: "Invalid landed cost amount".to_string(),
+            })?;
+
+    let res: JsonValue = query_scalar(
+        "SELECT inventory.allocate_landed_cost($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(session_token)
+    .bind(&payload.request_id)
+    .bind(hash.as_slice())
+    .bind(payload.receipt_id)
+    .bind(landed_cost)
+    .bind(&payload.allocation_method)
+    .bind(payload.fiscal_period_id)
+    .bind(doc_date)
+    .bind(&payload.note)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(res)
+}
+
+pub(crate) async fn create_supplier_invoice_draft(
+    pool: &PgPool,
+    session_token: &str,
+    payload: crate::domain::procurement::CreateSupplierInvoicePayload,
+) -> Result<JsonValue, AppError> {
+    let lines_json = serde_json::to_value(&payload.lines)
+        .map_err(|e| AppError::internal(format!("Invalid lines JSON: {e}")))?;
+
+    let rate: Option<rust_decimal::Decimal> = match payload.exchange_rate_to_dzd {
+        Some(r) => Some(r.parse().map_err(|_| AppError::ValidationError {
+            diagnostic: "Invalid exchange rate".to_string(),
+        })?),
+        None => None,
+    };
+
+    let res: JsonValue = query_scalar(
+        "SELECT procurement.create_supplier_invoice_draft($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(session_token)
+    .bind(payload.supplier_id)
+    .bind(payload.purchase_order_id)
+    .bind(&payload.currency_code)
+    .bind(rate)
+    .bind(&payload.note)
+    .bind(&lines_json)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(res)
+}
+
+pub(crate) async fn confirm_supplier_invoice(
+    pool: &PgPool,
+    session_token: &str,
+    payload: crate::domain::procurement::ConfirmSupplierInvoicePayload,
+) -> Result<JsonValue, AppError> {
+    let canonical = json!({
+        "invoice_doc_id": payload.invoice_doc_id,
+        "fiscal_period_id": payload.fiscal_period_id,
+        "document_date": payload.document_date
+    });
+    let hash = payload_hash(&canonical);
+    let doc_date = parse_iso_date(&payload.document_date)?;
+
+    let res: JsonValue =
+        query_scalar("SELECT procurement.confirm_supplier_invoice($1, $2::uuid, $3, $4, $5, $6)")
+            .bind(session_token)
+            .bind(&payload.request_id)
+            .bind(hash.as_slice())
+            .bind(payload.invoice_doc_id)
+            .bind(payload.fiscal_period_id)
+            .bind(doc_date)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    Ok(res)
+}
+
+pub(crate) async fn list_supplier_invoices(
+    pool: &PgPool,
+    session_token: &str,
+    supplier_id: Option<i64>,
+) -> Result<Vec<crate::domain::procurement::SupplierInvoiceSummary>, AppError> {
+    let res: JsonValue = query_scalar("SELECT procurement.list_supplier_invoices($1, $2)")
+        .bind(session_token)
+        .bind(supplier_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    let invoices: Vec<crate::domain::procurement::SupplierInvoiceSummary> =
+        serde_json::from_value(res)
+            .map_err(|e| AppError::internal(format!("Failed to parse supplier invoices: {e}")))?;
+    Ok(invoices)
+}
+
+pub(crate) async fn list_supplier_liabilities(
+    pool: &PgPool,
+    session_token: &str,
+    supplier_id: Option<i64>,
+) -> Result<Vec<crate::domain::procurement::SupplierLiabilityDto>, AppError> {
+    let res: JsonValue = query_scalar("SELECT procurement.list_supplier_liabilities($1, $2)")
+        .bind(session_token)
+        .bind(supplier_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    let liabilities: Vec<crate::domain::procurement::SupplierLiabilityDto> =
+        serde_json::from_value(res).map_err(|e| {
+            AppError::internal(format!("Failed to parse supplier liabilities: {e}"))
+        })?;
+    Ok(liabilities)
+}

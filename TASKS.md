@@ -28,6 +28,8 @@
 # Stockiha — Slice 3 Tasks: Procurement & Supplier Purchasing
 
 - [x] S3-001 Implement supplier master, purchase order workflow, and goods receipt posting
+- [x] S3-002 Implement landed cost allocation, supplier invoices, three-way match, and payables ledger
+- [ ] S3-003 Implement supplier returns, debit notes, and payables settlement postings
 
 # Stockiha — Slice 4 Tasks: Customer Master & Credit Limits
 
