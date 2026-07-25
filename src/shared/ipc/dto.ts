@@ -153,6 +153,153 @@ export interface StockAdjustmentUnit {
   is_base: boolean;
 }
 
+export interface Supplier {
+  id: number;
+  code: string;
+  name: string;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  tax_id: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CreateSupplierPayload {
+  code: string;
+  name: string;
+  contact_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  tax_id?: string | null;
+}
+
+export interface UpdateSupplierPayload {
+  supplier_id: number;
+  code: string;
+  name: string;
+  contact_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  tax_id?: string | null;
+  is_active: boolean;
+}
+
+export interface PurchaseOrderSummary {
+  document_id: number;
+  document_number: string | null;
+  supplier_id: number;
+  supplier_code: string;
+  supplier_name: string;
+  warehouse_id: number;
+  warehouse_code: string;
+  warehouse_name: string;
+  status: string;
+  subtotal: string;
+  total_amount: string;
+  created_at: string;
+  confirmed_at: string | null;
+}
+
+export interface PurchaseOrderLineDto {
+  id: number;
+  line_number: number;
+  variant_id: number;
+  variant_sku: string;
+  variant_name: string;
+  unit_id: number;
+  unit_code: string;
+  unit_name: string;
+  quantity_ordered: string;
+  quantity_received: string;
+  remaining_quantity: string;
+  unit_cost: string;
+  line_total: string;
+}
+
+export interface PurchaseOrderDetailDto {
+  document_id: number;
+  document_number: string | null;
+  supplier_id: number;
+  supplier_code: string;
+  supplier_name: string;
+  warehouse_id: number;
+  warehouse_code: string;
+  warehouse_name: string;
+  status: string;
+  subtotal: string;
+  total_amount: string;
+  note: string | null;
+  created_at: string;
+  confirmed_at: string | null;
+  lines: PurchaseOrderLineDto[];
+}
+
+export interface CreatePoLinePayload {
+  variant_id: number;
+  unit_id: number;
+  quantity_ordered: string;
+  unit_cost: string;
+}
+
+export interface CreatePurchaseOrderPayload {
+  supplier_id: number;
+  warehouse_id: number;
+  note?: string | null;
+  lines: CreatePoLinePayload[];
+}
+
+export interface UpdatePurchaseOrderPayload {
+  purchase_order_id: number;
+  supplier_id: number;
+  warehouse_id: number;
+  note?: string | null;
+  lines: CreatePoLinePayload[];
+}
+
+export interface ConfirmPurchaseReceiptLinePayload {
+  po_line_id: number;
+  quantity_received: string;
+}
+
+export interface ConfirmPurchaseReceiptPayload {
+  request_id: string;
+  purchase_order_id: number;
+  fiscal_period_id: number;
+  document_date: string;
+  lines: ConfirmPurchaseReceiptLinePayload[];
+}
+
+export interface PurchaseReceiptSummary {
+  document_id: number;
+  document_number: string;
+  purchase_order_id: number;
+  purchase_order_number: string;
+  supplier_id: number;
+  supplier_name: string;
+  warehouse_id: number;
+  warehouse_name: string;
+  total_amount: string;
+  posted_at: string;
+}
+
+export interface ConfirmPurchaseReceiptResult {
+  document_id: number;
+  document_number: string;
+  purchase_order_id: number;
+  purchase_order_number: string;
+  supplier_id: number;
+  warehouse_id: number;
+  total_amount: string;
+  journal_document_id: number | null;
+  journal_document_number: string | null;
+  order_status: string;
+  posted_at: string;
+}
+
 export interface StockAdjustmentResult {
   document_id: number;
   document_number: string;

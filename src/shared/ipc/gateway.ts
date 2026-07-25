@@ -28,6 +28,16 @@ import type {
   StockAdjustmentReasonCode,
   StockAdjustmentResult,
   StockAdjustmentUnit,
+  ConfirmPurchaseReceiptPayload,
+  ConfirmPurchaseReceiptResult,
+  CreatePurchaseOrderPayload,
+  CreateSupplierPayload,
+  PurchaseOrderDetailDto,
+  PurchaseOrderSummary,
+  PurchaseReceiptSummary,
+  Supplier,
+  UpdatePurchaseOrderPayload,
+  UpdateSupplierPayload,
   Unit,
   VariantInput,
   Warehouse,
@@ -308,4 +318,68 @@ export function listCatalogProducts(sessionToken: string, search?: string): Prom
 
 export function getProductDetail(sessionToken: string, productId: number): Promise<ProductDetail> {
   return call<ProductDetail>(COMMANDS.GET_PRODUCT_DETAIL, { sessionToken, productId });
+}
+
+// Slice 3 — Procurement Gateway Methods
+export function createSupplier(sessionToken: string, payload: CreateSupplierPayload): Promise<Supplier> {
+  return call<Supplier>(COMMANDS.CREATE_SUPPLIER, { sessionToken, payload });
+}
+
+export function updateSupplier(sessionToken: string, payload: UpdateSupplierPayload): Promise<Supplier> {
+  return call<Supplier>(COMMANDS.UPDATE_SUPPLIER, { sessionToken, payload });
+}
+
+export function listSuppliers(sessionToken: string, includeInactive?: boolean): Promise<Supplier[]> {
+  return call<Supplier[]>(COMMANDS.LIST_SUPPLIERS, { sessionToken, includeInactive: includeInactive ?? false });
+}
+
+export function createPurchaseOrderDraft(sessionToken: string, payload: CreatePurchaseOrderPayload): Promise<unknown> {
+  return call(COMMANDS.CREATE_PURCHASE_ORDER_DRAFT, { sessionToken, payload });
+}
+
+export function updatePurchaseOrderDraft(sessionToken: string, payload: UpdatePurchaseOrderPayload): Promise<unknown> {
+  return call(COMMANDS.UPDATE_PURCHASE_ORDER_DRAFT, { sessionToken, payload });
+}
+
+export function confirmPurchaseOrder(sessionToken: string, purchaseOrderId: number): Promise<unknown> {
+  return call(COMMANDS.CONFIRM_PURCHASE_ORDER, { sessionToken, purchaseOrderId });
+}
+
+export function cancelPurchaseOrder(sessionToken: string, purchaseOrderId: number): Promise<unknown> {
+  return call(COMMANDS.CANCEL_PURCHASE_ORDER, { sessionToken, purchaseOrderId });
+}
+
+export function listPurchaseOrders(
+  sessionToken: string,
+  supplierId?: number | null,
+  status?: string | null
+): Promise<PurchaseOrderSummary[]> {
+  return call<PurchaseOrderSummary[]>(COMMANDS.LIST_PURCHASE_ORDERS, {
+    sessionToken,
+    supplierId: supplierId ?? null,
+    status: status ?? null,
+  });
+}
+
+export function getPurchaseOrderDetail(sessionToken: string, purchaseOrderId: number): Promise<PurchaseOrderDetailDto> {
+  return call<PurchaseOrderDetailDto>(COMMANDS.GET_PURCHASE_ORDER_DETAIL, { sessionToken, purchaseOrderId });
+}
+
+export function confirmPurchaseReceipt(
+  sessionToken: string,
+  payload: ConfirmPurchaseReceiptPayload
+): Promise<ConfirmPurchaseReceiptResult> {
+  return call<ConfirmPurchaseReceiptResult>(COMMANDS.CONFIRM_PURCHASE_RECEIPT, { sessionToken, payload });
+}
+
+export function listPurchaseReceipts(
+  sessionToken: string,
+  supplierId?: number | null,
+  purchaseOrderId?: number | null
+): Promise<PurchaseReceiptSummary[]> {
+  return call<PurchaseReceiptSummary[]>(COMMANDS.LIST_PURCHASE_RECEIPTS, {
+    sessionToken,
+    supplierId: supplierId ?? null,
+    purchaseOrderId: purchaseOrderId ?? null,
+  });
 }

@@ -60,6 +60,17 @@ pub fn run() {
             commands::documents::get_sale_document,
             commands::documents::list_sale_lines,
             commands::documents::list_document_jobs,
+            commands::procurement::create_supplier,
+            commands::procurement::update_supplier,
+            commands::procurement::list_suppliers,
+            commands::procurement::create_purchase_order_draft,
+            commands::procurement::update_purchase_order_draft,
+            commands::procurement::confirm_purchase_order,
+            commands::procurement::cancel_purchase_order,
+            commands::procurement::list_purchase_orders,
+            commands::procurement::get_purchase_order_detail,
+            commands::procurement::confirm_purchase_receipt,
+            commands::procurement::list_purchase_receipts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

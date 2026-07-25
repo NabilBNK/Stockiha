@@ -65,12 +65,18 @@ mod tests {
         assert_eq!(InventoryResidual::detect_at_zero_quantity(val), Some(val));
 
         let neg_val = Decimal::from_str("-0.0035").unwrap();
-        assert_eq!(InventoryResidual::detect_at_zero_quantity(neg_val), Some(neg_val));
+        assert_eq!(
+            InventoryResidual::detect_at_zero_quantity(neg_val),
+            Some(neg_val)
+        );
     }
 
     #[test]
     fn test_detect_at_zero_quantity_zero_or_material() {
-        assert_eq!(InventoryResidual::detect_at_zero_quantity(Decimal::ZERO), None);
+        assert_eq!(
+            InventoryResidual::detect_at_zero_quantity(Decimal::ZERO),
+            None
+        );
 
         let mat = Decimal::from_str("0.01").unwrap();
         assert_eq!(InventoryResidual::detect_at_zero_quantity(mat), None);
@@ -82,9 +88,15 @@ mod tests {
     #[test]
     fn test_is_material_discrepancy() {
         assert!(!InventoryResidual::is_material_discrepancy(Decimal::ZERO));
-        assert!(!InventoryResidual::is_material_discrepancy(Decimal::from_str("0.0099").unwrap()));
-        assert!(InventoryResidual::is_material_discrepancy(Decimal::from_str("0.01").unwrap()));
-        assert!(InventoryResidual::is_material_discrepancy(Decimal::from_str("-0.01").unwrap()));
+        assert!(!InventoryResidual::is_material_discrepancy(
+            Decimal::from_str("0.0099").unwrap()
+        ));
+        assert!(InventoryResidual::is_material_discrepancy(
+            Decimal::from_str("0.01").unwrap()
+        ));
+        assert!(InventoryResidual::is_material_discrepancy(
+            Decimal::from_str("-0.01").unwrap()
+        ));
     }
 
     #[test]
@@ -93,6 +105,9 @@ mod tests {
         assert_eq!(InventoryResidual::to_journal_amount(sub), Decimal::ZERO);
 
         let mat = Decimal::from_str("0.0150").unwrap();
-        assert_eq!(InventoryResidual::to_journal_amount(mat), Decimal::from_str("0.02").unwrap());
+        assert_eq!(
+            InventoryResidual::to_journal_amount(mat),
+            Decimal::from_str("0.02").unwrap()
+        );
     }
 }

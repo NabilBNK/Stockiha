@@ -16,11 +16,15 @@ export type AppView =
   | 'adjustment'
   | 'pos'
   | 'session'
-  | 'documents';
+  | 'documents'
+  | 'suppliers'
+  | 'purchase_orders';
 
 const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard' },
   { view: 'products', labelKey: 'nav.products' },
+  { view: 'suppliers', labelKey: 'nav.suppliers' },
+  { view: 'purchase_orders', labelKey: 'nav.purchaseOrders' },
   { view: 'stock', labelKey: 'nav.stockReceipt' },
   { view: 'adjustment', labelKey: 'nav.stockAdjustment' },
   { view: 'pos', labelKey: 'nav.pos' },

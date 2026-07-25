@@ -27,5 +27,9 @@
 
 # Stockiha — Slice 3 Tasks: Procurement & Supplier Purchasing
 
-- [ ] S3-001 Implement supplier master, purchase order workflow, and goods receipt posting
+- [x] S3-001 Implement supplier master, purchase order workflow, and goods receipt posting
+
+# Stockiha — Slice 4 Tasks: Customer Master & Credit Limits
+
+- [ ] S4-001 Implement customer directory, credit limit enforcement, and customer ledger tracking
 

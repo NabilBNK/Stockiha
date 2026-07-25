@@ -46,6 +46,18 @@ export const COMMANDS = {
   RESOLVE_BARCODE: 'resolve_barcode',
   LIST_CATALOG_PRODUCTS: 'list_catalog_products',
   GET_PRODUCT_DETAIL: 'get_product_detail',
+  // Slice 3 — Procurement & Purchase Orders
+  CREATE_SUPPLIER: 'create_supplier',
+  UPDATE_SUPPLIER: 'update_supplier',
+  LIST_SUPPLIERS: 'list_suppliers',
+  CREATE_PURCHASE_ORDER_DRAFT: 'create_purchase_order_draft',
+  UPDATE_PURCHASE_ORDER_DRAFT: 'update_purchase_order_draft',
+  CONFIRM_PURCHASE_ORDER: 'confirm_purchase_order',
+  CANCEL_PURCHASE_ORDER: 'cancel_purchase_order',
+  LIST_PURCHASE_ORDERS: 'list_purchase_orders',
+  GET_PURCHASE_ORDER_DETAIL: 'get_purchase_order_detail',
+  CONFIRM_PURCHASE_RECEIPT: 'confirm_purchase_receipt',
+  LIST_PURCHASE_RECEIPTS: 'list_purchase_receipts',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

@@ -5,6 +5,7 @@ pub mod cash_session;
 pub mod catalog;
 pub mod db_health;
 pub mod documents;
+pub mod procurement;
 pub mod reference;
 pub mod setup;
 pub mod stock_adjustment;

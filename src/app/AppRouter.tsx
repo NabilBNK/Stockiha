@@ -25,6 +25,8 @@ import { StockReceiptScreen } from '../features/inventory/StockReceiptScreen';
 import { PosScreen } from '../features/pos/PosScreen';
 import { CashSessionScreen } from '../features/cash-session/CashSessionScreen';
 import { DocumentsScreen } from '../features/documents/DocumentsScreen';
+import SuppliersScreen from '../features/procurement/SuppliersScreen';
+import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
 
@@ -84,7 +86,7 @@ export function AppRouter() {
 }
 
 function AuthenticatedApp() {
-  const { refreshActiveCashSession, clearSession } = useSession();
+  const { user, refreshActiveCashSession, clearSession } = useSession();
   const { error } = useAppData();
   const [view, setView] = useState<AppView>('dashboard');
 
@@ -109,6 +111,8 @@ function AuthenticatedApp() {
       {view === 'pos' && <PosScreen />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}
+      {view === 'suppliers' && <SuppliersScreen sessionToken={user?.token ?? ''} />}
+      {view === 'purchase_orders' && <PurchaseOrdersScreen sessionToken={user?.token ?? ''} />}
     </AppShell>
   );
 }
