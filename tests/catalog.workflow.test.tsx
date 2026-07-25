@@ -135,6 +135,38 @@ describe('create product with multiple variants', () => {
     expect(variants[1].sku).toBe('TSH-M');
     expect(variants[1].sale_price).toBe('12.00');
   });
+
+  it('successfully adds a new test product from client perspective', async () => {
+    let createdProductData: Record<string, unknown> | null = null;
+    wireInvoke(makeHandlers({
+      create_product_with_variants: (args) => {
+        createdProductData = args;
+        return { product_id: 99, variant_ids: [991] };
+      },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    const newBtn = await screen.findByTestId('new-product-btn');
+    fireEvent.click(newBtn);
+
+    fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Client Test Product' } });
+    const skuFields = screen.getAllByLabelText('SKU');
+    const priceFields = screen.getAllByLabelText('Sale price');
+    fireEvent.change(skuFields[0], { target: { value: 'TEST-CLIENT-01' } });
+    fireEvent.change(priceFields[0], { target: { value: '150.00' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => {
+      expect(createdProductData).not.toBeNull();
+    });
+
+    expect(createdProductData!.name).toBe('Client Test Product');
+    const vars = createdProductData!.variants as Array<Record<string, unknown>>;
+    expect(vars[0].sku).toBe('TEST-CLIENT-01');
+    expect(vars[0].sale_price).toBe('150.00');
+  });
 });
 
 describe('backend validation error display', () => {

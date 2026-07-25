@@ -18,13 +18,19 @@ export type AppView =
   | 'session'
   | 'documents'
   | 'suppliers'
-  | 'purchase_orders';
+  | 'purchase_orders'
+  | 'supplier_invoices'
+  | 'supplier_liabilities'
+  | 'supplier_returns';
 
 const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard' },
   { view: 'products', labelKey: 'nav.products' },
   { view: 'suppliers', labelKey: 'nav.suppliers' },
   { view: 'purchase_orders', labelKey: 'nav.purchaseOrders' },
+  { view: 'supplier_invoices', labelKey: 'nav.supplierInvoices' },
+  { view: 'supplier_liabilities', labelKey: 'nav.supplierLiabilities' },
+  { view: 'supplier_returns', labelKey: 'nav.supplierReturns' },
   { view: 'stock', labelKey: 'nav.stockReceipt' },
   { view: 'adjustment', labelKey: 'nav.stockAdjustment' },
   { view: 'pos', labelKey: 'nav.pos' },

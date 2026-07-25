@@ -58,6 +58,16 @@ export const COMMANDS = {
   GET_PURCHASE_ORDER_DETAIL: 'get_purchase_order_detail',
   CONFIRM_PURCHASE_RECEIPT: 'confirm_purchase_receipt',
   LIST_PURCHASE_RECEIPTS: 'list_purchase_receipts',
+  ALLOCATE_LANDED_COST: 'allocate_landed_cost',
+  CREATE_SUPPLIER_INVOICE_DRAFT: 'create_supplier_invoice_draft',
+  CONFIRM_SUPPLIER_INVOICE: 'confirm_supplier_invoice',
+  LIST_SUPPLIER_INVOICES: 'list_supplier_invoices',
+  LIST_SUPPLIER_LIABILITIES: 'list_supplier_liabilities',
+  CREATE_SUPPLIER_RETURN_DRAFT: 'create_supplier_return_draft',
+  CONFIRM_SUPPLIER_RETURN: 'confirm_supplier_return',
+  POST_SUPPLIER_PAYMENT: 'post_supplier_payment',
+  LIST_SUPPLIER_RETURNS: 'list_supplier_returns',
+  LIST_SUPPLIER_PAYMENTS: 'list_supplier_payments',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

@@ -314,3 +314,116 @@ export interface StockAdjustmentResult {
   resulting_total_value: string;
   reason_code: StockAdjustmentReasonCode;
 }
+
+export interface AllocateLandedCostPayload {
+  request_id: string;
+  receipt_id: number;
+  landed_cost_amount: string;
+  allocation_method: 'BY_QTY' | 'BY_VALUE' | 'EQUAL_PER_LINE';
+  fiscal_period_id: number;
+  document_date: string;
+  note?: string | null;
+}
+
+export interface CreateSupplierInvoiceLinePayload {
+  line_number: number;
+  po_line_id?: number | null;
+  receipt_line_id?: number | null;
+  variant_id: number;
+  quantity: string;
+  unit_cost: string;
+}
+
+export interface CreateSupplierInvoicePayload {
+  supplier_id: number;
+  purchase_order_id?: number | null;
+  currency_code?: string | null;
+  exchange_rate_to_dzd?: string | null;
+  note?: string | null;
+  lines: CreateSupplierInvoiceLinePayload[];
+}
+
+export interface ConfirmSupplierInvoicePayload {
+  request_id: string;
+  invoice_doc_id: number;
+  fiscal_period_id: number;
+  document_date: string;
+}
+
+export interface SupplierInvoiceSummary {
+  document_id: number;
+  document_number: string | null;
+  supplier_id: number;
+  supplier_name: string;
+  status: string;
+  currency_code: string;
+  foreign_total_amount: string;
+  base_total_amount: string;
+  created_at: string;
+}
+
+export interface SupplierLiabilityDto {
+  id: number;
+  supplier_id: number;
+  supplier_code: string;
+  supplier_name: string;
+  document_id: number | null;
+  original_amount: string;
+  remaining_amount: string;
+  due_date: string | null;
+  created_at: string;
+}
+
+export interface CreateSupplierReturnLinePayload {
+  variant_id: number;
+  quantity: string;
+  unit_cost: string;
+}
+
+export interface CreateSupplierReturnPayload {
+  supplier_id: number;
+  warehouse_id: number;
+  purchase_order_id?: number | null;
+  reason_code?: string | null;
+  note?: string | null;
+  lines: CreateSupplierReturnLinePayload[];
+}
+
+export interface ConfirmSupplierReturnPayload {
+  request_id: string;
+  return_document_id: number;
+  fiscal_period_id: number;
+  document_date: string;
+}
+
+export interface PostSupplierPaymentPayload {
+  request_id: string;
+  supplier_id: number;
+  liability_id?: number | null;
+  amount: string;
+  payment_method: string;
+  fiscal_period_id: number;
+  document_date: string;
+  note?: string | null;
+}
+
+export interface SupplierReturnSummary {
+  document_id: number;
+  document_number: string | null;
+  supplier_id: number;
+  supplier_name: string;
+  warehouse_id: number;
+  status: string;
+  reason_code: string;
+  created_at: string;
+}
+
+export interface SupplierPaymentDto {
+  document_id: number;
+  document_number: string | null;
+  supplier_id: number;
+  supplier_name: string;
+  payment_method: string;
+  amount: string;
+  created_at: string;
+}
