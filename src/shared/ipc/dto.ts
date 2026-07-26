@@ -538,3 +538,87 @@ export interface CreditOverrideTokenResult {
   expires_at: string;
 }
 
+// ── Slice 5: Customer Returns, Warehouse Transfers & Stock Write-Offs ────────
+
+export interface ReturnLinePayload {
+  variant_id: number;
+  quantity: string;
+  unit_price: string;
+}
+
+export interface ConfirmCustomerReturnPayload {
+  request_id: string;
+  customer_id?: number | null;
+  cash_session_id?: number | null;
+  warehouse_id: number;
+  refund_method: 'CASH' | 'CREDIT_NOTE' | 'BANK_TRANSFER';
+  fiscal_period_id: number;
+  document_date: string;
+  lines: ReturnLinePayload[];
+  note?: string | null;
+}
+
+export interface TransferLinePayload {
+  variant_id: number;
+  quantity: string;
+}
+
+export interface ConfirmWarehouseTransferPayload {
+  request_id: string;
+  from_warehouse_id: number;
+  to_warehouse_id: number;
+  fiscal_period_id: number;
+  document_date: string;
+  lines: TransferLinePayload[];
+  note?: string | null;
+}
+
+export interface WriteOffLinePayload {
+  variant_id: number;
+  quantity: string;
+  unit_cost: string;
+}
+
+export interface ConfirmStockWriteOffPayload {
+  request_id: string;
+  warehouse_id: number;
+  reason_code: 'DAMAGED' | 'EXPIRED' | 'DEFECTIVE' | 'STOLEN' | 'OTHER';
+  fiscal_period_id: number;
+  document_date: string;
+  lines: WriteOffLinePayload[];
+  note?: string | null;
+}
+
+export interface CustomerReturnDto {
+  id: number;
+  document_id: number;
+  document_number: string;
+  customer_name: string;
+  refund_method: string;
+  total_amount: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface WarehouseTransferDto {
+  id: number;
+  document_id: number;
+  document_number: string;
+  from_warehouse_name: string;
+  to_warehouse_name: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface StockWriteOffDto {
+  id: number;
+  document_id: number;
+  document_number: string;
+  warehouse_name: string;
+  reason_code: string;
+  total_cost: string;
+  note: string | null;
+  created_at: string;
+}
+
+

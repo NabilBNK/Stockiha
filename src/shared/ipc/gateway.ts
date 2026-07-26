@@ -557,3 +557,49 @@ export function generateCreditOverrideToken(
   });
 }
 
+export function confirmCustomerReturn(
+  sessionToken: string,
+  payload: import('./dto').ConfirmCustomerReturnPayload
+): Promise<unknown> {
+  return call(COMMANDS.CONFIRM_CUSTOMER_RETURN, { sessionToken, payload });
+}
+
+export function confirmWarehouseTransfer(
+  sessionToken: string,
+  payload: import('./dto').ConfirmWarehouseTransferPayload
+): Promise<unknown> {
+  return call(COMMANDS.CONFIRM_WAREHOUSE_TRANSFER, { sessionToken, payload });
+}
+
+export function confirmStockWriteOff(
+  sessionToken: string,
+  payload: import('./dto').ConfirmStockWriteOffPayload
+): Promise<unknown> {
+  return call(COMMANDS.CONFIRM_STOCK_WRITEOFF, { sessionToken, payload });
+}
+
+export function listCustomerReturns(
+  sessionToken: string
+): Promise<import('./dto').CustomerReturnDto[]> {
+  return call<import('./dto').CustomerReturnDto[]>(COMMANDS.LIST_CUSTOMER_RETURNS, {
+    sessionToken,
+  });
+}
+
+export function listWarehouseTransfers(
+  sessionToken: string
+): Promise<import('./dto').WarehouseTransferDto[]> {
+  return call<import('./dto').WarehouseTransferDto[]>(COMMANDS.LIST_WAREHOUSE_TRANSFERS, {
+    sessionToken,
+  });
+}
+
+export function listStockWriteOffs(
+  sessionToken: string
+): Promise<import('./dto').StockWriteOffDto[]> {
+  return call<import('./dto').StockWriteOffDto[]>(COMMANDS.LIST_STOCK_WRITEOFFS, {
+    sessionToken,
+  });
+}
+
+

@@ -1,20 +1,20 @@
 # Current Slice Status
 
 ## Active Context
-- **Current Phase:** Slice 4 Customer Master & Credit Limits
-- **Current Task:** S4-002 — Implement cashier session management (suspend, resume, blind counts, denomination entries, variance approvals) and single-use manager override tokens
+- **Current Phase:** Slice 5 Customer Returns, Warehouse Transfers & Stock Write-Offs
+- **Current Task:** S5-001 — Implement instant POS customer returns, flexible refund payouts, 1-step warehouse transfers, and stock write-offs
 - **Implementation Status:** Completed & Verified
 
 ## Objectives Achieved
-1. Customer master directory, credit limits, and customer ledger tracking (`S4-001`).
-2. Advanced cashier session state machine (`OPEN` <-> `SUSPENDED`, `OPEN` -> `PENDING_APPROVAL` / `CLOSED`), denomination count entry, and manager variance approvals (`S4-002`).
-3. Single-use manager authorization tokens for credit limit overrides linked to payload hash (`S4-002`).
+1. Instant POS customer returns with immediate restocking and flexible refund payouts (Cash drawer payout, Store credit note, or Bank transfer).
+2. 1-step instant stock transfers between store locations/warehouses.
+3. Damaged goods stock write-offs with reason codes (Damaged, Expired, Defective, Stolen, Other) and loss accounting.
 
 ## Included Task IDs
-- `S4-001`
-- `S4-002`
+- `S5-001`
 
 ## Verification Status
-- Database Migrations: `20260725150000`, `20260725150100`, `20260726200000`, `20260726200100` applied to `stockiha_test` & `stockiha_dev`.
-- SQL Integration Tests: `s4_001_customer_and_credit_integration.sql` (10/10 passed), `s4_002_cash_session_adv_integration.sql` (9/9 passed).
+- Database Migrations: `20260726210000`, `20260726210100` applied to `stockiha_test` & `stockiha_dev`.
+- SQL Integration Tests: `s5_001_returns_transfers_integration.sql` (3/3 passed).
+- Rust Suite: `cargo check` PASS, `cargo test` PASS.
 - Frontend Suite: `typecheck` PASS, `lint` PASS, Vitest `73/73 passed`, `build` PASS.

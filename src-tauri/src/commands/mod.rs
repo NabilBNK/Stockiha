@@ -9,6 +9,7 @@ pub mod db_health;
 pub mod documents;
 pub mod procurement;
 pub mod reference;
+pub mod returns_transfers;
 pub mod setup;
 pub mod stock_adjustment;
 pub mod stock_receipt;

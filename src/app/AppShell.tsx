@@ -23,7 +23,9 @@ export type AppView =
   | 'supplier_liabilities'
   | 'supplier_returns'
   | 'customers'
-  | 'customer_liabilities';
+  | 'customer_liabilities'
+  | 'transfers'
+  | 'write_offs';
 
 const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard' },
@@ -37,10 +39,13 @@ const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'customer_liabilities', labelKey: 'nav.customerLiabilities' },
   { view: 'stock', labelKey: 'nav.stockReceipt' },
   { view: 'adjustment', labelKey: 'nav.stockAdjustment' },
+  { view: 'transfers', labelKey: 'nav.transfers' },
+  { view: 'write_offs', labelKey: 'nav.writeOffs' },
   { view: 'pos', labelKey: 'nav.pos' },
   { view: 'session', labelKey: 'nav.cashSession' },
   { view: 'documents', labelKey: 'nav.documents' },
 ];
+
 
 const LOCALE_LABELS: Record<Locale, string> = { fr: 'FR', ar: 'ع', en: 'EN' };
 

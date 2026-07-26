@@ -92,8 +92,15 @@ pub fn run() {
             commands::cash_session::approve_session_variance,
             commands::cash_session::list_pending_variance_sessions,
             commands::credit_override::generate_credit_override_token,
+            commands::returns_transfers::confirm_customer_return,
+            commands::returns_transfers::confirm_warehouse_transfer,
+            commands::returns_transfers::confirm_stock_write_off,
+            commands::returns_transfers::list_customer_returns,
+            commands::returns_transfers::list_warehouse_transfers,
+            commands::returns_transfers::list_stock_write_offs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
 

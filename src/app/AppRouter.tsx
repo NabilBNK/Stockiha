@@ -32,8 +32,11 @@ import { SupplierLiabilitiesScreen } from '../features/procurement/SupplierLiabi
 import { SupplierReturnsScreen } from '../features/procurement/SupplierReturnsScreen';
 import { CustomersScreen } from '../features/sales/CustomersScreen';
 import { CustomerLiabilitiesScreen } from '../features/sales/CustomerLiabilitiesScreen';
+import { WarehouseTransferScreen } from '../features/inventory/WarehouseTransferScreen';
+import { StockWriteOffScreen } from '../features/inventory/StockWriteOffScreen';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
+
 
 export function AppRouter() {
   const { t } = useI18n();
@@ -113,6 +116,8 @@ function AuthenticatedApp() {
       {view === 'products' && <ProductsScreen />}
       {view === 'stock' && <StockReceiptScreen />}
       {view === 'adjustment' && <StockAdjustmentScreen />}
+      {view === 'transfers' && <WarehouseTransferScreen />}
+      {view === 'write_offs' && <StockWriteOffScreen />}
       {view === 'pos' && <PosScreen />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}

@@ -79,7 +79,14 @@ export const COMMANDS = {
   APPROVE_CASH_VARIANCE: 'approve_session_variance',
   LIST_PENDING_VARIANCE_SESSIONS: 'list_pending_variance_sessions',
   GENERATE_CREDIT_OVERRIDE_TOKEN: 'generate_credit_override_token',
+  CONFIRM_CUSTOMER_RETURN: 'confirm_customer_return',
+  CONFIRM_WAREHOUSE_TRANSFER: 'confirm_warehouse_transfer',
+  CONFIRM_STOCK_WRITEOFF: 'confirm_stock_write_off',
+  LIST_CUSTOMER_RETURNS: 'list_customer_returns',
+  LIST_WAREHOUSE_TRANSFERS: 'list_warehouse_transfers',
+  LIST_STOCK_WRITEOFFS: 'list_stock_write_offs',
 } as const;
+
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];
 

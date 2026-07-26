@@ -36,4 +36,9 @@
 - [x] S4-001 Implement customer directory, credit limit enforcement, and customer ledger tracking
 - [x] S4-002 Implement cashier session management (suspend, resume, blind counts, denomination entries, variance approvals) and single-use manager override tokens
 
+# Stockiha — Slice 5 Tasks: Customer Returns, Warehouse Transfers & Stock Write-Offs
+
+- [x] S5-001 Implement instant POS customer returns, flexible refund payouts (cash drawer, credit note, bank), 1-step warehouse stock transfers, and damaged stock write-offs
+
+
 
