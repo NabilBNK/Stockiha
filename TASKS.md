@@ -33,5 +33,5 @@
 
 # Stockiha — Slice 4 Tasks: Customer Master & Credit Limits
 
-- [ ] S4-001 Implement customer directory, credit limit enforcement, and customer ledger tracking
+- [x] S4-001 Implement customer directory, credit limit enforcement, and customer ledger tracking
 
