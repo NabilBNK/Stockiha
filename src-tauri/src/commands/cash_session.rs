@@ -36,6 +36,7 @@ pub(crate) struct ActiveCashSessionResponse {
     pub warehouse_id: i64,
     pub opened_by_user_id: i64,
     pub opening_float: Decimal,
+    pub status: String,
     #[serde(with = "time::serde::rfc3339")]
     pub opened_at: OffsetDateTime,
 }
@@ -55,11 +56,13 @@ pub(crate) async fn inspect_active_cash_session(
                 warehouse_id: session.warehouse_id,
                 opened_by_user_id: session.opened_by_user_id,
                 opening_float: session.opening_float,
+                status: session.status,
                 opened_at: session.opened_at,
             })
         })
         .map_err(IpcError::from)
 }
+
 
 #[tauri::command]
 pub(crate) async fn close_cash_session(
@@ -111,3 +114,64 @@ pub(crate) async fn get_cash_session(
         })
         .map_err(IpcError::from)
 }
+
+#[tauri::command]
+pub(crate) async fn suspend_cash_session(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    cash_session_id: i64,
+) -> Result<serde_json::Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::suspend_cash_session(pool, &session_token, cash_session_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn resume_cash_session(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    cash_session_id: i64,
+) -> Result<serde_json::Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::resume_cash_session(pool, &session_token, cash_session_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn submit_session_closing(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    payload: crate::domain::cash_session::SubmitClosingPayload,
+) -> Result<serde_json::Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::submit_session_closing(pool, &session_token, payload)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn approve_session_variance(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    cash_session_id: i64,
+    manager_note: Option<String>,
+) -> Result<serde_json::Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::approve_session_variance(pool, &session_token, cash_session_id, manager_note)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn list_pending_variance_sessions(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<Vec<crate::domain::cash_session::PendingVarianceSessionDto>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::list_pending_variance_sessions(pool, &session_token)
+        .await
+        .map_err(IpcError::from)
+}
+

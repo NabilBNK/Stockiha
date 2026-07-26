@@ -509,3 +509,51 @@ export function postCustomerPayment(
 ): Promise<unknown> {
   return call(COMMANDS.POST_CUSTOMER_PAYMENT, { sessionToken, payload });
 }
+
+export function suspendCashSession(
+  sessionToken: string,
+  cashSessionId: number
+): Promise<unknown> {
+  return call(COMMANDS.SUSPEND_CASH_SESSION, { sessionToken, cashSessionId });
+}
+
+export function resumeCashSession(
+  sessionToken: string,
+  cashSessionId: number
+): Promise<unknown> {
+  return call(COMMANDS.RESUME_CASH_SESSION, { sessionToken, cashSessionId });
+}
+
+export function submitSessionClosing(
+  sessionToken: string,
+  payload: import('./dto').SubmitClosingPayload
+): Promise<unknown> {
+  return call(COMMANDS.SUBMIT_SESSION_CLOSING, { sessionToken, payload });
+}
+
+export function approveSessionVariance(
+  sessionToken: string,
+  cashSessionId: number,
+  managerNote?: string | null
+): Promise<unknown> {
+  return call(COMMANDS.APPROVE_CASH_VARIANCE, { sessionToken, cashSessionId, managerNote });
+}
+
+export function listPendingVarianceSessions(
+  sessionToken: string
+): Promise<import('./dto').PendingVarianceSessionDto[]> {
+  return call<import('./dto').PendingVarianceSessionDto[]>(COMMANDS.LIST_PENDING_VARIANCE_SESSIONS, {
+    sessionToken,
+  });
+}
+
+export function generateCreditOverrideToken(
+  sessionToken: string,
+  payload: import('./dto').GenerateCreditOverridePayload
+): Promise<import('./dto').CreditOverrideTokenResult> {
+  return call<import('./dto').CreditOverrideTokenResult>(COMMANDS.GENERATE_CREDIT_OVERRIDE_TOKEN, {
+    sessionToken,
+    payload,
+  });
+}
+

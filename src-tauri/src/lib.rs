@@ -86,7 +86,14 @@ pub fn run() {
             commands::customer::list_customer_liabilities,
             commands::customer::list_customer_payments,
             commands::customer::post_customer_payment,
+            commands::cash_session::suspend_cash_session,
+            commands::cash_session::resume_cash_session,
+            commands::cash_session::submit_session_closing,
+            commands::cash_session::approve_session_variance,
+            commands::cash_session::list_pending_variance_sessions,
+            commands::credit_override::generate_credit_override_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

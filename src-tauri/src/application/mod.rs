@@ -18,6 +18,7 @@ pub(crate) mod auth;
 pub(crate) mod cash_sale;
 pub(crate) mod cash_session;
 pub(crate) mod catalog;
+pub(crate) mod credit_override;
 pub(crate) mod customer_service;
 pub(crate) mod dashboard;
 pub(crate) mod documents;

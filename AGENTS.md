@@ -190,3 +190,6 @@ Product
 → Document generation job
 → Print job
 → Drawer-pulse job
+
+## Client Perspective Communication Rule
+Whenever reporting additions, edits, or removals from the application, explain all changes in non-technical terms from the end-user / business client's perspective (how it works in the store, how cashiers/managers use it, business benefits), avoiding technical jargon (such as table schemas, IPC commands, functions, or internal code details) unless specifically asked.

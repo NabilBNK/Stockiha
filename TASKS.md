@@ -34,4 +34,6 @@
 # Stockiha — Slice 4 Tasks: Customer Master & Credit Limits
 
 - [x] S4-001 Implement customer directory, credit limit enforcement, and customer ledger tracking
+- [x] S4-002 Implement cashier session management (suspend, resume, blind counts, denomination entries, variance approvals) and single-use manager override tokens
+
 

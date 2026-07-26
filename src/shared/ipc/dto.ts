@@ -58,8 +58,10 @@ export interface ActiveCashSession {
   warehouse_id: number;
   opened_by_user_id: number;
   opening_float: string;
+  status: string;
   opened_at: string;
 }
+
 
 export interface CashSessionDetail {
   id: number;
@@ -494,3 +496,45 @@ export interface PostCustomerPaymentPayload {
   document_date: string;
   note?: string | null;
 }
+
+// ── S4-002: Advanced Cash Sessions & Credit Override Tokens ─────────────────
+
+export interface DenominationInput {
+  denomination: number;
+  bill_count: number;
+}
+
+export interface SubmitClosingPayload {
+  cash_session_id: number;
+  denominations: DenominationInput[];
+}
+
+export interface PendingVarianceSessionDto {
+  id: number;
+  warehouse_id: number;
+  workstation_id: string;
+  opened_by_user_id: number;
+  opened_by_name: string;
+  closed_by_user_id: number | null;
+  closed_by_name: string | null;
+  status: string;
+  opening_float: string;
+  expected_amount: string;
+  counted_amount: string;
+  variance_amount: string;
+  opened_at: string;
+  closed_at: string | null;
+}
+
+export interface GenerateCreditOverridePayload {
+  customer_id: number;
+  payload_hash: string;
+  valid_minutes?: number;
+}
+
+export interface CreditOverrideTokenResult {
+  token: string;
+  customer_id: number;
+  expires_at: string;
+}
+

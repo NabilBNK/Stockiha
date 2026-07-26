@@ -17,6 +17,7 @@ pub(crate) struct ActiveCashSession {
     pub warehouse_id: i64,
     pub opened_by_user_id: i64,
     pub opening_float: Decimal,
+    pub status: String,
     pub opened_at: OffsetDateTime,
 }
 
@@ -43,8 +44,8 @@ pub(crate) async fn inspect_active_cash_session(
     session_token: &str,
     workstation_id: &str,
 ) -> Result<Option<ActiveCashSession>, AppError> {
-    let row = sqlx::query_as::<_, (i64, i64, i64, Decimal, OffsetDateTime)>(
-        "SELECT id, warehouse_id, opened_by_user_id, opening_float, opened_at \
+    let row = sqlx::query_as::<_, (i64, i64, i64, Decimal, String, OffsetDateTime)>(
+        "SELECT id, warehouse_id, opened_by_user_id, opening_float, status, opened_at \
          FROM sales.inspect_active_cash_session($1, $2)",
     )
     .bind(session_token)
@@ -54,15 +55,17 @@ pub(crate) async fn inspect_active_cash_session(
     .map_err(AppError::from_posting_error)?;
 
     Ok(row.map(
-        |(id, warehouse_id, opened_by_user_id, opening_float, opened_at)| ActiveCashSession {
+        |(id, warehouse_id, opened_by_user_id, opening_float, status, opened_at)| ActiveCashSession {
             id,
             warehouse_id,
             opened_by_user_id,
             opening_float,
+            status,
             opened_at,
         },
     ))
 }
+
 
 pub(crate) async fn close_cash_session(
     pool: &PgPool,
@@ -141,3 +144,91 @@ pub(crate) async fn get_cash_session(
         closed_at: r.8.map(rfc3339),
     }))
 }
+
+pub(crate) async fn suspend_cash_session(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+) -> Result<serde_json::Value, AppError> {
+    let res: serde_json::Value =
+        sqlx::query_scalar("SELECT sales.suspend_cash_session($1, $2)")
+            .bind(session_token)
+            .bind(cash_session_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+    Ok(res)
+}
+
+pub(crate) async fn resume_cash_session(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+) -> Result<serde_json::Value, AppError> {
+    let res: serde_json::Value =
+        sqlx::query_scalar("SELECT sales.resume_cash_session($1, $2)")
+            .bind(session_token)
+            .bind(cash_session_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+    Ok(res)
+}
+
+pub(crate) async fn submit_session_closing(
+    pool: &PgPool,
+    session_token: &str,
+    payload: crate::domain::cash_session::SubmitClosingPayload,
+) -> Result<serde_json::Value, AppError> {
+    let denoms_json = serde_json::to_value(&payload.denominations).map_err(|e| {
+        AppError::ValidationError {
+            diagnostic: format!("Invalid denominations payload: {e}"),
+        }
+    })?;
+
+    let res: serde_json::Value =
+        sqlx::query_scalar("SELECT sales.submit_session_closing($1, $2, $3)")
+            .bind(session_token)
+            .bind(payload.cash_session_id)
+            .bind(denoms_json)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+    Ok(res)
+}
+
+pub(crate) async fn approve_session_variance(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+    manager_note: Option<String>,
+) -> Result<serde_json::Value, AppError> {
+    let res: serde_json::Value =
+        sqlx::query_scalar("SELECT sales.approve_session_variance($1, $2, $3)")
+            .bind(session_token)
+            .bind(cash_session_id)
+            .bind(manager_note)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+    Ok(res)
+}
+
+pub(crate) async fn list_pending_variance_sessions(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<Vec<crate::domain::cash_session::PendingVarianceSessionDto>, AppError> {
+    let res: serde_json::Value =
+        sqlx::query_scalar("SELECT sales.list_pending_variance_sessions($1)")
+            .bind(session_token)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    let sessions: Vec<crate::domain::cash_session::PendingVarianceSessionDto> =
+        serde_json::from_value(res).map_err(|e| {
+            AppError::internal(format!("Failed to parse pending variance sessions: {e}"))
+        })?;
+    Ok(sessions)
+}
+

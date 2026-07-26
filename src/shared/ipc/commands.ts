@@ -73,6 +73,13 @@ export const COMMANDS = {
   LIST_CUSTOMER_LIABILITIES: 'list_customer_liabilities',
   LIST_CUSTOMER_PAYMENTS: 'list_customer_payments',
   POST_CUSTOMER_PAYMENT: 'post_customer_payment',
+  SUSPEND_CASH_SESSION: 'suspend_cash_session',
+  RESUME_CASH_SESSION: 'resume_cash_session',
+  SUBMIT_SESSION_CLOSING: 'submit_session_closing',
+  APPROVE_CASH_VARIANCE: 'approve_session_variance',
+  LIST_PENDING_VARIANCE_SESSIONS: 'list_pending_variance_sessions',
+  GENERATE_CREDIT_OVERRIDE_TOKEN: 'generate_credit_override_token',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];
+
