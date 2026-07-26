@@ -465,3 +465,47 @@ export function listSupplierPayments(
     supplierId: supplierId ?? null,
   });
 }
+
+export function createCustomer(
+  sessionToken: string,
+  payload: import('./dto').CreateCustomerPayload
+): Promise<import('./dto').Customer> {
+  return call<import('./dto').Customer>(COMMANDS.CREATE_CUSTOMER, { sessionToken, payload });
+}
+
+export function listCustomers(
+  sessionToken: string,
+  includeInactive?: boolean
+): Promise<import('./dto').Customer[]> {
+  return call<import('./dto').Customer[]>(COMMANDS.LIST_CUSTOMERS, {
+    sessionToken,
+    includeInactive: includeInactive ?? false,
+  });
+}
+
+export function listCustomerLiabilities(
+  sessionToken: string,
+  customerId?: number | null
+): Promise<import('./dto').CustomerLiabilityDto[]> {
+  return call<import('./dto').CustomerLiabilityDto[]>(COMMANDS.LIST_CUSTOMER_LIABILITIES, {
+    sessionToken,
+    customerId: customerId ?? null,
+  });
+}
+
+export function listCustomerPayments(
+  sessionToken: string,
+  customerId?: number | null
+): Promise<import('./dto').CustomerPaymentDto[]> {
+  return call<import('./dto').CustomerPaymentDto[]>(COMMANDS.LIST_CUSTOMER_PAYMENTS, {
+    sessionToken,
+    customerId: customerId ?? null,
+  });
+}
+
+export function postCustomerPayment(
+  sessionToken: string,
+  payload: import('./dto').PostCustomerPaymentPayload
+): Promise<unknown> {
+  return call(COMMANDS.POST_CUSTOMER_PAYMENT, { sessionToken, payload });
+}

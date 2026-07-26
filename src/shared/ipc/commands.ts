@@ -68,6 +68,11 @@ export const COMMANDS = {
   POST_SUPPLIER_PAYMENT: 'post_supplier_payment',
   LIST_SUPPLIER_RETURNS: 'list_supplier_returns',
   LIST_SUPPLIER_PAYMENTS: 'list_supplier_payments',
+  CREATE_CUSTOMER: 'create_customer',
+  LIST_CUSTOMERS: 'list_customers',
+  LIST_CUSTOMER_LIABILITIES: 'list_customer_liabilities',
+  LIST_CUSTOMER_PAYMENTS: 'list_customer_payments',
+  POST_CUSTOMER_PAYMENT: 'post_customer_payment',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

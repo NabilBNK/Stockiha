@@ -21,7 +21,9 @@ export type AppView =
   | 'purchase_orders'
   | 'supplier_invoices'
   | 'supplier_liabilities'
-  | 'supplier_returns';
+  | 'supplier_returns'
+  | 'customers'
+  | 'customer_liabilities';
 
 const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard' },
@@ -31,6 +33,8 @@ const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'supplier_invoices', labelKey: 'nav.supplierInvoices' },
   { view: 'supplier_liabilities', labelKey: 'nav.supplierLiabilities' },
   { view: 'supplier_returns', labelKey: 'nav.supplierReturns' },
+  { view: 'customers', labelKey: 'nav.customers' },
+  { view: 'customer_liabilities', labelKey: 'nav.customerLiabilities' },
   { view: 'stock', labelKey: 'nav.stockReceipt' },
   { view: 'adjustment', labelKey: 'nav.stockAdjustment' },
   { view: 'pos', labelKey: 'nav.pos' },

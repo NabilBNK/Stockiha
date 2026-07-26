@@ -427,3 +427,70 @@ export interface SupplierPaymentDto {
   amount: string;
   created_at: string;
 }
+
+// ── S4-001: Customer Master & Credit ────────────────────────────────────────
+
+export interface Customer {
+  id: number;
+  code: string;
+  name: string;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  tax_id: string | null;
+  credit_limit_amount: string;
+  max_overdue_days: number;
+  is_active: boolean;
+  exposure_amount: string;
+  created_at: string;
+}
+
+export interface CreateCustomerPayload {
+  code: string;
+  name: string;
+  contact_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  tax_id?: string | null;
+  credit_limit_amount: string;
+  max_overdue_days: number;
+}
+
+export interface CustomerLiabilityDto {
+  id: number;
+  customer_id: number;
+  customer_name: string;
+  customer_code: string;
+  original_amount: string;
+  remaining_amount: string;
+  due_date: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface CustomerPaymentDto {
+  id: number;
+  customer_id: number;
+  customer_name: string;
+  customer_code: string;
+  liability_id: number | null;
+  amount: string;
+  payment_method: string;
+  document_number: string | null;
+  document_date: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface PostCustomerPaymentPayload {
+  request_id: string;
+  customer_id: number;
+  liability_id: number;
+  amount: string;
+  payment_method: 'CASH' | 'BANK_TRANSFER' | 'CHECK';
+  fiscal_period_id: number;
+  document_date: string;
+  note?: string | null;
+}
