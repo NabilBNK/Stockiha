@@ -25,7 +25,8 @@ export type AppView =
   | 'customers'
   | 'customer_liabilities'
   | 'transfers'
-  | 'write_offs';
+  | 'write_offs'
+  | 'print_queue';
 
 const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard' },
@@ -43,8 +44,10 @@ const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'write_offs', labelKey: 'nav.writeOffs' },
   { view: 'pos', labelKey: 'nav.pos' },
   { view: 'session', labelKey: 'nav.cashSession' },
+  { view: 'print_queue', labelKey: 'nav.printQueue' },
   { view: 'documents', labelKey: 'nav.documents' },
 ];
+
 
 
 const LOCALE_LABELS: Record<Locale, string> = { fr: 'FR', ar: 'ع', en: 'EN' };

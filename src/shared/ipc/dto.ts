@@ -621,4 +621,34 @@ export interface StockWriteOffDto {
   created_at: string;
 }
 
+// ── Slice 6: Print Queue & Official Document Templates ────────────────────────
+
+export interface EnqueuePrintJobPayload {
+  document_id: number;
+  job_type: 'THERMAL_RECEIPT' | 'PDF_INVOICE' | 'DRAWER_PULSE';
+  format: 'ESC_POS_80MM' | 'PDF_A4' | 'PDF_A5';
+  printer_name?: string | null;
+}
+
+export interface UpdatePrintJobStatusPayload {
+  job_id: number;
+  status: 'COMPLETED' | 'FAILED';
+  error_message?: string | null;
+}
+
+export interface PrintJobDto {
+  id: number;
+  document_id: number | null;
+  document_number: string | null;
+  document_type: string | null;
+  job_type: string;
+  format: string;
+  status: string;
+  printer_name: string | null;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+
 

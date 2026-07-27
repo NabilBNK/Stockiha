@@ -40,5 +40,10 @@
 
 - [x] S5-001 Implement instant POS customer returns, flexible refund payouts (cash drawer, credit note, bank), 1-step warehouse stock transfers, and damaged stock write-offs
 
+# Stockiha — Slice 6 Tasks: Official Document Templates & ESC/POS Printing Engine
+
+- [x] S6-001 Implement official document sequence numbering, Typst PDF rendering (French/Arabic), ESC/POS thermal printing queue, and cash drawer pulse triggers
+
+
 
 

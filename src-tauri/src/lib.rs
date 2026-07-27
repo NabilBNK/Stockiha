@@ -98,9 +98,13 @@ pub fn run() {
             commands::returns_transfers::list_customer_returns,
             commands::returns_transfers::list_warehouse_transfers,
             commands::returns_transfers::list_stock_write_offs,
+            commands::printing::enqueue_print_job,
+            commands::printing::list_print_jobs,
+            commands::printing::update_print_job_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
 
 

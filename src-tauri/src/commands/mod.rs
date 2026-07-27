@@ -8,6 +8,7 @@ pub mod customer;
 pub mod db_health;
 pub mod documents;
 pub mod procurement;
+pub mod printing;
 pub mod reference;
 pub mod returns_transfers;
 pub mod setup;

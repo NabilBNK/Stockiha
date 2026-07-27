@@ -602,4 +602,27 @@ export function listStockWriteOffs(
   });
 }
 
+export function enqueuePrintJob(
+  sessionToken: string,
+  payload: import('./dto').EnqueuePrintJobPayload
+): Promise<number> {
+  return call<number>(COMMANDS.ENQUEUE_PRINT_JOB, { sessionToken, payload });
+}
+
+export function listPrintJobs(
+  sessionToken: string
+): Promise<import('./dto').PrintJobDto[]> {
+  return call<import('./dto').PrintJobDto[]>(COMMANDS.LIST_PRINT_JOBS, {
+    sessionToken,
+  });
+}
+
+export function updatePrintJobStatus(
+  sessionToken: string,
+  payload: import('./dto').UpdatePrintJobStatusPayload
+): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_PRINT_JOB_STATUS, { sessionToken, payload });
+}
+
+
 

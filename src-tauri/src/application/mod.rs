@@ -24,6 +24,7 @@ pub(crate) mod dashboard;
 pub(crate) mod documents;
 pub(crate) mod fiscal;
 pub(crate) mod procurement_service;
+pub(crate) mod printing_service;
 pub(crate) mod returns_transfers_service;
 pub(crate) mod setup;
 pub(crate) mod stock_adjustment;

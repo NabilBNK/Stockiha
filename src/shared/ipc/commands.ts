@@ -85,7 +85,11 @@ export const COMMANDS = {
   LIST_CUSTOMER_RETURNS: 'list_customer_returns',
   LIST_WAREHOUSE_TRANSFERS: 'list_warehouse_transfers',
   LIST_STOCK_WRITEOFFS: 'list_stock_write_offs',
+  ENQUEUE_PRINT_JOB: 'enqueue_print_job',
+  LIST_PRINT_JOBS: 'list_print_jobs',
+  UPDATE_PRINT_JOB_STATUS: 'update_print_job_status',
 } as const;
+
 
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

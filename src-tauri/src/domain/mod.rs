@@ -6,6 +6,7 @@ pub(crate) mod cash_session;
 pub(crate) mod catalog;
 pub(crate) mod credit_override;
 pub(crate) mod customer;
+pub(crate) mod printing;
 pub(crate) mod returns_transfers;
 mod document_sequence;
 mod error;

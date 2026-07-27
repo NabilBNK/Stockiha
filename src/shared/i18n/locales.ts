@@ -39,7 +39,9 @@ const fr = {
   'nav.customerLiabilities': 'Créances clients',
   'nav.transfers': 'Transferts inter-dépôts',
   'nav.writeOffs': 'Pertes & Produits endommagés',
+  'nav.printQueue': 'File d’impression & Tiroir',
   'header.user': 'Utilisateur',
+
   'header.session.open': 'Caisse ouverte',
   'header.session.closed': 'Caisse ferm\u00e9e',
   'backend.unavailable.title': 'Service indisponible',
@@ -263,7 +265,9 @@ const ar: Record<MessageKey, string> = {
   'nav.customerLiabilities': 'مديونية العملاء',
   'nav.transfers': 'تحويلات المخزون',
   'nav.writeOffs': 'إتلاف المخزون',
+  'nav.printQueue': 'قائمة الطباعة والصندوق',
   'header.user': '\u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645',
+
 
   'header.session.open': '\u0627\u0644\u0635\u0646\u062f\u0648\u0642 \u0645\u0641\u062a\u0648\u062d',
   'header.session.closed': '\u0627\u0644\u0635\u0646\u062f\u0648\u0642 \u0645\u063a\u0644\u0642',
@@ -485,7 +489,9 @@ const en: Record<MessageKey, string> = {
   'nav.customerLiabilities': 'Customer Receivables',
   'nav.transfers': 'Stock Transfers',
   'nav.writeOffs': 'Stock Write-Offs',
+  'nav.printQueue': 'Print Queue & Drawer',
   'header.user': 'User',
+
 
   'header.session.open': 'Cash session open',
   'header.session.closed': 'Cash session closed',

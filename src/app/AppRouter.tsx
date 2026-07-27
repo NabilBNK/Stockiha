@@ -34,8 +34,10 @@ import { CustomersScreen } from '../features/sales/CustomersScreen';
 import { CustomerLiabilitiesScreen } from '../features/sales/CustomerLiabilitiesScreen';
 import { WarehouseTransferScreen } from '../features/inventory/WarehouseTransferScreen';
 import { StockWriteOffScreen } from '../features/inventory/StockWriteOffScreen';
+import { PrintQueueScreen } from '../features/documents/PrintQueueScreen';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
+
 
 
 export function AppRouter() {
@@ -118,6 +120,7 @@ function AuthenticatedApp() {
       {view === 'adjustment' && <StockAdjustmentScreen />}
       {view === 'transfers' && <WarehouseTransferScreen />}
       {view === 'write_offs' && <StockWriteOffScreen />}
+      {view === 'print_queue' && <PrintQueueScreen />}
       {view === 'pos' && <PosScreen />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}
