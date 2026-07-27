@@ -23,6 +23,7 @@ pub(crate) mod customer_service;
 pub(crate) mod dashboard;
 pub(crate) mod documents;
 pub(crate) mod fiscal;
+pub(crate) mod history_service;
 pub(crate) mod procurement_service;
 pub(crate) mod printing_service;
 pub(crate) mod returns_transfers_service;

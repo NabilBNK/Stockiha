@@ -44,6 +44,11 @@
 
 - [x] S6-001 Implement official document sequence numbering, Typst PDF rendering (French/Arabic), ESC/POS thermal printing queue, and cash drawer pulse triggers
 
+# Stockiha — Slice 7 Tasks: Sandbox Reconstruction & Historical Importer
+
+- [x] S7-001 Implement historical batch staging (`STAGING`, `VALIDATING`, `NEEDS_REVIEW`, `VALIDATED`, `LOCKED`), sandbox chronological replay engine, discrepancy resolution interface, and atomic commitment to production ledgers
+
+
 
 
 

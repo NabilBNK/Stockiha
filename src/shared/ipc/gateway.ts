@@ -624,5 +624,57 @@ export function updatePrintJobStatus(
   return call<void>(COMMANDS.UPDATE_PRINT_JOB_STATUS, { sessionToken, payload });
 }
 
+export function createImportBatch(
+  sessionToken: string,
+  payload: import('./dto').CreateImportBatchPayload
+): Promise<unknown> {
+  return call(COMMANDS.CREATE_IMPORT_BATCH, { sessionToken, payload });
+}
+
+export function listImportBatches(
+  sessionToken: string
+): Promise<import('./dto').ImportBatchDto[]> {
+  return call<import('./dto').ImportBatchDto[]>(COMMANDS.LIST_IMPORT_BATCHES, {
+    sessionToken,
+  });
+}
+
+export function getStagedRecords(
+  sessionToken: string,
+  batchId: string
+): Promise<import('./dto').StagedRecordDto[]> {
+  return call<import('./dto').StagedRecordDto[]>(COMMANDS.GET_STAGED_RECORDS, {
+    sessionToken,
+    batchId,
+  });
+}
+
+export function updateStagedRecord(
+  sessionToken: string,
+  payload: import('./dto').UpdateStagedRecordPayload
+): Promise<unknown> {
+  return call(COMMANDS.UPDATE_STAGED_RECORD, { sessionToken, payload });
+}
+
+export function replayHistoricalBatch(
+  sessionToken: string,
+  batchId: string
+): Promise<import('./dto').ReplayResultDto> {
+  return call<import('./dto').ReplayResultDto>(COMMANDS.REPLAY_HISTORICAL_BATCH, {
+    sessionToken,
+    batchId,
+  });
+}
+
+export function commitHistoricalBatch(
+  sessionToken: string,
+  batchId: string
+): Promise<import('./dto').CommitBatchResultDto> {
+  return call<import('./dto').CommitBatchResultDto>(COMMANDS.COMMIT_HISTORICAL_BATCH, {
+    sessionToken,
+    batchId,
+  });
+}
+
 
 

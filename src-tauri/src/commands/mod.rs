@@ -7,6 +7,7 @@ pub mod credit_override;
 pub mod customer;
 pub mod db_health;
 pub mod documents;
+pub mod history;
 pub mod procurement;
 pub mod printing;
 pub mod reference;

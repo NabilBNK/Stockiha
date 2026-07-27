@@ -35,6 +35,7 @@ import { CustomerLiabilitiesScreen } from '../features/sales/CustomerLiabilities
 import { WarehouseTransferScreen } from '../features/inventory/WarehouseTransferScreen';
 import { StockWriteOffScreen } from '../features/inventory/StockWriteOffScreen';
 import { PrintQueueScreen } from '../features/documents/PrintQueueScreen';
+import { HistoricalImporterScreen } from '../features/history/HistoricalImporterScreen';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
 
@@ -121,6 +122,7 @@ function AuthenticatedApp() {
       {view === 'transfers' && <WarehouseTransferScreen />}
       {view === 'write_offs' && <StockWriteOffScreen />}
       {view === 'print_queue' && <PrintQueueScreen />}
+      {view === 'history_import' && <HistoricalImporterScreen />}
       {view === 'pos' && <PosScreen />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}

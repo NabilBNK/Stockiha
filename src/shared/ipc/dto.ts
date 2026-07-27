@@ -650,5 +650,61 @@ export interface PrintJobDto {
   completed_at: string | null;
 }
 
+// ── Slice 7: Sandbox Reconstruction & Historical Importer ────────────────────
+
+export interface ImportBatchDto {
+  id: string;
+  batch_number: string;
+  status: 'STAGING' | 'VALIDATING' | 'NEEDS_REVIEW' | 'VALIDATED' | 'LOCKED';
+  file_name: string;
+  total_rows: number;
+  valid_rows: number;
+  error_rows: number;
+  created_by: string;
+  created_at: string;
+  validated_at?: string | null;
+  locked_at?: string | null;
+}
+
+export interface CreateImportBatchPayload {
+  file_name: string;
+  total_rows: number;
+}
+
+export interface StagedRecordDto {
+  id: string;
+  batch_id: string;
+  row_number: number;
+  entity_type: 'PRODUCT' | 'STOCK_RECEIPT' | 'CUSTOMER_BALANCE' | 'SUPPLIER_BALANCE';
+  raw_json: Record<string, unknown>;
+  corrected_json?: Record<string, unknown> | null;
+  validation_errors?: Record<string, unknown> | null;
+  status: 'PENDING' | 'VALID' | 'ERROR' | 'CORRECTED';
+  created_at: string;
+}
+
+export interface UpdateStagedRecordPayload {
+  record_id: string;
+  corrected_json: Record<string, unknown>;
+}
+
+export interface ReplayResultDto {
+  batch_id: string;
+  status: string;
+  total_records: number;
+  valid_records: number;
+  reconstruction_status: string;
+  discrepancies_found: number;
+  calculated_stock_value: number;
+  calculated_receivables: number;
+}
+
+export interface CommitBatchResultDto {
+  batch_id: string;
+  batch_number: string;
+  status: string;
+  message: string;
+}
+
 
 

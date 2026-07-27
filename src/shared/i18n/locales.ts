@@ -40,6 +40,7 @@ const fr = {
   'nav.transfers': 'Transferts inter-dépôts',
   'nav.writeOffs': 'Pertes & Produits endommagés',
   'nav.printQueue': 'File d’impression & Tiroir',
+  'nav.historyImport': 'Importation historique & Sandbox',
   'header.user': 'Utilisateur',
 
   'header.session.open': 'Caisse ouverte',
@@ -266,6 +267,7 @@ const ar: Record<MessageKey, string> = {
   'nav.transfers': 'تحويلات المخزون',
   'nav.writeOffs': 'إتلاف المخزون',
   'nav.printQueue': 'قائمة الطباعة والصندوق',
+  'nav.historyImport': 'استيراد البيانات التاريخية',
   'header.user': '\u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645',
 
 
@@ -490,6 +492,7 @@ const en: Record<MessageKey, string> = {
   'nav.transfers': 'Stock Transfers',
   'nav.writeOffs': 'Stock Write-Offs',
   'nav.printQueue': 'Print Queue & Drawer',
+  'nav.historyImport': 'Historical Import & Sandbox',
   'header.user': 'User',
 
 

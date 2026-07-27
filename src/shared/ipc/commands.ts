@@ -88,6 +88,12 @@ export const COMMANDS = {
   ENQUEUE_PRINT_JOB: 'enqueue_print_job',
   LIST_PRINT_JOBS: 'list_print_jobs',
   UPDATE_PRINT_JOB_STATUS: 'update_print_job_status',
+  CREATE_IMPORT_BATCH: 'create_import_batch',
+  LIST_IMPORT_BATCHES: 'list_import_batches',
+  GET_STAGED_RECORDS: 'get_staged_records',
+  UPDATE_STAGED_RECORD: 'update_staged_record',
+  REPLAY_HISTORICAL_BATCH: 'replay_historical_batch',
+  COMMIT_HISTORICAL_BATCH: 'commit_historical_batch',
 } as const;
 
 

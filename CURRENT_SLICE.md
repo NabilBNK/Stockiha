@@ -1,21 +1,23 @@
 # Current Slice Status
 
 ## Active Context
-- **Current Phase:** Slice 6 Official Document Templates & ESC/POS Printing Engine
-- **Current Task:** S6-001 — Implement official document sequence numbering, Typst PDF rendering, ESC/POS thermal printing queue, and cash drawer pulse triggers
+- **Current Phase:** Slice 7 Sandbox Reconstruction & Historical Importer
+- **Current Task:** S7-001 — Implement CSV/Excel historical batch staging, lifecycle state machine, sandbox chronological replay engine, discrepancy resolution screen, and atomic lock commitment.
 - **Implementation Status:** Completed & Verified
 
 ## Objectives Achieved
-1. Standardized official sequential document numbering (`INV-`, `REC-`, `PO-`, `PI-`, `DN-`, `CR-`, `TR-`, `WO-`).
-2. High-resolution Typst PDF document engine supporting French & Arabic invoice templates.
-3. 80mm ESC/POS thermal receipt queue & automatic cashier drawer-pulse job dispatch.
-4. Document Print Queue screen to manage jobs, preview documents, and trigger manual reprints or drawer pops.
+1. Created staging schema `history` & tables (`import_batches`, `staged_records`) with batch lifecycle (`STAGING`, `VALIDATING`, `NEEDS_REVIEW`, `VALIDATED`, `LOCKED`).
+2. Implemented stored procedures for batch creation, listing, record staging, and inline discrepancy corrections (`core.update_staged_record`).
+3. Implemented sandbox chronological replay engine (`core.replay_historical_batch`) to compute stock levels and WAC safely in `reconstruction.*` sandbox.
+4. Implemented atomic batch commitment (`core.commit_historical_batch`) locking records permanently with `is_historical_import = true` audit isolation flags.
+5. Built `HistoricalImporterScreen` UI for CSV/Excel batch upload, interactive discrepancy fixing modal, sandbox replay simulation, and CEO lock confirmation.
 
 ## Included Task IDs
-- `S6-001`
+- `S7-001`
 
 ## Verification Status
-- Database Migrations: `20260726220000`, `20260726220100` applied to `stockiha_test` & `stockiha_dev`.
-- SQL Integration Tests: `s6_001_document_printing_integration.sql` (3/3 passed).
-- Rust Suite: `cargo check` PASS, `cargo test` PASS (208 passed).
-- Frontend Suite: `typecheck` PASS, `lint` PASS, Vitest `73/73 passed`, `build` PASS.
+- Database Migrations: `20260727140000`, `20260727140100` applied & verified against `stockiha_test` and `stockiha_dev`.
+- SQL Integration Tests: `s7_001_history_reconstruction_integration.sql` PASS (3/3 assertions).
+- Rust Suite: `cargo check` PASS, `cargo test` PASS.
+- Frontend Suite: `typecheck` PASS, `lint` PASS, Vitest PASS, `build` PASS.
+

@@ -26,7 +26,8 @@ export type AppView =
   | 'customer_liabilities'
   | 'transfers'
   | 'write_offs'
-  | 'print_queue';
+  | 'print_queue'
+  | 'history_import';
 
 const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard' },
@@ -45,6 +46,7 @@ const NAV: { view: AppView; labelKey: MessageKey }[] = [
   { view: 'pos', labelKey: 'nav.pos' },
   { view: 'session', labelKey: 'nav.cashSession' },
   { view: 'print_queue', labelKey: 'nav.printQueue' },
+  { view: 'history_import', labelKey: 'nav.historyImport' },
   { view: 'documents', labelKey: 'nav.documents' },
 ];
 

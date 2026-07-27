@@ -101,6 +101,12 @@ pub fn run() {
             commands::printing::enqueue_print_job,
             commands::printing::list_print_jobs,
             commands::printing::update_print_job_status,
+            commands::history::create_import_batch,
+            commands::history::list_import_batches,
+            commands::history::get_staged_records,
+            commands::history::update_staged_record,
+            commands::history::replay_historical_batch,
+            commands::history::commit_historical_batch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
