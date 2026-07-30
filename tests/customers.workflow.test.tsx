@@ -83,6 +83,16 @@ function creditResult() {
   };
 }
 
+function fullCustomerCapabilities() {
+  return {
+    can_view_customers: true,
+    can_manage_customers: true,
+    can_post_credit_sale: true,
+    can_post_customer_payment: true,
+    can_override_credit_limit: true,
+  };
+}
+
 function baseHandlers(extra: Handlers = {}): Handlers {
   return {
     get_setup_status: () => ({
@@ -115,6 +125,7 @@ function baseHandlers(extra: Handlers = {}): Handlers {
     list_catalog_products: () => [],
     list_units: () => [],
     list_customers: () => [customer()],
+    get_customer_capabilities: () => fullCustomerCapabilities(),
     get_customer_credit_summary: () => ({
       customer_id: 41,
       customer_code: 'CUS-041',
@@ -200,6 +211,28 @@ describe('S4-001 Customer Workflow', () => {
     expect(screen.getByText('CUS-041')).toBeInTheDocument();
     expect(screen.getByText('170000.00')).toBeInTheDocument();
     expect(screen.getByText('330000.00')).toBeInTheDocument();
+  });
+
+  it('shows cashier customer access as read-only instead of dead management controls', async () => {
+    wireInvoke(baseHandlers({
+      get_customer_capabilities: () => ({
+        can_view_customers: true,
+        can_manage_customers: false,
+        can_post_credit_sale: true,
+        can_post_customer_payment: true,
+        can_override_credit_limit: false,
+      }),
+    }));
+
+    render(<App />);
+    await login();
+    fireEvent.click(screen.getByRole('button', { name: 'Customers' }));
+
+    expect(await screen.findByTestId('customers-read-only')).toHaveTextContent('Read-only customer access');
+    expect(screen.queryByTestId('add-customer-btn')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View' })).toBeInTheDocument();
   });
 
   it('creates a credit-enabled customer with typed policy fields', async () => {
