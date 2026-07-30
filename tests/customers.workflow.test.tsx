@@ -191,4 +191,71 @@ describe('S4-001 Customer Workflow', () => {
     expect(screen.getByText('PAYMENT')).toBeInTheDocument();
     expect(screen.getByText('500000.00')).toBeInTheDocument();
   });
+
+  it('posts a POS credit sale for the selected customer without using cash sale command', async () => {
+    let creditArgs: Record<string, unknown> | null = null;
+    let cashCalls = 0;
+
+    wireInvoke(baseHandlers({
+      inspect_active_cash_session: () => ({
+        id: 77,
+        warehouse_id: 1,
+        opened_by_user_id: 1,
+        opening_float: '10000.00',
+        opened_at: '2026-07-30T08:00:00Z',
+      }),
+      list_products: () => [{
+        product_id: 1,
+        variant_id: 7,
+        sku: 'SKU-7',
+        name: 'Credit Item',
+        sale_price: '1500.00',
+        is_active: true,
+        quantity_on_hand: '10.000',
+        last_known_wac: '900.000000',
+      }],
+      confirm_cash_sale: () => {
+        cashCalls += 1;
+        return 999;
+      },
+      confirm_credit_sale: (args) => {
+        creditArgs = args;
+        return {
+          document_id: 700,
+          document_number: 'CR-2026-000001',
+          customer_id: 41,
+          total_amount: '1500.00',
+          due_date: '2026-08-29',
+          exposure_amount: '171500.00',
+          available_credit: '328500.00',
+          journal_document_id: 701,
+        };
+      },
+    }));
+
+    render(<App />);
+    await login();
+    fireEvent.click(screen.getByRole('button', { name: 'Point of sale' }));
+    await screen.findByRole('heading', { name: 'Point of sale' });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Credit Item' }));
+    fireEvent.click(screen.getByTestId('payment-credit'));
+    fireEvent.change(screen.getByTestId('credit-customer-select'), { target: { value: '41' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm sale' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => expect(creditArgs).not.toBeNull());
+    expect(cashCalls).toBe(0);
+    expect((creditArgs as Record<string, unknown>).customerId).toBe(41);
+    expect((creditArgs as Record<string, unknown>).warehouseId).toBe(1);
+    expect((creditArgs as Record<string, unknown>).overrideToken).toBeNull();
+    expect((creditArgs as Record<string, unknown>).lines).toEqual([
+      { variant_id: 7, quantity: '1', unit_price: '1500.00' },
+    ]);
+
+    const success = await screen.findByTestId('credit-sale-success');
+    expect(success).toHaveTextContent('CR-2026-000001');
+    expect(success).toHaveTextContent('171500.00');
+    expect(success).toHaveTextContent('328500.00');
+  });
 });
