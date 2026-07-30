@@ -6,6 +6,7 @@ import { parseTauriError } from '../utils/tauriError';
 import type {
   CreateCustomerPayload,
   Customer,
+  CustomerCapabilities,
   CustomerCreditSummary,
   CustomerLedgerEntry,
   UpdateCustomerPayload,
@@ -29,6 +30,10 @@ export function updateCustomer(sessionToken: string, payload: UpdateCustomerPayl
 
 export function listCustomers(sessionToken: string, includeInactive = false): Promise<Customer[]> {
   return call<Customer[]>(COMMANDS.LIST_CUSTOMERS, { sessionToken, includeInactive });
+}
+
+export function getCustomerCapabilities(sessionToken: string): Promise<CustomerCapabilities> {
+  return call<CustomerCapabilities>(COMMANDS.GET_CUSTOMER_CAPABILITIES, { sessionToken });
 }
 
 export function getCustomerCreditSummary(
