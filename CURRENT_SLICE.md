@@ -2,47 +2,53 @@
 
 ## Active Context
 
-- **Current Phase:** Cross-slice frontend quality
-- **Current Task:** UI-001 — Frontend foundation overhaul
-- **Implementation Status:** COMPLETE & VERIFIED (manual Windows visual pass pending)
+- **Current Phase:** Slice 4 — Customers, Receivables & Credit Controls
+- **Current Task:** S4-001 — Customer master, credit state, and customer ledger foundation
+- **Implementation Status:** IN PROGRESS
 
 ## Objective
 
-Replace the fragmented frontend presentation with one coherent, responsive
-operational design system while preserving routes, IPC contracts, workflows,
-localization direction, and test selectors.
+Introduce the customer/accounts-receivable side of Stockiha as a complete vertical slice: customer master data, authoritative credit exposure, customer ledger tracking, credit-limit and overdue enforcement, payment allocation foundations, and single-use manager overrides. Financial decisions remain database-authoritative and concurrency-safe.
 
 ## Included Task ID
 
-- `UI-001`
+- `S4-001`
 
-## Frontend Scope
+## Database Scope
 
-- Grouped, responsive application navigation and stronger application identity.
-- Unified design tokens for typography, color, spacing, borders, elevation, and
-  touch targets.
-- Compatible styling for both the original `sk-btn` primitives and the later
-  procurement `sk-button` components.
-- Consistent cards, forms, tables, badges, feedback banners, dialogs, dashboard
-  metrics, and POS surfaces.
-- Removal of the conflicting hard-coded dark presentation from supplier
-  invoices, supplier liabilities, landed-cost allocation, and supplier payment.
-- Responsive desktop, tablet, and narrow-window behavior with RTL-aware logical
-  properties and reduced-motion support.
+- Customer master directory with active/inactive and credit-policy fields.
+- Per-customer credit state used as the row-lock boundary for concurrent credit decisions.
+- Immutable customer ledger entries for receivable movements.
+- Database-level credit exposure and overdue checks before credit posting.
+- Foundations for customer payments, allocations, credit notes, write-offs, and manager overrides.
 
-## Explicitly Unchanged
+## Rust/Tauri Scope
 
-- Rust and PostgreSQL code.
-- Migrations, security roles, financial rules, and posting functions.
-- IPC command names, DTOs, request/response contracts, and workflow behavior.
-- Existing frontend test selectors.
-- Runtime and development dependencies.
+- Customer DTOs, repositories/services, and typed IPC commands.
+- Customer ledger and credit-summary reads.
+- Protected credit-sale and customer-payment command paths backed by database posting functions.
 
-## Verification
+## React Scope
 
-- `npm run typecheck` — pass.
-- `npm run lint` — pass.
-- `npm test` — pass, 8 files and 73 tests.
-- `npm run build` — pass.
-- Windows/Tauri visual, touchscreen, French, Arabic RTL, and English smoke
-  testing remains a manual check.
+- Customer directory and customer detail/financial summary screens.
+- POS customer selection and credit availability feedback.
+- Customer payment/allocation and manager-override workflows as the backend posting paths land.
+
+## Slice 4 Follow-on Scope
+
+After S4-001, Slice 4 still includes production cashier controls from the architecture baseline: blind denomination counts, variance approval, suspension/handover, extended drawer eligibility, and multilingual POS/cash-session verification. S4 is not complete when S4-001 alone is complete.
+
+## Production Invariants
+
+- Credit exposure is database-authoritative; React/Rust may display it but may not decide financial eligibility independently.
+- Concurrent credit sales must not jointly exceed a customer's authorized credit limit.
+- Customer ledger entries are append-only after posting.
+- Payment allocation cannot exceed the payment amount or cross customer boundaries.
+- Manager overrides are single-use, auditable, permission-protected, and bound to the exact sale payload.
+- All receivable postings are atomic, idempotent, session-authenticated, and journal-balanced.
+
+## Verification Target
+
+- Database migration/integration tests for customer master, exposure locking, ledger immutability, credit-limit races, payment allocation, and override invalidation.
+- Rust unit/integration coverage for typed errors and application services.
+- Frontend workflow tests plus Windows/Tauri French, Arabic RTL, English, and touchscreen smoke testing.
