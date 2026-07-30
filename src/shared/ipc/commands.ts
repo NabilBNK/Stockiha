@@ -72,6 +72,7 @@ export const COMMANDS = {
   CREATE_CUSTOMER: 'create_customer',
   UPDATE_CUSTOMER: 'update_customer',
   LIST_CUSTOMERS: 'list_customers',
+  GET_CUSTOMER_CAPABILITIES: 'get_customer_capabilities',
   GET_CUSTOMER_CREDIT_SUMMARY: 'get_customer_credit_summary',
   LIST_CUSTOMER_LEDGER: 'list_customer_ledger',
   CONFIRM_CREDIT_SALE: 'confirm_credit_sale',
