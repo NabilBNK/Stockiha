@@ -19,6 +19,12 @@ describe('parseTauriError', () => {
     expect(parseTauriError({ code: 'DATABASE_UNAVAILABLE' })).toBe('DATABASE_UNAVAILABLE');
   });
 
+  it('accepts the S4 credit-policy code without reading diagnostics', () => {
+    expect(parseTauriError({ code: 'CREDIT_POLICY_BLOCKED', message: SENTINEL })).toBe(
+      'CREDIT_POLICY_BLOCKED',
+    );
+  });
+
   it('ignores extra secret-like properties and keeps only the code', () => {
     expect(
       parseTauriError({
@@ -108,6 +114,12 @@ describe('resolveErrorMessage', () => {
     );
   });
 
+  it('returns fixed, detail-free copy for credit policy rejection', () => {
+    const message = resolveErrorMessage({ code: 'CREDIT_POLICY_BLOCKED', details: SENTINEL });
+    expect(message).toBe('Customer credit policy blocks this sale.');
+    expect(message).not.toContain(SENTINEL);
+  });
+
   it('returns the fixed unknown message for unrecognized values', () => {
     const unknownMsg = 'An unexpected error occurred. Please try again.';
     expect(resolveErrorMessage(new Error(SENTINEL))).toBe(unknownMsg);
@@ -121,6 +133,7 @@ describe('resolveErrorMessage', () => {
       new Error(SENTINEL),
       SENTINEL,
       { code: 'INTERNAL_ERROR', message: SENTINEL, details: SENTINEL, stack: SENTINEL },
+      { code: 'CREDIT_POLICY_BLOCKED', message: SENTINEL, details: SENTINEL },
       { code: SENTINEL },
       [SENTINEL],
       { get code() { throw new Error(SENTINEL); } },
@@ -143,6 +156,9 @@ describe('resolveErrorMessageKey', () => {
     expect(resolveErrorMessageKey({ code: 'CONFIGURATION_ERROR' })).toBe('errors.configuration');
     expect(resolveErrorMessageKey({ code: 'DATABASE_UNAVAILABLE' })).toBe(
       'errors.databaseUnavailable',
+    );
+    expect(resolveErrorMessageKey({ code: 'CREDIT_POLICY_BLOCKED' })).toBe(
+      'errors.preconditionFailed',
     );
     expect(resolveErrorMessageKey(new Error('x'))).toBe('errors.unknown');
   });
