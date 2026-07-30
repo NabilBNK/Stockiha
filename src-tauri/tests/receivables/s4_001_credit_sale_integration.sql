@@ -18,11 +18,11 @@ DECLARE
     v_customer_json jsonb;
     v_customer_id bigint;
     v_lines jsonb;
-    v_hash1 bytea := sha256(('s4001-hash1-' || v_suffix)::bytea);
-    v_hash2 bytea := sha256(('s4001-hash2-' || v_suffix)::bytea);
+    v_changed_lines jsonb;
     v_request1 uuid := md5('s4001-r1-' || v_suffix || clock_timestamp()::text)::uuid;
     v_request2 uuid := md5('s4001-r2-' || v_suffix || clock_timestamp()::text)::uuid;
     v_request3 uuid := md5('s4001-r3-' || v_suffix || clock_timestamp()::text)::uuid;
+    v_request4 uuid := md5('s4001-r4-' || v_suffix || clock_timestamp()::text)::uuid;
     v_override uuid := md5('s4001-override-' || v_suffix || clock_timestamp()::text)::uuid;
     v_result1 jsonb;
     v_retry jsonb;
@@ -37,11 +37,11 @@ DECLARE
     v_drawer_count bigint;
     v_unbalanced bigint;
     v_blocked boolean := false;
+    v_mismatch_blocked boolean := false;
     v_reuse_blocked boolean := false;
 BEGIN
     RAISE NOTICE '=== Running S4-001 customer credit sale integration suite ===';
 
-    -- Auth fixture.
     INSERT INTO iam.users (username, display_name, password_hash)
     VALUES (v_username, 'S4001 Admin', 'hashed_pass')
     RETURNING id INTO v_user_id;
@@ -52,7 +52,6 @@ BEGIN
     INSERT INTO iam.application_sessions (user_id, workstation_id, token_hash, expires_at)
     VALUES (v_user_id, 'TEST-WKS-S4001-' || v_suffix, sha256(v_session_token::bytea), now() + interval '2 hours');
 
-    -- Use the installation's open period and choose a date inside it.
     SELECT id, starts_on, ends_on
     INTO v_period_id, v_period_start, v_period_end
     FROM finance.fiscal_periods
@@ -71,7 +70,6 @@ BEGIN
         RAISE EXCEPTION 'S4-001 integration test requires canonical UNIT catalog unit';
     END IF;
 
-    -- Stock fixture: 10 units @ WAC 100 DZD.
     INSERT INTO inventory.warehouses (code, name)
     VALUES ('WH-S4001-' || v_suffix, 'S4001 Warehouse')
     RETURNING id INTO v_warehouse_id;
@@ -92,7 +90,6 @@ BEGIN
         v_warehouse_id, v_variant_id, 10.000, 1000.0000, 100.000000
     );
 
-    -- Credit customer: limit 500 DZD, terms 30 days.
     v_customer_json := receivables.create_customer(
         v_session_token,
         'CUS-S4001-' || v_suffix,
@@ -109,10 +106,17 @@ BEGIN
             'unit_price', '150.00'
         )
     );
+    v_changed_lines := jsonb_build_array(
+        jsonb_build_object(
+            'variant_id', v_variant_id,
+            'quantity', '3',
+            'unit_price', '150.00'
+        )
+    );
 
-    -- First 300 DZD sale succeeds: exposure 0 -> 300.
+    -- Public wrapper derives its own payload hash. First 300 DZD sale succeeds.
     v_result1 := sales.confirm_credit_sale(
-        v_session_token, v_request1, v_hash1,
+        v_session_token, v_request1,
         v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
         v_lines, NULL
     );
@@ -151,9 +155,8 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: first credit sale must append exactly one 300 DZD ledger entry';
     END IF;
 
-    -- Same request+payload returns same document and does not double-post.
     v_retry := sales.confirm_credit_sale(
-        v_session_token, v_request1, v_hash1,
+        v_session_token, v_request1,
         v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
         v_lines, NULL
     );
@@ -168,11 +171,10 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: idempotent retry changed stock';
     END IF;
 
-    -- Another 300 DZD would exceed 500 limit. Without override it must fail and
-    -- leave stock/exposure unchanged. The exception block is a subtransaction.
+    -- Another 300 exceeds the 500 limit and must roll back cleanly.
     BEGIN
         PERFORM sales.confirm_credit_sale(
-            v_session_token, v_request2, v_hash2,
+            v_session_token, v_request2,
             v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
             v_lines, NULL
         );
@@ -193,15 +195,39 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: rejected credit sale changed exposure or stock';
     END IF;
 
-    -- Manager/admin authorizes this exact sale payload. The same blocked request
-    -- now succeeds, token is consumed once, and exposure can exceed the normal limit.
+    -- Manager authorizes exact 2-unit intent using actual fields, not caller hash.
     PERFORM receivables.authorize_credit_override(
-        v_session_token, v_override, v_customer_id, v_hash2,
+        v_session_token, v_override,
+        v_customer_id, v_warehouse_id, v_period_id, v_doc_date, v_lines,
         'Approved S4 integration over-limit sale', 15
     );
 
+    -- Same token MUST fail for a mutated 3-unit cart even though caller owns the
+    -- token value. PostgreSQL recomputes fingerprint from changed inputs.
+    BEGIN
+        PERFORM sales.confirm_credit_sale(
+            v_session_token, v_request3,
+            v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
+            v_changed_lines, v_override
+        );
+    EXCEPTION
+        WHEN SQLSTATE '55000' THEN
+            v_mismatch_blocked := true;
+    END;
+
+    IF NOT v_mismatch_blocked THEN
+        RAISE EXCEPTION 'Assertion failed: payload-mutated sale reused exact override token';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM receivables.credit_override_tokens
+        WHERE id = v_override AND consumed_at IS NOT NULL
+    ) THEN
+        RAISE EXCEPTION 'Assertion failed: rejected payload mismatch consumed override token';
+    END IF;
+
+    -- Exact authorized intent succeeds and consumes token once.
     v_result2 := sales.confirm_credit_sale(
-        v_session_token, v_request2, v_hash2,
+        v_session_token, v_request2,
         v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
         v_lines, v_override
     );
@@ -219,10 +245,9 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: override token was not consumed by posted document';
     END IF;
 
-    -- Consumed token cannot authorize another over-limit sale.
     BEGIN
         PERFORM sales.confirm_credit_sale(
-            v_session_token, v_request3, v_hash2,
+            v_session_token, v_request4,
             v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
             v_lines, v_override
         );
@@ -235,7 +260,6 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: consumed override token was reusable';
     END IF;
 
-    -- Every credit-sale journal must balance.
     SELECT count(*) INTO v_unbalanced
     FROM (
         SELECT je.document_id
@@ -250,7 +274,6 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: one or more credit sale journals are unbalanced';
     END IF;
 
-    -- Credit sale never writes cash ledger or opens drawer.
     SELECT count(*) INTO v_cash_count
     FROM cash.movements
     WHERE business_document_id IN (v_doc1, v_doc2);
@@ -261,6 +284,6 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: credit sale created cash movement or drawer pulse';
     END IF;
 
-    RAISE NOTICE 'PASSED: S4-001 customer credit sale, idempotency, limit, override, ledger, accounting, and no-cash assertions';
+    RAISE NOTICE 'PASSED: S4-001 credit sale, idempotency, database-bound override, ledger, accounting, and no-cash assertions';
 END;
 $$;
