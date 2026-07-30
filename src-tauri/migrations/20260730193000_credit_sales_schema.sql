@@ -1,19 +1,41 @@
 -- S4-001: Customer credit-sale document schema.
 SET ROLE stockiha_owner;
 
--- Extend shared document vocabularies without removing existing S3 values.
+-- Extend shared document vocabularies as a strict superset of every type
+-- introduced by S1-S3. A later slice must never make an older valid document
+-- or sequence type invalid merely by replacing the closed CHECK list.
 ALTER TABLE core.business_documents DROP CONSTRAINT IF EXISTS business_documents_type_valid;
 ALTER TABLE core.business_documents ADD CONSTRAINT business_documents_type_valid
     CHECK (document_type IN (
-        'CASH_SALE', 'CREDIT_SALE', 'JOURNAL_ENTRY', 'STOCK_RECEIPT', 'STOCK_ADJUSTMENT',
-        'PURCHASE_ORDER', 'PURCHASE_RECEIPT', 'PURCHASE_INVOICE', 'PURCHASE_RETURN', 'SUPPLIER_PAYMENT'
+        'CASH_SALE',
+        'CREDIT_SALE',
+        'JOURNAL_ENTRY',
+        'STOCK_RECEIPT',
+        'STOCK_ADJUSTMENT',
+        'PURCHASE_ORDER',
+        'PURCHASE_RECEIPT',
+        'PURCHASE_INVOICE',
+        'SUPPLIER_CREDIT_NOTE',
+        'PURCHASE_RETURN',
+        'DEBIT_NOTE',
+        'SUPPLIER_PAYMENT'
     ));
 
 ALTER TABLE core.document_sequences DROP CONSTRAINT IF EXISTS document_sequences_type_valid;
 ALTER TABLE core.document_sequences ADD CONSTRAINT document_sequences_type_valid
     CHECK (document_type IN (
-        'CASH_SALE', 'CREDIT_SALE', 'JOURNAL_ENTRY', 'STOCK_RECEIPT', 'STOCK_ADJUSTMENT',
-        'PURCHASE_ORDER', 'PURCHASE_RECEIPT', 'PURCHASE_INVOICE', 'PURCHASE_RETURN', 'DEBIT_NOTE', 'SUPPLIER_PAYMENT'
+        'CASH_SALE',
+        'CREDIT_SALE',
+        'JOURNAL_ENTRY',
+        'STOCK_RECEIPT',
+        'STOCK_ADJUSTMENT',
+        'PURCHASE_ORDER',
+        'PURCHASE_RECEIPT',
+        'PURCHASE_INVOICE',
+        'SUPPLIER_CREDIT_NOTE',
+        'PURCHASE_RETURN',
+        'DEBIT_NOTE',
+        'SUPPLIER_PAYMENT'
     ));
 
 CREATE TABLE sales.credit_sales (
