@@ -1,10 +1,9 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use sqlx::{query_scalar, PgPool};
 use time::Date;
 
-use crate::domain::canonical_json::payload_hash;
 use crate::error::AppError;
 
 #[derive(Debug, Clone, Serialize)]
@@ -69,16 +68,6 @@ fn validate_draft(draft: &CreditSaleDraft) -> Result<(), AppError> {
     Ok(())
 }
 
-fn canonical_payload(draft: &CreditSaleDraft, lines_json: JsonValue) -> JsonValue {
-    json!({
-        "customer_id": draft.customer_id,
-        "warehouse_id": draft.warehouse_id,
-        "fiscal_period_id": draft.fiscal_period_id,
-        "document_date": draft.document_date.to_string(),
-        "lines": lines_json,
-    })
-}
-
 fn is_credit_policy_message(message: &str) -> bool {
     message.contains("customer is inactive")
         || message.contains("customer is not enabled for credit sales")
@@ -108,16 +97,16 @@ pub(crate) async fn confirm_credit_sale(
     validate_draft(&request.draft)?;
     let lines_json = serde_json::to_value(&request.draft.lines)
         .map_err(|e| AppError::internal(format!("failed to serialize credit sale lines: {e}")))?;
-    let hash = payload_hash(&canonical_payload(&request.draft, lines_json.clone()));
 
+    // Runtime-facing SQL derives the idempotency/override payload hash from the
+    // actual typed fields and JSONB lines. Rust never supplies a trusted hash.
     let result: JsonValue = query_scalar(
         "SELECT sales.confirm_credit_sale(\
-            $1, $2::uuid, $3, $4, $5, $6, $7, $8, $9::uuid\
+            $1, $2::uuid, $3, $4, $5, $6, $7, $8::uuid\
          )",
     )
     .bind(session_token)
     .bind(&request.request_id)
-    .bind(hash.as_slice())
     .bind(request.draft.customer_id)
     .bind(request.draft.warehouse_id)
     .bind(request.draft.fiscal_period_id)
@@ -151,17 +140,19 @@ pub(crate) async fn authorize_credit_override(
 
     let lines_json = serde_json::to_value(&request.draft.lines)
         .map_err(|e| AppError::internal(format!("failed to serialize credit sale lines: {e}")))?;
-    let hash = payload_hash(&canonical_payload(&request.draft, lines_json));
 
     let token: String = query_scalar(
         "SELECT receivables.authorize_credit_override(\
-            $1, $2::uuid, $3, $4, $5, $6\
+            $1, $2::uuid, $3, $4, $5, $6, $7, $8, $9\
          )::text",
     )
     .bind(session_token)
     .bind(&request.token_id)
     .bind(request.draft.customer_id)
-    .bind(hash.as_slice())
+    .bind(request.draft.warehouse_id)
+    .bind(request.draft.fiscal_period_id)
+    .bind(request.draft.document_date)
+    .bind(lines_json)
     .bind(request.reason.trim())
     .bind(request.ttl_minutes)
     .fetch_one(pool)
@@ -176,7 +167,7 @@ mod tests {
     use super::*;
     use time::Month;
 
-    fn draft(price: i64) -> CreditSaleDraft {
+    fn draft() -> CreditSaleDraft {
         CreditSaleDraft {
             customer_id: 1,
             warehouse_id: 1,
@@ -185,26 +176,14 @@ mod tests {
             lines: vec![CreditSaleLineInput {
                 variant_id: 1,
                 quantity: Decimal::ONE,
-                unit_price: Decimal::new(price, 2),
+                unit_price: Decimal::new(10_000, 2),
             }],
         }
     }
 
     #[test]
-    fn canonical_override_hash_changes_when_cart_changes() {
-        let a = draft(10_000);
-        let b = draft(20_000);
-        let a_lines = serde_json::to_value(&a.lines).unwrap();
-        let b_lines = serde_json::to_value(&b.lines).unwrap();
-        assert_ne!(
-            payload_hash(&canonical_payload(&a, a_lines)),
-            payload_hash(&canonical_payload(&b, b_lines))
-        );
-    }
-
-    #[test]
     fn rejects_invalid_line_before_database_call() {
-        let mut invalid = draft(10_000);
+        let mut invalid = draft();
         invalid.lines[0].quantity = Decimal::ZERO;
         assert!(validate_draft(&invalid).is_err());
     }
