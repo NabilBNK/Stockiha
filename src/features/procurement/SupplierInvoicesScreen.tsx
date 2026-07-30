@@ -56,63 +56,55 @@ export const SupplierInvoicesScreen: React.FC<SupplierInvoicesScreenProps> = ({
   };
 
   return (
-    <div style={{ padding: '24px', color: '#f8fafc' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ margin: 0 }}>Supplier Invoices</h2>
-        <button
-          onClick={loadData}
-          style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#1e293b', color: '#fff', cursor: 'pointer' }}
-        >
+    <section className="sk-screen">
+      <header className="sk-screen__header">
+        <h1>Supplier Invoices</h1>
+        <button type="button" className="sk-button sk-button--secondary" onClick={loadData}>
           Refresh
         </button>
-      </div>
+      </header>
 
       {error && (
-        <div style={{ backgroundColor: '#7f1d1d', color: '#fecaca', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
+        <div className="sk-banner sk-banner--error">
           {error}
         </div>
       )}
 
       {loading ? (
-        <div>Loading supplier invoices…</div>
+        <div className="sk-spinner">Loading supplier invoices…</div>
       ) : invoices.length === 0 ? (
-        <div style={{ padding: '32px', textAlign: 'center', backgroundColor: '#1e293b', borderRadius: '8px' }}>
+        <div className="sk-card sk-muted">
           No supplier invoices found.
         </div>
       ) : (
-        <div style={{ overflowX: 'auto', backgroundColor: '#1e293b', borderRadius: '8px', border: '1px solid #334155' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+        <div className="sk-table-wrap">
+          <table className="sk-table">
             <thead>
-              <tr style={{ borderBottom: '1px solid #334155', backgroundColor: '#0f172a' }}>
-                <th style={{ padding: '12px' }}>Document #</th>
-                <th style={{ padding: '12px' }}>Supplier</th>
-                <th style={{ padding: '12px' }}>Currency</th>
-                <th style={{ padding: '12px' }}>Total Amount (DZD)</th>
-                <th style={{ padding: '12px' }}>Status</th>
-                <th style={{ padding: '12px' }}>Actions</th>
+              <tr>
+                <th>Document #</th>
+                <th>Supplier</th>
+                <th>Currency</th>
+                <th>Total Amount (DZD)</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {invoices.map((inv) => (
-                <tr key={inv.document_id} style={{ borderBottom: '1px solid #334155' }}>
-                  <td style={{ padding: '12px', fontWeight: 600 }}>{inv.document_number || `Draft #${inv.document_id}`}</td>
-                  <td style={{ padding: '12px' }}>{inv.supplier_name}</td>
-                  <td style={{ padding: '12px' }}>{inv.currency_code}</td>
-                  <td style={{ padding: '12px', fontWeight: 600 }}>{inv.base_total_amount} DZD</td>
-                  <td style={{ padding: '12px' }}>
-                    <span style={{
-                      padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600,
-                      backgroundColor: inv.status === 'POSTED' ? '#166534' : '#854d0e',
-                      color: inv.status === 'POSTED' ? '#4ade80' : '#fef08a'
-                    }}>
+                <tr key={inv.document_id}>
+                  <td><strong>{inv.document_number || `Draft #${inv.document_id}`}</strong></td>
+                  <td>{inv.supplier_name}</td>
+                  <td>{inv.currency_code}</td>
+                  <td className="sk-num"><strong>{inv.base_total_amount} DZD</strong></td>
+                  <td>
+                    <span className={`sk-badge ${inv.status === 'POSTED' ? 'sk-badge--success' : 'sk-button--warning'}`}>
                       {inv.status}
                     </span>
                   </td>
-                  <td style={{ padding: '12px' }}>
+                  <td>
                     {inv.status === 'DRAFT' && (
-                      <button
+                      <button type="button" className="sk-button sk-button--small sk-button--success"
                         onClick={() => handleConfirm(inv.document_id)}
-                        style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', backgroundColor: '#16a34a', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
                       >
                         Confirm (3-Way Match)
                       </button>
@@ -124,6 +116,6 @@ export const SupplierInvoicesScreen: React.FC<SupplierInvoicesScreenProps> = ({
           </table>
         </div>
       )}
-    </div>
+    </section>
   );
 };
