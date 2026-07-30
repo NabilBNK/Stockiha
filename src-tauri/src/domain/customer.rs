@@ -85,6 +85,15 @@ pub struct CustomerLedgerEntry {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CustomerCapabilities {
+    pub can_view_customers: bool,
+    pub can_manage_customers: bool,
+    pub can_post_credit_sale: bool,
+    pub can_post_customer_payment: bool,
+    pub can_override_credit_limit: bool,
+}
+
 fn validate_credit_policy(
     credit_enabled: bool,
     credit_limit: &str,
