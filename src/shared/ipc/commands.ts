@@ -75,6 +75,8 @@ export const COMMANDS = {
   GET_CUSTOMER_CAPABILITIES: 'get_customer_capabilities',
   GET_CUSTOMER_CREDIT_SUMMARY: 'get_customer_credit_summary',
   LIST_CUSTOMER_LEDGER: 'list_customer_ledger',
+  LIST_OPEN_CUSTOMER_INVOICES: 'list_open_customer_invoices',
+  POST_CUSTOMER_PAYMENT: 'post_customer_payment',
   CONFIRM_CREDIT_SALE: 'confirm_credit_sale',
   AUTHORIZE_CREDIT_OVERRIDE: 'authorize_credit_override',
 } as const;
