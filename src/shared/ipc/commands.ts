@@ -68,6 +68,12 @@ export const COMMANDS = {
   POST_SUPPLIER_PAYMENT: 'post_supplier_payment',
   LIST_SUPPLIER_RETURNS: 'list_supplier_returns',
   LIST_SUPPLIER_PAYMENTS: 'list_supplier_payments',
+  // Slice 4 — Customers & receivables
+  CREATE_CUSTOMER: 'create_customer',
+  UPDATE_CUSTOMER: 'update_customer',
+  LIST_CUSTOMERS: 'list_customers',
+  GET_CUSTOMER_CREDIT_SUMMARY: 'get_customer_credit_summary',
+  LIST_CUSTOMER_LEDGER: 'list_customer_ledger',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];
