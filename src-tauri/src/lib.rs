@@ -89,6 +89,8 @@ pub fn run() {
             commands::customer::get_customer_capabilities,
             commands::customer::get_customer_credit_summary,
             commands::customer::list_customer_ledger,
+            commands::receivables::list_open_customer_invoices,
+            commands::receivables::post_customer_payment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
