@@ -1,0 +1,107 @@
+name: Verify S4-001
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test -- --run
+      - run: npm run build
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential curl file libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev libwebkit2gtk-4.1-dev libxdo-dev pkg-config wget
+      - run: |
+          rustup update stable
+          rustup default stable
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: stockiha_s4_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d stockiha_s4_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGPASSWORD: postgres
+      ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_s4_test
+      STOCKIHA_TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_s4_test
+      STOCKIHA_TEST_DATABASE_URL: postgres://stockiha_runtime:runtime_ci_password@127.0.0.1:5432/stockiha_s4_test
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Bootstrap roles
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE stockiha_owner NOLOGIN;
+          CREATE ROLE stockiha_migrator NOLOGIN;
+          CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
+          CREATE ROLE stockiha_backup NOLOGIN;
+          GRANT CREATE ON DATABASE stockiha_s4_test TO stockiha_owner;
+          SQL
+      - name: Apply migrations
+        run: |
+          set -euo pipefail
+          while IFS= read -r migration; do
+            echo "Applying $migration"
+            psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+      - name: Seed open fiscal period
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO finance.fiscal_periods (period_code, starts_on, ends_on, status)
+          VALUES ('S4-CI-2026', DATE '2026-01-01', DATE '2026-12-31', 'OPEN')
+          ON CONFLICT (period_code) DO NOTHING;
+          SQL
+      - name: Verify private hash APIs stay private
+        run: |
+          result="$(psql "$ADMIN_URL" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT
+            has_function_privilege(
+              'stockiha_runtime',
+              'sales.confirm_credit_sale(text,uuid,bytea,bigint,bigint,bigint,date,jsonb,uuid)',
+              'EXECUTE'
+            )::int || ':' ||
+            has_function_privilege(
+              'stockiha_runtime',
+              'receivables.authorize_credit_override(text,uuid,bigint,bytea,text,integer)',
+              'EXECUTE'
+            )::int;
+          SQL
+          )"
+          test "$result" = "0:0"
+      - run: psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f src-tauri/tests/receivables/s4_001_credit_sale_integration.sql
+      - run: psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f src-tauri/tests/receivables/s4_001_customer_payment_integration.sql
+      - run: bash src-tauri/tests/receivables/s4_001_credit_concurrency.sh
