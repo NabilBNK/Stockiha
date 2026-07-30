@@ -74,6 +74,8 @@ export const COMMANDS = {
   LIST_CUSTOMERS: 'list_customers',
   GET_CUSTOMER_CREDIT_SUMMARY: 'get_customer_credit_summary',
   LIST_CUSTOMER_LEDGER: 'list_customer_ledger',
+  CONFIRM_CREDIT_SALE: 'confirm_credit_sale',
+  AUTHORIZE_CREDIT_OVERRIDE: 'authorize_credit_override',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];
