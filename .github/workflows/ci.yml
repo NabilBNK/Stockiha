@@ -70,3 +70,86 @@ jobs:
 
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+  database:
+    name: PostgreSQL migration and S4 integrity verification
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: stockiha_ci_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d stockiha_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGPASSWORD: postgres
+      ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_ci_test
+      STOCKIHA_TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_ci_test
+      STOCKIHA_TEST_DATABASE_URL: postgres://stockiha_runtime:runtime_ci_password@127.0.0.1:5432/stockiha_ci_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Bootstrap database roles
+        run: |
+          psql "$ADMIN_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE stockiha_owner NOLOGIN;
+          CREATE ROLE stockiha_migrator NOLOGIN;
+          CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
+          CREATE ROLE stockiha_backup NOLOGIN;
+          GRANT CREATE ON DATABASE stockiha_ci_test TO stockiha_owner;
+          SQL
+
+      - name: Apply all migrations in filename order
+        run: |
+          set -euo pipefail
+          while IFS= read -r migration; do
+            echo "Applying $migration"
+            psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Seed CI fiscal period
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO finance.fiscal_periods (period_code, starts_on, ends_on, status)
+          VALUES ('CI-2026', DATE '2026-01-01', DATE '2026-12-31', 'OPEN')
+          ON CONFLICT (period_code) DO NOTHING;
+          SQL
+
+      - name: Verify insecure hash APIs are not executable by runtime
+        run: |
+          result="$(psql "$ADMIN_URL" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT
+            has_function_privilege(
+              'stockiha_runtime',
+              'sales.confirm_credit_sale(text,uuid,bytea,bigint,bigint,bigint,date,jsonb,uuid)',
+              'EXECUTE'
+            )::int || ':' ||
+            has_function_privilege(
+              'stockiha_runtime',
+              'receivables.authorize_credit_override(text,uuid,bigint,bytea,text,integer)',
+              'EXECUTE'
+            )::int;
+          SQL
+          )"
+          test "$result" = "0:0"
+
+      - name: Run S4 credit-sale integration assertions
+        run: psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f src-tauri/tests/receivables/s4_001_credit_sale_integration.sql
+
+      - name: Run S4 real two-session credit race
+        run: bash src-tauri/tests/receivables/s4_001_credit_concurrency.sh
