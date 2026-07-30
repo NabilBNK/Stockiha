@@ -1,5 +1,9 @@
 # Stockiha — Slice 0 Tasks
 
+# Cross-slice UI foundation
+
+- [x] UI-001 Frontend foundation overhaul: coherent shell, reusable visual system, responsive operational screens
+
 - [x] S0-001 Repository foundation and Tauri scaffold
 - [x] S0-002 Development configuration and typed error foundation
   - [x] S0-002a Configure restrictive Tauri v2 Content Security Policy (CSP hardening — deferred from S0-001)
@@ -34,4 +38,3 @@
 # Stockiha — Slice 4 Tasks: Customer Master & Credit Limits
 
 - [ ] S4-001 Implement customer directory, credit limit enforcement, and customer ledger tracking
-

@@ -49,23 +49,23 @@ export const SupplierPaymentModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div className="modal-card" style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '100%', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-        <h3 style={{ marginTop: 0, fontSize: '1.25rem', fontWeight: 600 }}>Pay Supplier Liability</h3>
-        <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '16px' }}>
+    <div className="modal-overlay">
+      <div className="modal-card">
+        <h3>Pay Supplier Liability</h3>
+        <p className="sk-muted">
           Supplier: <strong>{liability.supplier_name}</strong> ({liability.supplier_code})<br />
           Outstanding Liability: <strong>{liability.remaining_amount} DZD</strong>
         </p>
 
         {error && (
-          <div style={{ backgroundColor: '#fee2e2', color: '#991b1b', padding: '12px', borderRadius: '6px', marginBottom: '16px', fontSize: '0.9rem' }}>
+          <div className="sk-banner sk-banner--error">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, marginBottom: '4px' }}>Payment Amount (DZD)</label>
+        <form className="sk-form" onSubmit={handleSubmit}>
+          <label>
+            Payment Amount (DZD)
             <input
               type="number"
               step="0.01"
@@ -73,58 +73,54 @@ export const SupplierPaymentModal: React.FC<Props> = ({
               required
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc' }}
             />
-          </div>
+          </label>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, marginBottom: '4px' }}>Payment Method</label>
+          <label>
+            Payment Method
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value as 'CASH' | 'BANK_TRANSFER' | 'CHECK')}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc' }}
             >
               <option value="CASH">Cash Desk (530000)</option>
               <option value="BANK_TRANSFER">Bank Transfer (512000)</option>
               <option value="CHECK">Check (512000)</option>
             </select>
-          </div>
+          </label>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, marginBottom: '4px' }}>Payment Date</label>
+          <label>
+            Payment Date
             <input
               type="date"
               required
               value={documentDate}
               onChange={(e) => setDocumentDate(e.target.value)}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc' }}
             />
-          </div>
+          </label>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, marginBottom: '4px' }}>Note / Reference</label>
+          <label>
+            Note / Reference
             <input
               type="text"
               placeholder="e.g. Bank receipt #98765"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc' }}
             />
-          </div>
+          </label>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
+          <div className="sk-form-actions">
             <button
               type="button"
+              className="sk-button sk-button--secondary"
               onClick={onClose}
               disabled={submitting}
-              style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ccc', backgroundColor: '#f3f4f6', cursor: 'pointer' }}
             >
               Cancel
             </button>
             <button
               type="submit"
+              className="sk-button sk-button--primary"
               disabled={submitting}
-              style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: '#2563eb', color: '#fff', fontWeight: 500, cursor: 'pointer' }}
             >
               {submitting ? 'Processing...' : 'Confirm Payment'}
             </button>

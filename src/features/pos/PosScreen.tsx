@@ -35,6 +35,7 @@ export function PosScreen() {
 
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -91,6 +92,16 @@ export function PosScreen() {
     () => cart.reduce((sum, l) => sum + Number(l.unitPrice) * l.qty, 0).toFixed(2),
     [cart],
   );
+  const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart]);
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    if (!query) return products;
+    return products.filter(
+      (product) =>
+        product.name.toLocaleLowerCase().includes(query) ||
+        product.sku.toLocaleLowerCase().includes(query),
+    );
+  }, [products, search]);
 
   async function confirmSale() {
     setConfirming(false);
@@ -145,77 +156,141 @@ export function PosScreen() {
 
   return (
     <section className="sk-page sk-pos">
-      <div className="sk-pos__grid">
-        <h1>{t('pos.title')}</h1>
-        {loading ? (
-          <Spinner />
-        ) : (
-          <div className="sk-pos__products" data-testid="pos-products">
-            {products.map((p) => (
-              <button
-                key={p.variant_id}
-                type="button"
-                className="sk-pos__product"
-                onClick={() => addToCart(p)}
-              >
-                <span className="sk-pos__product-name">{p.name}</span>
-                <span className="sk-pos__product-sku">{p.sku}</span>
-                <span className="sk-pos__product-price">{p.sale_price}</span>
-              </button>
-            ))}
-          </div>
-        )}
+      <div className="sk-pos__header">
+        <div>
+          <h1>{t('pos.title')}</h1>
+          <p>{t('pos.subtitle')}</p>
+        </div>
+        <span className="sk-badge sk-badge--ok">{t('header.session.open')}</span>
       </div>
 
-      <aside className="sk-pos__cart">
-        <h2>{t('pos.cart')}</h2>
-        {banner ? <Banner tone={banner.tone} testId="pos-banner">{banner.text}</Banner> : null}
-        {cart.length === 0 ? (
-          <Banner tone="info">{t('pos.cartEmpty')}</Banner>
-        ) : (
-          <ul className="sk-cart" data-testid="pos-cart">
-            {cart.map((l) => (
-              <li key={l.variantId} className="sk-cart__line">
-                <span className="sk-cart__name">{l.name}</span>
-                <div className="sk-cart__qty">
-                  <button type="button" aria-label="decrement" onClick={() => changeQty(l.variantId, -1)}>
-                    −
-                  </button>
-                  <span data-testid={`qty-${l.variantId}`}>{l.qty}</span>
-                  <button type="button" aria-label="increment" onClick={() => changeQty(l.variantId, 1)}>
-                    +
-                  </button>
-                </div>
-                <span className="sk-num">{(Number(l.unitPrice) * l.qty).toFixed(2)}</span>
-                <button type="button" className="sk-cart__remove" onClick={() => removeLine(l.variantId)}>
-                  {t('pos.remove')}
+      <div className="sk-pos__workspace">
+        <div className="sk-pos__catalog">
+          <div className="sk-pos__catalog-header">
+            <div>
+              <h2>{t('pos.catalog')}</h2>
+              <span>{t('pos.productsAvailable', { count: filteredProducts.length })}</span>
+            </div>
+            <label className="sk-pos__search">
+              <span className="sk-visually-hidden">{t('pos.search')}</span>
+              <span aria-hidden>⌕</span>
+              <input
+                type="search"
+                value={search}
+                placeholder={t('pos.search')}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+          </div>
+
+          {loading ? (
+            <Spinner />
+          ) : filteredProducts.length === 0 ? (
+            <div className="sk-pos__empty">{t('pos.noProducts')}</div>
+          ) : (
+            <div className="sk-pos__products" data-testid="pos-products">
+              {filteredProducts.map((p) => (
+                <button
+                  key={p.variant_id}
+                  type="button"
+                  className="sk-pos__product"
+                  aria-label={`${t('pos.addProduct')} ${p.name}`}
+                  onClick={() => addToCart(p)}
+                >
+                  <span className="sk-pos__product-top">
+                    <span className="sk-pos__product-mark" aria-hidden>
+                      {p.name.trim().charAt(0).toLocaleUpperCase() || '•'}
+                    </span>
+                    <span className="sk-pos__product-sku">{p.sku}</span>
+                  </span>
+                  <span className="sk-pos__product-name">{p.name}</span>
+                  <span className="sk-pos__product-price">{p.sale_price}</span>
                 </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <p className="sk-cart__total" data-testid="pos-total">
-          {t('pos.total')}: {provisionalTotal}
-        </p>
-
-        <div className="sk-cart__actions">
-          <Button
-            variant="secondary"
-            disabled={cart.length === 0 || submitting}
-            onClick={() => setClearing(true)}
-          >
-            {t('pos.clear')}
-          </Button>
-          <Button
-            disabled={cart.length === 0}
-            loading={submitting}
-            onClick={() => setConfirming(true)}
-          >
-            {t('pos.confirm')}
-          </Button>
+              ))}
+            </div>
+          )}
         </div>
-      </aside>
+
+        <aside className="sk-pos__cart">
+          <div className="sk-pos__cart-header">
+            <div>
+              <h2>{t('pos.cart')}</h2>
+              <span>{t('pos.items', { count: cartItemCount })}</span>
+            </div>
+            <span className="sk-pos__cart-count" aria-hidden>{cartItemCount}</span>
+          </div>
+          {banner ? <Banner tone={banner.tone} testId="pos-banner">{banner.text}</Banner> : null}
+          <div className="sk-pos__cart-body">
+            {cart.length === 0 ? (
+              <div className="sk-cart__empty">
+                <span aria-hidden>▤</span>
+                <strong>{t('pos.cartEmpty')}</strong>
+                <small>{t('pos.cartEmptyHint')}</small>
+              </div>
+            ) : (
+              <ul className="sk-cart" data-testid="pos-cart">
+                {cart.map((l) => (
+                  <li key={l.variantId} className="sk-cart__line">
+                    <div className="sk-cart__identity">
+                      <span className="sk-cart__name">{l.name}</span>
+                      <span className="sk-cart__sku">{l.sku}</span>
+                    </div>
+                    <span className="sk-cart__line-total sk-num">
+                      {(Number(l.unitPrice) * l.qty).toFixed(2)}
+                    </span>
+                    <div className="sk-cart__qty">
+                      <button
+                        type="button"
+                        aria-label="decrement"
+                        onClick={() => changeQty(l.variantId, -1)}
+                      >
+                        −
+                      </button>
+                      <span data-testid={`qty-${l.variantId}`}>{l.qty}</span>
+                      <button
+                        type="button"
+                        aria-label="increment"
+                        onClick={() => changeQty(l.variantId, 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="sk-cart__remove"
+                      onClick={() => removeLine(l.variantId)}
+                    >
+                      {t('pos.remove')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="sk-cart__summary">
+            <span>{t('pos.total')}</span>
+            <strong data-testid="pos-total">{provisionalTotal}</strong>
+          </div>
+
+          <div className="sk-cart__actions">
+            <Button
+              variant="secondary"
+              disabled={cart.length === 0 || submitting}
+              onClick={() => setClearing(true)}
+            >
+              {t('pos.clear')}
+            </Button>
+            <Button
+              disabled={cart.length === 0}
+              loading={submitting}
+              onClick={() => setConfirming(true)}
+            >
+              {t('pos.confirm')}
+            </Button>
+          </div>
+        </aside>
+      </div>
 
       {confirming ? (
         <ConfirmDialog
