@@ -1,6 +1,6 @@
 use crate::domain::customer::{
-    CreateCustomerPayload, Customer, CustomerCreditSummary, CustomerLedgerEntry,
-    UpdateCustomerPayload,
+    CreateCustomerPayload, Customer, CustomerCapabilities, CustomerCreditSummary,
+    CustomerLedgerEntry, UpdateCustomerPayload,
 };
 use crate::error::AppError;
 use rust_decimal::Decimal;
@@ -95,6 +95,20 @@ pub(crate) async fn list_customers(
 
     serde_json::from_value(result)
         .map_err(|error| AppError::internal(format!("Failed to parse customers: {error}")))
+}
+
+pub(crate) async fn get_customer_capabilities(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<CustomerCapabilities, AppError> {
+    let result: JsonValue = query_scalar("SELECT receivables.get_customer_capabilities($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(result)
+        .map_err(|error| AppError::internal(format!("Failed to parse customer capabilities: {error}")))
 }
 
 pub(crate) async fn get_customer_credit_summary(
