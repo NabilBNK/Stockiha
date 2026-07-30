@@ -25,6 +25,8 @@ pub fn run() {
             commands::stock_adjustment::confirm_stock_adjustment,
             commands::stock_adjustment::list_stock_adjustment_units,
             commands::cash_sale::confirm_cash_sale,
+            commands::credit_sale::confirm_credit_sale,
+            commands::credit_sale::authorize_credit_override,
             commands::cash_session::open_cash_session,
             commands::cash_session::inspect_active_cash_session,
             commands::cash_session::close_cash_session,
