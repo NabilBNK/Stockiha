@@ -47,6 +47,42 @@ function customer() {
   };
 }
 
+function activeSession() {
+  return {
+    id: 77,
+    warehouse_id: 1,
+    opened_by_user_id: 1,
+    opening_float: '10000.00',
+    opened_at: '2026-07-30T08:00:00Z',
+  };
+}
+
+function creditProduct() {
+  return {
+    product_id: 1,
+    variant_id: 7,
+    sku: 'SKU-7',
+    name: 'Credit Item',
+    sale_price: '1500.00',
+    is_active: true,
+    quantity_on_hand: '10.000',
+    last_known_wac: '900.000000',
+  };
+}
+
+function creditResult() {
+  return {
+    document_id: 700,
+    document_number: 'CR-2026-000001',
+    customer_id: 41,
+    total_amount: '1500.00',
+    due_date: '2026-08-29',
+    exposure_amount: '171500.00',
+    available_credit: '328500.00',
+    journal_document_id: 701,
+  };
+}
+
 function baseHandlers(extra: Handlers = {}): Handlers {
   return {
     get_setup_status: () => ({
@@ -57,6 +93,7 @@ function baseHandlers(extra: Handlers = {}): Handlers {
       workstation_configured: true,
     }),
     login: () => ({ session_token: 'tok', expires_at: '2026-12-31T23:59:59Z' }),
+    logout: () => null,
     inspect_active_cash_session: () => null,
     list_warehouses: () => [{ id: 1, code: 'WH1', name: 'Main Warehouse', is_active: true }],
     get_open_fiscal_period: () => ({
@@ -131,6 +168,19 @@ async function login() {
   await screen.findByRole('heading', { name: 'Dashboard' });
 }
 
+async function openCreditPos() {
+  fireEvent.click(screen.getByRole('button', { name: 'Point of sale' }));
+  await screen.findByRole('heading', { name: 'Point of sale' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Add Credit Item' }));
+  fireEvent.click(screen.getByTestId('payment-credit'));
+  fireEvent.change(screen.getByTestId('credit-customer-select'), { target: { value: '41' } });
+}
+
+async function confirmCheckout() {
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm sale' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+}
+
 beforeEach(() => {
   invokeMock.mockReset();
   cleanup();
@@ -144,7 +194,6 @@ describe('S4-001 Customer Workflow', () => {
     wireInvoke(baseHandlers());
     render(<App />);
     await login();
-
     fireEvent.click(screen.getByRole('button', { name: 'Customers' }));
 
     expect(await screen.findByRole('heading', { name: 'Customers' })).toBeInTheDocument();
@@ -187,7 +236,6 @@ describe('S4-001 Customer Workflow', () => {
     await login();
     fireEvent.click(screen.getByRole('button', { name: 'Customers' }));
     await screen.findByRole('heading', { name: 'Customers' });
-
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
 
     expect(await screen.findByTestId('customer-financial-detail')).toBeInTheDocument();
@@ -202,52 +250,16 @@ describe('S4-001 Customer Workflow', () => {
     let cashCalls = 0;
 
     wireInvoke(baseHandlers({
-      inspect_active_cash_session: () => ({
-        id: 77,
-        warehouse_id: 1,
-        opened_by_user_id: 1,
-        opening_float: '10000.00',
-        opened_at: '2026-07-30T08:00:00Z',
-      }),
-      list_products: () => [{
-        product_id: 1,
-        variant_id: 7,
-        sku: 'SKU-7',
-        name: 'Credit Item',
-        sale_price: '1500.00',
-        is_active: true,
-        quantity_on_hand: '10.000',
-        last_known_wac: '900.000000',
-      }],
-      confirm_cash_sale: () => {
-        cashCalls += 1;
-        return 999;
-      },
-      confirm_credit_sale: (args) => {
-        creditArgs = args;
-        return {
-          document_id: 700,
-          document_number: 'CR-2026-000001',
-          customer_id: 41,
-          total_amount: '1500.00',
-          due_date: '2026-08-29',
-          exposure_amount: '171500.00',
-          available_credit: '328500.00',
-          journal_document_id: 701,
-        };
-      },
+      inspect_active_cash_session: activeSession,
+      list_products: () => [creditProduct()],
+      confirm_cash_sale: () => { cashCalls += 1; return 999; },
+      confirm_credit_sale: (args) => { creditArgs = args; return creditResult(); },
     }));
 
     render(<App />);
     await login();
-    fireEvent.click(screen.getByRole('button', { name: 'Point of sale' }));
-    await screen.findByRole('heading', { name: 'Point of sale' });
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Credit Item' }));
-    fireEvent.click(screen.getByTestId('payment-credit'));
-    fireEvent.change(screen.getByTestId('credit-customer-select'), { target: { value: '41' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm sale' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    await openCreditPos();
+    await confirmCheckout();
 
     await waitFor(() => expect(creditArgs).not.toBeNull());
     const args = captured(creditArgs);
@@ -255,13 +267,62 @@ describe('S4-001 Customer Workflow', () => {
     expect(args.customerId).toBe(41);
     expect(args.warehouseId).toBe(1);
     expect(args.overrideToken).toBeNull();
-    expect(args.lines).toEqual([
-      { variant_id: 7, quantity: '1', unit_price: '1500.00' },
-    ]);
+    expect(args.lines).toEqual([{ variant_id: 7, quantity: '1', unit_price: '1500.00' }]);
 
     const success = await screen.findByTestId('credit-sale-success');
     expect(success).toHaveTextContent('CR-2026-000001');
     expect(success).toHaveTextContent('171500.00');
     expect(success).toHaveTextContent('328500.00');
+  });
+
+  it('uses a temporary manager session to authorize the exact blocked sale, then logs manager out', async () => {
+    let authorizeArgs: Record<string, unknown> | null = null;
+    let secondCreditArgs: Record<string, unknown> | null = null;
+    let creditAttempts = 0;
+    const logoutTokens: string[] = [];
+
+    wireInvoke(baseHandlers({
+      login: (args) => args.username === 'manager'
+        ? { session_token: 'manager-token', expires_at: '2026-12-31T23:59:59Z' }
+        : { session_token: 'tok', expires_at: '2026-12-31T23:59:59Z' },
+      logout: (args) => { logoutTokens.push(String(args.sessionToken)); return null; },
+      inspect_active_cash_session: activeSession,
+      list_products: () => [creditProduct()],
+      confirm_credit_sale: (args) => {
+        creditAttempts += 1;
+        if (args.overrideToken == null) throw { code: 'CREDIT_POLICY_BLOCKED' };
+        secondCreditArgs = args;
+        return creditResult();
+      },
+      authorize_credit_override: (args) => {
+        authorizeArgs = args;
+        return 'override-token-1';
+      },
+    }));
+
+    render(<App />);
+    await login();
+    await openCreditPos();
+    await confirmCheckout();
+
+    expect(await screen.findByText('Manager override')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('override-manager-username'), { target: { value: 'manager' } });
+    fireEvent.change(screen.getByTestId('override-manager-password'), { target: { value: 'manager-password' } });
+    fireEvent.change(screen.getByTestId('override-reason'), { target: { value: 'Approved customer exception' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Authorize' }));
+
+    await waitFor(() => expect(authorizeArgs).not.toBeNull());
+    const authorization = captured(authorizeArgs);
+    expect(authorization.sessionToken).toBe('manager-token');
+    expect(authorization.customerId).toBe(41);
+    expect(authorization.reason).toBe('Approved customer exception');
+    await waitFor(() => expect(logoutTokens).toContain('manager-token'));
+    expect(await screen.findByText('Manager override authorized. Confirm the unchanged sale again.')).toBeInTheDocument();
+
+    await confirmCheckout();
+    await waitFor(() => expect(secondCreditArgs).not.toBeNull());
+    expect(captured(secondCreditArgs).overrideToken).toBe('override-token-1');
+    expect(creditAttempts).toBe(2);
+    expect(await screen.findByTestId('credit-sale-success')).toHaveTextContent('CR-2026-000001');
   });
 });
