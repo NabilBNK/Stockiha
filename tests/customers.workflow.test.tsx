@@ -8,6 +8,11 @@ import App from '../src/App';
 
 type Handlers = Record<string, (args: Record<string, unknown>) => unknown>;
 
+function captured(value: Record<string, unknown> | null): Record<string, unknown> {
+  if (value === null) throw new Error('expected captured IPC arguments');
+  return value;
+}
+
 function wireInvoke(handlers: Handlers) {
   invokeMock.mockImplementation((command: string, args: Record<string, unknown> = {}) => {
     const handler = handlers[command];
@@ -170,7 +175,7 @@ describe('S4-001 Customer Workflow', () => {
     fireEvent.click(screen.getByTestId('save-customer-btn'));
 
     await waitFor(() => expect(createArgs).not.toBeNull());
-    const payload = (createArgs as Record<string, unknown>).payload as Record<string, unknown>;
+    const payload = captured(createArgs).payload as Record<string, unknown>;
     expect(payload.code).toBe('CUS-NEW');
     expect(payload.credit_enabled).toBe(true);
     expect(payload.credit_limit).toBe('250000.00');
@@ -245,11 +250,12 @@ describe('S4-001 Customer Workflow', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
 
     await waitFor(() => expect(creditArgs).not.toBeNull());
+    const args = captured(creditArgs);
     expect(cashCalls).toBe(0);
-    expect((creditArgs as Record<string, unknown>).customerId).toBe(41);
-    expect((creditArgs as Record<string, unknown>).warehouseId).toBe(1);
-    expect((creditArgs as Record<string, unknown>).overrideToken).toBeNull();
-    expect((creditArgs as Record<string, unknown>).lines).toEqual([
+    expect(args.customerId).toBe(41);
+    expect(args.warehouseId).toBe(1);
+    expect(args.overrideToken).toBeNull();
+    expect(args.lines).toEqual([
       { variant_id: 7, quantity: '1', unit_price: '1500.00' },
     ]);
 
