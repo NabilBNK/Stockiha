@@ -25,6 +25,7 @@ import { StockReceiptScreen } from '../features/inventory/StockReceiptScreen';
 import { PosScreen } from '../features/pos/PosScreen';
 import { CashSessionScreen } from '../features/cash-session/CashSessionScreen';
 import { DocumentsScreen } from '../features/documents/DocumentsScreen';
+import { CustomersScreen } from '../features/customers/CustomersScreen';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
 import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
 import { SupplierInvoicesScreen } from '../features/procurement/SupplierInvoicesScreen';
@@ -76,7 +77,6 @@ export function AppRouter() {
     return <SetupScreen onComplete={() => void refresh()} />;
   }
 
-  // route === 'ready'
   if (!user) {
     return <LoginScreen />;
   }
@@ -97,8 +97,6 @@ function AuthenticatedApp() {
     void refreshActiveCashSession();
   }, [refreshActiveCashSession]);
 
-  // If reference-data loading failed due to an expired/revoked session, route
-  // back to login by clearing the in-memory session.
   useEffect(() => {
     if (error && isSessionInvalid(error)) {
       clearSession();
@@ -114,6 +112,7 @@ function AuthenticatedApp() {
       {view === 'pos' && <PosScreen />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}
+      {view === 'customers' && <CustomersScreen sessionToken={user?.token ?? ''} />}
       {view === 'suppliers' && <SuppliersScreen sessionToken={user?.token ?? ''} />}
       {view === 'purchase_orders' && <PurchaseOrdersScreen sessionToken={user?.token ?? ''} />}
       {view === 'supplier_invoices' && (
