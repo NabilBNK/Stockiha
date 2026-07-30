@@ -37,6 +37,14 @@ export interface UpdateCustomerPayload extends CreateCustomerPayload {
   is_active: boolean;
 }
 
+export interface CustomerCapabilities {
+  can_view_customers: boolean;
+  can_manage_customers: boolean;
+  can_post_credit_sale: boolean;
+  can_post_customer_payment: boolean;
+  can_override_credit_limit: boolean;
+}
+
 export interface CustomerCreditSummary {
   customer_id: number;
   customer_code: string;
