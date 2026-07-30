@@ -8,6 +8,7 @@ pub mod customer;
 pub mod db_health;
 pub mod documents;
 pub mod procurement;
+pub mod receivables;
 pub mod reference;
 pub mod setup;
 pub mod stock_adjustment;
