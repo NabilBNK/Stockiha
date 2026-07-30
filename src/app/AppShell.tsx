@@ -3,7 +3,7 @@
  * navigation, a header showing the current user + active cash-session status
  * + language switcher + logout. Large touch targets; responsive.
  */
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { Button } from '../shared/components';
 import { LOCALES, useI18n, type Locale, type MessageKey } from '../shared/i18n';
@@ -39,6 +39,21 @@ const NAV: { view: AppView; labelKey: MessageKey; group: 'main' | 'stock' | 'buy
 ];
 
 const LOCALE_LABELS: Record<Locale, string> = { fr: 'FR', ar: 'ع', en: 'EN' };
+const SIDEBAR_STORAGE_KEY = 'stockiha.sidebarCollapsed';
+const THEME_STORAGE_KEY = 'stockiha.theme';
+
+type Theme = 'light' | 'dark';
+
+function initialTheme(): Theme {
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === 'light' || stored === 'dark') return stored;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function initialSidebarState(): boolean {
+  return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
+}
+
 const GROUP_LABELS: Record<Locale, Record<(typeof NAV)[number]['group'], string>> = {
   fr: { main: 'Aperçu', stock: 'Catalogue & stock', buy: 'Achats', sales: 'Ventes & caisse' },
   ar: { main: 'نظرة عامة', stock: 'المنتجات والمخزون', buy: 'المشتريات', sales: 'المبيعات والصندوق' },
@@ -56,16 +71,83 @@ export function AppShell({
 }) {
   const { t, locale, setLocale } = useI18n();
   const { user, activeCashSession, logout } = useSession();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarState);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(
+    () => window.matchMedia?.('(max-width: 760px)').matches ?? false,
+  );
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+
+  useEffect(() => {
+    const query = window.matchMedia?.('(max-width: 760px)');
+    if (!query) return;
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsNarrow(event.matches);
+      if (!event.matches) setMobileNavigationOpen(false);
+    };
+    query.addEventListener('change', handleChange);
+    return () => query.removeEventListener('change', handleChange);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  const navigationToggleLabel = isNarrow
+    ? mobileNavigationOpen
+      ? t('header.closeNavigation')
+      : t('header.openNavigation')
+    : sidebarCollapsed
+      ? t('header.expandSidebar')
+      : t('header.collapseSidebar');
+
+  function toggleNavigation() {
+    if (isNarrow) {
+      setMobileNavigationOpen((open) => !open);
+    } else {
+      setSidebarCollapsed((collapsed) => !collapsed);
+    }
+  }
+
+  function navigate(view: AppView) {
+    onNavigate(view);
+    setMobileNavigationOpen(false);
+  }
 
   return (
-    <div className="sk-shell">
+    <div
+      className={[
+        'sk-shell',
+        sidebarCollapsed ? 'sk-shell--nav-collapsed' : '',
+        mobileNavigationOpen ? 'sk-shell--nav-open' : '',
+      ].filter(Boolean).join(' ')}
+    >
       <header className="sk-shell__header">
-        <div className="sk-shell__brand">
-          <span className="sk-shell__logo" aria-hidden>S</span>
-          <span>
-            <strong>{t('app.name')}</strong>
-            <small>Inventory control</small>
-          </span>
+        <div className="sk-shell__header-left">
+          <button
+            type="button"
+            className="sk-shell__icon-button"
+            aria-label={navigationToggleLabel}
+            title={navigationToggleLabel}
+            aria-expanded={isNarrow ? mobileNavigationOpen : !sidebarCollapsed}
+            onClick={toggleNavigation}
+            data-testid="sidebar-toggle"
+          >
+            <span aria-hidden>{isNarrow && mobileNavigationOpen ? '×' : '☰'}</span>
+          </button>
+          <div className="sk-shell__brand">
+            <span className="sk-shell__logo" aria-hidden>S</span>
+            <span className="sk-shell__brand-copy">
+              <strong>{t('app.name')}</strong>
+              <small>Inventory control</small>
+            </span>
+          </div>
         </div>
         <div className="sk-shell__header-right">
           <span
@@ -90,6 +172,17 @@ export function AppShell({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            className="sk-shell__icon-button"
+            aria-label={theme === 'dark' ? t('header.themeLight') : t('header.themeDark')}
+            title={theme === 'dark' ? t('header.themeLight') : t('header.themeDark')}
+            aria-pressed={theme === 'dark'}
+            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            data-testid="theme-toggle"
+          >
+            <span aria-hidden>{theme === 'dark' ? '☀' : '☾'}</span>
+          </button>
           <Button variant="secondary" onClick={() => void logout()}>
             {t('common.logout')}
           </Button>
@@ -107,15 +200,24 @@ export function AppShell({
                   type="button"
                   className={`sk-nav__item ${currentView === item.view ? 'sk-nav__item--active' : ''}`}
                   aria-current={currentView === item.view ? 'page' : undefined}
-                  onClick={() => onNavigate(item.view)}
+                  title={sidebarCollapsed && !isNarrow ? t(item.labelKey) : undefined}
+                  onClick={() => navigate(item.view)}
                 >
                   <span className="sk-nav__icon" aria-hidden>{item.icon}</span>
-                  <span>{t(item.labelKey)}</span>
+                  <span className="sk-nav__label">{t(item.labelKey)}</span>
                 </button>
               ))}
             </div>
           ))}
         </nav>
+        {mobileNavigationOpen ? (
+          <button
+            type="button"
+            className="sk-nav-backdrop"
+            aria-label={t('header.closeNavigation')}
+            onClick={() => setMobileNavigationOpen(false)}
+          />
+        ) : null}
 
         <main className="sk-main">{children}</main>
       </div>

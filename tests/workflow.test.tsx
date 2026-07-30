@@ -30,6 +30,9 @@ function wireInvoke(handlers: Handlers) {
 beforeEach(() => {
   invokeMock.mockReset();
   cleanup();
+  window.localStorage.clear();
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.removeProperty('color-scheme');
   document.documentElement.setAttribute('dir', 'ltr');
 });
 
@@ -127,5 +130,16 @@ describe('login', () => {
 
     // Dashboard renders with the backend-provided product count.
     await waitFor(() => expect(screen.getAllByText('3')[0]).toBeInTheDocument());
+
+    const sidebarToggle = screen.getByTestId('sidebar-toggle');
+    fireEvent.click(sidebarToggle);
+    expect(document.querySelector('.sk-shell')).toHaveClass('sk-shell--nav-collapsed');
+    expect(window.localStorage.getItem('stockiha.sidebarCollapsed')).toBe('true');
+
+    const themeToggle = screen.getByTestId('theme-toggle');
+    fireEvent.click(themeToggle);
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(window.localStorage.getItem('stockiha.theme')).toBe('dark');
+    expect(themeToggle).toHaveAccessibleName('Use light mode');
   });
 });
