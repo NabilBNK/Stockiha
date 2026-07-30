@@ -17,13 +17,23 @@ export type AppView =
   | 'pos'
   | 'session'
   | 'documents'
+  | 'customers'
   | 'suppliers'
   | 'purchase_orders'
   | 'supplier_invoices'
   | 'supplier_liabilities'
   | 'supplier_returns';
 
-const NAV: { view: AppView; labelKey: MessageKey; group: 'main' | 'stock' | 'buy' | 'sales'; icon: string }[] = [
+type NavGroup = 'main' | 'stock' | 'buy' | 'sales';
+type NavItem = {
+  view: AppView;
+  group: NavGroup;
+  icon: string;
+  labelKey?: MessageKey;
+  labels?: Record<Locale, string>;
+};
+
+const NAV: NavItem[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard', group: 'main', icon: '⌂' },
   { view: 'products', labelKey: 'nav.products', group: 'stock', icon: '□' },
   { view: 'stock', labelKey: 'nav.stockReceipt', group: 'stock', icon: '↓' },
@@ -33,6 +43,7 @@ const NAV: { view: AppView; labelKey: MessageKey; group: 'main' | 'stock' | 'buy
   { view: 'supplier_invoices', labelKey: 'nav.supplierInvoices', group: 'buy', icon: '▤' },
   { view: 'supplier_liabilities', labelKey: 'nav.supplierLiabilities', group: 'buy', icon: '₫' },
   { view: 'supplier_returns', labelKey: 'nav.supplierReturns', group: 'buy', icon: '↩' },
+  { view: 'customers', labels: { fr: 'Clients', ar: 'العملاء', en: 'Customers' }, group: 'sales', icon: '♙' },
   { view: 'pos', labelKey: 'nav.pos', group: 'sales', icon: '▦' },
   { view: 'session', labelKey: 'nav.cashSession', group: 'sales', icon: '◉' },
   { view: 'documents', labelKey: 'nav.documents', group: 'sales', icon: '▧' },
@@ -54,7 +65,7 @@ function initialSidebarState(): boolean {
   return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
 }
 
-const GROUP_LABELS: Record<Locale, Record<(typeof NAV)[number]['group'], string>> = {
+const GROUP_LABELS: Record<Locale, Record<NavGroup, string>> = {
   fr: { main: 'Aperçu', stock: 'Catalogue & stock', buy: 'Achats', sales: 'Ventes & caisse' },
   ar: { main: 'نظرة عامة', stock: 'المنتجات والمخزون', buy: 'المشتريات', sales: 'المبيعات والصندوق' },
   en: { main: 'Overview', stock: 'Catalog & stock', buy: 'Purchasing', sales: 'Sales & cash' },
@@ -118,6 +129,12 @@ export function AppShell({
   function navigate(view: AppView) {
     onNavigate(view);
     setMobileNavigationOpen(false);
+  }
+
+  function navLabel(item: NavItem): string {
+    if (item.labels) return item.labels[locale];
+    if (item.labelKey) return t(item.labelKey);
+    return item.view;
   }
 
   return (
@@ -200,11 +217,11 @@ export function AppShell({
                   type="button"
                   className={`sk-nav__item ${currentView === item.view ? 'sk-nav__item--active' : ''}`}
                   aria-current={currentView === item.view ? 'page' : undefined}
-                  title={sidebarCollapsed && !isNarrow ? t(item.labelKey) : undefined}
+                  title={sidebarCollapsed && !isNarrow ? navLabel(item) : undefined}
                   onClick={() => navigate(item.view)}
                 >
                   <span className="sk-nav__icon" aria-hidden>{item.icon}</span>
-                  <span className="sk-nav__label">{t(item.labelKey)}</span>
+                  <span className="sk-nav__label">{navLabel(item)}</span>
                 </button>
               ))}
             </div>
