@@ -86,6 +86,7 @@ pub fn run() {
             commands::customer::create_customer,
             commands::customer::update_customer,
             commands::customer::list_customers,
+            commands::customer::get_customer_capabilities,
             commands::customer::get_customer_credit_summary,
             commands::customer::list_customer_ledger,
         ])
