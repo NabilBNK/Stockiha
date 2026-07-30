@@ -79,6 +79,27 @@ fn canonical_payload(draft: &CreditSaleDraft, lines_json: JsonValue) -> JsonValu
     })
 }
 
+fn is_credit_policy_message(message: &str) -> bool {
+    message.contains("customer is inactive")
+        || message.contains("customer is not enabled for credit sales")
+        || message.contains("customer credit policy blocks this sale")
+        || message.contains("credit override is invalid, expired, consumed, or does not match this sale")
+}
+
+fn map_credit_sale_error(err: sqlx::Error) -> AppError {
+    let is_credit_policy = err
+        .as_database_error()
+        .is_some_and(|db_err| db_err.code().as_deref() == Some("55000") && is_credit_policy_message(db_err.message()));
+
+    if is_credit_policy {
+        AppError::CreditPolicyBlocked {
+            diagnostic: err.to_string(),
+        }
+    } else {
+        AppError::from_posting_error(err)
+    }
+}
+
 pub(crate) async fn confirm_credit_sale(
     pool: &PgPool,
     session_token: &str,
@@ -105,7 +126,7 @@ pub(crate) async fn confirm_credit_sale(
     .bind(request.override_token.as_deref())
     .fetch_one(pool)
     .await
-    .map_err(AppError::from_posting_error)?;
+    .map_err(map_credit_sale_error)?;
 
     serde_json::from_value(result)
         .map_err(|e| AppError::internal(format!("failed to parse credit sale result: {e}")))
@@ -186,5 +207,13 @@ mod tests {
         let mut invalid = draft(10_000);
         invalid.lines[0].quantity = Decimal::ZERO;
         assert!(validate_draft(&invalid).is_err());
+    }
+
+    #[test]
+    fn identifies_only_known_credit_policy_messages() {
+        assert!(is_credit_policy_message("customer credit policy blocks this sale"));
+        assert!(is_credit_policy_message("customer is not enabled for credit sales"));
+        assert!(!is_credit_policy_message("insufficient stock for variant 7"));
+        assert!(!is_credit_policy_message("fiscal period is not open"));
     }
 }
