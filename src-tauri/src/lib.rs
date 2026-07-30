@@ -11,7 +11,7 @@ pub mod state;
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState {
-            stage: "Slice 1".to_string(),
+            stage: "Slice 4".to_string(),
         })
         .manage(tauri::async_runtime::block_on(async {
             infrastructure::db::database_state_from_env()
@@ -81,6 +81,11 @@ pub fn run() {
             commands::procurement::post_supplier_payment,
             commands::procurement::list_supplier_returns,
             commands::procurement::list_supplier_payments,
+            commands::customer::create_customer,
+            commands::customer::update_customer,
+            commands::customer::list_customers,
+            commands::customer::get_customer_credit_summary,
+            commands::customer::list_customer_ledger,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
