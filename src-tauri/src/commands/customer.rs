@@ -1,7 +1,7 @@
 use crate::application::customer_service;
 use crate::domain::customer::{
-    CreateCustomerPayload, Customer, CustomerCreditSummary, CustomerLedgerEntry,
-    UpdateCustomerPayload,
+    CreateCustomerPayload, Customer, CustomerCapabilities, CustomerCreditSummary,
+    CustomerLedgerEntry, UpdateCustomerPayload,
 };
 use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
@@ -39,6 +39,17 @@ pub(crate) async fn list_customers(
 ) -> Result<Vec<Customer>, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     customer_service::list_customers(pool, &session_token, include_inactive.unwrap_or(false))
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_customer_capabilities(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<CustomerCapabilities, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    customer_service::get_customer_capabilities(pool, &session_token)
         .await
         .map_err(IpcError::from)
 }
