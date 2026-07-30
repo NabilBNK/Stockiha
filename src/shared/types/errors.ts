@@ -1,27 +1,11 @@
 /**
- * S0-002 — Frontend error-code contract.
- *
- * Mirrors the backend public `IpcError` wire shape `{ code: <ErrorCode> }`
- * (see `src-tauri/src/error.rs`). Only codes in {@link BACKEND_ERROR_CODES} are
- * recognized; every other value collapses to the frontend-only
- * {@link UNKNOWN_ERROR}.
- *
- * Message keys are owned by the frontend and are placeholders for future
- * i18n (French / Arabic / English). Full localization is out of scope for
- * S0-002 — only the key ownership and the mapping shape are established here.
- */
-
-/**
- * Allowlist of backend error codes that may cross the Tauri IPC boundary.
- * Must stay in sync with the Rust `ErrorCode` enum. Add a code here only when a
- * matching Rust variant and its `From<AppError>` mapping are added.
+ * Frontend allowlist for the backend's redacted `{ code }` IPC error contract.
+ * Keep this in lockstep with Rust `ErrorCode`.
  */
 export const BACKEND_ERROR_CODES = [
   'INTERNAL_ERROR',
-  // S0-003 — database connectivity proof.
   'CONFIGURATION_ERROR',
   'DATABASE_UNAVAILABLE',
-  // Slice 1 — transaction engine + command surface (see src-tauri/src/error.rs).
   'SESSION_INVALID',
   'PERMISSION_DENIED',
   'VALIDATION_ERROR',
@@ -29,21 +13,13 @@ export const BACKEND_ERROR_CODES = [
   'IDEMPOTENCY_CONFLICT',
   'IMMUTABLE_RECORD',
   'UNSAFE_ZERO_STOCK_VALUATION',
+  'CREDIT_POLICY_BLOCKED',
 ] as const;
 
-/** A code known to originate from the backend contract. */
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
-
-/** Frontend-only sentinel for any value that is not an allowlisted backend code. */
 export const UNKNOWN_ERROR = 'UNKNOWN_ERROR';
-
-/** The full set of codes the frontend may resolve to. */
 export type AppErrorCode = BackendErrorCode | typeof UNKNOWN_ERROR;
 
-/**
- * Stable i18n message keys, keyed by error code. Consumed by the future
- * localization layer; not resolved to localized strings within S0-002.
- */
 export const ERROR_MESSAGE_KEYS = {
   INTERNAL_ERROR: 'errors.internal',
   CONFIGURATION_ERROR: 'errors.configuration',
@@ -55,16 +31,14 @@ export const ERROR_MESSAGE_KEYS = {
   IDEMPOTENCY_CONFLICT: 'errors.idempotencyConflict',
   IMMUTABLE_RECORD: 'errors.immutableRecord',
   UNSAFE_ZERO_STOCK_VALUATION: 'errors.unsafeZeroStockValuation',
+  // POS intercepts this code to provide customer-credit specific localized copy.
+  // Generic consumers intentionally fall back to the stable precondition message.
+  CREDIT_POLICY_BLOCKED: 'errors.preconditionFailed',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 
-/** A message key owned by the frontend error contract. */
 export type ErrorMessageKey = (typeof ERROR_MESSAGE_KEYS)[AppErrorCode];
 
-/**
- * Type guard: is `value` one of the allowlisted backend error codes?
- * Accepts only strings; rejects everything else.
- */
 export function isBackendErrorCode(value: unknown): value is BackendErrorCode {
   return (
     typeof value === 'string' &&
