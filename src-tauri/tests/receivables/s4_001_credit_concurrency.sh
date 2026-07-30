@@ -85,7 +85,7 @@ set +e
 psql "$STOCKIHA_TEST_DATABASE_URL" -X -v ON_ERROR_STOP=1 -At >"$workdir/a" 2>"$workdir/a.err" <<SQL &
 BEGIN;
 SELECT sales.confirm_credit_sale(
-  '$token', '$req_a', sha256('s4-credit-race-a-$run_id'::bytea),
+  '$token', '$req_a',
   $customer_id, $warehouse_id, $period_id, '$document_date',
   '$lines'::jsonb, NULL
 )->>'document_id';
@@ -97,7 +97,7 @@ sleep 0.2
 
 psql "$STOCKIHA_TEST_DATABASE_URL" -X -v ON_ERROR_STOP=1 -At >"$workdir/b" 2>"$workdir/b.err" <<SQL &
 SELECT sales.confirm_credit_sale(
-  '$token', '$req_b', sha256('s4-credit-race-b-$run_id'::bytea),
+  '$token', '$req_b',
   $customer_id, $warehouse_id, $period_id, '$document_date',
   '$lines'::jsonb, NULL
 )->>'document_id';
