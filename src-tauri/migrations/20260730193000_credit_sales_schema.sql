@@ -86,14 +86,24 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_document_id bigint := COALESCE(NEW.document_id, OLD.document_id);
+    v_document_id bigint;
     v_status text;
 BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_document_id := OLD.document_id;
+    ELSE
+        v_document_id := NEW.document_id;
+    END IF;
+
     SELECT status INTO v_status FROM core.business_documents WHERE id = v_document_id;
     IF v_status IN ('POSTED', 'REVERSED') THEN
         RAISE EXCEPTION 'posted or reversed credit sales are immutable' USING ERRCODE = '0A000';
     END IF;
-    RETURN COALESCE(NEW, OLD);
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
 END;
 $$;
 
