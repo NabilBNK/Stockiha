@@ -3,6 +3,7 @@ pub mod auth;
 pub mod cash_sale;
 pub mod cash_session;
 pub mod catalog;
+pub mod customer;
 pub mod db_health;
 pub mod documents;
 pub mod procurement;
