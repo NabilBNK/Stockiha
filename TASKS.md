@@ -37,7 +37,7 @@
 
 # Stockiha — Slice 4 Tasks: Customers, Receivables & Cash Controls
 
-- [ ] S4-001 Implement customer master, customer credit state, customer ledger, credit-limit/overdue enforcement, and receivables foundations
+- [x] S4-001 Implement customer master, customer credit state, customer ledger, credit-limit/overdue enforcement, receivables, and customer document pipeline
 - [ ] S4-002 Implement full cashier-session lifecycle: blind denomination counts, variance approval, suspension, and handover
 - [ ] S4-003 Implement extended drawer eligibility and customer cash-payment/refund integration
 - [ ] S4-004 Complete Slice 4 POS/customer/cash-session integration, concurrency tests, and French/Arabic/English verification
