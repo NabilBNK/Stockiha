@@ -35,6 +35,9 @@
 - [x] S3-002 Implement landed cost allocation, supplier invoices, three-way match, and payables ledger
 - [x] S3-003 Implement supplier returns, debit notes, and payables settlement postings
 
-# Stockiha — Slice 4 Tasks: Customer Master & Credit Limits
+# Stockiha — Slice 4 Tasks: Customers, Receivables & Cash Controls
 
-- [ ] S4-001 Implement customer directory, credit limit enforcement, and customer ledger tracking
+- [ ] S4-001 Implement customer master, customer credit state, customer ledger, credit-limit/overdue enforcement, and receivables foundations
+- [ ] S4-002 Implement full cashier-session lifecycle: blind denomination counts, variance approval, suspension, and handover
+- [ ] S4-003 Implement extended drawer eligibility and customer cash-payment/refund integration
+- [ ] S4-004 Complete Slice 4 POS/customer/cash-session integration, concurrency tests, and French/Arabic/English verification

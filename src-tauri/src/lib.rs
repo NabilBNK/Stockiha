@@ -11,7 +11,7 @@ pub mod state;
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState {
-            stage: "Slice 1".to_string(),
+            stage: "Slice 4".to_string(),
         })
         .manage(tauri::async_runtime::block_on(async {
             infrastructure::db::database_state_from_env()
@@ -25,6 +25,8 @@ pub fn run() {
             commands::stock_adjustment::confirm_stock_adjustment,
             commands::stock_adjustment::list_stock_adjustment_units,
             commands::cash_sale::confirm_cash_sale,
+            commands::credit_sale::confirm_credit_sale,
+            commands::credit_sale::authorize_credit_override,
             commands::cash_session::open_cash_session,
             commands::cash_session::inspect_active_cash_session,
             commands::cash_session::close_cash_session,
@@ -60,6 +62,10 @@ pub fn run() {
             commands::documents::get_sale_document,
             commands::documents::list_sale_lines,
             commands::documents::list_document_jobs,
+            commands::documents::list_printable_documents,
+            commands::documents::get_customer_document_payload,
+            commands::documents::generate_customer_document_pdf,
+            commands::documents::enqueue_customer_reprint,
             commands::procurement::create_supplier,
             commands::procurement::update_supplier,
             commands::procurement::list_suppliers,
@@ -81,6 +87,14 @@ pub fn run() {
             commands::procurement::post_supplier_payment,
             commands::procurement::list_supplier_returns,
             commands::procurement::list_supplier_payments,
+            commands::customer::create_customer,
+            commands::customer::update_customer,
+            commands::customer::list_customers,
+            commands::customer::get_customer_capabilities,
+            commands::customer::get_customer_credit_summary,
+            commands::customer::list_customer_ledger,
+            commands::receivables::list_open_customer_invoices,
+            commands::receivables::post_customer_payment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

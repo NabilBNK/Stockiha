@@ -26,6 +26,10 @@ export const COMMANDS = {
   GET_SALE_DOCUMENT: 'get_sale_document',
   LIST_SALE_LINES: 'list_sale_lines',
   LIST_DOCUMENT_JOBS: 'list_document_jobs',
+  LIST_PRINTABLE_DOCUMENTS: 'list_printable_documents',
+  GET_CUSTOMER_DOCUMENT_PAYLOAD: 'get_customer_document_payload',
+  GENERATE_CUSTOMER_DOCUMENT_PDF: 'generate_customer_document_pdf',
+  ENQUEUE_CUSTOMER_REPRINT: 'enqueue_customer_reprint',
   // Slice 2 — variant catalog
   CREATE_PRODUCT_WITH_VARIANTS: 'create_product_with_variants',
   ADD_VARIANT: 'add_variant',
@@ -68,6 +72,17 @@ export const COMMANDS = {
   POST_SUPPLIER_PAYMENT: 'post_supplier_payment',
   LIST_SUPPLIER_RETURNS: 'list_supplier_returns',
   LIST_SUPPLIER_PAYMENTS: 'list_supplier_payments',
+  // Slice 4 — Customers & receivables
+  CREATE_CUSTOMER: 'create_customer',
+  UPDATE_CUSTOMER: 'update_customer',
+  LIST_CUSTOMERS: 'list_customers',
+  GET_CUSTOMER_CAPABILITIES: 'get_customer_capabilities',
+  GET_CUSTOMER_CREDIT_SUMMARY: 'get_customer_credit_summary',
+  LIST_CUSTOMER_LEDGER: 'list_customer_ledger',
+  LIST_OPEN_CUSTOMER_INVOICES: 'list_open_customer_invoices',
+  POST_CUSTOMER_PAYMENT: 'post_customer_payment',
+  CONFIRM_CREDIT_SALE: 'confirm_credit_sale',
+  AUTHORIZE_CREDIT_OVERRIDE: 'authorize_credit_override',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

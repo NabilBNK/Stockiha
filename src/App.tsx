@@ -12,6 +12,7 @@ import { SessionProvider } from './shared/session/SessionContext';
 import { AppRouter } from './app/AppRouter';
 import './App.css';
 import './styles/global.css';
+import './styles/interaction-polish.css';
 
 function App() {
   return (
