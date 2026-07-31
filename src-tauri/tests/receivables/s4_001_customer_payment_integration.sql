@@ -1,4 +1,4 @@
--- S4-001 Integration Test — customer payment allocation, cash ledger, drawer, and isolation.
+-- S4-001 Integration Test — customer payment allocation, cash ledger, drawer, document queue, and isolation.
 \set ON_ERROR_STOP on
 
 DO $$
@@ -33,6 +33,8 @@ DECLARE
     v_exposure numeric(14,2);
     v_remaining numeric(14,2);
     v_count bigint;
+    v_generation_job_id bigint;
+    v_reprint_job_id bigint;
     v_cross_blocked boolean := false;
 BEGIN
     RAISE NOTICE '=== Running S4-001 customer payment integration suite ===';
@@ -114,6 +116,26 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: customer payment amount/exposure wrong: %', v_payment;
     END IF;
 
+    -- Receipt queue is created in the same posting transaction.
+    SELECT min(id), count(*)
+    INTO v_generation_job_id, v_count
+    FROM documents.generation_jobs
+    WHERE business_document_id = v_payment_doc
+      AND document_kind = 'CUSTOMER_PAYMENT_RECEIPT_PDF'
+      AND status = 'PENDING';
+    IF v_count <> 1 OR v_generation_job_id IS NULL THEN
+        RAISE EXCEPTION 'Assertion failed: customer payment did not enqueue exactly one pending receipt generation job';
+    END IF;
+
+    SELECT count(*) INTO v_count
+    FROM documents.print_jobs
+    WHERE business_document_id = v_payment_doc
+      AND generation_job_id = v_generation_job_id
+      AND status = 'WAITING_FOR_GENERATION';
+    IF v_count <> 1 THEN
+        RAISE EXCEPTION 'Assertion failed: customer payment did not enqueue exactly one waiting original print job';
+    END IF;
+
     SELECT exposure_amount INTO v_exposure
     FROM receivables.customer_credit_state WHERE customer_id = v_customer1;
     IF v_exposure <> 200.00 THEN
@@ -161,7 +183,8 @@ BEGIN
     ) bad;
     IF v_count <> 0 THEN RAISE EXCEPTION 'Assertion failed: customer payment journal unbalanced'; END IF;
 
-    -- Same request is idempotent: no second cash movement, drawer pulse, or allocation.
+    -- Same request is idempotent: no second cash movement, drawer pulse,
+    -- allocation, receipt generation job, or original print job.
     v_retry := receivables.post_customer_payment(
         v_token, v_payment_request, v_customer1, 100.00, 'CASH', v_cash_session_id,
         v_period_id, v_doc_date,
@@ -175,6 +198,43 @@ BEGIN
     IF v_count <> 1 THEN RAISE EXCEPTION 'Assertion failed: retry duplicated cash movement'; END IF;
     SELECT count(*) INTO v_count FROM cash.drawer_jobs WHERE business_document_id = v_payment_doc;
     IF v_count <> 1 THEN RAISE EXCEPTION 'Assertion failed: retry duplicated drawer job'; END IF;
+    SELECT count(*) INTO v_count FROM documents.generation_jobs WHERE business_document_id = v_payment_doc;
+    IF v_count <> 1 THEN RAISE EXCEPTION 'Assertion failed: retry duplicated receipt generation job'; END IF;
+    SELECT count(*) INTO v_count FROM documents.print_jobs WHERE business_document_id = v_payment_doc;
+    IF v_count <> 1 THEN RAISE EXCEPTION 'Assertion failed: retry duplicated original receipt print job'; END IF;
+
+    -- Complete receipt generation and prove reprint is print-only: the cash
+    -- payment's one legitimate drawer job remains exactly one.
+    PERFORM documents.complete_generation_job(
+        v_generation_job_id, true, false,
+        'generated/test-payment-receipt-' || v_payment_doc::text || '.pdf',
+        NULL, NULL
+    );
+    IF NOT EXISTS (
+        SELECT 1 FROM documents.print_jobs
+        WHERE business_document_id = v_payment_doc
+          AND generation_job_id = v_generation_job_id
+          AND status = 'PENDING'
+    ) THEN
+        RAISE EXCEPTION 'Assertion failed: completed receipt generation did not release original print job';
+    END IF;
+
+    v_reprint_job_id := documents.enqueue_customer_reprint(
+        v_token,
+        v_payment_doc,
+        's4001-payment-reprint-' || v_suffix
+    );
+    IF v_reprint_job_id IS NULL THEN
+        RAISE EXCEPTION 'Assertion failed: payment receipt reprint job was not created';
+    END IF;
+    SELECT count(*) INTO v_count FROM documents.print_jobs WHERE business_document_id = v_payment_doc;
+    IF v_count <> 2 THEN RAISE EXCEPTION 'Assertion failed: payment receipt should have original + one reprint job'; END IF;
+    SELECT count(*) INTO v_count FROM cash.drawer_jobs WHERE business_document_id = v_payment_doc;
+    IF v_count <> 1 THEN RAISE EXCEPTION 'Assertion failed: receipt reprint created another drawer job'; END IF;
+    SELECT count(*) INTO v_count FROM cash.movements WHERE business_document_id = v_payment_doc;
+    IF v_count <> 1 THEN RAISE EXCEPTION 'Assertion failed: receipt reprint created another cash movement'; END IF;
+    SELECT exposure_amount INTO v_exposure FROM receivables.customer_credit_state WHERE customer_id = v_customer1;
+    IF v_exposure <> 200.00 THEN RAISE EXCEPTION 'Assertion failed: receipt generation/reprint changed exposure'; END IF;
 
     -- Customer B has its own exposure, but may never allocate a payment against A's invoice.
     BEGIN
@@ -197,6 +257,6 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: rejected cross-customer allocation changed customer B exposure';
     END IF;
 
-    RAISE NOTICE 'PASSED: S4-001 customer payment allocation, idempotency, cash/drawer, journal, and customer isolation';
+    RAISE NOTICE 'PASSED: S4-001 customer payment allocation, idempotency, cash/drawer, receipt generation/reprint queue, journal, and customer isolation';
 END;
 $$;
