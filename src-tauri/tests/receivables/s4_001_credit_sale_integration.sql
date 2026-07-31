@@ -1,4 +1,4 @@
--- S4-001 Integration Test — customer credit sale, exposure, override, and ledger integrity.
+-- S4-001 Integration Test — customer credit sale, exposure, override, ledger, and document queue integrity.
 \set ON_ERROR_STOP on
 
 DO $$
@@ -36,6 +36,10 @@ DECLARE
     v_cash_count bigint;
     v_drawer_count bigint;
     v_unbalanced bigint;
+    v_generation_count bigint;
+    v_print_count bigint;
+    v_generation_job_id bigint;
+    v_reprint_job_id bigint;
     v_blocked boolean := false;
     v_mismatch_blocked boolean := false;
     v_reuse_blocked boolean := false;
@@ -132,6 +136,27 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: first available credit is not 200.00';
     END IF;
 
+    -- Posting the invoice must atomically enqueue exactly one generation job and
+    -- one original print job. A rollback or idempotent retry must not duplicate them.
+    SELECT count(*), min(id)
+    INTO v_generation_count, v_generation_job_id
+    FROM documents.generation_jobs
+    WHERE business_document_id = v_doc1
+      AND document_kind = 'CREDIT_SALE_INVOICE_PDF'
+      AND status = 'PENDING';
+    IF v_generation_count <> 1 OR v_generation_job_id IS NULL THEN
+        RAISE EXCEPTION 'Assertion failed: credit sale did not enqueue exactly one pending invoice generation job';
+    END IF;
+
+    SELECT count(*) INTO v_print_count
+    FROM documents.print_jobs
+    WHERE business_document_id = v_doc1
+      AND generation_job_id = v_generation_job_id
+      AND status = 'WAITING_FOR_GENERATION';
+    IF v_print_count <> 1 THEN
+        RAISE EXCEPTION 'Assertion failed: credit sale did not enqueue exactly one waiting original print job';
+    END IF;
+
     SELECT quantity_on_hand, total_value INTO v_qty, v_val
     FROM inventory.positions
     WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id;
@@ -169,6 +194,55 @@ BEGIN
     WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id;
     IF v_qty <> 8.000 THEN
         RAISE EXCEPTION 'Assertion failed: idempotent retry changed stock';
+    END IF;
+
+    SELECT count(*) INTO v_generation_count
+    FROM documents.generation_jobs
+    WHERE business_document_id = v_doc1
+      AND document_kind = 'CREDIT_SALE_INVOICE_PDF';
+    SELECT count(*) INTO v_print_count
+    FROM documents.print_jobs
+    WHERE business_document_id = v_doc1;
+    IF v_generation_count <> 1 OR v_print_count <> 1 THEN
+        RAISE EXCEPTION 'Assertion failed: idempotent sale retry duplicated document queue rows';
+    END IF;
+
+    -- Simulate successful PDF publication: linked original print becomes PENDING.
+    PERFORM documents.complete_generation_job(
+        v_generation_job_id, true, false,
+        'generated/test-credit-invoice-' || v_doc1::text || '.pdf',
+        NULL, NULL
+    );
+    IF NOT EXISTS (
+        SELECT 1 FROM documents.print_jobs
+        WHERE business_document_id = v_doc1
+          AND generation_job_id = v_generation_job_id
+          AND status = 'PENDING'
+    ) THEN
+        RAISE EXCEPTION 'Assertion failed: completing invoice generation did not release original print job';
+    END IF;
+
+    -- A reprint is a new print job only. It never reposts financial state or drawer work.
+    v_reprint_job_id := documents.enqueue_customer_reprint(
+        v_session_token,
+        v_doc1,
+        's4001-credit-reprint-' || v_suffix
+    );
+    IF v_reprint_job_id IS NULL THEN
+        RAISE EXCEPTION 'Assertion failed: credit invoice reprint job was not created';
+    END IF;
+    SELECT count(*) INTO v_print_count
+    FROM documents.print_jobs
+    WHERE business_document_id = v_doc1;
+    IF v_print_count <> 2 THEN
+        RAISE EXCEPTION 'Assertion failed: credit invoice should have original + one reprint job';
+    END IF;
+    IF documents.enqueue_customer_reprint(
+        v_session_token,
+        v_doc1,
+        's4001-credit-reprint-' || v_suffix
+    ) <> v_reprint_job_id THEN
+        RAISE EXCEPTION 'Assertion failed: reprint idempotency key did not return the same print job';
     END IF;
 
     -- Another 300 exceeds the 500 limit and must roll back cleanly.
@@ -244,6 +318,14 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Assertion failed: override token was not consumed by posted document';
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM documents.generation_jobs
+        WHERE business_document_id = v_doc2
+          AND document_kind = 'CREDIT_SALE_INVOICE_PDF'
+          AND status = 'PENDING'
+    ) THEN
+        RAISE EXCEPTION 'Assertion failed: override credit sale did not enqueue its invoice generation job';
+    END IF;
 
     BEGIN
         PERFORM sales.confirm_credit_sale(
@@ -281,9 +363,15 @@ BEGIN
     FROM cash.drawer_jobs
     WHERE business_document_id IN (v_doc1, v_doc2);
     IF v_cash_count <> 0 OR v_drawer_count <> 0 THEN
-        RAISE EXCEPTION 'Assertion failed: credit sale created cash movement or drawer pulse';
+        RAISE EXCEPTION 'Assertion failed: credit sale or invoice reprint created cash movement/drawer pulse';
     END IF;
 
-    RAISE NOTICE 'PASSED: S4-001 credit sale, idempotency, database-bound override, ledger, accounting, and no-cash assertions';
+    SELECT exposure_amount INTO v_exposure
+    FROM receivables.customer_credit_state WHERE customer_id = v_customer_id;
+    IF v_exposure <> 600.00 THEN
+        RAISE EXCEPTION 'Assertion failed: document generation/reprint changed customer exposure';
+    END IF;
+
+    RAISE NOTICE 'PASSED: S4-001 credit sale, idempotency, override, ledger, accounting, invoice generation/reprint queue, and no-cash assertions';
 END;
 $$;
