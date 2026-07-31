@@ -24,7 +24,7 @@ pub struct Customer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCustomerPayload {
-    pub code: String,
+    pub code: Option<String>,
     pub name: String,
     pub contact_name: Option<String>,
     pub phone: Option<String>,
@@ -127,9 +127,6 @@ fn validate_credit_policy(
 
 impl CreateCustomerPayload {
     pub fn validate(&self) -> Result<(), String> {
-        if self.code.trim().is_empty() {
-            return Err("Customer code cannot be blank.".to_string());
-        }
         if self.name.trim().is_empty() {
             return Err("Customer name cannot be blank.".to_string());
         }
@@ -168,7 +165,7 @@ mod tests {
 
     fn valid_payload() -> CreateCustomerPayload {
         CreateCustomerPayload {
-            code: "CUST-001".to_string(),
+            code: None,
             name: "Customer One".to_string(),
             contact_name: None,
             phone: None,
@@ -183,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_valid_credit_policy() {
+    fn accepts_valid_credit_policy_without_caller_code() {
         assert!(valid_payload().validate().is_ok());
     }
 
