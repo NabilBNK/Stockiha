@@ -23,9 +23,8 @@ DECLARE
     v_oid oid;
     v_schema text;
     v_name text;
-    v_args text;
+    v_argtypes oidvector;
     v_legacy_name text;
-    v_legacy_signature text;
 BEGIN
     FOREACH v_signature IN ARRAY ARRAY[
         'sales.inspect_current_cash_session(text,text)',
@@ -44,20 +43,33 @@ BEGIN
             CONTINUE;
         END IF;
 
-        SELECT n.nspname, p.proname, pg_get_function_identity_arguments(p.oid)
-        INTO v_schema, v_name, v_args
+        SELECT n.nspname, p.proname, p.proargtypes
+        INTO v_schema, v_name, v_argtypes
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE p.oid = v_oid;
 
         v_legacy_name := v_name || '_legacy_s4002';
-        v_legacy_signature := format('%I.%I(%s)', v_schema, v_legacy_name, v_args);
 
-        IF to_regprocedure(v_legacy_signature) IS NOT NULL THEN
+        -- Compare PostgreSQL's native input-argument OID vector directly.
+        -- Do not reconstruct a textual signature from
+        -- pg_get_function_identity_arguments(): that representation may
+        -- include formal parameter names (for example
+        -- "p_session_token text"), which is not valid input for
+        -- to_regprocedure().
+        IF EXISTS (
+            SELECT 1
+            FROM pg_proc legacy_p
+            JOIN pg_namespace legacy_n ON legacy_n.oid = legacy_p.pronamespace
+            WHERE legacy_n.nspname = v_schema
+              AND legacy_p.proname = v_legacy_name
+              AND legacy_p.proargtypes = v_argtypes
+        ) THEN
             RAISE EXCEPTION
-                'cannot quarantine historical function %: legacy target % already exists',
+                'cannot quarantine historical function %: legacy target %.% with same input argument types already exists',
                 v_signature,
-                v_legacy_signature;
+                v_schema,
+                v_legacy_name;
         END IF;
 
         EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', v_oid::regprocedure);
