@@ -19,7 +19,7 @@ export interface Customer {
 }
 
 export interface CreateCustomerPayload {
-  code: string;
+  code?: string | null;
   name: string;
   contact_name?: string | null;
   phone?: string | null;
@@ -32,9 +32,20 @@ export interface CreateCustomerPayload {
   max_overdue_days?: number | null;
 }
 
-export interface UpdateCustomerPayload extends CreateCustomerPayload {
+export interface UpdateCustomerPayload {
   customer_id: number;
+  code: string;
+  name: string;
+  contact_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  tax_id?: string | null;
   is_active: boolean;
+  credit_enabled: boolean;
+  credit_limit: string;
+  payment_terms_days: number;
+  max_overdue_days?: number | null;
 }
 
 export interface CustomerCapabilities {
