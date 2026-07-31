@@ -1,15 +1,15 @@
-//! Slice 1 MVP batch — application service wrapping the cash-session
-//! open/inspect/close SQL functions. No idempotency wrapping here: opening
-//! and closing a session are not the "financial or ledger command"
-//! category final-architecture.md section 2.4 requires a request id for —
-//! the partial-unique-index-backed "one open session per workstation" rule
-//! is itself what prevents an accidental double-open from having any
-//! effect beyond a clean rejection.
+//! S4-002 — application service for the production cashier-session lifecycle.
+//! PostgreSQL remains authoritative for state transitions, blind expected cash,
+//! variance materiality, approval, suspension, and handover.
 
 use rust_decimal::Decimal;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
 
+use crate::domain::cash_session::{
+    validate_denomination_counts, CashDenomination, CashSessionCloseResult,
+    DenominationCountInput,
+};
 use crate::error::AppError;
 
 pub(crate) struct ActiveCashSession {
@@ -20,6 +20,42 @@ pub(crate) struct ActiveCashSession {
     pub opened_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct CurrentCashSession {
+    pub id: i64,
+    pub warehouse_id: i64,
+    pub workstation_id: String,
+    pub opened_by_user_id: i64,
+    pub current_cashier_user_id: i64,
+    pub current_cashier_display_name: String,
+    pub status: String,
+    pub opening_float: String,
+    pub opened_at: String,
+    pub close_attempt_id: Option<i64>,
+    pub expected_amount: Option<String>,
+    pub counted_amount: Option<String>,
+    pub variance_amount: Option<String>,
+    pub requires_manager_approval: Option<bool>,
+    pub suspension_reason: Option<String>,
+}
+
+pub(crate) struct CashSessionDetail {
+    pub id: i64,
+    pub warehouse_id: i64,
+    pub status: String,
+    pub opening_float: String,
+    pub expected_amount: Option<String>,
+    pub counted_amount: Option<String>,
+    pub variance_amount: Option<String>,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+}
+
+fn rfc3339(t: OffsetDateTime) -> String {
+    t.format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default()
+}
+
 pub(crate) async fn open_cash_session(
     pool: &PgPool,
     session_token: &str,
@@ -27,15 +63,14 @@ pub(crate) async fn open_cash_session(
     workstation_id: &str,
     opening_float: Decimal,
 ) -> Result<i64, AppError> {
-    let cash_session_id: i64 = sqlx::query_scalar("SELECT sales.open_cash_session($1, $2, $3, $4)")
+    sqlx::query_scalar("SELECT sales.open_cash_session($1, $2, $3, $4)")
         .bind(session_token)
         .bind(warehouse_id)
         .bind(workstation_id)
         .bind(opening_float)
         .fetch_one(pool)
         .await
-        .map_err(AppError::from_posting_error)?;
-    Ok(cash_session_id)
+        .map_err(AppError::from_posting_error)
 }
 
 pub(crate) async fn inspect_active_cash_session(
@@ -64,36 +99,197 @@ pub(crate) async fn inspect_active_cash_session(
     ))
 }
 
-pub(crate) async fn close_cash_session(
+pub(crate) async fn inspect_current_cash_session(
+    pool: &PgPool,
+    session_token: &str,
+    workstation_id: &str,
+) -> Result<Option<CurrentCashSession>, AppError> {
+    let row = sqlx::query(
+        "SELECT id, warehouse_id, workstation_id, opened_by_user_id, current_cashier_user_id, \
+                current_cashier_display_name, status, opening_float, opened_at, close_attempt_id, \
+                expected_amount, counted_amount, variance_amount, requires_manager_approval, suspension_reason \
+         FROM sales.inspect_current_cash_session($1, $2)",
+    )
+    .bind(session_token)
+    .bind(workstation_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(row.map(|row| CurrentCashSession {
+        id: row.get("id"),
+        warehouse_id: row.get("warehouse_id"),
+        workstation_id: row.get("workstation_id"),
+        opened_by_user_id: row.get("opened_by_user_id"),
+        current_cashier_user_id: row.get("current_cashier_user_id"),
+        current_cashier_display_name: row.get("current_cashier_display_name"),
+        status: row.get("status"),
+        opening_float: row.get::<Decimal, _>("opening_float").to_string(),
+        opened_at: rfc3339(row.get("opened_at")),
+        close_attempt_id: row.get("close_attempt_id"),
+        expected_amount: row.get::<Option<Decimal>, _>("expected_amount").map(|v| v.to_string()),
+        counted_amount: row.get::<Option<Decimal>, _>("counted_amount").map(|v| v.to_string()),
+        variance_amount: row.get::<Option<Decimal>, _>("variance_amount").map(|v| v.to_string()),
+        requires_manager_approval: row.get("requires_manager_approval"),
+        suspension_reason: row.get("suspension_reason"),
+    }))
+}
+
+pub(crate) async fn list_cash_denominations(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<Vec<CashDenomination>, AppError> {
+    let rows = sqlx::query_as::<_, (i64, String, Decimal, i32)>(
+        "SELECT id, code, value, display_order FROM sales.list_cash_denominations($1)",
+    )
+    .bind(session_token)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(id, code, value, display_order)| CashDenomination {
+            id,
+            code,
+            value: value.to_string(),
+            display_order,
+        })
+        .collect())
+}
+
+pub(crate) async fn begin_cash_session_close(
     pool: &PgPool,
     session_token: &str,
     cash_session_id: i64,
-    counted_amount: Decimal,
 ) -> Result<i64, AppError> {
-    let closed_id: i64 = sqlx::query_scalar("SELECT sales.close_cash_session($1, $2, $3)")
+    sqlx::query_scalar("SELECT sales.begin_cash_session_close($1, $2)")
         .bind(session_token)
         .bind(cash_session_id)
-        .bind(counted_amount)
         .fetch_one(pool)
         .await
-        .map_err(AppError::from_posting_error)?;
-    Ok(closed_id)
+        .map_err(AppError::from_posting_error)
 }
 
-/// A full cash session (open or closed) with the immutable
-/// expected/counted/variance snapshot, so the UI can show the
-/// backend-authoritative figures after closing. Decimal fields are exact
-/// strings; the expected/counted/variance triple is present only once closed.
-pub(crate) struct CashSessionDetail {
-    pub id: i64,
-    pub warehouse_id: i64,
-    pub status: String,
-    pub opening_float: String,
-    pub expected_amount: Option<String>,
-    pub counted_amount: Option<String>,
-    pub variance_amount: Option<String>,
-    pub opened_at: String,
-    pub closed_at: Option<String>,
+pub(crate) async fn cancel_cash_session_close(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+) -> Result<i64, AppError> {
+    sqlx::query_scalar("SELECT sales.cancel_cash_session_close($1, $2)")
+        .bind(session_token)
+        .bind(cash_session_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
+}
+
+pub(crate) async fn submit_cash_session_count(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+    counts: &[DenominationCountInput],
+) -> Result<CashSessionCloseResult, AppError> {
+    validate_denomination_counts(counts).map_err(|err| AppError::ValidationError {
+        diagnostic: err.to_string(),
+    })?;
+
+    let counts_json = serde_json::to_value(counts).map_err(|err| AppError::Internal(err.to_string()))?;
+    let result: serde_json::Value = sqlx::query_scalar(
+        "SELECT sales.submit_cash_session_count($1, $2, $3)",
+    )
+    .bind(session_token)
+    .bind(cash_session_id)
+    .bind(counts_json)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(result).map_err(|err| AppError::Internal(err.to_string()))
+}
+
+pub(crate) async fn approve_cash_session_variance(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+    close_attempt_id: i64,
+    reason: &str,
+) -> Result<CashSessionCloseResult, AppError> {
+    if cash_session_id <= 0 || close_attempt_id <= 0 || reason.trim().is_empty() {
+        return Err(AppError::ValidationError {
+            diagnostic: "cash session, close attempt, and reason are required".to_string(),
+        });
+    }
+
+    let result: serde_json::Value = sqlx::query_scalar(
+        "SELECT sales.approve_cash_session_variance($1, $2, $3, $4)",
+    )
+    .bind(session_token)
+    .bind(cash_session_id)
+    .bind(close_attempt_id)
+    .bind(reason.trim())
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(result).map_err(|err| AppError::Internal(err.to_string()))
+}
+
+pub(crate) async fn suspend_cash_session(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+    reason: &str,
+) -> Result<i64, AppError> {
+    if cash_session_id <= 0 || reason.trim().is_empty() {
+        return Err(AppError::ValidationError {
+            diagnostic: "cash session and suspension reason are required".to_string(),
+        });
+    }
+
+    sqlx::query_scalar("SELECT sales.suspend_cash_session($1, $2, $3)")
+        .bind(session_token)
+        .bind(cash_session_id)
+        .bind(reason.trim())
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
+}
+
+pub(crate) async fn resume_cash_session(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+) -> Result<i64, AppError> {
+    sqlx::query_scalar("SELECT sales.resume_cash_session($1, $2)")
+        .bind(session_token)
+        .bind(cash_session_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
+}
+
+pub(crate) async fn handover_cash_session(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+    target_username: &str,
+    reason: &str,
+) -> Result<i64, AppError> {
+    if cash_session_id <= 0 || target_username.trim().is_empty() || reason.trim().is_empty() {
+        return Err(AppError::ValidationError {
+            diagnostic: "cash session, target cashier, and handover reason are required".to_string(),
+        });
+    }
+
+    sqlx::query_scalar("SELECT sales.handover_cash_session($1, $2, $3, $4)")
+        .bind(session_token)
+        .bind(cash_session_id)
+        .bind(target_username.trim())
+        .bind(reason.trim())
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
 }
 
 pub(crate) async fn get_cash_session(
@@ -123,11 +319,6 @@ pub(crate) async fn get_cash_session(
     .fetch_optional(pool)
     .await
     .map_err(AppError::from_posting_error)?;
-
-    let rfc3339 = |t: OffsetDateTime| {
-        t.format(&time::format_description::well_known::Rfc3339)
-            .unwrap_or_default()
-    };
 
     Ok(row.map(|r| CashSessionDetail {
         id: r.0,
