@@ -1,42 +1,50 @@
 -- S4-001: Customer credit-sale document schema.
 SET ROLE stockiha_owner;
 
--- Extend shared document vocabularies as a strict superset of every type
--- introduced by S1-S3. A later slice must never make an older valid document
--- or sequence type invalid merely by replacing the closed CHECK list.
-ALTER TABLE core.business_documents DROP CONSTRAINT IF EXISTS business_documents_type_valid;
-ALTER TABLE core.business_documents ADD CONSTRAINT business_documents_type_valid
-    CHECK (document_type IN (
-        'CASH_SALE',
-        'CREDIT_SALE',
-        'JOURNAL_ENTRY',
-        'STOCK_RECEIPT',
-        'STOCK_ADJUSTMENT',
-        'PURCHASE_ORDER',
-        'PURCHASE_RECEIPT',
-        'PURCHASE_INVOICE',
-        'SUPPLIER_CREDIT_NOTE',
-        'PURCHASE_RETURN',
-        'DEBIT_NOTE',
-        'SUPPLIER_PAYMENT'
-    ));
+-- Extend shared document vocabularies from the installed database instead of
+-- replacing them with a copied list. This preserves every type already allowed
+-- by earlier slices/patches while adding CREDIT_SALE.
+DO $$
+DECLARE
+    v_existing_check text;
+BEGIN
+    SELECT pg_get_expr(c.conbin, c.conrelid)
+    INTO v_existing_check
+    FROM pg_constraint c
+    WHERE c.conrelid = 'core.business_documents'::regclass
+      AND c.conname = 'business_documents_type_valid'
+      AND c.contype = 'c';
 
-ALTER TABLE core.document_sequences DROP CONSTRAINT IF EXISTS document_sequences_type_valid;
-ALTER TABLE core.document_sequences ADD CONSTRAINT document_sequences_type_valid
-    CHECK (document_type IN (
-        'CASH_SALE',
-        'CREDIT_SALE',
-        'JOURNAL_ENTRY',
-        'STOCK_RECEIPT',
-        'STOCK_ADJUSTMENT',
-        'PURCHASE_ORDER',
-        'PURCHASE_RECEIPT',
-        'PURCHASE_INVOICE',
-        'SUPPLIER_CREDIT_NOTE',
-        'PURCHASE_RETURN',
-        'DEBIT_NOTE',
-        'SUPPLIER_PAYMENT'
-    ));
+    IF v_existing_check IS NULL THEN
+        RAISE EXCEPTION 'expected core.business_documents constraint business_documents_type_valid is missing';
+    END IF;
+
+    ALTER TABLE core.business_documents DROP CONSTRAINT business_documents_type_valid;
+    EXECUTE format(
+        'ALTER TABLE core.business_documents ADD CONSTRAINT business_documents_type_valid CHECK ((%s) OR document_type = %L)',
+        v_existing_check,
+        'CREDIT_SALE'
+    );
+
+    SELECT pg_get_expr(c.conbin, c.conrelid)
+    INTO v_existing_check
+    FROM pg_constraint c
+    WHERE c.conrelid = 'core.document_sequences'::regclass
+      AND c.conname = 'document_sequences_type_valid'
+      AND c.contype = 'c';
+
+    IF v_existing_check IS NULL THEN
+        RAISE EXCEPTION 'expected core.document_sequences constraint document_sequences_type_valid is missing';
+    END IF;
+
+    ALTER TABLE core.document_sequences DROP CONSTRAINT document_sequences_type_valid;
+    EXECUTE format(
+        'ALTER TABLE core.document_sequences ADD CONSTRAINT document_sequences_type_valid CHECK ((%s) OR document_type = %L)',
+        v_existing_check,
+        'CREDIT_SALE'
+    );
+END;
+$$;
 
 CREATE TABLE sales.credit_sales (
     document_id            bigint PRIMARY KEY REFERENCES core.business_documents (id),
