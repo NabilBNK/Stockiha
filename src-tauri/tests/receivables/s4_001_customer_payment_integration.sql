@@ -163,7 +163,7 @@ BEGIN
     SELECT count(*) INTO v_count
     FROM cash.drawer_jobs
     WHERE business_document_id = v_payment_doc
-      AND operation_key = 'customer_payment:' || v_payment_request::text;
+      AND idempotency_key = 'customer_payment:' || v_payment_request::text;
     IF v_count <> 1 THEN RAISE EXCEPTION 'Assertion failed: customer payment drawer job missing'; END IF;
 
     SELECT count(*) INTO v_count
