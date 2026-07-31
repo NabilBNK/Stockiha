@@ -3,88 +3,69 @@
 ## Active Context
 
 - **Current Phase:** Slice 4 — Customers, Receivables & Cash Controls
-- **Current Task:** S4-002 — Full cashier-session lifecycle
+- **Current Task:** S4-003 — Extended drawer eligibility and customer cash-payment/refund integration
 - **Implementation Status:** IN PROGRESS
 
 ## Objective
 
-Upgrade the minimal cash-session model into a production cashier-control lifecycle with blind denomination counts, database-authoritative expected cash, variance calculation and approval, suspension, and controlled cashier handover. Cash-session state transitions must remain session-authenticated, permission-protected, auditable, concurrency-safe, and isolated from receipt printing/reprint behavior.
+Centralize Stockiha's cash-drawer eligibility policy so every cash operation obeys one database-authoritative rule set and one idempotent drawer-job contract. Harden customer CASH payment integration against the S4-002 cashier-session lifecycle and add the cash/refund leg required for approved customer refunds without prematurely implementing the full customer-return inventory/credit-note workflow reserved for Slice 5.
 
 ## Included Task ID
 
-- `S4-002`
+- `S4-003`
 
 ## Architecture Contract
 
-Cash sessions use the states:
+The cash drawer opens only for eligible, successfully posted cash operations. Current architecture names these eligible classes: cash sales, customer cash debt payments, approved cash refunds, supplier cash payments, cash expenses, and authorized deposits/withdrawals. Receipt reprints, A4 printing, credit sales without cash, failed transactions, searches, login, and invoice previews must never open the drawer.
 
-- `OPEN`
-- `CLOSING`
-- `PENDING_APPROVAL`
-- `CLOSED`
-- `SUSPENDED`
-
-Cashiers close using blind denomination counts. Expected cash is calculated by the system and must not be exposed before the cashier submits the blind count. Material variance requires manager authorization before final close.
+S4-003 is specifically responsible for the drawer-policy foundation plus customer payment/refund integration. Full customer return costing, quarantine, stock restoration, and credit-note business documents remain Slice 5 work.
 
 ## Database Scope
 
-- Denomination catalog/configuration for DZD cash counting.
-- Immutable/session-bound denomination count submissions.
-- Database-authoritative expected cash and counted cash totals.
-- Variance amount and configurable materiality threshold.
-- State-machine enforcement for OPEN → CLOSING → CLOSED or PENDING_APPROVAL → CLOSED.
-- Manager-only variance approval with recorded actor, reason, timestamp, and exact close attempt.
-- Session suspension/resume rules with audit trail.
-- Controlled handover between cashier users without losing cash accountability.
-- Concurrency locks preventing duplicate close/approval/handover transitions.
-- Existing-database compatibility for historical workstation-index naming, CLOSED-row ownership backfill, legacy function ownership, and the historical six-column `inspect_active_cash_session` return shape.
+- Introduce one explicit, database-authoritative drawer eligibility policy/operation vocabulary instead of ad-hoc drawer enqueue behavior in individual posting functions.
+- Preserve one idempotent drawer job per eligible financial operation.
+- Require an `OPEN` cash session owned by the authenticated cashier on the authenticated workstation for customer CASH collections and CASH refunds.
+- Reject cash drawer effects while a session is `CLOSING`, `PENDING_APPROVAL`, `SUSPENDED`, or `CLOSED`.
+- Ensure non-cash customer payments/refunds create no cash movement and no drawer pulse.
+- Ensure failed/retried/idempotent financial requests cannot duplicate drawer jobs.
+- Provide the approved customer-refund cash leg and audit linkage without implementing the Slice-5 inventory return/credit-note domain prematurely.
+- Keep drawer pulses isolated from document print/reprint queues.
 
 ## Rust/Tauri Scope
 
-- Typed cash-session lifecycle DTOs and stable IPC errors.
-- Thin application services around protected database functions.
-- Commands for denomination configuration/read, close preparation/submission, manager approval, suspension/resume, and handover.
+- Typed drawer-eligibility/refund DTOs and stable IPC errors.
+- Thin application services around protected database APIs.
+- Preserve database authority for session eligibility, cash movement amount/direction, refund authorization state, and drawer enqueue decisions.
 
 ## React Scope
 
-- Cash-session screen showing state and permitted actions without leaking expected cash before blind-count submission.
-- Touch-friendly denomination count entry.
-- Variance result and manager approval workflow.
-- Suspension/resume controls.
-- Handover workflow with explicit outgoing/incoming cashier identity and accountability.
-- EN/FR/AR and RTL-ready UI structure.
+- Customer payment UI must respect real cashier-session lifecycle eligibility rather than merely knowing a session ID.
+- Add the bounded customer refund cash interaction required by S4-003, with clear state/error handling.
+- No drawer action for bank-transfer/non-cash paths.
+- EN/FR/AR and RTL-ready controls consistent with existing customer/cash-session screens.
 
 ## Production Invariants
 
-- Expected cash is database-authoritative.
-- A cashier cannot see expected cash before submitting the blind count.
-- Denomination counts must be non-negative exact integers; monetary totals use exact decimal arithmetic.
-- A close attempt is immutable once submitted.
-- Material variance cannot reach `CLOSED` without authorized manager approval.
-- Approval is bound to the exact close attempt and cannot be reused.
-- Only valid lifecycle transitions are accepted; stale/concurrent transitions fail safely.
-- Suspension and handover are auditable and cannot silently change cash ownership.
-- Printing/reprinting never changes cash-session balances or lifecycle state.
+- Drawer eligibility is explicit and centrally enforced.
+- One eligible cash operation produces at most one drawer pulse job.
+- Idempotent retries return the original financial result and never duplicate a drawer pulse.
+- A CASH operation requires the authenticated cashier's currently `OPEN` session on the same workstation.
+- Handover takes effect immediately: the old cashier cannot create cash movement or drawer work against the handed-over session.
+- Suspended/closing/pending-approval/closed sessions are never cash-eligible.
+- Non-cash operations never create cash movements or drawer pulses.
+- Printing/reprinting is never a drawer-eligibility signal.
+- Refund cash movement direction is negative from the drawer and must be atomically tied to an approved financial refund intent.
+- Full customer-return stock costing and credit-note posting remain deferred to Slice 5.
 
 ## Verification Target
 
-- PostgreSQL migration/integration tests for state transitions, blind-count privacy, expected/count variance, approval authorization, suspension/resume, handover, stale transition rejection, and concurrency.
-- Existing-DB upgrade tests covering known Windows historical schema/function drift before merge.
+- PostgreSQL integration tests for eligible/ineligible drawer operations, idempotent retry, session-state rejection, cashier ownership, and payment/refund cash movement direction.
+- Real concurrency/idempotency checks ensuring one financial result and one drawer job.
+- Regression coverage for cash sales, customer CASH payments, bank transfers, credit sales, reprints, suspension, and handover.
 - Rust unit/integration coverage for typed DTO/error behavior.
-- Frontend workflow tests for cashier and manager paths.
-- Windows/Tauri EN/FR/AR RTL and touchscreen smoke testing before merge.
-
-## Current Upgrade Compatibility Status
-
-Four historical differences discovered on the real Windows `stockiha_dev` database are now handled before the S4-002 lifecycle migration:
-
-1. historical workstation index name (`cash_sessions_one_active_per_workstation`)
-2. pre-existing CLOSED sessions protected by Slice-1 immutability during current-cashier backfill
-3. legacy replace-target functions owned by `postgres`
-4. historical six-column `sales.inspect_active_cash_session(text,text)` return shape including `status`
-
-Compatibility migrations normalize these cases before `20260731130000_cash_session_lifecycle.sql`. The six-column legacy active-session function is preserved under an inert legacy name with runtime execution revoked, then the lifecycle migration recreates the canonical five-column API used by the Rust application.
+- Frontend workflow tests for customer payment/refund eligibility and localized error handling.
+- Windows/Tauri EN/FR/AR RTL and narrow/touch smoke testing before merge.
 
 ## Completed Predecessor
 
-S4-001 is complete and merged into `main` at merge commit `43ddce5729d5cb6a18952326337a2ca43673c081` after green automated verification and clean Windows/Tauri validation of customer credit/payment documents, PDF generation, reprint safety, cash-sale regression, and EN/FR/AR RTL behavior.
+S4-002 is complete and merged into `main` at merge commit `b991f02555fa88bad405bd9f477acbd40a3860c9` after a clean Windows/Tauri pass and green CI covering blind close, variance approval, suspension/resume, handover, stale-cashier blocking, existing-database upgrade compatibility, and cash/credit/customer-payment regressions.
