@@ -111,7 +111,16 @@ jobs:
 
           RESET ROLE;
 
+          -- Reproduce the real Windows ownership drift discovered during
+          -- manual verification. All four functions are replaced by S4-002.
+          ALTER FUNCTION iam.resolve_session(text) OWNER TO postgres;
+          ALTER FUNCTION iam.resolve_session_with_permission(text,text) OWNER TO postgres;
+          ALTER FUNCTION sales.open_cash_session(text,bigint,text,numeric) OWNER TO postgres;
+          ALTER FUNCTION sales.inspect_active_cash_session(text,text) OWNER TO postgres;
+
           DO $$
+          DECLARE
+              v_owner_count integer;
           BEGIN
               IF to_regclass('sales.cash_sessions_one_open_per_workstation') IS NOT NULL THEN
                   RAISE EXCEPTION 'canonical index unexpectedly still exists before compatibility migration';
@@ -126,6 +135,21 @@ jobs:
                     AND status = 'CLOSED'
               ) THEN
                   RAISE EXCEPTION 'historical CLOSED session simulation failed';
+              END IF;
+
+              SELECT count(*)
+              INTO v_owner_count
+              FROM pg_proc p
+              WHERE p.oid = ANY (ARRAY[
+                  to_regprocedure('iam.resolve_session(text)')::oid,
+                  to_regprocedure('iam.resolve_session_with_permission(text,text)')::oid,
+                  to_regprocedure('sales.open_cash_session(text,bigint,text,numeric)')::oid,
+                  to_regprocedure('sales.inspect_active_cash_session(text,text)')::oid
+              ])
+                AND pg_get_userbyid(p.proowner) = 'postgres';
+
+              IF v_owner_count <> 4 THEN
+                  RAISE EXCEPTION 'historical function-owner simulation failed: expected 4 postgres-owned functions, found %', v_owner_count;
               END IF;
           END;
           $$;
@@ -146,7 +170,7 @@ jobs:
             fi
           done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
 
-      - name: Verify upgraded invariant and closed-session immutability
+      - name: Verify upgraded invariant, ownership and closed-session immutability
         run: |
           psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
@@ -154,6 +178,7 @@ jobs:
               v_status_check text;
               v_opened_by bigint;
               v_current_cashier bigint;
+              v_owner_count integer;
               v_blocked boolean := false;
           BEGIN
               IF to_regclass('sales.cash_sessions_one_live_per_workstation') IS NULL THEN
@@ -175,6 +200,21 @@ jobs:
                  OR v_status_check NOT LIKE '%PENDING_APPROVAL%'
                  OR v_status_check NOT LIKE '%SUSPENDED%' THEN
                   RAISE EXCEPTION 'S4-002 lifecycle status constraint is not installed';
+              END IF;
+
+              SELECT count(*)
+              INTO v_owner_count
+              FROM pg_proc p
+              WHERE p.oid = ANY (ARRAY[
+                  to_regprocedure('iam.resolve_session(text)')::oid,
+                  to_regprocedure('iam.resolve_session_with_permission(text,text)')::oid,
+                  to_regprocedure('sales.open_cash_session(text,bigint,text,numeric)')::oid,
+                  to_regprocedure('sales.inspect_active_cash_session(text,text)')::oid
+              ])
+                AND pg_get_userbyid(p.proowner) = 'stockiha_owner';
+
+              IF v_owner_count <> 4 THEN
+                  RAISE EXCEPTION 'legacy function ownership was not normalized: expected 4 stockiha_owner functions, found %', v_owner_count;
               END IF;
 
               SELECT opened_by_user_id, current_cashier_user_id
