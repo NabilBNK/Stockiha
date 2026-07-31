@@ -205,7 +205,7 @@ mod tests {
             .into_iter()
             .map(|denomination| DenominationCountInput {
                 denomination_id: denomination.id,
-                quantity: i64::from(denomination.code == "DZD_200"),
+                quantity: if denomination.code == "DZD_200" { 1 } else { 0 },
             })
             .collect();
 
