@@ -77,6 +77,7 @@ pub(crate) async fn confirm_cash_sale(
 mod tests {
     use super::*;
     use crate::application::{cash_session, stock_receipt};
+    use crate::domain::cash_session::DenominationCountInput;
     use time::Month;
 
     // See `super::super::stock_receipt::tests` for the full fixture
@@ -95,14 +96,6 @@ mod tests {
         url
     }
 
-    fn unique_workstation_id() -> String {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        format!("POS-RUST-{nanos}")
-    }
-
     #[tokio::test]
     #[ignore = "requires a live PostgreSQL server and STOCKIHA_TEST_DATABASE_URL"]
     async fn full_receipt_then_sale_chain_via_rust_application_services() {
@@ -110,11 +103,11 @@ mod tests {
             .await
             .expect("failed to connect to the integration test database");
 
-        // A fresh workstation id each run avoids colliding with the
-        // "one open session per workstation" partial unique index across
-        // repeated `cargo test -- --ignored` invocations against a
-        // persistent database.
-        let workstation_id = unique_workstation_id();
+        // The documented rust-integration-token fixture is bound to POS-RUST.
+        // S4-002 correctly requires the opened cash session to use the
+        // authenticated session's workstation instead of accepting an
+        // arbitrary caller-supplied workstation.
+        let workstation_id = "POS-RUST".to_string();
 
         let cash_session_id = cash_session::open_cash_session(
             &pool,
@@ -188,15 +181,45 @@ mod tests {
         .expect("identical retry should succeed");
         assert_eq!(sale_document_id, retry_document_id);
 
-        let closed_id = cash_session::close_cash_session(
+        // S4-002 replaces the Slice-1 caller-supplied total close with the
+        // blind denomination lifecycle. This sale is exactly 200 DZD with a
+        // zero opening float, so one 200 DZD denomination closes with zero
+        // variance and no manager approval.
+        cash_session::begin_cash_session_close(
             &pool,
             "rust-integration-token",
             cash_session_id,
-            Decimal::new(20000, 2),
         )
         .await
-        .expect("closing the cash session should succeed");
-        assert_eq!(closed_id, cash_session_id);
+        .expect("beginning blind close should succeed");
+
+        let denominations = cash_session::list_cash_denominations(
+            &pool,
+            "rust-integration-token",
+        )
+        .await
+        .expect("denominations should load");
+        assert!(denominations.iter().any(|d| d.code == "DZD_200"));
+
+        let counts: Vec<DenominationCountInput> = denominations
+            .into_iter()
+            .map(|denomination| DenominationCountInput {
+                denomination_id: denomination.id,
+                quantity: i64::from(denomination.code == "DZD_200"),
+            })
+            .collect();
+
+        let close_result = cash_session::submit_cash_session_count(
+            &pool,
+            "rust-integration-token",
+            cash_session_id,
+            &counts,
+        )
+        .await
+        .expect("blind close should succeed");
+        assert_eq!(close_result.cash_session_id, cash_session_id);
+        assert_eq!(close_result.status, "CLOSED");
+        assert!(!close_result.requires_manager_approval);
 
         // A closed session can no longer be inspected as "active".
         let still_active = cash_session::inspect_active_cash_session(
