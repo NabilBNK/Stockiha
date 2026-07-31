@@ -2,7 +2,7 @@
 //! validation constructors for the S1-001 production schemas.
 mod business_document;
 pub(crate) mod canonical_json;
-mod cash_session;
+pub(crate) mod cash_session;
 pub(crate) mod catalog;
 pub(crate) mod customer;
 mod document_sequence;

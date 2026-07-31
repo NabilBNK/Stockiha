@@ -1,0 +1,191 @@
+name: S4-002 Historical Function Shape Verification
+
+on:
+  push:
+    branches:
+      - 'task/s4-002-cashier-session-lifecycle'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  historical-function-shape:
+    name: Historical active-session function shape upgrade
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: stockiha_shape_upgrade_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d stockiha_shape_upgrade_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGPASSWORD: postgres
+      ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_shape_upgrade_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Bootstrap database roles
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE stockiha_owner NOLOGIN;
+          CREATE ROLE stockiha_migrator NOLOGIN;
+          CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
+          CREATE ROLE stockiha_backup NOLOGIN;
+          GRANT CREATE ON DATABASE stockiha_shape_upgrade_test TO stockiha_owner;
+          SQL
+
+      - name: Apply pre-S4-002 migrations
+        run: |
+          set -euo pipefail
+          while IFS= read -r migration; do
+            base="$(basename "$migration")"
+            if [[ "$base" == "20260731125900_cash_session_index_upgrade_compat.sql" ]]; then
+              break
+            fi
+            echo "Applying $migration"
+            psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Simulate six-column postgres-owned historical function
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER FUNCTION sales.inspect_active_cash_session(text,text)
+              RENAME TO inspect_active_cash_session_pre_shape_fixture;
+
+          SET ROLE stockiha_owner;
+
+          CREATE FUNCTION sales.inspect_active_cash_session(
+              p_session_token text,
+              p_workstation_id text
+          )
+          RETURNS TABLE (
+              id bigint,
+              warehouse_id bigint,
+              opened_by_user_id bigint,
+              opening_float numeric,
+              status text,
+              opened_at timestamptz
+          )
+          LANGUAGE plpgsql
+          SECURITY DEFINER
+          SET search_path = pg_catalog
+          AS $$
+          BEGIN
+              PERFORM 1 FROM iam.resolve_session(p_session_token);
+
+              RETURN QUERY
+              SELECT cs.id, cs.warehouse_id, cs.opened_by_user_id,
+                     cs.opening_float, cs.status, cs.opened_at
+              FROM sales.cash_sessions cs
+              WHERE cs.workstation_id = p_workstation_id
+                AND cs.status = 'OPEN';
+          END;
+          $$;
+
+          GRANT EXECUTE ON FUNCTION sales.inspect_active_cash_session(text,text)
+              TO stockiha_runtime;
+
+          RESET ROLE;
+
+          ALTER FUNCTION sales.inspect_active_cash_session(text,text)
+              OWNER TO postgres;
+
+          DO $$
+          DECLARE
+              v_result text;
+          BEGIN
+              SELECT pg_get_function_result(
+                  to_regprocedure('sales.inspect_active_cash_session(text,text)')
+              ) INTO v_result;
+
+              IF v_result <> 'TABLE(id bigint, warehouse_id bigint, opened_by_user_id bigint, opening_float numeric, status text, opened_at timestamp with time zone)' THEN
+                  RAISE EXCEPTION 'historical six-column function simulation failed: %', v_result;
+              END IF;
+
+              IF pg_get_userbyid(
+                  (SELECT proowner FROM pg_proc
+                   WHERE oid = to_regprocedure('sales.inspect_active_cash_session(text,text)'))
+              ) <> 'postgres' THEN
+                  RAISE EXCEPTION 'historical postgres ownership simulation failed';
+              END IF;
+          END;
+          $$;
+          SQL
+
+      - name: Apply S4-002 compatibility and remaining migrations
+        run: |
+          set -euo pipefail
+          start=0
+          while IFS= read -r migration; do
+            base="$(basename "$migration")"
+            if [[ "$base" == "20260731125900_cash_session_index_upgrade_compat.sql" ]]; then
+              start=1
+            fi
+            if [[ "$start" -eq 1 ]]; then
+              echo "Applying $migration"
+              psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+            fi
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Verify canonical API and inert legacy function
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+              v_result text;
+              v_owner text;
+          BEGIN
+              SELECT pg_get_function_result(
+                  to_regprocedure('sales.inspect_active_cash_session(text,text)')
+              ) INTO v_result;
+
+              IF v_result <> 'TABLE(id bigint, warehouse_id bigint, opened_by_user_id bigint, opening_float numeric, opened_at timestamp with time zone)' THEN
+                  RAISE EXCEPTION 'canonical five-column active-session API was not restored: %', v_result;
+              END IF;
+
+              SELECT pg_get_userbyid(p.proowner)
+              INTO v_owner
+              FROM pg_proc p
+              WHERE p.oid = to_regprocedure('sales.inspect_active_cash_session(text,text)');
+
+              IF v_owner <> 'stockiha_owner' THEN
+                  RAISE EXCEPTION 'canonical active-session API owner is %, expected stockiha_owner', v_owner;
+              END IF;
+
+              IF to_regprocedure('sales.inspect_active_cash_session_legacy_s4002(text,text)') IS NULL THEN
+                  RAISE EXCEPTION 'known historical function was not preserved under legacy name';
+              END IF;
+
+              IF has_function_privilege(
+                  'stockiha_runtime',
+                  'sales.inspect_active_cash_session_legacy_s4002(text,text)',
+                  'EXECUTE'
+              ) THEN
+                  RAISE EXCEPTION 'runtime can execute inert legacy active-session function';
+              END IF;
+
+              IF to_regclass('sales.cash_sessions_one_live_per_workstation') IS NULL THEN
+                  RAISE EXCEPTION 'S4-002 lifecycle migration did not complete';
+              END IF;
+          END;
+          $$;
+          SQL
