@@ -84,8 +84,10 @@ export function CustomerDocumentView({
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    const pending = jobs.some((job) => !jobTerminal(job.status));
-    if (!pending) return;
+    const pendingGeneration = jobs.some(
+      (job) => job.job_kind === 'GENERATION' && !jobTerminal(job.status),
+    );
+    if (!pendingGeneration) return;
     const timer = window.setInterval(() => {
       void listCustomerDocumentJobs(token, document.document_id).then(setJobs).catch(() => undefined);
     }, 2000);
