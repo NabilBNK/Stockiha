@@ -157,5 +157,8 @@ jobs:
       - name: Run S4 cashier-session lifecycle assertions
         run: psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f src-tauri/tests/cash/s4_002_cash_session_lifecycle.sql
 
+      - name: Run S4 cash-session close race
+        run: bash src-tauri/tests/cash/s4_002_cash_session_concurrency.sh
+
       - name: Run S4 real two-session credit race
         run: bash src-tauri/tests/receivables/s4_001_credit_concurrency.sh
