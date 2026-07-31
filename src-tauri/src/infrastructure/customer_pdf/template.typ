@@ -58,7 +58,7 @@
       align: (right, left, right, right, right),
       stroke: 0.4pt,
       inset: 5pt,
-      table.header([*#*], [*Item*], [*Qty*], [*Unit price*], [*Amount*]),
+      table.header([*Line*], [*Item*], [*Qty*], [*Unit price*], [*Amount*]),
       ..doc.items.map(it => (it.line, it.name + " (" + it.sku + ")", it.qty, it.unit, it.total)).flatten(),
     )
     v(10pt)
