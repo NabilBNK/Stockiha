@@ -1,0 +1,130 @@
+name: S4-002 Existing-DB Upgrade Verification
+
+on:
+  push:
+    branches:
+      - 'task/s4-002-cashier-session-lifecycle'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  historical-index-upgrade:
+    name: Historical cash-session index upgrade
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: stockiha_upgrade_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d stockiha_upgrade_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGPASSWORD: postgres
+      ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_upgrade_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Bootstrap database roles
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE stockiha_owner NOLOGIN;
+          CREATE ROLE stockiha_migrator NOLOGIN;
+          CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
+          CREATE ROLE stockiha_backup NOLOGIN;
+          GRANT CREATE ON DATABASE stockiha_upgrade_test TO stockiha_owner;
+          SQL
+
+      - name: Apply pre-S4-002 migrations
+        run: |
+          set -euo pipefail
+          while IFS= read -r migration; do
+            base="$(basename "$migration")"
+            if [[ "$base" == "20260731125900_cash_session_index_upgrade_compat.sql" ]]; then
+              break
+            fi
+            echo "Applying $migration"
+            psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Simulate historical Windows index name
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER INDEX sales.cash_sessions_one_open_per_workstation
+              RENAME TO cash_sessions_one_active_per_workstation;
+
+          DO $$
+          BEGIN
+              IF to_regclass('sales.cash_sessions_one_open_per_workstation') IS NOT NULL THEN
+                  RAISE EXCEPTION 'canonical index unexpectedly still exists before compatibility migration';
+              END IF;
+              IF to_regclass('sales.cash_sessions_one_active_per_workstation') IS NULL THEN
+                  RAISE EXCEPTION 'historical index simulation failed';
+              END IF;
+          END;
+          $$;
+          SQL
+
+      - name: Apply S4-002 compatibility and remaining migrations
+        run: |
+          set -euo pipefail
+          start=0
+          while IFS= read -r migration; do
+            base="$(basename "$migration")"
+            if [[ "$base" == "20260731125900_cash_session_index_upgrade_compat.sql" ]]; then
+              start=1
+            fi
+            if [[ "$start" -eq 1 ]]; then
+              echo "Applying $migration"
+              psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+            fi
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Verify upgraded invariant
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+              v_status_check text;
+          BEGIN
+              IF to_regclass('sales.cash_sessions_one_live_per_workstation') IS NULL THEN
+                  RAISE EXCEPTION 'S4-002 live-session workstation index was not created';
+              END IF;
+              IF to_regclass('sales.cash_sessions_one_open_per_workstation') IS NOT NULL
+                 OR to_regclass('sales.cash_sessions_one_active_per_workstation') IS NOT NULL THEN
+                  RAISE EXCEPTION 'legacy workstation index survived S4-002 upgrade';
+              END IF;
+
+              SELECT pg_get_expr(c.conbin, c.conrelid)
+              INTO v_status_check
+              FROM pg_constraint c
+              WHERE c.conrelid = 'sales.cash_sessions'::regclass
+                AND c.conname = 'cash_sessions_status_valid';
+
+              IF v_status_check IS NULL
+                 OR v_status_check NOT LIKE '%CLOSING%'
+                 OR v_status_check NOT LIKE '%PENDING_APPROVAL%'
+                 OR v_status_check NOT LIKE '%SUSPENDED%' THEN
+                  RAISE EXCEPTION 'S4-002 lifecycle status constraint is not installed';
+              END IF;
+          END;
+          $$;
+          SQL
