@@ -1,29 +1,68 @@
 -- S4-001: Customer receivable payments and explicit invoice allocations.
 SET ROLE stockiha_owner;
 
--- Widen document/sequence vocabulary for customer receipts.
-ALTER TABLE core.business_documents DROP CONSTRAINT IF EXISTS business_documents_type_valid;
-ALTER TABLE core.business_documents ADD CONSTRAINT business_documents_type_valid
-    CHECK (document_type IN (
-        'CASH_SALE', 'CREDIT_SALE', 'CUSTOMER_PAYMENT', 'JOURNAL_ENTRY',
-        'STOCK_RECEIPT', 'STOCK_ADJUSTMENT', 'PURCHASE_ORDER', 'PURCHASE_RECEIPT',
-        'PURCHASE_INVOICE', 'SUPPLIER_CREDIT_NOTE', 'PURCHASE_RETURN', 'DEBIT_NOTE',
-        'SUPPLIER_PAYMENT'
-    ));
+-- Extend the installed document/sequence/cash-movement vocabularies instead of
+-- replacing them with copied lists. Existing valid values remain valid; S4 adds
+-- CUSTOMER_PAYMENT to each relevant closed CHECK.
+DO $$
+DECLARE
+    v_existing_check text;
+BEGIN
+    SELECT pg_get_expr(c.conbin, c.conrelid)
+    INTO v_existing_check
+    FROM pg_constraint c
+    WHERE c.conrelid = 'core.business_documents'::regclass
+      AND c.conname = 'business_documents_type_valid'
+      AND c.contype = 'c';
 
-ALTER TABLE core.document_sequences DROP CONSTRAINT IF EXISTS document_sequences_type_valid;
-ALTER TABLE core.document_sequences ADD CONSTRAINT document_sequences_type_valid
-    CHECK (document_type IN (
-        'CASH_SALE', 'CREDIT_SALE', 'CUSTOMER_PAYMENT', 'JOURNAL_ENTRY',
-        'STOCK_RECEIPT', 'STOCK_ADJUSTMENT', 'PURCHASE_ORDER', 'PURCHASE_RECEIPT',
-        'PURCHASE_INVOICE', 'SUPPLIER_CREDIT_NOTE', 'PURCHASE_RETURN', 'DEBIT_NOTE',
-        'SUPPLIER_PAYMENT'
-    ));
+    IF v_existing_check IS NULL THEN
+        RAISE EXCEPTION 'expected core.business_documents constraint business_documents_type_valid is missing';
+    END IF;
 
--- Cash ledger now recognizes customer debt collection as a positive cash-in.
-ALTER TABLE cash.movements DROP CONSTRAINT movements_movement_type_valid;
-ALTER TABLE cash.movements ADD CONSTRAINT movements_movement_type_valid
-    CHECK (movement_type IN ('SALE', 'CUSTOMER_PAYMENT'));
+    ALTER TABLE core.business_documents DROP CONSTRAINT business_documents_type_valid;
+    EXECUTE format(
+        'ALTER TABLE core.business_documents ADD CONSTRAINT business_documents_type_valid CHECK ((%s) OR document_type = %L)',
+        v_existing_check,
+        'CUSTOMER_PAYMENT'
+    );
+
+    SELECT pg_get_expr(c.conbin, c.conrelid)
+    INTO v_existing_check
+    FROM pg_constraint c
+    WHERE c.conrelid = 'core.document_sequences'::regclass
+      AND c.conname = 'document_sequences_type_valid'
+      AND c.contype = 'c';
+
+    IF v_existing_check IS NULL THEN
+        RAISE EXCEPTION 'expected core.document_sequences constraint document_sequences_type_valid is missing';
+    END IF;
+
+    ALTER TABLE core.document_sequences DROP CONSTRAINT document_sequences_type_valid;
+    EXECUTE format(
+        'ALTER TABLE core.document_sequences ADD CONSTRAINT document_sequences_type_valid CHECK ((%s) OR document_type = %L)',
+        v_existing_check,
+        'CUSTOMER_PAYMENT'
+    );
+
+    SELECT pg_get_expr(c.conbin, c.conrelid)
+    INTO v_existing_check
+    FROM pg_constraint c
+    WHERE c.conrelid = 'cash.movements'::regclass
+      AND c.conname = 'movements_movement_type_valid'
+      AND c.contype = 'c';
+
+    IF v_existing_check IS NULL THEN
+        RAISE EXCEPTION 'expected cash.movements constraint movements_movement_type_valid is missing';
+    END IF;
+
+    ALTER TABLE cash.movements DROP CONSTRAINT movements_movement_type_valid;
+    EXECUTE format(
+        'ALTER TABLE cash.movements ADD CONSTRAINT movements_movement_type_valid CHECK ((%s) OR movement_type = %L)',
+        v_existing_check,
+        'CUSTOMER_PAYMENT'
+    );
+END;
+$$;
 
 CREATE TABLE receivables.customer_payments (
     document_id          bigint PRIMARY KEY REFERENCES core.business_documents (id),
