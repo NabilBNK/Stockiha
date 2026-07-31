@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
@@ -162,11 +162,12 @@ describe('S4-001 Customer Workflow', () => {
   it('loads credit summary and immutable ledger detail', async () => {
     wireInvoke(baseHandlers()); render(<App />); await login(); fireEvent.click(screen.getByRole('button', { name: 'Customers' }));
     await screen.findByRole('heading', { name: 'Customers' }); fireEvent.click(screen.getByRole('button', { name: 'View' }));
-    expect(await screen.findByTestId('customer-financial-detail')).toBeInTheDocument();
-    expect(screen.getByText('Customer ledger')).toBeInTheDocument();
-    expect(screen.getByText('CREDIT_INVOICE')).toBeInTheDocument();
-    expect(screen.getByText('PAYMENT')).toBeInTheDocument();
-    expect(screen.getByText('500000.00')).toBeInTheDocument();
+    const detail = await screen.findByTestId('customer-financial-detail');
+    expect(detail).toBeInTheDocument();
+    expect(within(detail).getByText('Customer ledger')).toBeInTheDocument();
+    expect(within(detail).getByText('CREDIT_INVOICE')).toBeInTheDocument();
+    expect(within(detail).getByText('PAYMENT')).toBeInTheDocument();
+    expect(within(detail).getByText('500000.00')).toBeInTheDocument();
   });
 
   it('posts a POS credit sale for the selected customer without using cash sale command', async () => {
