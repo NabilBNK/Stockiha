@@ -17,7 +17,9 @@ S4-001 introduces the customer/accounts-receivable side of Stockiha:
 - exact-sale, single-use manager overrides;
 - customer credit sale posting;
 - explicit customer payment allocations;
-- customer cash collection integration with the active cash session and drawer queue.
+- customer cash collection integration with the active cash session and drawer queue;
+- immutable credit-sale invoice and customer-payment receipt payloads;
+- deterministic PDF generation and durable generation/print/reprint queue state.
 
 Full cashier lifecycle hardening remains S4-002/S4-003/S4-004 work.
 
@@ -31,6 +33,8 @@ Full cashier lifecycle hardening remains S4-002/S4-003/S4-004 work.
 - Manager overrides require `OVERRIDE_CREDIT_LIMIT`.
 - The database resolves actor/workstation from the application-session token.
 - Override fingerprints are derived inside PostgreSQL from the actual customer, warehouse, fiscal period, Africa/Algiers business date, and sale lines. Runtime cannot provide a trusted fingerprint.
+- Customer-document PDF generation reads immutable posted snapshots; it does not re-read mutable customer identity for historical output.
+- Reprint creates only another print job. It cannot repost stock, AR, journals, cash movements, or drawer work.
 
 ## Credit-sale invariants
 
@@ -43,6 +47,7 @@ Full cashier lifecycle hardening remains S4-002/S4-003/S4-004 work.
 7. Stock issue, WAC/COGS, accounts receivable, revenue, and journal posting are atomic.
 8. A credit sale creates no cash movement and no drawer pulse.
 9. Credit-sale POS fiscal date is derived in PostgreSQL using `Africa/Algiers`.
+10. Posting atomically creates one credit-invoice generation job and one original print job.
 
 ## Customer-payment invariants
 
@@ -58,6 +63,20 @@ Full cashier lifecycle hardening remains S4-002/S4-003/S4-004 work.
 10. Bank transfer creates no cash-session movement or drawer pulse.
 11. Physical checks are intentionally unsupported until a checks-receivable/clearing lifecycle exists; they must not be treated as settled bank cash.
 12. Payment updates customer exposure and recomputes the oldest still-open due date atomically.
+13. Allocation intent is canonicalized by invoice ID and numeric amount for idempotency; duplicate rows targeting one invoice are aggregated before balance validation.
+14. Posting atomically creates one payment-receipt generation job and one original print job.
+
+## Customer-document invariants
+
+1. `CREDIT_SALE` renders from the immutable posted credit-sale/customer snapshots.
+2. `CUSTOMER_PAYMENT` renders from the immutable payment/customer snapshot and immutable allocation links.
+3. Generated customer PDFs are written atomically under the Tauri application-data directory.
+4. A successful generation transition releases the linked original print job from `WAITING_FOR_GENERATION` to `PENDING`.
+5. Retryable generation failures are reclaimable after backoff; permanent render/validation failures remain terminal.
+6. A reprint creates a new print job against the completed generation artifact only.
+7. Reprint idempotency keys cannot duplicate print work accidentally.
+8. Generation/reprint never changes stock, customer exposure, journal entries, cash movements, or drawer jobs.
+9. `PENDING` print state means durable print work is ready for a printer worker. Production physical Windows spooler dispatch is not yet wired to this queue in S4-001.
 
 ## Automated verification
 
@@ -83,13 +102,14 @@ Database harnesses require a disposable migrated database whose name ends in `_t
 - `src-tauri/tests/receivables/s4_001_customer_payment_integration.sql`
 - `src-tauri/tests/receivables/s4_001_credit_concurrency.sh`
 
-The GitHub CI workflow contains a PostgreSQL 18 job that applies all migrations in filename order before running these S4 assertions.
+The GitHub CI workflow contains a PostgreSQL 18 job that applies all migrations in filename order before running both financial/document integration suites and the real two-session credit race.
 
 ## Required Windows/Tauri manual pass
 
 ### Customer directory
 
 - Admin/manager can create and edit customer master data.
+- The generated customer code is hidden during creation and appears only after the record exists.
 - Credit disabled forces zero limit/zero terms/no overdue rule.
 - Cashier can view customers but does not receive management controls.
 - Customer detail shows database exposure, available credit, oldest open due date, open invoices, and ledger entries.
@@ -116,10 +136,23 @@ The GitHub CI workflow contains a PostgreSQL 18 job that applies all migrations 
 - Bank transfer reduces exposure without cash movement or drawer pulse.
 - Attempt allocation above invoice remaining amount: blocked.
 - Attempt cross-customer allocation through direct test harness: blocked.
-- Retry same request: no duplicate payment, allocation, cash movement, or drawer pulse.
+- Retry same semantic request with equivalent decimal formatting: same result, no duplicate payment/allocation/cash/drawer/document jobs.
+
+### Customer documents
+
+- A newly posted credit sale appears in Documents as a Credit sale invoice.
+- A newly posted customer payment appears as a Customer payment receipt.
+- Before generation: generation is `PENDING`; original print is `WAITING_FOR_GENERATION`.
+- Preview displays the immutable customer snapshot and correct transaction detail.
+- Generate PDF: generation becomes `COMPLETED`; original print becomes `PENDING`; generated file exists under Tauri app data.
+- Open the generated PDF externally and verify document number, customer, date, lines/allocations and totals.
+- Queue reprint: a new print job appears without changing exposure, stock, cash movement, or drawer state.
+- Existing cash-sale receipt remains visible/usable in Documents.
+- Documents UI remains usable in EN/FR/AR and Arabic RTL.
 
 ## Known remaining S4-001 work
 
-- Final current-head automated verification evidence must be captured.
-- Credit-sale/customer-payment document rendering and print/export surfaces are not yet implemented.
+- Current document-generation revision requires final Windows/Tauri verification.
+- Production physical printer dispatch from `documents.print_jobs` is not yet connected; queue state stops at durable `PENDING` without a configured printer worker.
+- PDF template business labels are currently English; final locale-specific PDF labels remain part of the multilingual document pass.
 - Final Windows/Tauri multilingual/touchscreen smoke testing is not yet signed off.
