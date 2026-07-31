@@ -8,6 +8,11 @@ import App from '../src/App';
 
 type Handlers = Record<string, (args: Record<string, unknown>) => unknown>;
 
+function captured(value: Record<string, unknown> | null): Record<string, unknown> {
+  if (value === null) throw new Error('expected captured IPC arguments');
+  return value;
+}
+
 function wireInvoke(handlers: Handlers) {
   invokeMock.mockImplementation((command: string, args: Record<string, unknown> = {}) => {
     const handler = handlers[command];
@@ -118,8 +123,9 @@ describe('S4-001 customer documents', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue reprint' }));
     await waitFor(() => expect(reprintArgs).not.toBeNull());
-    expect(reprintArgs?.documentId).toBe(700);
-    expect(String(reprintArgs?.idempotencyKey)).toContain('customer_reprint:700:');
+    const reprint = captured(reprintArgs);
+    expect(reprint.documentId).toBe(700);
+    expect(String(reprint.idempotencyKey)).toContain('customer_reprint:700:');
     expect(await screen.findByText('Reprint queued.')).toBeInTheDocument();
   });
 });
