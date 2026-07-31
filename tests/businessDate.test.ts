@@ -11,4 +11,4 @@ describe('currentBusinessDate', () => {
   it('keeps the previous business day before Algiers midnight', () => {
     expect(currentBusinessDate(new Date('2026-07-30T22:30:00.000Z'))).toBe('2026-07-30');
   });
-}
+});
