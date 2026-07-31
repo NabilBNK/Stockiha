@@ -1,0 +1,180 @@
+/* Cross-app interaction polish introduced during S4-001 manual UX review. */
+
+/* Checkboxes/radios should align with their label text instead of inheriting
+   the vertical field layout used by text inputs. */
+input[type="checkbox"],
+input[type="radio"] {
+  inline-size: 18px;
+  block-size: 18px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--sk-primary);
+  cursor: pointer;
+}
+
+.sk-form-grid > label:has(> input[type="checkbox"]),
+.sk-form-grid > label:has(> input[type="radio"]),
+.sk-form label:not(.sk-field__label):has(> input[type="checkbox"]),
+.sk-form label:not(.sk-field__label):has(> input[type="radio"]),
+.sk-checkbox-row {
+  flex-direction: row !important;
+  align-items: center !important;
+  align-self: end;
+  gap: 10px !important;
+  min-height: var(--sk-touch);
+  padding: 8px 4px;
+}
+
+.sk-checkbox-row > span { line-height: 1.25; }
+
+/* Disabled policy controls visibly belong to a disabled state. */
+.sk-form input:disabled,
+.sk-form select:disabled,
+.sk-form-grid input:disabled,
+.sk-form-grid select:disabled {
+  background: var(--sk-surface-soft);
+  color: var(--sk-muted);
+  cursor: not-allowed;
+  opacity: .72;
+}
+
+/* Shared helper text and generated/read-only values. */
+.sk-field-help {
+  display: block;
+  margin-top: 1px;
+  color: var(--sk-muted);
+  font-size: .74rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.sk-auto-code-note {
+  min-height: var(--sk-touch);
+  justify-content: center;
+  padding: 10px 12px;
+  border: 1px dashed var(--sk-border-strong);
+  border-radius: var(--sk-radius-sm);
+  background: var(--sk-surface-soft);
+}
+
+.sk-auto-code-note strong {
+  color: var(--sk-primary);
+  font-size: .9rem;
+}
+
+.sk-code-readonly {
+  background: var(--sk-surface-soft) !important;
+  color: var(--sk-muted) !important;
+  cursor: default !important;
+}
+
+/* Action groups use real gap rather than page-specific margins. */
+.sk-action-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sk-action-group .sk-button + .sk-button,
+.sk-action-group .sk-btn + .sk-btn {
+  margin-inline-start: 0;
+}
+
+.sk-table td:has(.sk-action-group) {
+  min-width: 220px;
+  text-align: end;
+}
+
+/* Stronger global interactive language for shared buttons. */
+.sk-btn:active:not(:disabled),
+.sk-button:active:not(:disabled) {
+  transform: translateY(0) scale(.97);
+}
+
+.sk-btn--danger,
+.sk-button--danger {
+  border-color: color-mix(in srgb, var(--sk-danger) 82%, #000 8%);
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--sk-danger) 20%, transparent);
+}
+
+.sk-btn--danger:hover:not(:disabled),
+.sk-button--danger:hover:not(:disabled) {
+  filter: brightness(.92);
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--sk-danger) 24%, transparent);
+}
+
+.sk-button--success,
+.sk-btn--success {
+  border-color: color-mix(in srgb, var(--sk-ok) 82%, #000 6%);
+  background: var(--sk-ok);
+  color: #fff;
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--sk-ok) 20%, transparent);
+}
+
+.sk-button--success:hover:not(:disabled),
+.sk-btn--success:hover:not(:disabled) {
+  filter: brightness(.92);
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--sk-ok) 24%, transparent);
+}
+
+.sk-badge--danger {
+  background: var(--sk-danger-soft);
+  color: var(--sk-danger);
+}
+
+/* Inactive records stay visible, but state is obvious before the user reads text. */
+.sk-table tbody tr.sk-row--inactive,
+.sk-table tbody tr.sk-row--inactive:hover {
+  background: color-mix(in srgb, var(--sk-danger-soft) 76%, var(--sk-surface));
+}
+
+.sk-table tbody tr.sk-row--inactive > td:first-child {
+  box-shadow: inset 3px 0 0 var(--sk-danger);
+}
+
+[dir="rtl"] .sk-table tbody tr.sk-row--inactive > td:first-child {
+  box-shadow: inset -3px 0 0 var(--sk-danger);
+}
+
+/* Avoid double borders when a table wrapper is nested inside an existing card. */
+.sk-table-wrap--flat {
+  border: 0;
+  border-radius: 0;
+}
+
+/* Small success/error feedback should feel like a state transition. */
+.sk-feedback-pop {
+  animation: sk-feedback-pop .2s ease-out;
+}
+
+@keyframes sk-feedback-pop {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Improve touch/click affordance globally without changing business layouts. */
+.sk-button,
+.sk-btn,
+.sk-nav__item,
+.sk-lang__btn,
+.sk-shell__icon-button {
+  user-select: none;
+}
+
+@media (max-width: 820px) {
+  .sk-action-group {
+    justify-content: flex-start;
+  }
+
+  .sk-table td:has(.sk-action-group) {
+    min-width: 190px;
+    text-align: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-feedback-pop { animation: none; }
+  .sk-btn, .sk-button { transition-duration: 0s; }
+}
