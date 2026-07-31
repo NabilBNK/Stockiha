@@ -22,7 +22,6 @@ username="s4credit_conc_admin_$run_id"
 token="s4credit-conc-token-$run_id"
 wh_code="S4CREDIT-CONC-WH-$run_id"
 sku="S4CREDIT-CONC-SKU-$run_id"
-customer_code="S4CREDIT-CONC-CUS-$run_id"
 
 read -r warehouse_id variant_id period_id document_date customer_id < <(
   psql "$STOCKIHA_TEST_ADMIN_DATABASE_URL" -X -v ON_ERROR_STOP=1 -At -F ' ' <<SQL | tr -d '\r' | tail -n 1
@@ -45,16 +44,17 @@ SELECT w.id, v.id, 10.000, 1000.0000, 100.000000
 FROM inventory.warehouses w, catalog.product_variants v
 WHERE w.code='$wh_code' AND v.sku='$sku';
 
-SELECT receivables.create_customer(
-  '$token', '$customer_code', 'S4 Credit Concurrency Customer',
+-- Customer code is database-generated. Capture the returned id instead of
+-- assuming the caller can choose a lookup code.
+SELECT (receivables.create_customer(
+  '$token', NULL, 'S4 Credit Concurrency Customer',
   NULL, NULL, NULL, NULL, NULL,
   true, 300.00, 30, 60
-);
+)->>'id')::bigint AS generated_customer_id \gset
 
-SELECT w.id, v.id, fp.id, fp.starts_on, c.id
+SELECT w.id, v.id, fp.id, fp.starts_on, :generated_customer_id
 FROM inventory.warehouses w
 JOIN catalog.product_variants v ON v.sku='$sku'
-JOIN receivables.customers c ON c.code='$customer_code'
 CROSS JOIN LATERAL (
   SELECT id, starts_on
   FROM finance.fiscal_periods
