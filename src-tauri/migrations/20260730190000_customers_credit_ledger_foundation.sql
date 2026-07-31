@@ -5,7 +5,9 @@ CREATE SCHEMA IF NOT EXISTS receivables;
 REVOKE ALL ON SCHEMA receivables FROM PUBLIC;
 GRANT USAGE ON SCHEMA receivables TO stockiha_runtime;
 
--- Extend permission catalog for customer/credit operations.
+-- Extend the closed permission vocabulary. Later slices must preserve every
+-- permission already valid in an upgraded database; replacing this CHECK with
+-- an older subset makes a legitimate S0-S3 database impossible to migrate.
 ALTER TABLE iam.permissions DROP CONSTRAINT permissions_code_valid;
 ALTER TABLE iam.permissions ADD CONSTRAINT permissions_code_valid
     CHECK (code IN (
@@ -18,6 +20,15 @@ ALTER TABLE iam.permissions ADD CONSTRAINT permissions_code_valid
         'MANAGE_INVENTORY',
         'MANAGE_PROCUREMENT',
         'POST_PURCHASE_RECEIPT',
+        'APPROVE_CASH_VARIANCE',
+        'AUTHORIZE_CREDIT_OVERRIDE',
+        'MANAGE_PRINT_JOBS',
+        'POST_CUSTOMER_RETURN',
+        'POST_STOCK_TRANSFER',
+        'POST_STOCK_WRITEOFF',
+        'RESUME_CASH_SESSION',
+        'SUSPEND_CASH_SESSION',
+        'VIEW_PRINT_JOBS',
         'MANAGE_CUSTOMERS',
         'POST_CREDIT_SALE',
         'POST_CUSTOMER_PAYMENT',
