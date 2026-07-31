@@ -1,0 +1,145 @@
+name: S4-002 Historical API Collision Verification
+
+on:
+  push:
+    branches:
+      - 'task/s4-002-cashier-session-lifecycle'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  historical-api-collisions:
+    name: Historical lifecycle API collision upgrade
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: stockiha_api_collision_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d stockiha_api_collision_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGPASSWORD: postgres
+      ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_api_collision_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Bootstrap database roles
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE stockiha_owner NOLOGIN;
+          CREATE ROLE stockiha_migrator NOLOGIN;
+          CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
+          CREATE ROLE stockiha_backup NOLOGIN;
+          GRANT CREATE ON DATABASE stockiha_api_collision_test TO stockiha_owner;
+          SQL
+
+      - name: Apply pre-S4-002 migrations
+        run: |
+          set -euo pipefail
+          while IFS= read -r migration; do
+            base="$(basename "$migration")"
+            if [[ "$base" == "20260731125900_cash_session_index_upgrade_compat.sql" ]]; then
+              break
+            fi
+            psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Simulate historical lifecycle API collisions
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          SET ROLE stockiha_owner;
+
+          CREATE FUNCTION sales.suspend_cash_session(text,bigint,text)
+          RETURNS bigint LANGUAGE sql AS 'SELECT $2';
+
+          CREATE FUNCTION sales.resume_cash_session(text,bigint)
+          RETURNS bigint LANGUAGE sql AS 'SELECT $2';
+
+          CREATE FUNCTION sales.handover_cash_session(text,bigint,text,text)
+          RETURNS bigint LANGUAGE sql AS 'SELECT $2';
+
+          GRANT EXECUTE ON FUNCTION sales.suspend_cash_session(text,bigint,text) TO stockiha_runtime;
+          GRANT EXECUTE ON FUNCTION sales.resume_cash_session(text,bigint) TO stockiha_runtime;
+          GRANT EXECUTE ON FUNCTION sales.handover_cash_session(text,bigint,text,text) TO stockiha_runtime;
+
+          RESET ROLE;
+
+          ALTER FUNCTION sales.suspend_cash_session(text,bigint,text) OWNER TO postgres;
+          ALTER FUNCTION sales.resume_cash_session(text,bigint) OWNER TO postgres;
+          ALTER FUNCTION sales.handover_cash_session(text,bigint,text,text) OWNER TO postgres;
+          SQL
+
+      - name: Apply S4-002 compatibility and remaining migrations
+        run: |
+          set -euo pipefail
+          start=0
+          while IFS= read -r migration; do
+            base="$(basename "$migration")"
+            if [[ "$base" == "20260731125900_cash_session_index_upgrade_compat.sql" ]]; then
+              start=1
+            fi
+            if [[ "$start" -eq 1 ]]; then
+              echo "Applying $migration"
+              psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+            fi
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Verify canonical APIs replaced quarantined legacy APIs
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+              v_sig text;
+              v_legacy_sig text;
+          BEGIN
+              FOREACH v_sig IN ARRAY ARRAY[
+                  'sales.suspend_cash_session(text,bigint,text)',
+                  'sales.resume_cash_session(text,bigint)',
+                  'sales.handover_cash_session(text,bigint,text,text)'
+              ]
+              LOOP
+                  IF to_regprocedure(v_sig) IS NULL THEN
+                      RAISE EXCEPTION 'canonical lifecycle API missing after upgrade: %', v_sig;
+                  END IF;
+              END LOOP;
+
+              FOREACH v_legacy_sig IN ARRAY ARRAY[
+                  'sales.suspend_cash_session_legacy_s4002(text,bigint,text)',
+                  'sales.resume_cash_session_legacy_s4002(text,bigint)',
+                  'sales.handover_cash_session_legacy_s4002(text,bigint,text,text)'
+              ]
+              LOOP
+                  IF to_regprocedure(v_legacy_sig) IS NULL THEN
+                      RAISE EXCEPTION 'historical lifecycle API was not quarantined: %', v_legacy_sig;
+                  END IF;
+                  IF has_function_privilege('stockiha_runtime', v_legacy_sig, 'EXECUTE') THEN
+                      RAISE EXCEPTION 'runtime can execute quarantined lifecycle API: %', v_legacy_sig;
+                  END IF;
+              END LOOP;
+
+              IF to_regclass('sales.cash_sessions_one_live_per_workstation') IS NULL THEN
+                  RAISE EXCEPTION 'S4-002 lifecycle migration did not complete';
+              END IF;
+          END;
+          $$;
+          SQL
