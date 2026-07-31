@@ -15,6 +15,7 @@ pub(crate) mod bootstrap;
 // too.
 #[cfg_attr(not(test), allow(dead_code))]
 mod credentials;
+pub(crate) mod customer_pdf;
 pub mod db;
 // S0-008: ESC/POS Windows RAW spooler proof. Crate-private and consumer-free
 // (no Tauri command, no IPC); dead code in non-test builds until a later
