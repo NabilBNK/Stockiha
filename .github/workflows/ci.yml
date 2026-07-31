@@ -151,5 +151,8 @@ jobs:
       - name: Run S4 credit-sale integration assertions
         run: psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f src-tauri/tests/receivables/s4_001_credit_sale_integration.sql
 
+      - name: Run S4 customer-payment integration assertions
+        run: psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f src-tauri/tests/receivables/s4_001_customer_payment_integration.sql
+
       - name: Run S4 real two-session credit race
         run: bash src-tauri/tests/receivables/s4_001_credit_concurrency.sh
