@@ -69,7 +69,17 @@ jobs:
           rustup default stable
 
       - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --lib 2>&1 | tee rust-test.log
+
+      - name: Upload Rust test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-test-log-${{ github.run_id }}
+          path: rust-test.log
+          if-no-files-found: error
 
   database:
     name: PostgreSQL migration and S4 integrity verification
