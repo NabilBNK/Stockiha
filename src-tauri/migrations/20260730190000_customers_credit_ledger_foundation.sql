@@ -5,35 +5,35 @@ CREATE SCHEMA IF NOT EXISTS receivables;
 REVOKE ALL ON SCHEMA receivables FROM PUBLIC;
 GRANT USAGE ON SCHEMA receivables TO stockiha_runtime;
 
--- Extend the closed permission vocabulary. Later slices must preserve every
--- permission already valid in an upgraded database; replacing this CHECK with
--- an older subset makes a legitimate S0-S3 database impossible to migrate.
-ALTER TABLE iam.permissions DROP CONSTRAINT permissions_code_valid;
-ALTER TABLE iam.permissions ADD CONSTRAINT permissions_code_valid
-    CHECK (code IN (
-        'POST_STOCK_RECEIPT',
-        'POST_CASH_SALE',
-        'OPEN_CASH_SESSION',
-        'CLOSE_CASH_SESSION',
-        'MANAGE_CATALOG',
-        'MANAGE_WAREHOUSES',
-        'MANAGE_INVENTORY',
-        'MANAGE_PROCUREMENT',
-        'POST_PURCHASE_RECEIPT',
-        'APPROVE_CASH_VARIANCE',
-        'AUTHORIZE_CREDIT_OVERRIDE',
-        'MANAGE_PRINT_JOBS',
-        'POST_CUSTOMER_RETURN',
-        'POST_STOCK_TRANSFER',
-        'POST_STOCK_WRITEOFF',
-        'RESUME_CASH_SESSION',
-        'SUSPEND_CASH_SESSION',
-        'VIEW_PRINT_JOBS',
+-- Extend the existing closed permission vocabulary instead of replacing it
+-- with a copied list. The prior CHECK remains authoritative for every code
+-- accepted by the installed S0-S3 database; S4 adds only its new codes.
+DO $$
+DECLARE
+    v_existing_check text;
+BEGIN
+    SELECT pg_get_expr(c.conbin, c.conrelid)
+    INTO v_existing_check
+    FROM pg_constraint c
+    WHERE c.conrelid = 'iam.permissions'::regclass
+      AND c.conname = 'permissions_code_valid'
+      AND c.contype = 'c';
+
+    IF v_existing_check IS NULL THEN
+        RAISE EXCEPTION 'expected iam.permissions constraint permissions_code_valid is missing';
+    END IF;
+
+    ALTER TABLE iam.permissions DROP CONSTRAINT permissions_code_valid;
+    EXECUTE format(
+        'ALTER TABLE iam.permissions ADD CONSTRAINT permissions_code_valid CHECK ((%s) OR code IN (%L, %L, %L, %L))',
+        v_existing_check,
         'MANAGE_CUSTOMERS',
         'POST_CREDIT_SALE',
         'POST_CUSTOMER_PAYMENT',
         'OVERRIDE_CREDIT_LIMIT'
-    ));
+    );
+END;
+$$;
 
 INSERT INTO iam.permissions (code, name) VALUES
     ('MANAGE_CUSTOMERS', 'Manage customer master data and credit policy'),
