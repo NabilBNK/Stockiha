@@ -26,6 +26,10 @@ export const COMMANDS = {
   GET_SALE_DOCUMENT: 'get_sale_document',
   LIST_SALE_LINES: 'list_sale_lines',
   LIST_DOCUMENT_JOBS: 'list_document_jobs',
+  LIST_PRINTABLE_DOCUMENTS: 'list_printable_documents',
+  GET_CUSTOMER_DOCUMENT_PAYLOAD: 'get_customer_document_payload',
+  GENERATE_CUSTOMER_DOCUMENT_PDF: 'generate_customer_document_pdf',
+  ENQUEUE_CUSTOMER_REPRINT: 'enqueue_customer_reprint',
   // Slice 2 — variant catalog
   CREATE_PRODUCT_WITH_VARIANTS: 'create_product_with_variants',
   ADD_VARIANT: 'add_variant',
