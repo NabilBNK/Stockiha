@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   historical-index-upgrade:
-    name: Historical cash-session index upgrade
+    name: Historical cash-session existing-DB upgrade
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -65,11 +65,51 @@ jobs:
             psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
           done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
 
-      - name: Simulate historical Windows index name
+      - name: Simulate historical Windows database state
         run: |
           psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
           ALTER INDEX sales.cash_sessions_one_open_per_workstation
               RENAME TO cash_sessions_one_active_per_workstation;
+
+          SET ROLE stockiha_owner;
+
+          WITH historical_user AS (
+              INSERT INTO iam.users (username, display_name, password_hash)
+              VALUES ('s4002_upgrade_closed_cashier', 'S4-002 Upgrade Closed Cashier', 'hashed_pass')
+              RETURNING id
+          ), historical_warehouse AS (
+              INSERT INTO inventory.warehouses (code, name)
+              VALUES ('WH-S4002-UPGRADE', 'S4-002 Upgrade Warehouse')
+              RETURNING id
+          )
+          INSERT INTO sales.cash_sessions (
+              warehouse_id,
+              workstation_id,
+              opened_by_user_id,
+              closed_by_user_id,
+              status,
+              opening_float,
+              expected_amount,
+              counted_amount,
+              variance_amount,
+              opened_at,
+              closed_at
+          )
+          SELECT
+              historical_warehouse.id,
+              'S4002-UPGRADE-CLOSED-WKS',
+              historical_user.id,
+              historical_user.id,
+              'CLOSED',
+              1000.00,
+              1000.00,
+              1000.00,
+              0.00,
+              now() - interval '1 day',
+              now() - interval '23 hours'
+          FROM historical_user, historical_warehouse;
+
+          RESET ROLE;
 
           DO $$
           BEGIN
@@ -78,6 +118,14 @@ jobs:
               END IF;
               IF to_regclass('sales.cash_sessions_one_active_per_workstation') IS NULL THEN
                   RAISE EXCEPTION 'historical index simulation failed';
+              END IF;
+              IF NOT EXISTS (
+                  SELECT 1
+                  FROM sales.cash_sessions
+                  WHERE workstation_id = 'S4002-UPGRADE-CLOSED-WKS'
+                    AND status = 'CLOSED'
+              ) THEN
+                  RAISE EXCEPTION 'historical CLOSED session simulation failed';
               END IF;
           END;
           $$;
@@ -98,12 +146,15 @@ jobs:
             fi
           done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
 
-      - name: Verify upgraded invariant
+      - name: Verify upgraded invariant and closed-session immutability
         run: |
           psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
           DECLARE
               v_status_check text;
+              v_opened_by bigint;
+              v_current_cashier bigint;
+              v_blocked boolean := false;
           BEGIN
               IF to_regclass('sales.cash_sessions_one_live_per_workstation') IS NULL THEN
                   RAISE EXCEPTION 'S4-002 live-session workstation index was not created';
@@ -124,6 +175,28 @@ jobs:
                  OR v_status_check NOT LIKE '%PENDING_APPROVAL%'
                  OR v_status_check NOT LIKE '%SUSPENDED%' THEN
                   RAISE EXCEPTION 'S4-002 lifecycle status constraint is not installed';
+              END IF;
+
+              SELECT opened_by_user_id, current_cashier_user_id
+              INTO v_opened_by, v_current_cashier
+              FROM sales.cash_sessions
+              WHERE workstation_id = 'S4002-UPGRADE-CLOSED-WKS'
+                AND status = 'CLOSED';
+
+              IF NOT FOUND OR v_current_cashier IS NULL OR v_current_cashier <> v_opened_by THEN
+                  RAISE EXCEPTION 'historical CLOSED session ownership backfill failed';
+              END IF;
+
+              BEGIN
+                  UPDATE sales.cash_sessions
+                  SET opening_float = opening_float + 1
+                  WHERE workstation_id = 'S4002-UPGRADE-CLOSED-WKS';
+              EXCEPTION WHEN SQLSTATE '0A000' THEN
+                  v_blocked := true;
+              END;
+
+              IF NOT v_blocked THEN
+                  RAISE EXCEPTION 'historical CLOSED session became mutable after upgrade';
               END IF;
           END;
           $$;
