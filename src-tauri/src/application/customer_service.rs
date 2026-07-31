@@ -27,7 +27,7 @@ pub(crate) async fn create_customer(
         "SELECT receivables.create_customer($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
     )
     .bind(session_token)
-    .bind(&payload.code)
+    .bind(payload.code.as_deref())
     .bind(&payload.name)
     .bind(&payload.contact_name)
     .bind(&payload.phone)
