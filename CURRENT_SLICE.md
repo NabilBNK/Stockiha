@@ -37,6 +37,7 @@ Cashiers close using blind denomination counts. Expected cash is calculated by t
 - Session suspension/resume rules with audit trail.
 - Controlled handover between cashier users without losing cash accountability.
 - Concurrency locks preventing duplicate close/approval/handover transitions.
+- Existing-database compatibility for historical workstation-index naming, CLOSED-row ownership backfill, legacy function ownership, and the historical six-column `inspect_active_cash_session` return shape.
 
 ## Rust/Tauri Scope
 
@@ -68,9 +69,21 @@ Cashiers close using blind denomination counts. Expected cash is calculated by t
 ## Verification Target
 
 - PostgreSQL migration/integration tests for state transitions, blind-count privacy, expected/count variance, approval authorization, suspension/resume, handover, stale transition rejection, and concurrency.
+- Existing-DB upgrade tests covering known Windows historical schema/function drift before merge.
 - Rust unit/integration coverage for typed DTO/error behavior.
 - Frontend workflow tests for cashier and manager paths.
 - Windows/Tauri EN/FR/AR RTL and touchscreen smoke testing before merge.
+
+## Current Upgrade Compatibility Status
+
+Four historical differences discovered on the real Windows `stockiha_dev` database are now handled before the S4-002 lifecycle migration:
+
+1. historical workstation index name (`cash_sessions_one_active_per_workstation`)
+2. pre-existing CLOSED sessions protected by Slice-1 immutability during current-cashier backfill
+3. legacy replace-target functions owned by `postgres`
+4. historical six-column `sales.inspect_active_cash_session(text,text)` return shape including `status`
+
+Compatibility migrations normalize these cases before `20260731130000_cash_session_lifecycle.sql`. The six-column legacy active-session function is preserved under an inert legacy name with runtime execution revoked, then the lifecycle migration recreates the canonical five-column API used by the Rust application.
 
 ## Completed Predecessor
 
