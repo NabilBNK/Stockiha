@@ -65,13 +65,16 @@ pub(crate) fn validate_denomination_counts(
     counts: &[DenominationCountInput],
 ) -> Result<(), DomainError> {
     if counts.is_empty() {
-        return Err(DomainError::InvalidValue);
+        return Err(DomainError::InvalidIdentifier);
     }
 
     let mut ids = HashSet::with_capacity(counts.len());
     for count in counts {
-        if count.denomination_id <= 0 || count.quantity < 0 || !ids.insert(count.denomination_id) {
-            return Err(DomainError::InvalidValue);
+        if count.denomination_id <= 0 || !ids.insert(count.denomination_id) {
+            return Err(DomainError::InvalidIdentifier);
+        }
+        if count.quantity < 0 {
+            return Err(DomainError::NegativeAmount);
         }
     }
     Ok(())
@@ -132,19 +135,25 @@ mod tests {
         ])
         .is_ok());
 
-        assert!(validate_denomination_counts(&[]).is_err());
-        assert!(validate_denomination_counts(&[
-            DenominationCountInput { denomination_id: 1, quantity: 1 },
-            DenominationCountInput { denomination_id: 1, quantity: 2 },
-        ])
-        .is_err());
-        assert!(validate_denomination_counts(&[
-            DenominationCountInput { denomination_id: 0, quantity: 1 },
-        ])
-        .is_err());
-        assert!(validate_denomination_counts(&[
-            DenominationCountInput { denomination_id: 1, quantity: -1 },
-        ])
-        .is_err());
+        assert_eq!(validate_denomination_counts(&[]), Err(DomainError::InvalidIdentifier));
+        assert_eq!(
+            validate_denomination_counts(&[
+                DenominationCountInput { denomination_id: 1, quantity: 1 },
+                DenominationCountInput { denomination_id: 1, quantity: 2 },
+            ]),
+            Err(DomainError::InvalidIdentifier)
+        );
+        assert_eq!(
+            validate_denomination_counts(&[
+                DenominationCountInput { denomination_id: 0, quantity: 1 },
+            ]),
+            Err(DomainError::InvalidIdentifier)
+        );
+        assert_eq!(
+            validate_denomination_counts(&[
+                DenominationCountInput { denomination_id: 1, quantity: -1 },
+            ]),
+            Err(DomainError::NegativeAmount)
+        );
     }
 }
