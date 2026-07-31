@@ -1,5 +1,5 @@
 /**
- * Slice 1 — central registry of every production Tauri IPC command name.
+ * Central registry of production Tauri IPC command names.
  */
 export const COMMANDS = {
   GET_APP_INFO: 'get_app_info',
@@ -20,8 +20,20 @@ export const COMMANDS = {
   LIST_STOCK_ADJUSTMENT_UNITS: 'list_stock_adjustment_units',
   OPEN_CASH_SESSION: 'open_cash_session',
   INSPECT_ACTIVE_CASH_SESSION: 'inspect_active_cash_session',
+  // Legacy Slice-1 total-close command remains in the TS registry only while
+  // older callers compile; PostgreSQL EXECUTE is revoked in S4-002 and the
+  // Tauri handler is no longer registered.
   CLOSE_CASH_SESSION: 'close_cash_session',
   GET_CASH_SESSION: 'get_cash_session',
+  INSPECT_CURRENT_CASH_SESSION: 'inspect_current_cash_session',
+  LIST_CASH_DENOMINATIONS: 'list_cash_denominations',
+  BEGIN_CASH_SESSION_CLOSE: 'begin_cash_session_close',
+  CANCEL_CASH_SESSION_CLOSE: 'cancel_cash_session_close',
+  SUBMIT_CASH_SESSION_COUNT: 'submit_cash_session_count',
+  APPROVE_CASH_SESSION_VARIANCE: 'approve_cash_session_variance',
+  SUSPEND_CASH_SESSION: 'suspend_cash_session',
+  RESUME_CASH_SESSION: 'resume_cash_session',
+  HANDOVER_CASH_SESSION: 'handover_cash_session',
   CONFIRM_CASH_SALE: 'confirm_cash_sale',
   GET_SALE_DOCUMENT: 'get_sale_document',
   LIST_SALE_LINES: 'list_sale_lines',
