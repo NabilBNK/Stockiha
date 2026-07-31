@@ -116,7 +116,6 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: customer payment amount/exposure wrong: %', v_payment;
     END IF;
 
-    -- Receipt queue is created in the same posting transaction.
     SELECT min(id), count(*)
     INTO v_generation_job_id, v_count
     FROM documents.generation_jobs
@@ -163,7 +162,7 @@ BEGIN
     SELECT count(*) INTO v_count
     FROM cash.drawer_jobs
     WHERE business_document_id = v_payment_doc
-      AND idempotency_key = 'customer_payment:' || v_payment_request::text;
+      AND idempotency_key = 'customer_payment:' || v_payment_doc::text;
     IF v_count <> 1 THEN RAISE EXCEPTION 'Assertion failed: customer payment drawer job missing'; END IF;
 
     SELECT count(*) INTO v_count
@@ -183,8 +182,6 @@ BEGIN
     ) bad;
     IF v_count <> 0 THEN RAISE EXCEPTION 'Assertion failed: customer payment journal unbalanced'; END IF;
 
-    -- Same request is idempotent: no second cash movement, drawer pulse,
-    -- allocation, receipt generation job, or original print job.
     v_retry := receivables.post_customer_payment(
         v_token, v_payment_request, v_customer1, 100.00, 'CASH', v_cash_session_id,
         v_period_id, v_doc_date,
@@ -203,8 +200,6 @@ BEGIN
     SELECT count(*) INTO v_count FROM documents.print_jobs WHERE business_document_id = v_payment_doc;
     IF v_count <> 1 THEN RAISE EXCEPTION 'Assertion failed: retry duplicated original receipt print job'; END IF;
 
-    -- Complete receipt generation and prove reprint is print-only: the cash
-    -- payment's one legitimate drawer job remains exactly one.
     PERFORM documents.complete_generation_job(
         v_generation_job_id, true, false,
         'generated/test-payment-receipt-' || v_payment_doc::text || '.pdf',
@@ -236,7 +231,6 @@ BEGIN
     SELECT exposure_amount INTO v_exposure FROM receivables.customer_credit_state WHERE customer_id = v_customer1;
     IF v_exposure <> 200.00 THEN RAISE EXCEPTION 'Assertion failed: receipt generation/reprint changed exposure'; END IF;
 
-    -- Customer B has its own exposure, but may never allocate a payment against A's invoice.
     BEGIN
         PERFORM receivables.post_customer_payment(
             v_token, v_bad_request, v_customer2, 50.00, 'BANK_TRANSFER', NULL,
