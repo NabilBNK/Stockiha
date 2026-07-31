@@ -48,18 +48,10 @@ input[type="radio"] {
   line-height: 1.35;
 }
 
+/* Customer codes are database-generated. There is intentionally no create-time
+   UI for the internal identifier; the code is shown only after the record exists. */
 .sk-auto-code-note {
-  min-height: var(--sk-touch);
-  justify-content: center;
-  padding: 10px 12px;
-  border: 1px dashed var(--sk-border-strong);
-  border-radius: var(--sk-radius-sm);
-  background: var(--sk-surface-soft);
-}
-
-.sk-auto-code-note strong {
-  color: var(--sk-primary);
-  font-size: .9rem;
+  display: none !important;
 }
 
 .sk-code-readonly {
