@@ -39,6 +39,8 @@ pub fn run() {
             commands::cash_session::resume_cash_session,
             commands::cash_session::handover_cash_session,
             commands::cash_session::get_cash_session,
+            commands::drawer::list_drawer_operation_policy,
+            commands::drawer::update_drawer_operation_policy,
             commands::setup::get_setup_status,
             commands::setup::bootstrap_first_admin,
             commands::catalog::create_product,
@@ -103,6 +105,9 @@ pub fn run() {
             commands::customer::list_customer_ledger,
             commands::receivables::list_open_customer_invoices,
             commands::receivables::post_customer_payment,
+            commands::receivables::list_refundable_customer_payments,
+            commands::receivables::authorize_customer_payment_refund,
+            commands::receivables::post_customer_refund,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
