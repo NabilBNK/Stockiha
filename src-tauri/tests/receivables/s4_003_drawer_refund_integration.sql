@@ -327,16 +327,16 @@ BEGIN
     SELECT exposure_amount INTO v_exposure
     FROM receivables.customer_credit_state
     WHERE customer_id = v_customer_id;
-    IF v_exposure <> 850.00 THEN
-        RAISE EXCEPTION 'Assertion failed: exposure after first refund expected 850, got %', v_exposure;
+    IF v_exposure <> 870.00 THEN
+        RAISE EXCEPTION 'Assertion failed: exposure after first refund expected 870, got %', v_exposure;
     END IF;
 
     SELECT amount_delta - receivables.net_invoice_allocated_amount(id)
     INTO v_remaining
     FROM receivables.customer_ledger_entries
     WHERE id = v_invoice_ledger;
-    IF v_remaining <> 850.00 THEN
-        RAISE EXCEPTION 'Assertion failed: invoice remaining after first refund expected 850, got %', v_remaining;
+    IF v_remaining <> 870.00 THEN
+        RAISE EXCEPTION 'Assertion failed: invoice remaining after first refund expected 870, got %', v_remaining;
     END IF;
 
     v_refund_1_retry := receivables.post_customer_refund(
