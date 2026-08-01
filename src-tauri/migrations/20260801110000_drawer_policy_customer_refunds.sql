@@ -732,7 +732,7 @@ BEGIN
         IF NOT FOUND
            OR v_existing.source_payment_document_id <> p_source_payment_document_id
            OR v_existing.refund_method <> v_method
-           OR v_existing.cash_session_id IS DISTINCT FROM CASE WHEN v_method = 'CASH' THEN p_cash_session_id ELSE NULL END
+           OR v_existing.cash_session_id IS DISTINCT FROM (CASE WHEN v_method = 'CASH' THEN p_cash_session_id ELSE NULL END)
            OR v_existing.reason <> btrim(p_reason) THEN
             RAISE EXCEPTION 'refund authorization id conflicts with another request'
                 USING ERRCODE = '23505';
