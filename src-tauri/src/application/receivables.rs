@@ -105,10 +105,10 @@ pub(crate) async fn authorize_customer_payment_refund(
         .validate()
         .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
 
-    query_scalar::<_, uuid::Uuid>(
+    query_scalar::<_, String>(
         "SELECT receivables.authorize_customer_payment_refund(\
             $1, $2::uuid, $3, $4, $5, $6, $7\
-         )",
+         )::text",
     )
     .bind(session_token)
     .bind(&payload.authorization_id)
@@ -119,7 +119,6 @@ pub(crate) async fn authorize_customer_payment_refund(
     .bind(payload.ttl_minutes)
     .fetch_one(pool)
     .await
-    .map(|value| value.to_string())
     .map_err(AppError::from_posting_error)
 }
 
