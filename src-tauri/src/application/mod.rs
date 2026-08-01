@@ -22,6 +22,7 @@ pub(crate) mod credit_sale;
 pub(crate) mod customer_service;
 pub(crate) mod dashboard;
 pub(crate) mod documents;
+pub(crate) mod drawer;
 pub(crate) mod fiscal;
 pub(crate) mod procurement_service;
 pub(crate) mod receivables;
