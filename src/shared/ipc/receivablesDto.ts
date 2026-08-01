@@ -18,7 +18,7 @@ export interface PostCustomerPaymentPayload {
   request_id: string;
   customer_id: number;
   amount: string;
-  payment_method: 'CASH' | 'BANK_TRANSFER' | 'CHECK';
+  payment_method: 'CASH' | 'BANK_TRANSFER';
   cash_session_id: number | null;
   fiscal_period_id: number;
   document_date: string;
@@ -36,4 +36,43 @@ export interface CustomerPaymentResult {
   available_credit: string;
   journal_document_id: number;
   payment_ledger_entry_id: number;
+}
+
+export interface RefundableCustomerPayment {
+  payment_document_id: number;
+  document_number: string;
+  document_date: string;
+  payment_method: 'CASH' | 'BANK_TRANSFER';
+  amount: string;
+  note: string | null;
+}
+
+export interface AuthorizeCustomerRefundPayload {
+  authorization_id: string;
+  source_payment_document_id: number;
+  refund_method: 'CASH' | 'BANK_TRANSFER';
+  cash_session_id: number | null;
+  reason: string;
+  ttl_minutes: number;
+}
+
+export interface PostCustomerRefundPayload {
+  request_id: string;
+  authorization_id: string;
+  fiscal_period_id: number;
+  document_date: string;
+  note?: string | null;
+}
+
+export interface CustomerRefundResult {
+  document_id: number;
+  document_number: string;
+  source_payment_document_id: number;
+  customer_id: number;
+  refund_method: 'CASH' | 'BANK_TRANSFER';
+  amount: string;
+  exposure_amount: string;
+  available_credit: string;
+  journal_document_id: number;
+  refund_ledger_entry_id: number;
 }
