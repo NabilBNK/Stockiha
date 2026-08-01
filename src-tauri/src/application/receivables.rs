@@ -132,7 +132,7 @@ pub(crate) async fn post_customer_refund(
         .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
 
     let document_date = parse_iso_date(&payload.document_date)?;
-    let result: JsonValue = query_scalar(
+    let posting_result: JsonValue = query_scalar(
         "SELECT receivables.post_customer_refund(\
             $1, $2::uuid, $3::uuid, $4, $5, $6\
          )",
@@ -147,6 +147,20 @@ pub(crate) async fn post_customer_refund(
     .await
     .map_err(AppError::from_posting_error)?;
 
-    serde_json::from_value(result)
+    let document_id = posting_result
+        .get("document_id")
+        .and_then(JsonValue::as_i64)
+        .ok_or_else(|| AppError::internal("Customer refund result omitted document_id.".to_string()))?;
+
+    let canonical_result: JsonValue = query_scalar(
+        "SELECT receivables.get_customer_refund_result($1, $2)",
+    )
+    .bind(session_token)
+    .bind(document_id)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(canonical_result)
         .map_err(|error| AppError::internal(format!("Failed to parse customer refund result: {error}")))
 }
