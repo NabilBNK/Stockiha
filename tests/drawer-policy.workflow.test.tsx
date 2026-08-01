@@ -6,6 +6,11 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeM
 
 import App from '../src/App';
 
+function captured(value: Record<string, unknown> | null): Record<string, unknown> {
+  if (value === null) throw new Error('expected captured IPC arguments');
+  return value;
+}
+
 beforeEach(() => {
   invokeMock.mockReset();
   cleanup();
@@ -104,8 +109,9 @@ describe('S4-003 drawer eligibility settings', () => {
     fireEvent.click(refundToggle);
 
     await waitFor(() => expect(updateArgs).not.toBeNull());
-    expect(updateArgs?.sessionToken).toBe('tok');
-    expect(updateArgs?.payload).toEqual({
+    const update = captured(updateArgs);
+    expect(update.sessionToken).toBe('tok');
+    expect(update.payload).toEqual({
       operation_code: 'CUSTOMER_CASH_REFUND',
       is_enabled: false,
     });
