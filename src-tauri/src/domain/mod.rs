@@ -6,6 +6,7 @@ pub(crate) mod cash_session;
 pub(crate) mod catalog;
 pub(crate) mod customer;
 mod document_sequence;
+pub(crate) mod drawer;
 mod error;
 mod fiscal_period;
 mod identifiers;
