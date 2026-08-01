@@ -170,6 +170,9 @@ jobs:
       - name: Run S4 cash-session ownership assertions
         run: psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f src-tauri/tests/cash/s4_002_cash_session_ownership_integration.sql
 
+      - name: Run S4 drawer-policy and customer-refund assertions
+        run: psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f src-tauri/tests/receivables/s4_003_drawer_refund_integration.sql
+
       - name: Run S4 cash-session close race
         run: bash src-tauri/tests/cash/s4_002_cash_session_concurrency.sh
 
