@@ -34,6 +34,8 @@ export const COMMANDS = {
   SUSPEND_CASH_SESSION: 'suspend_cash_session',
   RESUME_CASH_SESSION: 'resume_cash_session',
   HANDOVER_CASH_SESSION: 'handover_cash_session',
+  LIST_DRAWER_OPERATION_POLICY: 'list_drawer_operation_policy',
+  UPDATE_DRAWER_OPERATION_POLICY: 'update_drawer_operation_policy',
   CONFIRM_CASH_SALE: 'confirm_cash_sale',
   GET_SALE_DOCUMENT: 'get_sale_document',
   LIST_SALE_LINES: 'list_sale_lines',
@@ -93,6 +95,9 @@ export const COMMANDS = {
   LIST_CUSTOMER_LEDGER: 'list_customer_ledger',
   LIST_OPEN_CUSTOMER_INVOICES: 'list_open_customer_invoices',
   POST_CUSTOMER_PAYMENT: 'post_customer_payment',
+  LIST_REFUNDABLE_CUSTOMER_PAYMENTS: 'list_refundable_customer_payments',
+  AUTHORIZE_CUSTOMER_PAYMENT_REFUND: 'authorize_customer_payment_refund',
+  POST_CUSTOMER_REFUND: 'post_customer_refund',
   CONFIRM_CREDIT_SALE: 'confirm_credit_sale',
   AUTHORIZE_CREDIT_OVERRIDE: 'authorize_credit_override',
 } as const;
