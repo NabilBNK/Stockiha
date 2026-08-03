@@ -2,7 +2,7 @@
 //!
 //! `AppError` is internal and may retain private diagnostics. `IpcError` is the
 //! only serializable error type and carries one stable public code with no SQL,
-//! token, customer, or other diagnostic detail.
+//! token, customer, filesystem, or other diagnostic detail.
 
 use serde::Serialize;
 use std::fmt;
@@ -17,6 +17,7 @@ pub enum ErrorCode {
     PermissionDenied,
     ValidationError,
     PreconditionFailed,
+    BackupValidationFailed,
     IdempotencyConflict,
     ImmutableRecord,
     UnsafeZeroStockValuation,
@@ -40,6 +41,7 @@ pub enum AppError {
     PermissionDenied { diagnostic: String },
     ValidationError { diagnostic: String },
     PreconditionFailed { diagnostic: String },
+    BackupValidationFailed { diagnostic: String },
     IdempotencyConflict { diagnostic: String },
     ImmutableRecord { diagnostic: String },
     UnsafeZeroStockValuation { diagnostic: String },
@@ -105,6 +107,9 @@ impl fmt::Debug for AppError {
             AppError::PreconditionFailed { .. } => {
                 f.write_str("AppError::PreconditionFailed(<redacted>)")
             }
+            AppError::BackupValidationFailed { .. } => {
+                f.write_str("AppError::BackupValidationFailed(<redacted>)")
+            }
             AppError::IdempotencyConflict { .. } => {
                 f.write_str("AppError::IdempotencyConflict(<redacted>)")
             }
@@ -131,6 +136,7 @@ impl fmt::Display for AppError {
             AppError::PermissionDenied { .. } => f.write_str("permission denied"),
             AppError::ValidationError { .. } => f.write_str("validation error"),
             AppError::PreconditionFailed { .. } => f.write_str("precondition failed"),
+            AppError::BackupValidationFailed { .. } => f.write_str("backup validation failed"),
             AppError::IdempotencyConflict { .. } => f.write_str("idempotency conflict"),
             AppError::ImmutableRecord { .. } => f.write_str("record is immutable"),
             AppError::UnsafeZeroStockValuation { .. } => f.write_str("unsafe zero-stock valuation"),
@@ -162,6 +168,9 @@ impl From<AppError> for IpcError {
             AppError::PermissionDenied { .. } => IpcError::new(ErrorCode::PermissionDenied),
             AppError::ValidationError { .. } => IpcError::new(ErrorCode::ValidationError),
             AppError::PreconditionFailed { .. } => IpcError::new(ErrorCode::PreconditionFailed),
+            AppError::BackupValidationFailed { .. } => {
+                IpcError::new(ErrorCode::BackupValidationFailed)
+            }
             AppError::IdempotencyConflict { .. } => IpcError::new(ErrorCode::IdempotencyConflict),
             AppError::ImmutableRecord { .. } => IpcError::new(ErrorCode::ImmutableRecord),
             AppError::UnsafeZeroStockValuation { .. } => {
@@ -191,6 +200,10 @@ mod tests {
             r#""CONFIGURATION_ERROR""#
         );
         assert_eq!(
+            serde_json::to_string(&ErrorCode::BackupValidationFailed).unwrap(),
+            r#""BACKUP_VALIDATION_FAILED""#
+        );
+        assert_eq!(
             serde_json::to_string(&ErrorCode::UnsafeZeroStockValuation).unwrap(),
             r#""UNSAFE_ZERO_STOCK_VALUATION""#
         );
@@ -216,6 +229,21 @@ mod tests {
     fn explicit_conversion_maps_database_unavailable() {
         let ipc: IpcError = AppError::database_unavailable(SENTINEL).into();
         assert_eq!(ipc, IpcError::new(ErrorCode::DatabaseUnavailable));
+    }
+
+    #[test]
+    fn backup_validation_error_is_redacted_and_stable() {
+        let app = AppError::BackupValidationFailed {
+            diagnostic: SENTINEL.to_owned(),
+        };
+        assert!(!format!("{app:?}").contains(SENTINEL));
+        assert_eq!(format!("{app}"), "backup validation failed");
+        let ipc: IpcError = app.into();
+        assert_eq!(ipc, IpcError::new(ErrorCode::BackupValidationFailed));
+        assert_eq!(
+            serde_json::to_string(&ipc).unwrap(),
+            r#"{"code":"BACKUP_VALIDATION_FAILED"}"#
+        );
     }
 
     #[test]
