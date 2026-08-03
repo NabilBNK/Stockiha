@@ -36,6 +36,7 @@ export const COMMANDS = {
   HANDOVER_CASH_SESSION: 'handover_cash_session',
   LIST_DRAWER_OPERATION_POLICY: 'list_drawer_operation_policy',
   UPDATE_DRAWER_OPERATION_POLICY: 'update_drawer_operation_policy',
+  VALIDATE_OPERATOR_BACKUP: 'validate_operator_backup',
   CONFIRM_CASH_SALE: 'confirm_cash_sale',
   GET_SALE_DOCUMENT: 'get_sale_document',
   LIST_SALE_LINES: 'list_sale_lines',
