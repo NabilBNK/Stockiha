@@ -7,8 +7,9 @@
 //! compile-time dependency on `tauri` at all, unlike `crate::commands`. It
 //! owns no authoritative business logic itself (that lives entirely in the
 //! SQL posting functions this module calls); its job is exactly: build
-//! canonical idempotency payloads, bind typed parameters, and translate
-//! `sqlx::Error` into the crate's typed [`crate::error::AppError`].
+//! canonical idempotency payloads, bind typed parameters, coordinate trusted
+//! infrastructure adapters, and translate internal errors into the crate's
+//! typed [`crate::error::AppError`].
 //!
 //! Crate-private and, for the IPC-adjacent modules, not yet exercised by a
 //! Tauri command signature that can be compile-verified in this sandbox
@@ -26,6 +27,7 @@ pub(crate) mod drawer;
 pub(crate) mod fiscal;
 pub(crate) mod procurement_service;
 pub(crate) mod receivables;
+pub(crate) mod recovery;
 pub(crate) mod setup;
 pub(crate) mod stock_adjustment;
 pub(crate) mod stock_receipt;
