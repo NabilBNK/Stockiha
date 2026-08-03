@@ -36,8 +36,17 @@ INSERT INTO iam.application_sessions (token_hash, user_id, workstation_id, expir
     SELECT sha256('s2adj-cashier-token'::bytea), id, 'S2ADJ-CASH', now() + interval '1 day'
     FROM iam.users WHERE username = 's2adj_cashier';
 
-INSERT INTO finance.fiscal_periods (period_code, starts_on, ends_on)
-    VALUES ('S2ADJ-2026', '2026-01-01', '2026-12-31') RETURNING id;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM finance.fiscal_periods
+        WHERE DATE '2026-07-24' BETWEEN starts_on AND ends_on
+    ) THEN
+        INSERT INTO finance.fiscal_periods (period_code, starts_on, ends_on)
+        VALUES ('S2ADJ-2026', '2026-01-01', '2026-12-31');
+    END IF;
+END;
+$$;
 INSERT INTO inventory.warehouses (code, name, is_active)
     VALUES ('S2ADJ-WH', 'S2 Adjustment Warehouse', true) RETURNING id;
 INSERT INTO inventory.warehouses (code, name, is_active)
@@ -68,7 +77,11 @@ DECLARE
     v_credit numeric;
     v_text text;
 BEGIN
-    SELECT id INTO v_period FROM finance.fiscal_periods WHERE period_code = 'S2ADJ-2026';
+    SELECT id INTO v_period
+    FROM finance.fiscal_periods
+    WHERE DATE '2026-07-24' BETWEEN starts_on AND ends_on
+    ORDER BY starts_on DESC
+    LIMIT 1;
     SELECT id INTO v_warehouse FROM inventory.warehouses WHERE code = 'S2ADJ-WH';
     SELECT id INTO v_inactive_warehouse FROM inventory.warehouses WHERE code = 'S2ADJ-OFF';
     SELECT id INTO v_base_unit FROM catalog.units WHERE normalized_code = 'UNIT';
@@ -292,7 +305,7 @@ DECLARE
     v_cash_session bigint;
     v_sale bigint;
 BEGIN
-    v_cash_session := sales.open_cash_session('s2adj-admin-token', v_warehouse, 'S2ADJ-POS', 0);
+    v_cash_session := sales.open_cash_session('s2adj-admin-token', v_warehouse, 'S2ADJ-ADMIN', 0);
     v_sale := sales.confirm_cash_sale(
         's2adj-admin-token', '00000000-0000-4000-8000-000000000116', sha256('sale-regression'::bytea),
         v_cash_session, v_warehouse, v_period, '2026-07-24',

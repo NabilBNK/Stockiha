@@ -49,12 +49,25 @@ BEGIN
     INSERT INTO inventory.warehouses (code, name, is_active) VALUES ('W2003', 'S2-003 Warehouse', true)
     RETURNING id INTO v_warehouse_id;
 
-    INSERT INTO finance.fiscal_periods (period_code, status, starts_on, ends_on)
-    VALUES ('2026-Q1', 'OPEN', '2026-01-01'::date, '2026-03-31'::date)
-    RETURNING id INTO v_fiscal_period_id;
+    SELECT id INTO v_fiscal_period_id
+    FROM finance.fiscal_periods
+    WHERE status = 'OPEN' AND DATE '2026-01-15' BETWEEN starts_on AND ends_on
+    ORDER BY starts_on DESC
+    LIMIT 1;
+    IF v_fiscal_period_id IS NULL THEN
+        INSERT INTO finance.fiscal_periods (period_code, status, starts_on, ends_on)
+        VALUES ('2026-Q1', 'OPEN', '2026-01-01'::date, '2026-03-31'::date)
+        RETURNING id INTO v_fiscal_period_id;
+    END IF;
 
-    INSERT INTO sales.cash_sessions (warehouse_id, workstation_id, opened_by_user_id, opening_float, status)
-    VALUES (v_warehouse_id, 'TEST_WKS', v_manager_user_id, 1000.00, 'OPEN')
+    INSERT INTO sales.cash_sessions (
+        warehouse_id, workstation_id, opened_by_user_id,
+        current_cashier_user_id, opening_float, status
+    )
+    VALUES (
+        v_warehouse_id, 'TEST_WKS', v_manager_user_id,
+        v_manager_user_id, 1000.00, 'OPEN'
+    )
     RETURNING id INTO v_cash_session_id;
 
     ----------------------------------------------------------------------------

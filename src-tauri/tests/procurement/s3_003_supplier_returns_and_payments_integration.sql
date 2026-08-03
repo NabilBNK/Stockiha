@@ -72,6 +72,7 @@ BEGIN
             SELECT id FROM procurement.purchase_order_lines WHERE document_id = v_po_id LIMIT 1
         ), 'quantity_received', 10.00))
     );
+    v_rcpt_id := (v_rcpt_json ->> 'document_id')::bigint;
 
     SELECT quantity_on_hand, total_value INTO v_qty, v_val FROM inventory.positions WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id;
     IF v_qty <> 10.00 OR v_val <> 1000.00 THEN
@@ -103,7 +104,14 @@ BEGIN
     -- 4. Create & Confirm Supplier Invoice, then Post Supplier Payment
     v_inv_json := procurement.create_supplier_invoice_draft(
         v_session_token, v_supplier_id, v_po_id, 'DZD', 1.000000, 'Invoice for PO',
-        jsonb_build_array(jsonb_build_object('line_number', 1, 'variant_id', v_variant_id, 'quantity', 10.00, 'unit_cost', 100.00))
+        jsonb_build_array(jsonb_build_object(
+            'line_number', 1,
+            'po_line_id', (SELECT id FROM procurement.purchase_order_lines WHERE document_id = v_po_id LIMIT 1),
+            'receipt_line_id', (SELECT id FROM procurement.purchase_receipt_lines WHERE document_id = v_rcpt_id LIMIT 1),
+            'variant_id', v_variant_id,
+            'quantity', 8.00,
+            'unit_cost', 100.00
+        ))
     );
     v_inv_id := (v_inv_json ->> 'document_id')::bigint;
     PERFORM procurement.confirm_supplier_invoice(v_session_token, '33333333-3333-4333-8333-333333333333'::uuid, '\x070809'::bytea, v_inv_id, v_fiscal_period_id, '2026-02-20'::date);
@@ -120,10 +128,10 @@ BEGIN
     END IF;
 
     SELECT outstanding_amount INTO v_out_amt FROM procurement.supplier_liabilities WHERE id = v_liability_id;
-    IF v_out_amt <> 600.00 THEN
-        RAISE EXCEPTION 'Assertion failed: Liability outstanding amount after 400 DZD payment wrong. Expected 600.00, found %', v_out_amt;
+    IF v_out_amt <> 400.00 THEN
+        RAISE EXCEPTION 'Assertion failed: Liability outstanding amount after 400 DZD payment wrong. Expected 400.00, found %', v_out_amt;
     END IF;
-    RAISE NOTICE 'PASSED: Supplier payment of 400.00 DZD reduced outstanding liability to 600.00 DZD';
+    RAISE NOTICE 'PASSED: Supplier payment of 400.00 DZD reduced outstanding liability to 400.00 DZD';
 
     RAISE NOTICE '=== ALL S3-003 INTEGRATION DB ASSERTIONS PASSED ===';
 END;
