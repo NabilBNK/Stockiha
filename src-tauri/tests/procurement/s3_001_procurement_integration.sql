@@ -136,16 +136,29 @@ BEGIN
     ASSERT v_pos1_val = 1000.0000, 'ASSERT FAILED: Variant 1 total value mismatch';
     ASSERT v_pos1_wac = 100.000000, 'ASSERT FAILED: Variant 1 WAC mismatch';
 
-    -- Verify double-entry journal balance
+    -- Verify semantic receipt journal: Dr Inventory / Cr GRNI.
     v_journal_id := (v_receipt1_json ->> 'journal_document_id')::bigint;
     SELECT (sum(debit) = sum(credit)) INTO v_journal_balanced
     FROM finance.journal_lines WHERE document_id = v_journal_id;
     ASSERT v_journal_balanced IS TRUE, 'ASSERT FAILED: Goods receipt journal is not balanced';
 
-    -- Verify supplier liability record creation
+    ASSERT EXISTS (
+        SELECT 1 FROM finance.journal_lines
+        WHERE document_id = v_journal_id
+          AND account_code = finance.require_account_role('INVENTORY')
+          AND debit = 2000.00 AND credit = 0
+    ), 'ASSERT FAILED: Goods receipt must debit Inventory';
+    ASSERT EXISTS (
+        SELECT 1 FROM finance.journal_lines
+        WHERE document_id = v_journal_id
+          AND account_code = finance.require_account_role('GRNI')
+          AND debit = 0 AND credit = 2000.00
+    ), 'ASSERT FAILED: Goods receipt must credit GRNI';
+
+    -- A receipt is a GRNI accrual, not AP. Liability begins at invoice.
     SELECT count(*) INTO v_liability_count
-    FROM procurement.supplier_liabilities WHERE receipt_document_id = v_receipt1_doc_id AND original_amount = 2000.00;
-    ASSERT v_liability_count = 1, 'ASSERT FAILED: Supplier liability record missing';
+    FROM procurement.supplier_liabilities WHERE receipt_document_id = v_receipt1_doc_id;
+    ASSERT v_liability_count = 0, 'ASSERT FAILED: Goods receipt must not create an AP liability';
 
     -- Test Idempotent Retry of Receipt 1
     v_receipt1_json := inventory.confirm_purchase_receipt(

@@ -91,6 +91,8 @@ pub struct CustomerCapabilities {
     pub can_manage_customers: bool,
     pub can_post_credit_sale: bool,
     pub can_post_customer_payment: bool,
+    pub can_post_customer_refund: bool,
+    pub can_manage_drawer_policy: bool,
     pub can_override_credit_limit: bool,
 }
 

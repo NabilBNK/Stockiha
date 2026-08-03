@@ -53,6 +53,8 @@ export interface CustomerCapabilities {
   can_manage_customers: boolean;
   can_post_credit_sale: boolean;
   can_post_customer_payment: boolean;
+  can_post_customer_refund: boolean;
+  can_manage_drawer_policy: boolean;
   can_override_credit_limit: boolean;
 }
 
@@ -75,7 +77,7 @@ export interface CustomerCreditSummary {
 export interface CustomerLedgerEntry {
   id: number;
   customer_id: number;
-  entry_type: 'CREDIT_INVOICE' | 'DEBIT_NOTE' | 'CREDIT_NOTE' | 'PAYMENT' | 'WRITE_OFF' | 'ADJUSTMENT';
+  entry_type: 'CREDIT_INVOICE' | 'DEBIT_NOTE' | 'CREDIT_NOTE' | 'PAYMENT' | 'PAYMENT_REFUND' | 'WRITE_OFF' | 'ADJUSTMENT';
   amount_delta: string;
   document_id: number | null;
   related_entry_id: number | null;

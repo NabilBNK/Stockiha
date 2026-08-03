@@ -1,0 +1,125 @@
+name: S4-003 Existing-DB Upgrade Verification
+
+on:
+  push:
+    branches:
+      - 'task/s4-003-drawer-eligibility-refunds'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  existing-db-upgrade:
+    name: Historical S4-003 function ownership upgrade
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: stockiha_s4003_upgrade_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d stockiha_s4003_upgrade_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGPASSWORD: postgres
+      ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_s4003_upgrade_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Bootstrap database roles
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE stockiha_owner NOLOGIN;
+          CREATE ROLE stockiha_migrator NOLOGIN;
+          CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
+          CREATE ROLE stockiha_backup NOLOGIN;
+          GRANT CREATE ON DATABASE stockiha_s4003_upgrade_test TO stockiha_owner;
+          SQL
+
+      - name: Apply pre-S4-003 migrations
+        run: |
+          set -euo pipefail
+          while IFS= read -r migration; do
+            base="$(basename "$migration")"
+            if [[ "$base" == "20260801100000_s4_003_function_owner_compat.sql" ]]; then
+              break
+            fi
+            echo "Applying $migration"
+            psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Simulate postgres-owned replace targets
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER FUNCTION cash.enqueue_drawer_job(bigint,bigint,text) OWNER TO postgres;
+          ALTER FUNCTION receivables.post_customer_payment(text,uuid,bigint,numeric,text,bigint,bigint,date,jsonb,text) OWNER TO postgres;
+          ALTER FUNCTION receivables.list_open_customer_invoices(text,bigint) OWNER TO postgres;
+          ALTER FUNCTION receivables.reconcile_customer_credit_state(text,bigint) OWNER TO postgres;
+          ALTER FUNCTION receivables.get_customer_capabilities(text) OWNER TO postgres;
+          SQL
+
+      - name: Apply S4-003 migrations
+        run: |
+          set -euo pipefail
+          start=0
+          while IFS= read -r migration; do
+            base="$(basename "$migration")"
+            if [[ "$base" == "20260801100000_s4_003_function_owner_compat.sql" ]]; then
+              start=1
+            fi
+            if [[ "$start" -eq 1 ]]; then
+              echo "Applying $migration"
+              psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+            fi
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Verify canonical ownership and S4-003 API
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+              v_signature text;
+              v_owner text;
+          BEGIN
+              FOREACH v_signature IN ARRAY ARRAY[
+                  'cash.enqueue_drawer_job(bigint,bigint,text)',
+                  'receivables.post_customer_payment(text,uuid,bigint,numeric,text,bigint,bigint,date,jsonb,text)',
+                  'receivables.list_open_customer_invoices(text,bigint)',
+                  'receivables.reconcile_customer_credit_state(text,bigint)',
+                  'receivables.get_customer_capabilities(text)'
+              ] LOOP
+                  SELECT pg_get_userbyid(p.proowner)
+                  INTO v_owner
+                  FROM pg_proc p
+                  WHERE p.oid = to_regprocedure(v_signature);
+                  IF v_owner <> 'stockiha_owner' THEN
+                      RAISE EXCEPTION 'function % owner is %, expected stockiha_owner', v_signature, v_owner;
+                  END IF;
+              END LOOP;
+
+              IF to_regprocedure('receivables.post_customer_refund(text,uuid,uuid,bigint,date,text)') IS NULL THEN
+                  RAISE EXCEPTION 'S4-003 customer refund API missing';
+              END IF;
+              IF to_regclass('cash.drawer_operation_policy') IS NULL THEN
+                  RAISE EXCEPTION 'S4-003 drawer operation policy missing';
+              END IF;
+          END;
+          $$;
+          SQL

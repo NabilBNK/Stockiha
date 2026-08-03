@@ -26,6 +26,7 @@ import { PosScreen } from '../features/pos/PosScreen';
 import { CashSessionScreen } from '../features/cash-session/CashSessionScreen';
 import { DocumentsScreen } from '../features/documents/DocumentsScreen';
 import { CustomersScreen } from '../features/customers/CustomersScreen';
+import { DrawerPolicySettingsScreen } from '../features/settings/DrawerPolicySettingsScreen';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
 import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
 import { SupplierInvoicesScreen } from '../features/procurement/SupplierInvoicesScreen';
@@ -106,6 +107,7 @@ function AuthenticatedApp() {
   return (
     <AppShell currentView={view} onNavigate={setView}>
       {view === 'dashboard' && <DashboardScreen />}
+      {view === 'settings' && <DrawerPolicySettingsScreen sessionToken={user?.token ?? ''} />}
       {view === 'products' && <ProductsScreen />}
       {view === 'stock' && <StockReceiptScreen />}
       {view === 'adjustment' && <StockAdjustmentScreen />}

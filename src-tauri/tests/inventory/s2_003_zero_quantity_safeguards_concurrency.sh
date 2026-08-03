@@ -9,10 +9,18 @@ PGPORT="${PGPORT:-5432}"
 
 export PGPASSWORD="${PGPASSWORD:-0000}"
 
-echo "=== Running S2-003 Concurrency & Idempotency Verification on ${DB_NAME} ==="
+psql_test_db() {
+    if [[ -n "${ADMIN_URL:-}" ]]; then
+        psql "${ADMIN_URL}" -X -v ON_ERROR_STOP=1 "$@"
+    else
+        psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d "${DB_NAME}" -X -v ON_ERROR_STOP=1 "$@"
+    fi
+}
+
+echo "=== Running S2-003 Concurrency & Idempotency Verification ==="
 
 # 1. Setup Test Fixture
-psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$DB_NAME" -v ON_ERROR_STOP=1 <<'EOF'
+psql_test_db <<'EOF'
 DO $$
 DECLARE
     v_user_id bigint;
@@ -67,18 +75,18 @@ $$;
 EOF
 
 # Fetch generated IDs
-WAREHOUSE_ID=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$DB_NAME" -t -A -c "SELECT id FROM inventory.warehouses WHERE code='W2003C';" | tr -d '\r')
-VARIANT_ID=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$DB_NAME" -t -A -c "SELECT id FROM catalog.product_variants WHERE sku='SKU-S2003-CONC';" | tr -d '\r')
-PERIOD_ID=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$DB_NAME" -t -A -c "SELECT id FROM finance.fiscal_periods WHERE status='OPEN' LIMIT 1;" | tr -d '\r')
+WAREHOUSE_ID=$(psql_test_db -t -A -c "SELECT id FROM inventory.warehouses WHERE code='W2003C';" | tr -d '\r')
+VARIANT_ID=$(psql_test_db -t -A -c "SELECT id FROM catalog.product_variants WHERE sku='SKU-S2003-CONC';" | tr -d '\r')
+PERIOD_ID=$(psql_test_db -t -A -c "SELECT id FROM finance.fiscal_periods WHERE status='OPEN' LIMIT 1;" | tr -d '\r')
 
-REQ_ID_1=$(powershell -Command "[guid]::NewGuid().ToString()")
-REQ_ID_2=$(powershell -Command "[guid]::NewGuid().ToString()")
+REQ_ID_1=$(psql_test_db -t -A -c "SELECT gen_random_uuid();" | tr -d '\r')
+REQ_ID_2=$(psql_test_db -t -A -c "SELECT gen_random_uuid();" | tr -d '\r')
 
 echo "Warehouse ID: ${WAREHOUSE_ID}, Variant ID: ${VARIANT_ID}, Period ID: ${PERIOD_ID}"
 
 # Test 1: Idempotency Retry
 echo "--- Testing Idempotent Posting Retry ---"
-FIRST_DOC=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$DB_NAME" -t -A -c "
+FIRST_DOC=$(psql_test_db -t -A -c "
 SELECT inventory.confirm_stock_adjustment(
     's2003_conc_token',
     '${REQ_ID_1}'::uuid,
@@ -94,7 +102,7 @@ SELECT inventory.confirm_stock_adjustment(
 ) ->> 'document_id';
 " | tr -d '\r')
 
-SECOND_DOC=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$DB_NAME" -t -A -c "
+SECOND_DOC=$(psql_test_db -t -A -c "
 SELECT inventory.confirm_stock_adjustment(
     's2003_conc_token',
     '${REQ_ID_1}'::uuid,
@@ -117,7 +125,7 @@ fi
 echo "Idempotency PASSED: Returned identical document ID ${FIRST_DOC}"
 
 # Check residual audit count
-RES_COUNT=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$DB_NAME" -t -A -c "
+RES_COUNT=$(psql_test_db -t -A -c "
 SELECT count(*) FROM inventory.residual_clearances WHERE warehouse_id=${WAREHOUSE_ID} AND variant_id=${VARIANT_ID};
 " | tr -d '\r')
 
