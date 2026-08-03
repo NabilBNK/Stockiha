@@ -1,90 +1,38 @@
-# Current Slice Status
+# Current Execution Status
 
-## Active Context
+> This is an execution tracker, not an architecture authority. See [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) for the single authoritative architecture, verified audit, release scope, and redesigned roadmap. Running/tested behavior, current code, migrations, and automated tests determine actual implementation state.
 
-- **Current Phase:** Slice 4 — Customers, Receivables & Cash Controls
-- **Current Task:** S4-002 — Full cashier-session lifecycle
-- **Implementation Status:** IN PROGRESS
+## Released baseline
 
-## Objective
+- **Branch:** `main`
+- **Commit:** `b991f02555fa88bad405bd9f477acbd40a3860c9`
+- **Verified boundary:** UI foundation plus S0 through S4-002
+- **S4-002:** complete, merged, and manually verified
 
-Upgrade the minimal cash-session model into a production cashier-control lifecycle with blind denomination counts, database-authoritative expected cash, variance calculation and approval, suspension, and controlled cashier handover. Cash-session state transitions must remain session-authenticated, permission-protected, auditable, concurrency-safe, and isolated from receipt printing/reprint behavior.
+## Current candidate
 
-## Included Task ID
+- **Roadmap step:** R1 — independently review, validate, and merge S4-003
+- **Legacy task ID:** S4-003 — drawer eligibility and customer payment refunds
+- **Branch:** `task/s4-003-drawer-eligibility-refunds`
+- **PR:** [#9](https://github.com/NabilBNK/Stockiha/pull/9)
+- **Exact inspected head:** `7c940eafdd7c572e7c6fb795ba26d50c58a01522`
+- **Status:** implemented but unverified
+- **Remaining gate:** validated local database backup, Windows/Tauri migration, manual FR/EN/AR and RTL workflow verification, hardware-sensitive checks where available, independent review, then merge if clean
 
-- `S4-002`
+S4-003 must not be described as complete merely because automation is green. Reprinting must not open the drawer; bank transfer must not touch cash; handover must invalidate the old cashier; retries must not duplicate refunds, cash movements, or drawer jobs.
 
-## Architecture Contract
+## Parallel decision work
 
-Cash sessions use the states:
+Roadmap step R0 may proceed in parallel where it does not change PR #9:
 
-- `OPEN`
-- `CLOSING`
-- `PENDING_APPROVAL`
-- `CLOSED`
-- `SUSPENDED`
+- freeze the controlled-pilot and production-candidate scope;
+- obtain anonymized real spreadsheet samples and define the import contract;
+- decide opening balances versus historical archive/replay;
+- finalize TVA, HT/TTC, SCF account-role, and opening-balance rules;
+- identify printer and cash-drawer hardware.
 
-Cashiers close using blind denomination counts. Expected cash is calculated by the system and must not be exposed before the cashier submits the blind count. Material variance requires manager authorization before final close.
+## Next engineering step after R1
 
-## Database Scope
+R2 repairs S3 supplier accounting with forward-only migrations and mandatory regression coverage. S3 is connected but not production-safe; balanced entries currently include semantically wrong account postings.
 
-- Denomination catalog/configuration for DZD cash counting.
-- Immutable/session-bound denomination count submissions.
-- Database-authoritative expected cash and counted cash totals.
-- Variance amount and configurable materiality threshold.
-- State-machine enforcement for OPEN → CLOSING → CLOSED or PENDING_APPROVAL → CLOSED.
-- Manager-only variance approval with recorded actor, reason, timestamp, and exact close attempt.
-- Session suspension/resume rules with audit trail.
-- Controlled handover between cashier users without losing cash accountability.
-- Concurrency locks preventing duplicate close/approval/handover transitions.
-- Existing-database compatibility for historical workstation-index naming, CLOSED-row ownership backfill, legacy function ownership, and the historical six-column `inspect_active_cash_session` return shape.
-
-## Rust/Tauri Scope
-
-- Typed cash-session lifecycle DTOs and stable IPC errors.
-- Thin application services around protected database functions.
-- Commands for denomination configuration/read, close preparation/submission, manager approval, suspension/resume, and handover.
-
-## React Scope
-
-- Cash-session screen showing state and permitted actions without leaking expected cash before blind-count submission.
-- Touch-friendly denomination count entry.
-- Variance result and manager approval workflow.
-- Suspension/resume controls.
-- Handover workflow with explicit outgoing/incoming cashier identity and accountability.
-- EN/FR/AR and RTL-ready UI structure.
-
-## Production Invariants
-
-- Expected cash is database-authoritative.
-- A cashier cannot see expected cash before submitting the blind count.
-- Denomination counts must be non-negative exact integers; monetary totals use exact decimal arithmetic.
-- A close attempt is immutable once submitted.
-- Material variance cannot reach `CLOSED` without authorized manager approval.
-- Approval is bound to the exact close attempt and cannot be reused.
-- Only valid lifecycle transitions are accepted; stale/concurrent transitions fail safely.
-- Suspension and handover are auditable and cannot silently change cash ownership.
-- Printing/reprinting never changes cash-session balances or lifecycle state.
-
-## Verification Target
-
-- PostgreSQL migration/integration tests for state transitions, blind-count privacy, expected/count variance, approval authorization, suspension/resume, handover, stale transition rejection, and concurrency.
-- Existing-DB upgrade tests covering known Windows historical schema/function drift before merge.
-- Rust unit/integration coverage for typed DTO/error behavior.
-- Frontend workflow tests for cashier and manager paths.
-- Windows/Tauri EN/FR/AR RTL and touchscreen smoke testing before merge.
-
-## Current Upgrade Compatibility Status
-
-Four historical differences discovered on the real Windows `stockiha_dev` database are now handled before the S4-002 lifecycle migration:
-
-1. historical workstation index name (`cash_sessions_one_active_per_workstation`)
-2. pre-existing CLOSED sessions protected by Slice-1 immutability during current-cashier backfill
-3. legacy replace-target functions owned by `postgres`
-4. historical six-column `sales.inspect_active_cash_session(text,text)` return shape including `status`
-
-Compatibility migrations normalize these cases before `20260731130000_cash_session_lifecycle.sql`. The six-column legacy active-session function is preserved under an inert legacy name with runtime execution revoked, then the lifecycle migration recreates the canonical five-column API used by the Rust application.
-
-## Completed Predecessor
-
-S4-001 is complete and merged into `main` at merge commit `43ddce5729d5cb6a18952326337a2ca43673c081` after green automated verification and clean Windows/Tauri validation of customer credit/payment documents, PDF generation, reprint safety, cash-sale regression, and EN/FR/AR RTL behavior.
+Do not start the old S4-004 definition automatically. The redesigned roadmap replaces it with an integrated release gate after the financial, settings, import, recovery, hardware, and packaging prerequisites defined there are satisfied.
