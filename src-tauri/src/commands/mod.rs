@@ -10,6 +10,7 @@ pub mod documents;
 pub mod drawer;
 pub mod procurement;
 pub mod receivables;
+pub mod recovery;
 pub mod reference;
 pub mod setup;
 pub mod stock_adjustment;
