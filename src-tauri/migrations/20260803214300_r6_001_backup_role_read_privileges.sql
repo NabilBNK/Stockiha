@@ -11,6 +11,10 @@
 -- - no DML, DDL, EXECUTE, or bypass-RLS capability;
 -- - read access only to schemas owned by stockiha_owner;
 -- - matching default privileges for future objects in those existing schemas.
+--
+-- The recoverable bundle schema version remains 20260803201500 because this
+-- migration changes database ACLs only; it does not change any recoverable
+-- table, sequence, function signature, or serialized backup metadata shape.
 SET ROLE stockiha_owner;
 
 DO $$
@@ -57,10 +61,5 @@ BEGIN
     END LOOP;
 END;
 $$;
-
-UPDATE operations.schema_state
-SET migration_version = 20260803214300,
-    updated_at = now()
-WHERE singleton;
 
 RESET ROLE;
