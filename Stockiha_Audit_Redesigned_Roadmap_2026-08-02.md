@@ -4,6 +4,7 @@
 > **AUTHORITATIVE GROUND TRUTH — effective 3 August 2026.** This document is the single repository authority for Stockiha's target architecture, verified implementation state, release scope, and remaining roadmap. It supersedes the deleted `final-architecture.md` and any older architecture or roadmap claim. For actual current behavior, executable code, applied migrations, automated tests, and verified Windows behavior remain stronger evidence than status prose in any document.
 
 **Audit date:** 2 August 2026  
+**Deadline-optimization amendment:** 3 August 2026  
 **Repository:** [NabilBNK/Stockiha](https://github.com/NabilBNK/Stockiha)  
 **Authoritative released branch inspected:** `main` at [`b991f02555fa88bad405bd9f477acbd40a3860c9`](https://github.com/NabilBNK/Stockiha/commit/b991f02555fa88bad405bd9f477acbd40a3860c9)  
 **Current candidate inspected:** PR [#9](https://github.com/NabilBNK/Stockiha/pull/9) at `7c940eafdd7c572e7c6fb795ba26d50c58a01522`  
@@ -41,14 +42,16 @@ Preserve the architecture that is working, finish the S4-003 gate, repair the fi
 
 The shortest responsible path is:
 
-1. Verify and merge S4-003.
-2. Freeze release scope, tax/accounting rules, and the import data contract.
-3. Repair S3 accounting and make all S1–S4 integration suites mandatory.
-4. Build a typed, audited CEO-settings foundation.
-5. Prove and then build safe Excel/CSV staging plus manual-entry parity.
-6. Wire production credentials, backup/restore, printing/drawer workers, and Windows packaging.
-7. Run one integrated MVP acceptance gate.
-8. Add only the confirmed v1 breadth: customer returns, core expenses, basic reports, and historical archive/reconciliation.
+1. Verify and merge S4-003 with a focused, one-time Windows check of the changed workflows.
+2. Freeze only the decisions that block coding: pilot scope, posting matrix, tax policy, and import columns.
+3. Repair S3 financial semantics or disable procurement/accounting workflows for the pilot.
+4. Prove and implement staged Excel/manual opening-state onboarding.
+5. Deliver the minimum CEO settings actually required by the pilot; defer the generalized settings platform.
+6. Prove backup/restore once on the pilot database.
+7. Run one consolidated integrated Windows/Tauri acceptance gate.
+8. Add hardware, packaging, returns, reports, and historical-search breadth only when they are confirmed launch requirements.
+
+The roadmap below is cumulative, not a requirement to execute all thirteen steps before the deadline. R0–R8 contain the critical pilot path, with conditional scope inside R2, R3, R6, and R7. R9–R11 are deferred by default, and R12 validates only the production-candidate scope actually selected.
 
 ## 2. Verified current situation
 
@@ -334,7 +337,22 @@ The target for the 2.5-week gate should be a **single-company, single-store Wind
 
 ## 11. Redesigned remaining roadmap
 
+### Delivery classes and deadline rule
+
+The detailed test lists in each step describe the **applicable test inventory**, not a command to run every test after every small change. Execution follows the risk-based policy in section 14.
+
+| Class | Meaning | Default handling |
+|---|---|---|
+| **Critical path** | Required to operate the controlled pilot without corrupting money, stock, imported state, or recovery | Implement now; targeted automated checks per change; one consolidated manual release gate |
+| **Conditional** | Required only when the capability is explicitly included in the pilot or v1 contract | Skip or narrow it when excluded; record the exclusion |
+| **Deferred** | Valuable, but not required for the current pilot/production-candidate boundary | Do not start before the critical path is stable |
+| **Release gate** | Consolidated validation of the selected scope | Run once per release candidate, not once per roadmap step |
+
+A step may be marked implementation-complete after its targeted checks pass. Broad cross-system, multilingual, hardware, clean-install, and recovery matrices are consolidated at R8 or R12. Re-run them earlier only when the change directly affects that surface.
+
 ## Step R0: Freeze the release and data contracts
+
+**Delivery class:** **Critical path, time-boxed decision gate.** Resolve only decisions that block R2, R4, or R5; move the rest to the non-blocking register.
 
 ### Objective
 
@@ -415,6 +433,8 @@ Approved documents, sample-file inventory, worked accounting examples, and expli
 R2, R3, R4, and R5 may rely on fixed policies and mappings.
 
 ## Step R1: Verify, review, and merge S4-003
+
+**Delivery class:** **Critical path, one-time focused merge gate.** Do not repeat the whole release matrix here.
 
 ### Objective
 
@@ -498,6 +518,8 @@ Final CI URLs, checklist results, backup identity, screenshots/query output, and
 All redesigned implementation branches start from the merged S4-003 `main`.
 
 ## Step R2: Repair financial semantics and lock the regression baseline
+
+**Delivery class:** **Critical path if procurement/accounting is enabled.** Otherwise disable and visibly exclude the affected workflows from the pilot.
 
 ### Objective
 
@@ -586,6 +608,8 @@ Importer, returns, expenses, and reports can rely on trustworthy accounts and po
 
 ## Step R3: Build the typed CEO settings foundation
 
+**Delivery class:** **Conditional and narrowed for the pilot.** Implement only settings needed by in-scope workflows; defer a generalized settings platform.
+
 ### Objective
 
 Provide maximum safe CEO configurability through one typed, permissioned, audited settings system.
@@ -667,6 +691,8 @@ New importer, return, expense, report, and worker policies use one stable mechan
 
 ## Step R4: Prove spreadsheet ingestion against real data
 
+**Delivery class:** **Critical path for Excel onboarding.** Keep the proof small and use representative anonymized files.
+
 ### Objective
 
 Demonstrate deterministic, safe parsing and mapping of representative Excel/CSV files before designing live import migrations.
@@ -745,6 +771,8 @@ Fixture results, manually reconciled totals, benchmark log, and approved templat
 R5 can build staging and application around a proven canonical row format.
 
 ## Step R5: Implement safe onboarding import and manual-entry parity
+
+**Delivery class:** **Critical path for opening operational state.** Full historical replay and searchable archive are not part of this gate.
 
 ### Objective
 
@@ -832,6 +860,8 @@ The MVP can start from trusted opening state while historical analysis continues
 
 ## Step R6: Productionize database configuration and recovery
 
+**Delivery class:** **Split.** Backup/restore is critical for the pilot; Credential Manager and advanced retention are production-candidate work.
+
 ### Objective
 
 Make the app start, migrate, back up, and recover on Windows without development environment variables or hidden manual database procedures.
@@ -912,6 +942,8 @@ Clean startup, encrypted/redacted credential test, successful backup/temporary r
 R8 and R12 can validate an installable, recoverable candidate.
 
 ## Step R7: Complete document/drawer workers and Windows packaging
+
+**Delivery class:** **Conditional for the pilot.** A documented manual/PDF/Tauri-dev fallback is acceptable; packaging and physical hardware are mandatory only when claimed in the selected release scope.
 
 ### Objective
 
@@ -994,6 +1026,8 @@ Physical test log/video, queue/database evidence, clean-install/upgrade results,
 R8 can test the complete operator journey rather than only transaction rows.
 
 ## Step R8: Replace S4-004 with the integrated MVP release gate
+
+**Delivery class:** **Mandatory consolidated release gate.** This is where broad manual verification happens once.
 
 ### Objective
 
@@ -1079,6 +1113,8 @@ The controlled pilot can operate while v1 breadth is added behind the same gates
 
 ## Step R9: Implement customer returns, credit notes, quarantine, and write-offs
 
+**Delivery class:** **Deferred by default.** Include only if product returns are a confirmed launch blocker.
+
 ### Objective
 
 Complete the product-return lifecycle without conflating it with S4-003 payment refund.
@@ -1158,6 +1194,8 @@ Reports can include returns/net sales and damaged-stock losses.
 
 ## Step R10: Add core expenses and decision-grade reports
 
+**Delivery class:** **Conditional for v1.** Implement only the minimum confirmed expense categories and control-total reports.
+
 ### Objective
 
 Capture basic company expenses and provide trustworthy operational reports from corrected ledgers.
@@ -1235,6 +1273,8 @@ Report control-total pack, performance results, export-security tests, and manua
 Historical archive can compare old-period aggregates against the same report definitions.
 
 ## Step R11: Complete the 1.5-year historical archive and reconciliation
+
+**Delivery class:** **Deferred by default.** Preserve source files and import provenance now; build searchable historical breadth after the opening-state cutover is stable.
 
 ### Objective
 
@@ -1315,6 +1355,8 @@ Batch inventory, provenance coverage, deterministic replay outputs, discrepancy 
 Future advanced analytics or a separately approved live-history bridge can rely on locked, explainable history.
 
 ## Step R12: Production-candidate hardening and release
+
+**Delivery class:** **Mandatory release gate for the selected v1 scope.** Advanced soak, signing, updater, and off-device automation are conditional unless explicitly contracted.
 
 ### Objective
 
@@ -1401,102 +1443,108 @@ The v1 release can enter controlled production support; deferred features receiv
 
 ```mermaid
 flowchart TD
-    R0["R0 Scope and data contract"]
-    R1["R1 Verify and merge S4-003"]
-    R2["R2 Financial repair and regression"]
-    R3["R3 CEO settings"]
+    R0["R0 Blocking contracts"]
+    R1["R1 S4-003 merge"]
+    R2["R2 Financial repair or exclusion"]
     R4["R4 Spreadsheet proof"]
-    R5["R5 Safe onboarding import"]
-    R6["R6 Runtime and recovery"]
-    R7["R7 Workers and packaging"]
-    R8["R8 Integrated MVP gate"]
-    R9["R9 Returns and write-offs"]
-    R10["R10 Expenses and reports"]
-    R11["R11 Historical archive"]
-    R12["R12 Production candidate"]
+    R5["R5 Opening-state import"]
+    R6["R6 Backup and restore"]
+    R8["R8 Integrated pilot gate"]
+    R12["R12 Selected v1 gate"]
+    OPT["Conditional: R3, R7, R9, R10"]
+    POST["Deferred: R11 and unselected breadth"]
 
     R0 --> R2
-    R0 --> R3
     R0 --> R4
     R1 --> R2
-    R1 --> R6
     R2 --> R5
-    R3 --> R5
     R4 --> R5
-    R5 --> R8
-    R6 --> R7
-    R7 --> R8
+    R1 --> R6
     R2 --> R8
-    R3 --> R8
-    R8 --> R9
-    R8 --> R10
-    R5 --> R11
-    R10 --> R11
-    R9 --> R12
-    R10 --> R12
-    R11 --> R12
+    R5 --> R8
+    R6 --> R8
+    OPT -. "only if selected" .-> R8
+    R8 --> R12
+    OPT -. "selected v1 scope" .-> R12
+    R12 --> POST
 ```
 
 Sequential constraints:
 
-- No new authoritative feature branch should diverge before R1 produces the merged baseline.
-- Live import apply cannot precede R2’s financial contracts or R4’s parser proof.
-- Reports cannot be accepted before financial postings are correct.
-- Product returns cannot reuse payment-refund semantics without R9’s stock/tax/credit-note contract.
-- Production release cannot precede recovery and integrated acceptance.
+- R1 produces the baseline; new feature branches should start from that merged baseline.
+- Live import apply cannot precede the approved posting/import contract, R2 repair or exclusion, and R4 parser proof.
+- R8 requires correct or disabled financial workflows, reconciled opening data, and a proven restore path.
+- R3, R7, R9, and R10 are not automatic blockers. They block only when their capability is included in the release contract.
+- R11 and any unselected breadth do not block the production candidate.
 
 ## 13. Parallelisation opportunities
 
-| Parallel track | Can begin | Contract required first | Must converge at |
-|---|---|---|---|
-| Windows PR #9 verification | Immediately | Exact SHA/checklist | R1 |
-| Release/data/accounting discovery | Immediately | None | R0 |
-| Sample workbook collection and parser spike | Immediately after samples | Preliminary import contract | R4 |
-| S3 repair tests and account mapping design | After R0 decisions; branch after R1 | Posting matrix | R2 |
-| Settings schema/UI | After R0; branch after R1 | Settings catalogue/CEO role | R3 |
-| Runtime credential/backup productionization | After R1 | Backup and deployment policy | R6 |
-| Physical hardware investigation | Immediately | Exact device/model | R7 |
-| Returns and expense specifications | During MVP stabilization | R2 posting/tax contracts | R9/R10 implementation |
-| Historical mapping work | After R4 | Canonical row schema | R11 |
+| Parallel track | Can begin | Required convergence |
+|---|---|---|
+| Focused Windows verification of PR #9 | Immediately | R1 |
+| Blocking accounting/import decisions | Immediately; time-boxed | R0 |
+| Representative workbook parser proof | As soon as samples exist | R4 |
+| S3 posting tests and repair design | After the posting matrix; branch after R1 | R2 |
+| Backup/restore operator path | After R1 | R6 |
+| Minimum in-scope CEO settings | Only if the pilot requires new switches | R8 |
+| Hardware/packaging investigation | Only if included in pilot/v1 | R8 or R12 |
+| Returns, expenses/reports, historical search | After pilot stability and only if selected | R12 or post-release |
 
-Parallel work must use written contracts. It must not create multiple cumulative branches from a stale ancestor.
+Parallel work must use written contracts and independent branches from the verified baseline. Do not create cumulative branches from stale ancestors.
 
 ## 14. Testing and quality strategy
 
-### Automated on every candidate
+### Principle: verify by risk, not by ceremony
 
-- Frontend typecheck, lint, tests, and production build.
-- Rust format/clippy/tests as agreed, plus live PostgreSQL application tests in a configured integration job.
-- Full migration chain from empty PostgreSQL 18.
-- Upgrade from representative historical Windows schemas.
-- All active S1–S4 and later SQL integration suites, not only the latest slice.
-- Idempotency, concurrency, permission, closed-period, immutable-ledger, and account-role assertions.
-- Import parser/staging/apply fixtures and reconciliation.
-- Worker leases/retries and report control totals.
-- Dependency/security scan and artifact inventory.
+Verification remains mandatory, but its depth follows the failure cost and the surface changed. A tiny UI label or Markdown edit must not trigger the same gate as a journal-posting migration or destructive restore path.
 
-### Manual tests that cannot be replaced
+| Change risk | Examples | Per-change gate | Consolidated gate |
+|---|---|---|---|
+| **Critical** | Financial SQL, stock mutations, migrations, import apply, permissions, backup/restore | Targeted automated tests, relevant PostgreSQL integration, invariant/reconciliation checks, focused diff review | Full applicable regression at R8/R12 |
+| **Standard** | Connected non-financial workflow, settings UI, parser presentation, worker UI | Affected unit/component tests plus typecheck/build; targeted smoke test when needed | Cross-workflow regression at R8/R12 |
+| **Low** | Documentation, copy, styles, non-behavioral refactor | Link/render/lint or affected test only | No manual application retest unless behavior changed |
+| **Environment/hardware** | Windows/Tauri upgrade, printer, drawer, touch, installer | Test only when the change directly affects it | One exact-artifact pass at R8 or R12 |
 
-- Windows/Tauri behavior and upgrade on the user’s actual database.
-- Physical printer, driver, paper-out/offline, and cash drawer.
-- Touch targets, 1366×768 and target display sizes.
-- French, Arabic RTL, and English business workflows.
-- Workbook mapping review against real paper records.
-- Accountant verification of journals and reconciliations.
-- Backup/restore and clean-machine installer drill.
+### Automated checks
 
-### Evidence required to mark a step complete
+- Run the fastest affected tests during implementation.
+- Before merging a critical change, run the relevant integration suite and invariant assertions.
+- Keep a broad CI suite on merge candidates; do not manually re-run an equivalent suite after every subtask.
+- Run migration-from-empty and representative upgrade tests when migrations change, not for unrelated UI or documentation work.
+- Run concurrency/idempotency tests when transaction or retry behavior changes.
+- Run parser/reconciliation fixtures when import code or mappings change.
+- Run dependency/security scans at the production-candidate gate and when dependencies or security-sensitive code change.
 
-Every task record should contain:
+### Manual verification
 
-1. Exact commit/artifact SHA.
-2. CI workflow/run links.
-3. Migration source and target versions.
-4. Automated test summary including skips.
-5. Manual checklist and environment/hardware.
-6. Reconciliation/control totals where financial or imported data is involved.
-7. Known exclusions and unresolved risks.
-8. Merge/release identifier.
+Manual checks are limited to behavior automation cannot credibly reproduce:
+
+- **R1:** one focused Windows/Tauri pass for the S4-003 migration and changed refund/drawer workflows. It does not require the full multilingual, hardware, installer, and whole-application matrix.
+- **R8:** one consolidated pilot pass on the exact candidate covering the in-scope workflows, representative FR/AR/EN and RTL screens, the actual opening dataset, and backup/restore.
+- **R12:** clean install/upgrade, physical hardware, load/failure, or signing checks only for capabilities claimed in the selected v1 scope.
+- Repeat a manual gate only after a relevant fix changes that behavior or invalidates its evidence.
+
+### Minimum completion evidence
+
+Every implementation task needs only:
+
+1. Exact commit SHA.
+2. The relevant automated check result.
+3. Known exclusions or remaining risk.
+
+Add migration versions and reconciliation totals only for migrations, financial logic, stock changes, or imports. Add environment/hardware details only when a manual or hardware test was actually required. Add release identifiers only at R8/R12.
+
+### Non-negotiable stop conditions
+
+No deadline waiver may bypass:
+
+- unexplained stock, cash, AR, AP, journal, or import reconciliation differences;
+- destructive migration or restore uncertainty;
+- broken authorization, audit, idempotency, or immutable-ledger invariants;
+- inability to restore the pilot database;
+- a severity-0/1 defect in an in-scope workflow.
+
+Everything else is eligible for narrowing, explicit exclusion, or deferral.
 
 ## 15. Risks and mitigation plan
 
@@ -1564,53 +1612,53 @@ At the same time, the first non-code business task is to collect anonymized work
 
 ### Controlled pilot MVP complete
 
-The one-week milestone may be called a controlled pilot only when:
+The one-week milestone may be called a controlled pilot when:
 
-- R1 is merged and documents are synchronized.
-- R2 financial release blockers are corrected or the affected workflows are explicitly excluded from the pilot.
-- R3 minimum CEO settings required by pilot operations are audited and functional.
-- R4/R5 safely import the approved operational opening dataset and support manual staged correction.
-- R6 has a real backup/restore path and supported runtime credential configuration.
-- R8 passes on the exact Windows artifact/SHA with no unexplained control-total difference or severity-0/1 defect.
-- Any temporary PDF/manual-print fallback is explicit; physical printing/drawer cannot be claimed without R7 evidence.
+- R1 is merged after its focused exact-head check.
+- R0 has resolved only the blocking posting, tax, scope, and import decisions.
+- R2 has corrected in-scope financial workflows; any uncorrected procurement/accounting surface is disabled and visibly excluded.
+- R4/R5 load and reconcile the approved opening operational state. Full 1.5-year replay/search is not required.
+- R6 has a proven operator backup/restore path. Credential Manager may wait for R12 if the pilot uses a controlled supported configuration.
+- Only the minimum CEO settings needed by the pilot are implemented and audited; the broader R3 catalogue is deferred.
+- R8 passes once on the exact Windows/Tauri candidate with no severity-0/1 defect or unexplained control-total difference.
+- Printing, drawer hardware, installer packaging, and other excluded capabilities are not advertised as complete.
 
 ### Production-candidate v1 complete
 
-The 2.5-week milestone may be called a production candidate only when:
+The 2.5-week milestone may be called a production candidate when:
 
 - All pilot conditions pass.
-- R7 real worker/hardware/package gate passes or the relevant capability is explicitly excluded.
-- The selected R9–R11 scope passes its own gates.
-- R12 security, performance, failure, upgrade, recovery, and operations evidence is complete.
+- R12 completes the security, recovery, upgrade, and operational checks relevant to the selected v1 scope.
+- R7 hardware/packaging passes only when those capabilities are claimed; otherwise the supported fallback and exclusion are explicit.
+- Only selected R9/R10 capabilities must pass. R9 returns, broad R10 reporting/expenses, and R11 searchable historical archive do not block v1 by default.
 - Release artifact, schema, documentation, known limits, and rollback procedure agree.
-- There is no unresolved critical/high security issue, severity-0/1 defect, or unexplained financial/data variance.
+- There is no unresolved critical/high security issue, severity-0/1 defect, or unexplained financial/data variance in the included scope.
 
 ### Full original project complete
 
-The original S0–S9 vision is not complete until deferred payroll, confirmed transfer scope, full historical reconstruction if still required, advanced analytics/multi-terminal behavior, encrypted off-device backup, and signed update lifecycle each receive an approved scope and their own evidence gates. This cannot truthfully be equated with the 2.5-week candidate today.
+The original S0–S9 vision remains a later boundary. It includes deferred returns/transfer breadth, payroll, full historical reconstruction if required, advanced analytics/multi-terminal behavior, encrypted off-device backup, and a signed update lifecycle. It is not the 2.5-week release contract.
 
 | Order | Step | Depends on | Primary outcome | Complexity | Main risk | Completion gate |
 |---:|---|---|---|---|---|---|
-| 0 | R0 Release/data contract | None | Fixed scope, tax/accounts, import and hardware contract | Medium | Late/ambiguous decisions | All blocking inputs owned/resolved |
-| 1 | R1 S4-003 verification/merge | Current PR #9 | One verified baseline | Medium | Real DB/review defect | Exact-head CI + review + Windows pass |
-| 2 | R2 Financial repair/regression | R0, R1 | Correct S1–S4 postings and mandatory CI | Very high | Existing bad journals | Posting matrix + reconciliation + green CI |
-| 3 | R3 CEO settings | R0, R1; coordinate R2 | Typed audited configurability | High | Unsafe/unbounded toggles | Permission/audit/snapshot tests |
-| 4 | R4 Spreadsheet proof | R0 samples | Proven canonical parser/mapping | High | Unknown workbook quality | Sample totals and parser fixtures agree |
-| 5 | R5 Safe onboarding import | R2, R3, R4 | Approved opening state + isolated history | Very high | Silent mapping/data corruption | Dry-run/apply/retry/restore reconcile |
-| 6 | R6 Runtime/recovery | R1; include R5 data | Credential-backed startup and real recovery | Very high | Destructive restore failure | Temporary/live restore drill |
-| 7 | R7 Workers/packaging | R0, R3, R6 | Real print/drawer and Windows artifact | Very high | Hardware/installer variability | Physical + clean install/upgrade pass |
-| 8 | R8 Integrated MVP gate | R1–R7 | Controlled pilot release | High | Late integration regression | Exact artifact, zero unexplained variance |
-| 9 | R9 Returns/write-offs | R2, R3, R8 | Correct goods-return lifecycle | Very high | Duplicate/incorrect cost/tax reversal | Full posting/stock/customer reconciliation |
-| 10 | R10 Expenses/reports | R2, R3, R8 | Basic expense control and trusted reports | High | Plausible but wrong KPIs | Report control totals match ledgers |
-| 11 | R11 Historical archive | R5, R10 | Searchable 1.5-year history and discrepancies | Very high | Incomplete/contradictory records | Provenance + deterministic reconciliation |
-| 12 | R12 Production candidate | R8–R11 | Supportable v1 release candidate | Very high | External dependencies/late defects | Security/performance/recovery/release sign-off |
+| 0 | R0 **Must**: blocking contracts | None | Posting, tax, import and pilot scope fixed | Medium | Late decisions | Blocking items resolved; others deferred |
+| 1 | R1 **Must**: S4-003 merge | Current PR #9 | One verified baseline | Medium | Migration/runtime defect | Targeted CI/review + focused Windows pass |
+| 2 | R2 **Must or exclude**: financial repair | R0, R1 | Correct in-scope postings | Very high | False ledgers | Reconcile or disable affected workflow |
+| 3 | R4 **Must**: spreadsheet proof | R0 samples | Proven parser/mapping | High | Dirty workbooks | Representative fixtures and totals agree |
+| 4 | R5 **Must**: opening-state import | R2, R4 | Reconciled operational cutover | Very high | Silent data corruption | Dry-run/apply/retry reconcile |
+| 5 | R6 **Must**: pilot recovery | R1; pilot data | Proven backup/restore | High | Unrecoverable database | One successful restore drill |
+| 6 | R3 **Conditional**: minimum settings | R0, R1 | Only required CEO controls | Medium | Scope expansion | In-scope permission/audit tests |
+| 7 | R7 **Conditional**: hardware/package | R6 | Claimed hardware/artifact | High | Device variance | Exact claimed setup passes |
+| 8 | R8 **Must**: integrated pilot gate | Required items above | Controlled pilot | High | Late regression | One exact-artifact acceptance pass |
+| 9 | R12 **Must**: selected v1 gate | R8 | Supportable production candidate | High | Operational gaps | Scoped security/recovery/upgrade sign-off |
+| 10 | R9/R10 **Conditional** | R8, R2 | Selected returns/expenses/reports | High | Accounting breadth | Only selected capabilities pass |
+| 11 | R11 **Deferred** | R5 | Searchable 1.5-year archive | Very high | Contradictory history | Post-cutover reconciliation |
 
 ## Immediate Action Plan
 
-- **Exact next step:** Review and manually verify PR #9 at `7c940eafdd7c572e7c6fb795ba26d50c58a01522`; merge only after a clean gate.
-- **Why it must happen next:** It establishes the only safe baseline for all redesigned branches and resolves the current in-progress work without mixing scopes.
-- **First concrete task:** On the Windows machine, confirm the exact SHA and create/validate a backup of the local database before applying the three S4-003 migrations.
-- **Inputs required:** Exact PR head, Windows/Tauri checkout, current local PostgreSQL database, admin/manager/cashier users, manual S4-003 checklist, and physical hardware details if drawer-pulse behavior is being claimed.
-- **Expected output:** A pass/fail record per scenario, migration result, DB row-count/idempotency evidence, defect list, and review disposition.
-- **Validation method:** Existing five green workflows plus focused SQL review, Windows/Tauri EN/FR/AR/manual workflows, targeted cash/journal/allocation/drawer queries, and successful backup restore if rollback is exercised.
-- **Conditions required before continuing:** No unresolved critical/high or severity-0/1 finding; retry/handover/cash-bank invariants pass; final exact head is green; then merge, update status documents, and start R2/R3/R4 from the new `main`.
+- **Exact next step:** Complete a focused review and Windows/Tauri verification of PR #9 at `7c940eafdd7c572e7c6fb795ba26d50c58a01522`, then merge if clean.
+- **Why it must happen next:** It establishes the baseline for the financial repair and import work.
+- **First concrete task:** Confirm the exact SHA and create a database backup before applying the S4-003 migrations.
+- **Inputs required:** The Windows/Tauri checkout, current PostgreSQL database, relevant test users, and the S4-003 refund/drawer scenarios.
+- **Expected output:** Migration result, focused workflow pass/fail, relevant cash/journal/allocation queries, and defect list.
+- **Validation method:** Existing green automation plus focused SQL review and only the Windows workflows changed by S4-003. Full multilingual, hardware, installer, and whole-product validation moves to R8/R12.
+- **Conditions required before continuing:** No critical/high or severity-0/1 defect in the changed scope; migration, retry, refund, allocation, and cash/bank invariants pass.
