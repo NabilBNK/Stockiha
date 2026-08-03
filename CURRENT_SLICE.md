@@ -21,8 +21,12 @@
 - **Roadmap step:** R6 — productionize database configuration and recovery
 - **Slice:** R6-001 — operator backup creation and bundle validation
 - **Branch:** `task/r6-001-operator-backup-validation`
-- **Status:** specification committed; implementation starting
-- **Safety boundary:** backup creation and read-only validation only. No live restore command or destructive database replacement is authorized in this slice.
+- **PR:** #13
+- **Implemented:** database-authoritative recovery permissions, immutable request audit, schema-version state, typed read-only bundle validation, configured-root containment, redacted errors, Tauri IPC, EN/FR/AR settings UI, and targeted SQL/frontend/Rust tests.
+- **Verified increment:** backend validation head passed Rust, frontend, full migration chain, new R6 authorization/audit assertions, and existing S1–S4 regressions.
+- **Current gate:** exact-head CI for the settings UI and error-code additions.
+- **Still pending in R6-001:** production backup creation with real schema metadata, Windows Credential Manager/`pg_dump` integration, automatic post-create validation, and Windows/Tauri acceptance.
+- **Safety boundary:** validation is read-only. No live restore command or destructive database replacement is registered or authorized.
 - **Specification:** [`docs/slices/R6-001-operator-backup-validation.md`](./docs/slices/R6-001-operator-backup-validation.md)
 
 R6-001 proceeds while representative physical paperwork is unavailable. It does not replace the R0/R4/R5 data-onboarding critical path.
