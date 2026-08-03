@@ -1,3 +1,7 @@
+# Stockiha — Execution Task Tracker
+
+> This file records task progress only. [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) is the single authority for target architecture, release scope, verified status classifications, and remaining work. A checked implementation task is not proof that the feature is production-correct or release-ready.
+
 # Stockiha — Slice 0 Tasks
 
 # Cross-slice UI foundation
@@ -31,6 +35,8 @@
 
 # Stockiha — Slice 3 Tasks: Procurement & Supplier Purchasing
 
+> **Release blocker:** S3 code exists, but the authoritative audit classifies its supplier accounting as implemented incorrectly. Treat all three checked items below as historical implementation completion, not production acceptance. Roadmap step R2 must repair and regression-test the postings before real financial use.
+
 - [x] S3-001 Implement supplier master, purchase order workflow, and goods receipt posting
 - [x] S3-002 Implement landed cost allocation, supplier invoices, three-way match, and payables ledger
 - [x] S3-003 Implement supplier returns, debit notes, and payables settlement postings
@@ -38,6 +44,6 @@
 # Stockiha — Slice 4 Tasks: Customers, Receivables & Cash Controls
 
 - [x] S4-001 Implement customer master, customer credit state, customer ledger, credit-limit/overdue enforcement, receivables, and customer document pipeline
-- [ ] S4-002 Implement full cashier-session lifecycle: blind denomination counts, variance approval, suspension, and handover
+- [x] S4-002 Implement full cashier-session lifecycle: blind denomination counts, variance approval, suspension, and handover
 - [ ] S4-003 Implement extended drawer eligibility and customer cash-payment/refund integration
 - [ ] S4-004 Complete Slice 4 POS/customer/cash-session integration, concurrency tests, and French/Arabic/English verification
