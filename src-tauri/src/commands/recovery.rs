@@ -22,18 +22,26 @@ pub(crate) async fn create_operator_backup(
             .await
             .map_err(IpcError::from)?;
 
-    let (attempt_id, request_id, bundle_identifier, current_schema_version) = match attempt {
+    let (
+        attempt_id,
+        request_id,
+        bundle_identifier,
+        current_schema_version,
+        resume_existing,
+    ) = match attempt {
         CreationAttempt::Replay(result) => return Ok(result),
         CreationAttempt::Run {
             attempt_id,
             request_id,
             bundle_identifier,
             current_schema_version,
+            resume_existing,
         } => (
             attempt_id,
             request_id,
             bundle_identifier,
             current_schema_version,
+            resume_existing,
         ),
     };
 
@@ -60,6 +68,7 @@ pub(crate) async fn create_operator_backup(
             attempt_id,
             bundle_identifier,
             current_schema_version,
+            resume_existing,
             app_data_dir,
         )
     })
