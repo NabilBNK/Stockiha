@@ -39,6 +39,7 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   PERMISSION_DENIED: 'You do not have permission to perform this action.',
   VALIDATION_ERROR: 'Some of the entered values are invalid.',
   PRECONDITION_FAILED: 'This action is not allowed in the current state.',
+  BACKUP_VALIDATION_FAILED: 'The backup could not be validated.',
   IDEMPOTENCY_CONFLICT: 'This request conflicts with a previous one. Start over.',
   IMMUTABLE_RECORD: 'This record has been finalized and cannot be changed.',
   UNSAFE_ZERO_STOCK_VALUATION: 'This increase cannot be valued because the item has no usable WAC.',
