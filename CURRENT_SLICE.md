@@ -22,11 +22,10 @@
 - **Slice:** R6-001 — operator backup creation and bundle validation
 - **Branch:** `task/r6-001-operator-backup-validation`
 - **PR:** #13
-- **Implemented:** database-authoritative recovery permissions, immutable request audit, schema-version state, typed read-only bundle validation, configured-root containment, redacted errors, Tauri IPC, EN/FR/AR settings UI, and targeted SQL/frontend/Rust tests.
-- **Verified increment:** backend validation head passed Rust, frontend, full migration chain, new R6 authorization/audit assertions, and existing S1–S4 regressions.
-- **Current gate:** exact-head CI for the settings UI and error-code additions.
-- **Still pending in R6-001:** production backup creation with real schema metadata, Windows Credential Manager/`pg_dump` integration, automatic post-create validation, and Windows/Tauri acceptance.
-- **Safety boundary:** validation is read-only. No live restore command or destructive database replacement is registered or authorized.
+- **Implemented:** administrator-only recovery permissions; immutable request audit; database-owned schema-version metadata; replay-safe backup creation; fixed `stockiha_backup` role and Windows Credential Manager secret consumption; PostgreSQL 18 `pg_dump`; hidden staging and atomic publication; automatic pre/post-publication checksum validation; read-only validation of existing bundles; configured-root containment; stable redacted errors; EN/FR/AR Settings UI; and targeted SQL/frontend/Rust tests.
+- **Automated verification:** exact-head frontend typecheck, lint, workflow tests, production build, full migration chain, R6 authorization/replay/collision assertions, and existing S1–S4 regressions passed. Exact-head Rust verification is still running.
+- **Remaining R6-001 gate:** provision the fixed backup credential with the repository’s UTF-8 Credential Manager adapter, then capture real Windows/Tauri creation, independent checksum verification, and tamper-detection evidence.
+- **Safety boundary:** backup creation and validation only. No live restore command or destructive database replacement is registered or authorized.
 - **Specification:** [`docs/slices/R6-001-operator-backup-validation.md`](./docs/slices/R6-001-operator-backup-validation.md)
 
 R6-001 proceeds while representative physical paperwork is unavailable. It does not replace the R0/R4/R5 data-onboarding critical path.
@@ -46,6 +45,7 @@ The existing 1.5 years of physical paperwork is retained as source history. It i
 ## Explicitly deferred
 
 - Live database restore or replacement until temporary-restore reconciliation and destructive-operation safety are implemented and proven
+- Production startup migration from development database configuration to fully credential-backed runtime/migrator connections
 - TVA, HT/TTC, and discount calculation/posting
 - Historical transaction replay unless separately approved
 - Payroll, broad returns/transfers, advanced analytics, automatic updating, and unselected hardware/package work
