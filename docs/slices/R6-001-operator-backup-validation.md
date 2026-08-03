@@ -130,10 +130,90 @@ Covered by unit, SQL, and frontend workflow tests:
 - EN/FR/AR and RTL states;
 - proof that no restore command is registered.
 
+## Windows acceptance procedure
+
+Use a dedicated local test database, never a live production database.
+
+### 1. Prepare configuration
+
+Set the existing development database URL, a real backup directory, and the PostgreSQL 18 `pg_dump.exe` path in the same PowerShell session that starts Tauri:
+
+```powershell
+$env:STOCKIHA_DEV_DATABASE_URL = 'postgres://stockiha_runtime:<runtime-password>@127.0.0.1:5432/stockiha_test?sslmode=disable'
+$env:STOCKIHA_BACKUP_ROOT = 'C:\Stockiha-R6-Test-Backups'
+$env:STOCKIHA_PG_DUMP_PATH = 'C:\Program Files\PostgreSQL\18\bin\pg_dump.exe'
+New-Item -ItemType Directory -Force -Path $env:STOCKIHA_BACKUP_ROOT | Out-Null
+```
+
+Do not paste real credentials into logs, screenshots, issue comments, or chat.
+
+### 2. Set the PostgreSQL backup-role password
+
+Open `psql` as an authorized local administrator and use its interactive hidden prompt:
+
+```text
+\password stockiha_backup
+```
+
+The role must remain `LOGIN`, `NOINHERIT`, non-superuser, and without owner membership.
+
+### 3. Provision the matching Credential Manager secret
+
+Run the repository helper and enter the same password at its hidden prompt:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\r6-001-provision-backup-credential.ps1
+```
+
+The helper writes and verifies only the fixed target `Stockiha/PostgreSQL/backup/password` as raw UTF-8 bytes. It never passes the password through Tauri IPC or prints it.
+
+### 4. Run Stockiha and create the bundle
+
+```powershell
+npm ci
+npm run tauri dev
+```
+
+Sign in as an administrator, open **Settings → Backup and recovery**, and select **Create backup**. Record only the returned safe metadata and bundle identifier.
+
+### 5. Independently verify checksums
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\r6-001-verify-bundle.ps1 `
+  -BundlePath 'C:\Stockiha-R6-Test-Backups\GestStock-Backup-YYYYMMDD-HHMMSS'
+```
+
+The script independently parses `checksums.sha256` and `manifest.json`, rejects traversal/reparse points, recomputes SHA-256, checks file sizes, and emits safe JSON evidence.
+
+### 6. Create a tampered copy
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\r6-001-verify-bundle.ps1 `
+  -BundlePath 'C:\Stockiha-R6-Test-Backups\GestStock-Backup-YYYYMMDD-HHMMSS' `
+  -CreateTamperedCopy
+```
+
+The script copies the valid bundle to a new canonical bundle name and appends one byte to the copied `database.dump`. It never changes the original.
+
+Use the Settings validation action on the returned tampered path. The expected public result is `BACKUP_VALIDATION_FAILED`. Then validate the original again and confirm it still succeeds.
+
+### 7. Capture evidence
+
+Record:
+
+- exact branch commit;
+- PostgreSQL and `pg_dump` major version;
+- safe creation result;
+- independent verifier JSON;
+- tampered bundle rejection;
+- original bundle revalidation;
+- confirmation that no restore action exists.
+
+Redact passwords, URLs containing passwords, local usernames, and unrelated filesystem paths.
+
 ## Remaining completion evidence
 
 - exact final commit SHA and green exact-head CI;
-- Windows Credential Manager provisioning through the repository-compatible UTF-8 adapter;
 - Windows/Tauri backup creation against a dedicated test database;
 - independent checksum verification of the created bundle;
 - tamper-detection evidence on a copied bundle;
