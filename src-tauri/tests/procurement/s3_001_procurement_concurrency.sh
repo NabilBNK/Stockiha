@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DB_NAME="stockiha_test"
-PGUSER="postgres"
+DB_NAME="${STOCKIHA_TEST_DB:-stockiha_test}"
+PGUSER="${PGUSER:-postgres}"
 export PGPASSWORD="${PGPASSWORD:-0000}"
 
-echo "=== Running S3-001 Concurrency & Idempotency Verification on ${DB_NAME} ==="
+psql_test_db() {
+    if [[ -n "${ADMIN_URL:-}" ]]; then
+        psql "${ADMIN_URL}" -X -v ON_ERROR_STOP=1 "$@"
+    else
+        psql -U "${PGUSER}" -d "${DB_NAME}" -X -v ON_ERROR_STOP=1 "$@"
+    fi
+}
 
-psql -U "$PGUSER" -d "$DB_NAME" -v ON_ERROR_STOP=1 << 'EOF'
+echo "=== Running S3-001 Concurrency & Idempotency Verification ==="
+
+psql_test_db << 'EOF'
 DO $$
 DECLARE
     v_user_id bigint;
