@@ -23,7 +23,7 @@ DECLARE
         'bundleIdentifier', 'GestStock-Backup-20260803-195700',
         'createdAtLabel', '20260803-195700',
         'applicationVersion', '0.1.0',
-        'schemaVersion', '20260803193000',
+        'schemaVersion', '20260803201500',
         'postgresMajorVersion', 18,
         'integrityValid', true,
         'applicationCompatible', true,
@@ -104,8 +104,10 @@ BEGIN
 
     ASSERT v_started ->> 'status' = 'STARTED', 'First request must start';
     ASSERT (v_started ->> 'is_replay')::boolean = false, 'First request is not a replay';
-    ASSERT v_started ->> 'current_schema_version' = '20260803193000',
+    ASSERT v_started ->> 'current_schema_version' = '20260803201500',
         'Recovery schema version must be database-authoritative';
+    ASSERT v_started ->> 'bundle_identifier' = 'GestStock-Backup-20260803-195700',
+        'Begin response must return the database-owned bundle identifier';
 
     v_replay := operations.begin_recovery_attempt(
         v_admin_token,
@@ -128,7 +130,7 @@ BEGIN
     EXCEPTION WHEN unique_violation THEN
         v_conflict := true;
     END;
-    ASSERT v_conflict, 'Same request id with different bundle must conflict';
+    ASSERT v_conflict, 'Same validation request id with different bundle must conflict';
 
     v_completed := operations.complete_recovery_attempt(
         v_admin_token,
@@ -148,6 +150,42 @@ BEGIN
     );
     ASSERT v_replay ->> 'status' = 'SUCCEEDED', 'Completed request must replay success';
     ASSERT v_replay -> 'result' = v_result, 'Replay must return the original safe result';
+
+    -- Creation retries are bound to the original database-owned bundle name,
+    -- even if the application clock proposes a different candidate later.
+    v_started := operations.begin_recovery_attempt(
+        v_admin_token,
+        'r6-create-0001',
+        'CREATE_BACKUP',
+        'GestStock-Backup-20260803-201500'
+    );
+    ASSERT v_started ->> 'bundle_identifier' = 'GestStock-Backup-20260803-201500',
+        'First creation request must retain its proposed bundle identifier';
+
+    v_replay := operations.begin_recovery_attempt(
+        v_admin_token,
+        'r6-create-0001',
+        'CREATE_BACKUP',
+        'GestStock-Backup-20260803-201501'
+    );
+    ASSERT (v_replay ->> 'is_replay')::boolean,
+        'Creation retry must be recognized as replay';
+    ASSERT v_replay ->> 'bundle_identifier' = 'GestStock-Backup-20260803-201500',
+        'Creation retry must resume the original bundle identifier';
+
+    v_conflict := false;
+    BEGIN
+        PERFORM operations.begin_recovery_attempt(
+            v_admin_token,
+            'r6-create-0002',
+            'CREATE_BACKUP',
+            'GestStock-Backup-20260803-201500'
+        );
+    EXCEPTION WHEN unique_violation THEN
+        v_conflict := true;
+    END;
+    ASSERT v_conflict,
+        'Two creation requests must not claim the same second-based bundle identifier';
 
     v_started := operations.begin_recovery_attempt(
         v_admin_token,
