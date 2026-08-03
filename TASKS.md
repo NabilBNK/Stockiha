@@ -1,3 +1,7 @@
+# Stockiha — Execution Task Tracker
+
+> This file records task progress only. [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) is the single authority for target architecture, release scope, verified status classifications, and remaining work. A checked implementation task is not proof that the feature is production-correct or release-ready.
+
 # Stockiha — Slice 0 Tasks
 
 # Cross-slice UI foundation
@@ -30,6 +34,8 @@
 - [x] S2-003 Implement zero-quantity safeguards and rounding residual handlers
 
 # Stockiha — Slice 3 Tasks: Procurement & Supplier Purchasing
+
+> **Release blocker:** S3 code exists, but the authoritative audit classifies its supplier accounting as implemented incorrectly. Treat all three checked items below as historical implementation completion, not production acceptance. Roadmap step R2 must repair and regression-test the postings before real financial use.
 
 - [x] S3-001 Implement supplier master, purchase order workflow, and goods receipt posting
 - [x] S3-002 Implement landed cost allocation, supplier invoices, three-way match, and payables ledger

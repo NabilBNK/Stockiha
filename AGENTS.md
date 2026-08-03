@@ -4,16 +4,25 @@
 Work only on Stockiha and only on the explicitly assigned task. Prefer the smallest complete, testable change. Do not work ahead.
 
 ## Sources of truth
-Read in this order:
-1. `final-architecture.md`
+
+Before work, read in this order:
+
+1. `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`
 2. `AGENTS.md`
 3. `CURRENT_SLICE.md`
 4. `TASKS.md`
 5. Relevant companion specs under `docs/`
 6. Accepted ADRs under `docs/decisions/`
-7. Existing code and tests
+7. Existing code, migrations, and tests relevant to the task
 
-Repository documents override conversation memory and agent summaries. Do not modify `final-architecture.md` without an approved ADR and explicit user approval.
+Authority rules:
+
+- Running and tested behavior, automated tests, current code, and applied migrations determine actual implementation state.
+- `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` is the single authority for target architecture, release scope, and the remaining roadmap.
+- `CURRENT_SLICE.md` and `TASKS.md` are execution trackers; they cannot override stronger implementation evidence or the ground-truth roadmap.
+- Repository documents override conversation memory and agent summaries.
+
+Do not modify the ground-truth roadmap without explicit user approval. Architecture changes also require an accepted ADR documenting alternatives and risks.
 
 ## Slice implementation boundary
 
@@ -154,7 +163,7 @@ batch mode.
 
 It overrides the previous one-task-at-a-time workflow for the affected slice.
 
-`final-architecture.md` remains the authoritative source for technical,
+`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` remains the authoritative source for technical,
 financial, security, and data-integrity decisions.
 
 ## Primary objective

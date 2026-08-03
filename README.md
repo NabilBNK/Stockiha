@@ -7,7 +7,7 @@ A modular stock management, sales, procurement, and reporting desktop applicatio
 - **Desktop Client:** Tauri v2
 - **Frontend:** React 19 + TypeScript + Vite
 - **Backend:** Rust (Tokio async runtime)
-- **Database:** PostgreSQL 18.x (planned)
+- **Database:** PostgreSQL 18.x
 - **Primary Language:** French (default), Arabic (full RTL), English
 
 ## Development Setup
@@ -42,8 +42,11 @@ $env:PATH="C:\Users\<USER>\.cargo\bin;$env:PATH"
 cmd.exe /c "call C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat && cargo test"
 ```
 
-## Current Slice: S0-001 — Repository Foundation and Tauri Scaffold
+## Current Project Position
 
-Business modules (inventory, sales, accounting, etc.) are not yet implemented.
+- `main` includes the UI foundation and S0 through the verified S4-002 cashier-session lifecycle.
+- S4-003 (drawer eligibility and customer-payment refunds) is implemented in [PR #9](https://github.com/NabilBNK/Stockiha/pull/9) but remains unverified until its required Windows/Tauri acceptance gate passes.
+- Supplier accounting in S3 is not production-safe and must be repaired before real financial use.
+- Spreadsheet onboarding, production backup/restore, credential wiring, hardware workers, and release packaging remain unfinished.
 
-See `TASKS.md` for the full slice roadmap and `final-architecture.md` for the authoritative architecture.
+See [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) for the single authoritative architecture, verified project audit, release scope, and redesigned remaining roadmap. `CURRENT_SLICE.md` and `TASKS.md` are execution trackers and cannot override stronger code/test evidence.
