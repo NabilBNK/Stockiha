@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use serde_json::{Value as JsonValue, json};
+use serde_json::{json, Value as JsonValue};
 use sqlx::{query_scalar, PgPool};
 
 use crate::domain::recovery::{
@@ -226,6 +226,7 @@ pub(crate) fn stable_error_code(error: &AppError) -> &'static str {
         AppError::PermissionDenied { .. } => "PERMISSION_DENIED",
         AppError::ValidationError { .. } => "VALIDATION_ERROR",
         AppError::PreconditionFailed { .. } => "PRECONDITION_FAILED",
+        AppError::BackupCreationFailed { .. } => "BACKUP_CREATION_FAILED",
         AppError::BackupValidationFailed { .. } => "BACKUP_VALIDATION_FAILED",
         AppError::IdempotencyConflict { .. } => "IDEMPOTENCY_CONFLICT",
         AppError::ImmutableRecord { .. } => "IMMUTABLE_RECORD",
