@@ -52,6 +52,26 @@ WHERE r.code = 'ADMIN'
   AND p.code IN ('CREATE_BACKUP_BUNDLE', 'VALIDATE_BACKUP_BUNDLE')
 ON CONFLICT DO NOTHING;
 
+-- SQL files are verified both through SQLx and by direct psql execution in CI.
+-- Therefore recovery metadata must not depend on SQLx's private bookkeeping
+-- table being present or readable. Every later forward migration that changes
+-- the recoverable schema must update this singleton in the same transaction.
+CREATE TABLE operations.schema_state (
+    singleton          boolean PRIMARY KEY DEFAULT true,
+    migration_version  bigint NOT NULL,
+    updated_at         timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT schema_state_singleton CHECK (singleton)
+);
+
+INSERT INTO operations.schema_state (singleton, migration_version)
+VALUES (true, 20260803193000)
+ON CONFLICT (singleton) DO UPDATE
+SET migration_version = EXCLUDED.migration_version,
+    updated_at = now();
+
+REVOKE ALL ON operations.schema_state FROM PUBLIC;
+REVOKE ALL ON operations.schema_state FROM stockiha_runtime;
+
 CREATE TABLE operations.recovery_attempts (
     id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     request_id         text NOT NULL,
@@ -132,6 +152,16 @@ BEGIN
     INTO v_actor_id, v_workstation_id
     FROM iam.resolve_session_with_permission(p_session_token, v_permission_code);
 
+    SELECT migration_version::text
+    INTO v_schema_version
+    FROM operations.schema_state
+    WHERE singleton;
+
+    IF v_schema_version IS NULL THEN
+        RAISE EXCEPTION 'recovery schema version is not configured'
+            USING ERRCODE = '55000';
+    END IF;
+
     SELECT *
     INTO v_existing
     FROM operations.recovery_attempts
@@ -145,18 +175,13 @@ BEGIN
                 USING ERRCODE = '23505';
         END IF;
 
-        SELECT max(version)::text
-        INTO v_schema_version
-        FROM public._sqlx_migrations
-        WHERE success;
-
         RETURN jsonb_build_object(
             'attempt_id', v_existing.id,
             'is_replay', true,
             'status', v_existing.status,
             'error_code', v_existing.error_code,
             'result', v_existing.result_json,
-            'current_schema_version', COALESCE(v_schema_version, '0')
+            'current_schema_version', v_schema_version
         );
     END IF;
 
@@ -175,18 +200,13 @@ BEGIN
     )
     RETURNING id INTO v_attempt_id;
 
-    SELECT max(version)::text
-    INTO v_schema_version
-    FROM public._sqlx_migrations
-    WHERE success;
-
     RETURN jsonb_build_object(
         'attempt_id', v_attempt_id,
         'is_replay', false,
         'status', 'STARTED',
         'error_code', NULL,
         'result', NULL,
-        'current_schema_version', COALESCE(v_schema_version, '0')
+        'current_schema_version', v_schema_version
     );
 END;
 $$;
