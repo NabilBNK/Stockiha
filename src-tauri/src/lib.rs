@@ -41,6 +41,7 @@ pub fn run() {
             commands::cash_session::get_cash_session,
             commands::drawer::list_drawer_operation_policy,
             commands::drawer::update_drawer_operation_policy,
+            commands::recovery::create_operator_backup,
             commands::recovery::validate_operator_backup,
             commands::setup::get_setup_status,
             commands::setup::bootstrap_first_admin,
