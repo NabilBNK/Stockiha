@@ -119,14 +119,17 @@ pub(crate) fn validate_operator_backup_files(
     bundle_identifier: String,
     current_schema_version: String,
 ) -> Result<OperatorBackupValidationResult, AppError> {
-    let configured_root = configured_backup_root()?;
-    let canonical_root = configured_root.canonicalize().map_err(|_| {
-        AppError::database_configuration("configured backup root is unavailable")
+    let canonical_root = configured_backup_root()?;
+
+    let selected_metadata = fs::symlink_metadata(&bundle_path).map_err(|_| {
+        AppError::BackupValidationFailed {
+            diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
+        }
     })?;
-    if !canonical_root.is_dir() {
-        return Err(AppError::database_configuration(
-            "configured backup root is not a directory",
-        ));
+    if is_symlink_or_reparse(&selected_metadata) || !selected_metadata.is_dir() {
+        return Err(AppError::BackupValidationFailed {
+            diagnostic: "BACKUP_PROOF_REJECTED_SYMLINK_INPUT".to_string(),
+        });
     }
 
     let canonical_bundle = bundle_path.canonicalize().map_err(|_| {
@@ -134,6 +137,16 @@ pub(crate) fn validate_operator_backup_files(
             diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
         }
     })?;
+    let canonical_metadata = fs::symlink_metadata(&canonical_bundle).map_err(|_| {
+        AppError::BackupValidationFailed {
+            diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
+        }
+    })?;
+    if is_symlink_or_reparse(&canonical_metadata) || !canonical_metadata.is_dir() {
+        return Err(AppError::BackupValidationFailed {
+            diagnostic: "BACKUP_PROOF_REJECTED_SYMLINK_INPUT".to_string(),
+        });
+    }
 
     if canonical_bundle.parent() != Some(canonical_root.as_path()) {
         return Err(AppError::PermissionDenied {
@@ -244,7 +257,29 @@ fn configured_backup_root() -> Result<PathBuf, AppError> {
             "{BACKUP_ROOT_ENV} is empty"
         )));
     }
-    Ok(PathBuf::from(value))
+
+    let configured = PathBuf::from(value);
+    let configured_metadata = fs::symlink_metadata(&configured).map_err(|_| {
+        AppError::database_configuration("configured backup root cannot be inspected")
+    })?;
+    if is_symlink_or_reparse(&configured_metadata) || !configured_metadata.is_dir() {
+        return Err(AppError::database_configuration(
+            "configured backup root is not a real directory",
+        ));
+    }
+
+    let canonical = configured.canonicalize().map_err(|_| {
+        AppError::database_configuration("configured backup root is unavailable")
+    })?;
+    let canonical_metadata = fs::symlink_metadata(&canonical).map_err(|_| {
+        AppError::database_configuration("configured backup root cannot be inspected")
+    })?;
+    if is_symlink_or_reparse(&canonical_metadata) || !canonical_metadata.is_dir() {
+        return Err(AppError::database_configuration(
+            "configured backup root does not resolve to a real directory",
+        ));
+    }
+    Ok(canonical)
 }
 
 fn is_canonical_bundle_identifier(value: &str) -> bool {
@@ -312,7 +347,7 @@ fn add_regular_file_stats(
             diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
         }
     })?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+    if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
         return Err(AppError::BackupValidationFailed {
             diagnostic: "BACKUP_PROOF_REJECTED_SYMLINK_INPUT".to_string(),
         });
@@ -320,6 +355,19 @@ fn add_regular_file_stats(
     *file_count = file_count.saturating_add(1);
     *total_bytes = total_bytes.saturating_add(metadata.len());
     Ok(())
+}
+
+#[cfg(windows)]
+fn is_symlink_or_reparse(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    metadata.file_type().is_symlink()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_symlink_or_reparse(metadata: &fs::Metadata) -> bool {
+    metadata.file_type().is_symlink()
 }
 
 #[cfg(test)]
@@ -356,7 +404,7 @@ mod tests {
             bundle_identifier: "GestStock-Backup-20260803-195700".to_string(),
             created_at_label: "20260803-195700".to_string(),
             application_version: "0.1.0".to_string(),
-            schema_version: "20260803193000".to_string(),
+            schema_version: "20260803201500".to_string(),
             postgres_major_version: 18,
             integrity_valid: true,
             application_compatible: true,
