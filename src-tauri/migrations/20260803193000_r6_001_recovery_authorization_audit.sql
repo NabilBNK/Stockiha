@@ -165,12 +165,18 @@ BEGIN
     SELECT *
     INTO v_existing
     FROM operations.recovery_attempts
-    WHERE request_id = p_request_id;
+    WHERE request_id = btrim(p_request_id);
 
     IF FOUND THEN
+        -- Validation is bound to the caller-selected existing bundle. Creation
+        -- is different: a retry may calculate a new clock-based candidate,
+        -- but it must resume the original database-owned bundle identifier.
         IF v_existing.actor_id <> v_actor_id
            OR v_existing.operation_code <> p_operation_code
-           OR v_existing.bundle_identifier <> p_bundle_identifier THEN
+           OR (
+               v_existing.operation_code <> 'CREATE_BACKUP'
+               AND v_existing.bundle_identifier <> btrim(p_bundle_identifier)
+           ) THEN
             RAISE EXCEPTION 'recovery request id conflicts with an existing request'
                 USING ERRCODE = '23505';
         END IF;
@@ -179,6 +185,7 @@ BEGIN
             'attempt_id', v_existing.id,
             'is_replay', true,
             'status', v_existing.status,
+            'bundle_identifier', v_existing.bundle_identifier,
             'error_code', v_existing.error_code,
             'result', v_existing.result_json,
             'current_schema_version', v_schema_version
@@ -204,6 +211,7 @@ BEGIN
         'attempt_id', v_attempt_id,
         'is_replay', false,
         'status', 'STARTED',
+        'bundle_identifier', btrim(p_bundle_identifier),
         'error_code', NULL,
         'result', NULL,
         'current_schema_version', v_schema_version
