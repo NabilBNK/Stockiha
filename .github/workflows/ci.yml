@@ -120,7 +120,7 @@ jobs:
           CREATE ROLE stockiha_owner NOLOGIN;
           CREATE ROLE stockiha_migrator NOLOGIN;
           CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
-          CREATE ROLE stockiha_backup NOLOGIN;
+          CREATE ROLE stockiha_backup LOGIN PASSWORD 'backup_ci_password';
           GRANT CREATE ON DATABASE stockiha_ci_test TO stockiha_owner;
           SQL
 
@@ -131,6 +131,27 @@ jobs:
             echo "Applying $migration"
             psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
           done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Verify fixed backup role can complete PostgreSQL 18 pg_dump
+        run: |
+          set -euo pipefail
+          container_id="$(docker ps --filter 'ancestor=postgres:18' --format '{{.ID}}' | head -n 1)"
+          test -n "$container_id"
+          docker exec \
+            -e PGPASSWORD=backup_ci_password \
+            "$container_id" \
+            pg_dump \
+              --format=custom \
+              --no-owner \
+              --no-privileges \
+              --no-password \
+              --host 127.0.0.1 \
+              --port 5432 \
+              --username stockiha_backup \
+              --dbname stockiha_ci_test \
+              --file /tmp/stockiha-r6-ci.dump
+          docker exec "$container_id" test -s /tmp/stockiha-r6-ci.dump
+          docker exec "$container_id" rm -f /tmp/stockiha-r6-ci.dump
 
       - name: Seed CI fiscal period
         run: |
