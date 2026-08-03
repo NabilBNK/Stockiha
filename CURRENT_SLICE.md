@@ -21,12 +21,12 @@
 - **Roadmap step:** R6 — productionize database configuration and recovery
 - **Slice:** R6-001 — operator backup creation and bundle validation
 - **Branch:** `task/r6-001-operator-backup-validation`
-- **PR:** #13
-- **Implemented:** administrator-only recovery permissions; immutable request audit; database-owned schema-version metadata; replay-safe backup creation; fixed `stockiha_backup` role and Windows Credential Manager secret consumption; PostgreSQL 18 `pg_dump`; hidden staging and atomic publication; automatic pre/post-publication checksum validation; read-only validation of existing bundles; configured-root containment; stable redacted errors; EN/FR/AR Settings UI; and targeted SQL/frontend/Rust tests.
-- **Automated verification:** exact-head frontend typecheck, lint, workflow tests, production build, full migration chain, R6 authorization/replay/collision assertions, and existing S1–S4 regressions passed. Exact-head Rust verification is still running.
-- **Remaining R6-001 gate:** provision the fixed backup credential with the repository’s UTF-8 Credential Manager adapter, then capture real Windows/Tauri creation, independent checksum verification, and tamper-detection evidence.
+- **PR:** #13, draft
+- **Implemented:** administrator-only recovery permissions; immutable request audit; database-owned schema-version metadata; replay-safe backup creation; fixed `stockiha_backup` role and Windows Credential Manager secret consumption; PostgreSQL 18 `pg_dump`; hidden staging and atomic publication; automatic pre/post-publication checksum validation; read-only validation of existing bundles; configured-root and reparse-point containment; stable redacted errors; EN/FR/AR Settings UI; independent Windows checksum/tamper tooling; and targeted SQL/frontend/Rust tests.
+- **Automated verification:** implementation head `d4cceed38986b6109e08c21181ee241ab0bf290e` passed frontend typecheck, lint, workflow tests, production build, Rust unit verification, the full migration chain, R6 authorization/replay/collision assertions, existing S1–S4 regressions/concurrency suites, and all historical S4 upgrade workflows.
+- **Remaining R6-001 gate:** run the documented Windows/Tauri acceptance procedure against a dedicated test database, capture independent checksum verification and tamper rejection, then update the PR with that evidence.
 - **Safety boundary:** backup creation and validation only. No live restore command or destructive database replacement is registered or authorized.
-- **Specification:** [`docs/slices/R6-001-operator-backup-validation.md`](./docs/slices/R6-001-operator-backup-validation.md)
+- **Specification and acceptance procedure:** [`docs/slices/R6-001-operator-backup-validation.md`](./docs/slices/R6-001-operator-backup-validation.md)
 
 R6-001 proceeds while representative physical paperwork is unavailable. It does not replace the R0/R4/R5 data-onboarding critical path.
 
