@@ -17,6 +17,7 @@ pub enum ErrorCode {
     PermissionDenied,
     ValidationError,
     PreconditionFailed,
+    BackupCreationFailed,
     BackupValidationFailed,
     IdempotencyConflict,
     ImmutableRecord,
@@ -41,6 +42,7 @@ pub enum AppError {
     PermissionDenied { diagnostic: String },
     ValidationError { diagnostic: String },
     PreconditionFailed { diagnostic: String },
+    BackupCreationFailed { diagnostic: String },
     BackupValidationFailed { diagnostic: String },
     IdempotencyConflict { diagnostic: String },
     ImmutableRecord { diagnostic: String },
@@ -107,6 +109,9 @@ impl fmt::Debug for AppError {
             AppError::PreconditionFailed { .. } => {
                 f.write_str("AppError::PreconditionFailed(<redacted>)")
             }
+            AppError::BackupCreationFailed { .. } => {
+                f.write_str("AppError::BackupCreationFailed(<redacted>)")
+            }
             AppError::BackupValidationFailed { .. } => {
                 f.write_str("AppError::BackupValidationFailed(<redacted>)")
             }
@@ -136,6 +141,7 @@ impl fmt::Display for AppError {
             AppError::PermissionDenied { .. } => f.write_str("permission denied"),
             AppError::ValidationError { .. } => f.write_str("validation error"),
             AppError::PreconditionFailed { .. } => f.write_str("precondition failed"),
+            AppError::BackupCreationFailed { .. } => f.write_str("backup creation failed"),
             AppError::BackupValidationFailed { .. } => f.write_str("backup validation failed"),
             AppError::IdempotencyConflict { .. } => f.write_str("idempotency conflict"),
             AppError::ImmutableRecord { .. } => f.write_str("record is immutable"),
@@ -168,6 +174,9 @@ impl From<AppError> for IpcError {
             AppError::PermissionDenied { .. } => IpcError::new(ErrorCode::PermissionDenied),
             AppError::ValidationError { .. } => IpcError::new(ErrorCode::ValidationError),
             AppError::PreconditionFailed { .. } => IpcError::new(ErrorCode::PreconditionFailed),
+            AppError::BackupCreationFailed { .. } => {
+                IpcError::new(ErrorCode::BackupCreationFailed)
+            }
             AppError::BackupValidationFailed { .. } => {
                 IpcError::new(ErrorCode::BackupValidationFailed)
             }
@@ -200,6 +209,10 @@ mod tests {
             r#""CONFIGURATION_ERROR""#
         );
         assert_eq!(
+            serde_json::to_string(&ErrorCode::BackupCreationFailed).unwrap(),
+            r#""BACKUP_CREATION_FAILED""#
+        );
+        assert_eq!(
             serde_json::to_string(&ErrorCode::BackupValidationFailed).unwrap(),
             r#""BACKUP_VALIDATION_FAILED""#
         );
@@ -229,6 +242,21 @@ mod tests {
     fn explicit_conversion_maps_database_unavailable() {
         let ipc: IpcError = AppError::database_unavailable(SENTINEL).into();
         assert_eq!(ipc, IpcError::new(ErrorCode::DatabaseUnavailable));
+    }
+
+    #[test]
+    fn backup_creation_error_is_redacted_and_stable() {
+        let app = AppError::BackupCreationFailed {
+            diagnostic: SENTINEL.to_owned(),
+        };
+        assert!(!format!("{app:?}").contains(SENTINEL));
+        assert_eq!(format!("{app}"), "backup creation failed");
+        let ipc: IpcError = app.into();
+        assert_eq!(ipc, IpcError::new(ErrorCode::BackupCreationFailed));
+        assert_eq!(
+            serde_json::to_string(&ipc).unwrap(),
+            r#"{"code":"BACKUP_CREATION_FAILED"}"#
+        );
     }
 
     #[test]
