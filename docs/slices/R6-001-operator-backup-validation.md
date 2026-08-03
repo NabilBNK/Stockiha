@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved for implementation from `main` after PR #12. This slice starts R6 without exposing destructive restore operations.
+Implementation is complete on draft PR #13. Automated verification is running on the exact hardened head. Real Windows/Tauri creation, independent checksum verification, and tamper-detection evidence remain mandatory before the PR may leave draft state.
 
 ## Objective
 
@@ -17,131 +17,124 @@ Turn the existing S0-009 backup proof into a typed, permission-controlled operat
 This slice **must not**:
 
 - restore into or replace the live database;
-- delete, overwrite, or silently reuse an existing bundle directory;
-- accept caller-supplied PostgreSQL roles or credentials;
+- delete, overwrite, or silently reuse an unrelated existing bundle directory;
+- accept caller-supplied PostgreSQL roles, credentials, database URLs, asset paths, destination roots, or dump executables;
 - expose credential bytes, connection strings, filesystem diagnostics, or child-process output through IPC;
-- run during an active import apply, financial posting, or unsafe maintenance state once those locks exist;
-- claim that backup/restore is production-complete.
+- claim that restore or production startup configuration is complete.
 
 Live restore, temporary-database reconciliation, retention, scheduling, and production credential-backed startup remain later R6 work.
 
-## Existing foundation
+## Implemented backend boundary
 
-The repository already contains proof modules for:
-
-- bundle creation, manifests, checksums, assets, and atomic rename;
-- PostgreSQL 18 `pg_dump` validation;
-- Windows Credential Manager access for the fixed `stockiha_backup` role;
-- bundle validation;
-- temporary-database restore and reconciliation proof code.
-
-Those modules are infrastructure proofs and currently have no product-facing IPC or UI consumer.
-
-## Required implementation
-
-### Backend boundary
-
-Add a dedicated recovery domain/application/command boundary rather than exposing proof types directly.
-
-Required commands:
+Commands:
 
 - `create_operator_backup`
 - `validate_operator_backup`
 
-Each command must use typed request/response DTOs and stable public error codes. Internal proof diagnostics remain private.
+Both commands use typed request/response DTOs and stable public error codes. Internal proof diagnostics remain private.
 
-### Authorization
+### Authorization and audit
 
-- Backup creation and validation require an explicitly assigned recovery capability.
-- The capability defaults enabled for the authorized CEO/administrator role under the project toggle policy.
-- Runtime database roles remain fixed and database-authoritative.
-- Every attempt records actor, workstation, operation, outcome, timestamp, and a non-secret bundle identifier.
+- `CREATE_BACKUP_BUNDLE` and `VALIDATE_BACKUP_BUNDLE` are database-authoritative permissions.
+- Both default to the `ADMIN` role only.
+- Every attempt records actor, workstation, operation, outcome, timestamp, request id, and a non-secret bundle identifier.
+- Request ids are replay-safe. A completed request returns its original safe result.
+- A creation retry resumes only the original database-owned bundle identifier.
+- Two creation requests cannot claim the same second-based bundle name.
 
-### Backup request
+### Backup creation
 
-The caller may select only an allowed destination root. The backend resolves all included Stockiha data locations itself.
+The request contains only an idempotency request id. The backend resolves:
 
-The request must not contain:
+- the configured `STOCKIHA_BACKUP_ROOT`;
+- the fixed `stockiha_backup` PostgreSQL role;
+- the fixed Windows Credential Manager target;
+- the PostgreSQL host, port, and database from the existing application database configuration;
+- the PostgreSQL 18 `pg_dump` executable;
+- fixed application-data locations for attachments, generated customer documents, and company assets.
 
-- a password;
-- a database URL;
-- a PostgreSQL role;
-- arbitrary asset source paths;
-- a caller-selected dump executable.
+Creation flow:
 
-### Backup result
+1. reject a missing, non-directory, symlink, or Windows reparse-point backup root;
+2. reserve the request and bundle identifier in the database audit;
+3. discover and require PostgreSQL 18 `pg_dump`;
+4. read the fixed backup credential without logging or returning it;
+5. create the bundle in a hidden staging directory on the destination filesystem;
+6. replace the proof-only schema value with the database-owned migration version and regenerate manifest/checksums;
+7. validate the staged bundle;
+8. atomically publish it without overwrite;
+9. validate the published bundle again;
+10. complete the audit with safe metadata only.
 
-Return only safe metadata:
+If publication succeeded but audit completion failed, retrying the same request validates and returns that exact published bundle instead of creating a duplicate. A first attempt never reuses a pre-existing directory.
 
+### Read-only validation
+
+Validation verifies:
+
+- configured-root and direct-child containment;
+- the original selected root/bundle path before canonicalization;
+- symlink and Windows reparse-point rejection;
+- bundle layout and required directories/files;
+- manifest format and schema;
+- path traversal and canonical containment;
+- dump non-emptiness;
+- all recorded SHA-256 checksums and file sizes;
+- application, schema, and PostgreSQL compatibility metadata.
+
+Invalid bundles are never modified or repaired.
+
+### Safe result
+
+Creation and validation return only:
+
+- request id;
 - bundle identifier/name;
-- creation timestamp;
+- creation timestamp label;
 - application version;
 - schema/migration version;
 - PostgreSQL major version;
-- manifest/checksum validation status;
-- total bundle bytes and file count;
-- stable status/error code.
+- integrity and compatibility flags;
+- total bundle bytes and file count.
 
-Do not return credential, connection, raw process, or unrestricted filesystem details.
+No credential, connection string, database URL, process output, or unrestricted filesystem path is returned.
 
-### Validation request/result
+## Frontend
 
-Validation is read-only. It must verify:
+Settings now supports:
 
-- bundle layout;
-- manifest schema/version;
-- required files;
-- path containment;
-- dump non-emptiness;
-- all recorded SHA-256 checksums;
-- application/schema/PostgreSQL compatibility metadata.
-
-An invalid bundle returns a typed failure and never mutates or repairs the bundle.
-
-### Frontend
-
-Add a minimal Recovery section under Settings that supports:
-
-- creating a backup;
+- creating a backup in the configured root;
 - selecting and validating an existing backup;
-- showing progress and the final safe result;
-- preventing duplicate submissions;
-- EN/FR/AR and RTL labels;
-- a clear warning that restore is not available in R6-001.
+- one global in-flight lock to prevent duplicate submissions;
+- safe success and failure states;
+- EN/FR/AR copy and RTL behavior;
+- a clear warning that restore is unavailable.
 
-## Acceptance criteria
+## Automated verification
 
-- Authorized operator can create a bundle on Windows through Tauri.
-- Bundle creation uses the fixed backup role and Credential Manager secret.
-- Successful creation is followed by backend validation before success is returned.
-- Existing destinations are never overwritten.
-- Symlink/reparse-point and path-escape inputs are rejected.
-- Tampered manifest, checksum, dump, or asset produces a typed validation failure.
-- Unauthorized callers cannot create or validate backups.
-- Retrying a completed request does not create ambiguous duplicate audit records.
-- No secret or raw child-process output reaches logs, IPC, UI, or test snapshots.
-- Frontend typecheck, lint, tests, and build pass.
-- Rust unit tests and targeted Windows tests pass.
+Covered by unit, SQL, and frontend workflow tests:
 
-## Required tests
+- authorization and role defaults;
+- request replay/idempotency;
+- actor/workstation ownership;
+- same-name creation collision rejection;
+- root/path containment;
+- existing destination behavior;
+- PostgreSQL version and credential proof mappings;
+- interrupted creation cleanup through staged-directory guards;
+- manifest/checksum rewriting with the real schema version;
+- tamper/layout/path traversal/symlink proof coverage;
+- redacted creation and validation errors;
+- request-id-only creation payload;
+- duplicate-submit prevention;
+- EN/FR/AR and RTL states;
+- proof that no restore command is registered.
 
-- authorization and capability defaults;
-- request validation and allowed-root enforcement;
-- existing destination collision;
-- missing `pg_dump` and PostgreSQL version mismatch;
-- unavailable/invalid credential;
-- dump failure and interrupted creation cleanup;
-- manifest/checksum tampering;
-- path traversal, symlink, and reparse-point rejection;
-- duplicate submission/idempotency behavior;
-- audit success/failure records;
-- EN/FR/AR, RTL, loading, error, and success UI states.
+## Remaining completion evidence
 
-## Completion evidence
-
-- exact commit SHA;
-- CI results;
-- Windows/Tauri backup creation log using a test database;
-- independent bundle checksum validation;
-- tamper-detection evidence;
+- exact final commit SHA and green exact-head CI;
+- Windows Credential Manager provisioning through the repository-compatible UTF-8 adapter;
+- Windows/Tauri backup creation against a dedicated test database;
+- independent checksum verification of the created bundle;
+- tamper-detection evidence on a copied bundle;
 - proof that no live restore command is registered.
