@@ -39,8 +39,11 @@ BEGIN
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles owner_role ON owner_role.oid = n.nspowner
         WHERE owner_role.rolname = 'stockiha_owner'
-          AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-          AND NOT has_table_privilege('stockiha_backup', c.oid, 'SELECT')
+          AND CASE
+              WHEN c.relkind IN ('r', 'p', 'v', 'm', 'f')
+                  THEN NOT has_table_privilege('stockiha_backup', c.oid, 'SELECT')
+              ELSE false
+          END
     ), 'Backup role must read every current Stockiha relation';
 
     ASSERT NOT EXISTS (
@@ -49,25 +52,32 @@ BEGIN
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles owner_role ON owner_role.oid = n.nspowner
         WHERE owner_role.rolname = 'stockiha_owner'
-          AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-          AND (
-              has_table_privilege('stockiha_backup', c.oid, 'INSERT')
-              OR has_table_privilege('stockiha_backup', c.oid, 'UPDATE')
-              OR has_table_privilege('stockiha_backup', c.oid, 'DELETE')
-              OR has_table_privilege('stockiha_backup', c.oid, 'TRUNCATE')
-              OR has_table_privilege('stockiha_backup', c.oid, 'REFERENCES')
-              OR has_table_privilege('stockiha_backup', c.oid, 'TRIGGER')
-          )
+          AND CASE
+              WHEN c.relkind IN ('r', 'p', 'v', 'm', 'f') THEN (
+                  has_table_privilege('stockiha_backup', c.oid, 'INSERT')
+                  OR has_table_privilege('stockiha_backup', c.oid, 'UPDATE')
+                  OR has_table_privilege('stockiha_backup', c.oid, 'DELETE')
+                  OR has_table_privilege('stockiha_backup', c.oid, 'TRUNCATE')
+                  OR has_table_privilege('stockiha_backup', c.oid, 'REFERENCES')
+                  OR has_table_privilege('stockiha_backup', c.oid, 'TRIGGER')
+              )
+              ELSE false
+          END
     ), 'Backup role must not receive table write or trigger privileges';
 
+    -- CASE is intentional. PostgreSQL may reorder plain WHERE predicates and
+    -- call has_sequence_privilege on indexes before applying relkind = 'S'.
     ASSERT NOT EXISTS (
         SELECT 1
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles owner_role ON owner_role.oid = n.nspowner
         WHERE owner_role.rolname = 'stockiha_owner'
-          AND c.relkind = 'S'
-          AND NOT has_sequence_privilege('stockiha_backup', c.oid, 'SELECT')
+          AND CASE
+              WHEN c.relkind = 'S'
+                  THEN NOT has_sequence_privilege('stockiha_backup', c.oid, 'SELECT')
+              ELSE false
+          END
     ), 'Backup role must read every current Stockiha sequence';
 
     ASSERT NOT EXISTS (
@@ -76,11 +86,13 @@ BEGIN
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles owner_role ON owner_role.oid = n.nspowner
         WHERE owner_role.rolname = 'stockiha_owner'
-          AND c.relkind = 'S'
-          AND (
-              has_sequence_privilege('stockiha_backup', c.oid, 'USAGE')
-              OR has_sequence_privilege('stockiha_backup', c.oid, 'UPDATE')
-          )
+          AND CASE
+              WHEN c.relkind = 'S' THEN (
+                  has_sequence_privilege('stockiha_backup', c.oid, 'USAGE')
+                  OR has_sequence_privilege('stockiha_backup', c.oid, 'UPDATE')
+              )
+              ELSE false
+          END
     ), 'Backup role must not advance or mutate Stockiha sequences';
 
     ASSERT NOT pg_has_role('stockiha_backup', 'stockiha_owner', 'MEMBER'),
