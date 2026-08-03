@@ -1,38 +1,37 @@
 # Current Execution Status
 
-> This is an execution tracker, not an architecture authority. See [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) for the single authoritative architecture, verified audit, release scope, and redesigned roadmap. Running/tested behavior, current code, migrations, and automated tests determine actual implementation state.
+> This is an execution tracker, not an architecture authority. See [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) for the target architecture, release scope, and remaining roadmap. Running/tested behavior, applied migrations, and automated tests determine actual implementation state.
 
 ## Released baseline
 
 - **Branch:** `main`
-- **Commit:** `b991f02555fa88bad405bd9f477acbd40a3860c9`
-- **Verified boundary:** UI foundation plus S0 through S4-002
-- **S4-002:** complete, merged, and manually verified
+- **Commit:** `c767e47a111700198d47cc6531d57a2e950216fc`
+- **Verified boundary:** UI foundation, S0 through S4-003, and R2 supplier-accounting repair
+- **Integrated work:** PR #11 (S4-003 + R2) merged; PR #9 superseded
 
-## Current candidate
+## Completed recent work
 
-- **Roadmap step:** R1 — independently review, validate, and merge S4-003
-- **Legacy task ID:** S4-003 — drawer eligibility and customer payment refunds
-- **Branch:** `task/s4-003-drawer-eligibility-refunds`
-- **PR:** [#9](https://github.com/NabilBNK/Stockiha/pull/9)
-- **Exact inspected head:** `7c940eafdd7c572e7c6fb795ba26d50c58a01522`
-- **Status:** implemented but unverified
-- **Remaining gate:** validated local database backup, Windows/Tauri migration, manual FR/EN/AR and RTL workflow verification, hardware-sensitive checks where available, independent review, then merge if clean
+- **S4-003:** central drawer policy, customer-payment refunds, cash/bank invariants, and customer-payment controls. Focused Windows/Tauri smoke evidence and exact-head CI passed before integration.
+- **R2:** forward-only supplier accounting repair. Goods receipt accrues GRNI; supplier invoice clears GRNI and creates AP; returns use the correct GRNI/AP state; landed cost creates a traceable payable; payments select Cash or Bank correctly.
+- **MVP financial boundary:** TVA and discounts remain deferred. Non-zero values are rejected rather than posted under guessed rules.
+- **CI:** current migration and SQL regression coverage passed on the exact merge candidate.
 
-S4-003 must not be described as complete merely because automation is green. Reprinting must not open the drawer; bank transfer must not touch cash; handover must invalidate the old cashier; retries must not duplicate refunds, cash movements, or drawer jobs.
+## Current roadmap position
 
-## Parallel decision work
+**Next critical path:** R0/R4/R5 — establish the data-onboarding contract, prove spreadsheet parsing against representative anonymized workbooks, then implement a reconciled opening-state import.
 
-Roadmap step R0 may proceed in parallel where it does not change PR #9:
+Required before a live import:
 
-- freeze the controlled-pilot and production-candidate scope;
-- obtain anonymized real spreadsheet samples and define the import contract;
-- decide opening balances versus historical archive/replay;
-- finalize TVA, HT/TTC, SCF account-role, and opening-balance rules;
-- identify printer and cash-drawer hardware.
+1. Anonymized representative source files and their expected totals.
+2. A decision to import opening operational state into live ledgers and retain historical documents separately, or to require a full historical replay.
+3. Approved mapping/reconciliation rules for the selected source columns.
 
-## Next engineering step after R1
+R6 (operator backup/restore) may proceed in parallel once the pilot database shape and operational workflow are selected.
 
-R2 repairs S3 supplier accounting with forward-only migrations and mandatory regression coverage. S3 is connected but not production-safe; balanced entries currently include semantically wrong account postings.
+## Explicitly deferred
 
-Do not start the old S4-004 definition automatically. The redesigned roadmap replaces it with an integrated release gate after the financial, settings, import, recovery, hardware, and packaging prerequisites defined there are satisfied.
+- TVA, HT/TTC, and discount calculation/posting
+- Historical transaction replay unless separately approved
+- Payroll, broad returns/transfers, advanced analytics, automatic updating, and unselected hardware/package work
+
+Do not start legacy S4-004 or merge stale S5–S7 branches. New work must branch from current `main`.

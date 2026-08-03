@@ -44,9 +44,10 @@ cmd.exe /c "call C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat && cargo test"
 
 ## Current Project Position
 
-- `main` includes the UI foundation and S0 through the verified S4-002 cashier-session lifecycle.
-- S4-003 (drawer eligibility and customer-payment refunds) is implemented in [PR #9](https://github.com/NabilBNK/Stockiha/pull/9) but remains unverified until its required Windows/Tauri acceptance gate passes.
-- Supplier accounting in S3 is not production-safe and must be repaired before real financial use.
-- Spreadsheet onboarding, production backup/restore, credential wiring, hardware workers, and release packaging remain unfinished.
+- `main` includes the UI foundation, S0–S4-003, and the R2 supplier-accounting repair.
+- S4-003 customer-payment refunds and drawer policies were validated through exact-head CI and a focused Windows/Tauri smoke test before merge.
+- Procurement now uses GRNI/AP financial semantics with Cash/Bank selection. TVA and discounts remain intentionally deferred and non-zero values are rejected.
+- The next critical path is representative spreadsheet parsing, reconciled opening-state import, and a proven pilot backup/restore workflow.
+- Stale S5–S7 branches are not valid future-work bases.
 
-See [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) for the single authoritative architecture, verified project audit, release scope, and redesigned remaining roadmap. `CURRENT_SLICE.md` and `TASKS.md` are execution trackers and cannot override stronger code/test evidence.
+See [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) for the target architecture and release scope.
