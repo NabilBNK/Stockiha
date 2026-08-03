@@ -1,3 +1,7 @@
+export interface CreateOperatorBackupRequest {
+  requestId: string;
+}
+
 export interface ValidateOperatorBackupRequest {
   requestId: string;
   bundlePath: string;
@@ -17,3 +21,5 @@ export interface OperatorBackupValidationResult {
   fileCount: number;
   totalBytes: number;
 }
+
+export type OperatorBackupCreationResult = OperatorBackupValidationResult;
