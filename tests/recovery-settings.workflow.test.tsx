@@ -32,13 +32,14 @@ beforeEach(() => {
 describe('R6-001 recovery settings', () => {
   it('creates a backup with a request-id-only payload and shows verified metadata', async () => {
     let capturedArgs: Record<string, unknown> | null = null;
-    let resolveCreation: ((value: typeof SAFE_RESULT) => void) | null = null;
+    let resolveCreation!: (value: typeof SAFE_RESULT) => void;
+    const pendingCreation = new Promise<typeof SAFE_RESULT>((resolve) => {
+      resolveCreation = resolve;
+    });
     invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
       expect(command).toBe('create_operator_backup');
       capturedArgs = args;
-      return new Promise<typeof SAFE_RESULT>((resolve) => {
-        resolveCreation = resolve;
-      });
+      return pendingCreation;
     });
 
     render(
@@ -69,7 +70,7 @@ describe('R6-001 recovery settings', () => {
     expect(args.request).not.toHaveProperty('destination');
     expect(args.request).not.toHaveProperty('pgDumpPath');
 
-    resolveCreation?.(SAFE_RESULT);
+    resolveCreation(SAFE_RESULT);
     expect(await screen.findByText('Backup created and verified.')).toBeInTheDocument();
     expect(screen.getByTestId('backup-result')).toHaveTextContent(
       'GestStock-Backup-20260803-203000',
