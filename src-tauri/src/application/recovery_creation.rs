@@ -23,6 +23,7 @@ static STAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[derive(Deserialize)]
 struct CreationAttemptEnvelope {
     attempt_id: i64,
+    is_replay: bool,
     status: String,
     bundle_identifier: String,
     error_code: Option<String>,
@@ -36,6 +37,7 @@ pub(crate) enum CreationAttempt {
         request_id: String,
         bundle_identifier: String,
         current_schema_version: String,
+        resume_existing: bool,
     },
     Replay(OperatorBackupCreationResult),
 }
@@ -120,6 +122,7 @@ pub(crate) async fn begin_operator_backup_creation(
             request_id: request.request_id.trim().to_string(),
             bundle_identifier: envelope.bundle_identifier,
             current_schema_version: envelope.current_schema_version,
+            resume_existing: envelope.is_replay,
         }),
         other => Err(AppError::internal(format!(
             "unknown backup creation attempt status: {other}"
@@ -132,12 +135,18 @@ pub(crate) fn create_operator_backup_files(
     attempt_id: i64,
     bundle_identifier: String,
     current_schema_version: String,
+    resume_existing: bool,
     app_data_dir: PathBuf,
 ) -> Result<OperatorBackupCreationResult, AppError> {
     let canonical_root = configured_backup_root()?;
     let final_path = canonical_root.join(&bundle_identifier);
 
     if final_path.exists() {
+        if !resume_existing {
+            return Err(AppError::BackupCreationFailed {
+                diagnostic: "BACKUP_PROOF_DESTINATION_ALREADY_EXISTS".to_string(),
+            });
+        }
         return result_from_existing_bundle(
             request_id,
             final_path,
@@ -166,6 +175,7 @@ pub(crate) fn create_operator_backup_files(
             port,
             database,
             current_schema_version,
+            resume_existing,
         );
         return Err(AppError::BackupCreationFailed {
             diagnostic: "BACKUP_CREATION_REQUIRES_WINDOWS".to_string(),
@@ -337,16 +347,26 @@ fn configured_backup_root() -> Result<PathBuf, AppError> {
             "{BACKUP_ROOT_ENV} is empty"
         )));
     }
+
     let configured = PathBuf::from(value);
+    let configured_metadata = fs::symlink_metadata(&configured).map_err(|_| {
+        AppError::database_configuration("configured backup root cannot be inspected")
+    })?;
+    if is_symlink_or_reparse(&configured_metadata) || !configured_metadata.is_dir() {
+        return Err(AppError::database_configuration(
+            "configured backup root is not a real directory",
+        ));
+    }
+
     let canonical = configured.canonicalize().map_err(|_| {
         AppError::database_configuration("configured backup root is unavailable")
     })?;
-    let metadata = fs::symlink_metadata(&canonical).map_err(|_| {
+    let canonical_metadata = fs::symlink_metadata(&canonical).map_err(|_| {
         AppError::database_configuration("configured backup root cannot be inspected")
     })?;
-    if is_symlink_or_reparse(&metadata) || !metadata.is_dir() {
+    if is_symlink_or_reparse(&canonical_metadata) || !canonical_metadata.is_dir() {
         return Err(AppError::database_configuration(
-            "configured backup root is not a real directory",
+            "configured backup root does not resolve to a real directory",
         ));
     }
     Ok(canonical)
@@ -437,36 +457,41 @@ fn parse_bundle_identifier_time(value: &str) -> Result<OffsetDateTime, AppError>
     let timestamp = value
         .strip_prefix(backup_proof::BUNDLE_NAME_PREFIX)
         .ok_or_else(identifier_error)?;
-    if timestamp.len() != 15 || timestamp.as_bytes().get(8) != Some(&b'-') {
-        return Err(identifier_error());
-    }
-    let digits = format!("{}{}", &timestamp[..8], &timestamp[9..]);
-    if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+    let bytes = timestamp.as_bytes();
+    if bytes.len() != 15
+        || bytes[8] != b'-'
+        || !bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| index == 8 || byte.is_ascii_digit())
+    {
         return Err(identifier_error());
     }
 
-    let year = digits[0..4]
-        .parse::<i32>()
-        .map_err(|_| identifier_error())?;
-    let month = digits[4..6]
-        .parse::<u8>()
-        .map_err(|_| identifier_error())?;
-    let day = digits[6..8]
-        .parse::<u8>()
-        .map_err(|_| identifier_error())?;
-    let hour = digits[8..10]
-        .parse::<u8>()
-        .map_err(|_| identifier_error())?;
-    let minute = digits[10..12]
-        .parse::<u8>()
-        .map_err(|_| identifier_error())?;
-    let second = digits[12..14]
-        .parse::<u8>()
-        .map_err(|_| identifier_error())?;
+    let year = parse_ascii_i32(&bytes[0..4])?;
+    let month = parse_ascii_u8(&bytes[4..6])?;
+    let day = parse_ascii_u8(&bytes[6..8])?;
+    let hour = parse_ascii_u8(&bytes[9..11])?;
+    let minute = parse_ascii_u8(&bytes[11..13])?;
+    let second = parse_ascii_u8(&bytes[13..15])?;
     let month = Month::try_from(month).map_err(|_| identifier_error())?;
     let date = Date::from_calendar_date(year, month, day).map_err(|_| identifier_error())?;
     let time = Time::from_hms(hour, minute, second).map_err(|_| identifier_error())?;
     Ok(PrimitiveDateTime::new(date, time).assume_utc())
+}
+
+fn parse_ascii_i32(bytes: &[u8]) -> Result<i32, AppError> {
+    std::str::from_utf8(bytes)
+        .map_err(|_| identifier_error())?
+        .parse()
+        .map_err(|_| identifier_error())
+}
+
+fn parse_ascii_u8(bytes: &[u8]) -> Result<u8, AppError> {
+    std::str::from_utf8(bytes)
+        .map_err(|_| identifier_error())?
+        .parse()
+        .map_err(|_| identifier_error())
 }
 
 fn identifier_error() -> AppError {
@@ -692,7 +717,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_canonical_bundle_time() {
+    fn parses_canonical_bundle_time_without_panicking_on_unicode() {
         let parsed =
             parse_bundle_identifier_time("GestStock-Backup-20260803-203015").unwrap();
         assert_eq!(
@@ -700,6 +725,7 @@ mod tests {
             "GestStock-Backup-20260803-203015"
         );
         assert!(parse_bundle_identifier_time("GestStock-Backup-2026-08-03").is_err());
+        assert!(parse_bundle_identifier_time("GestStock-Backup-2026080é-203015").is_err());
     }
 
     #[test]
@@ -718,12 +744,12 @@ mod tests {
         )
         .unwrap();
 
-        rewrite_schema_metadata(&bundle, "20260803193000").unwrap();
+        rewrite_schema_metadata(&bundle, "20260803201500").unwrap();
         let validated = backup_proof::validate_bundle(&bundle).unwrap();
-        assert_eq!(validated.schema_version, "20260803193000");
+        assert_eq!(validated.schema_version, "20260803201500");
         assert_eq!(
             fs::read_to_string(bundle.join(backup_proof::SCHEMA_VERSION_FILENAME)).unwrap(),
-            "20260803193000\n"
+            "20260803201500\n"
         );
         fs::remove_dir_all(root).unwrap();
     }
