@@ -28,6 +28,7 @@ pub(crate) mod fiscal;
 pub(crate) mod procurement_service;
 pub(crate) mod receivables;
 pub(crate) mod recovery;
+pub(crate) mod recovery_creation;
 pub(crate) mod setup;
 pub(crate) mod stock_adjustment;
 pub(crate) mod stock_receipt;
