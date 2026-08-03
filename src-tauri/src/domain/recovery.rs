@@ -4,6 +4,31 @@ const REQUEST_ID_MIN_LEN: usize = 8;
 const REQUEST_ID_MAX_LEN: usize = 128;
 const PATH_MAX_LEN: usize = 4096;
 
+fn validate_request_id(request_id: &str) -> Result<(), String> {
+    let request_id = request_id.trim();
+    if !(REQUEST_ID_MIN_LEN..=REQUEST_ID_MAX_LEN).contains(&request_id.len()) {
+        return Err(format!(
+            "requestId length must be between {REQUEST_ID_MIN_LEN} and {REQUEST_ID_MAX_LEN} characters"
+        ));
+    }
+    if request_id.chars().any(char::is_control) {
+        return Err("requestId must not contain control characters".to_string());
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CreateOperatorBackupRequest {
+    pub(crate) request_id: String,
+}
+
+impl CreateOperatorBackupRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_request_id(&self.request_id)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ValidateOperatorBackupRequest {
@@ -13,15 +38,7 @@ pub(crate) struct ValidateOperatorBackupRequest {
 
 impl ValidateOperatorBackupRequest {
     pub(crate) fn validate(&self) -> Result<(), String> {
-        let request_id = self.request_id.trim();
-        if !(REQUEST_ID_MIN_LEN..=REQUEST_ID_MAX_LEN).contains(&request_id.len()) {
-            return Err(format!(
-                "requestId length must be between {REQUEST_ID_MIN_LEN} and {REQUEST_ID_MAX_LEN} characters"
-            ));
-        }
-        if request_id.chars().any(char::is_control) {
-            return Err("requestId must not contain control characters".to_string());
-        }
+        validate_request_id(&self.request_id)?;
 
         let bundle_path = self.bundle_path.trim();
         if bundle_path.is_empty() || bundle_path.len() > PATH_MAX_LEN {
@@ -52,11 +69,16 @@ pub(crate) struct OperatorBackupValidationResult {
     pub(crate) total_bytes: u64,
 }
 
+/// Creation and validation intentionally return the same safe metadata shape.
+/// Neither result exposes a credential, connection string, process output, or
+/// unrestricted filesystem path.
+pub(crate) type OperatorBackupCreationResult = OperatorBackupValidationResult;
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn valid_request() -> ValidateOperatorBackupRequest {
+    fn valid_validation_request() -> ValidateOperatorBackupRequest {
         ValidateOperatorBackupRequest {
             request_id: "validate-20260803-001".to_string(),
             bundle_path: r"C:\Stockiha Backups\GestStock-Backup-20260803-190000".to_string(),
@@ -64,20 +86,35 @@ mod tests {
     }
 
     #[test]
-    fn accepts_valid_request() {
-        assert!(valid_request().validate().is_ok());
+    fn accepts_valid_creation_request() {
+        assert!(CreateOperatorBackupRequest {
+            request_id: "create-20260803-001".to_string(),
+        }
+        .validate()
+        .is_ok());
     }
 
     #[test]
-    fn rejects_short_request_id() {
-        let mut request = valid_request();
+    fn accepts_valid_validation_request() {
+        assert!(valid_validation_request().validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_short_request_id_for_both_operations() {
+        assert!(CreateOperatorBackupRequest {
+            request_id: "short".to_string(),
+        }
+        .validate()
+        .is_err());
+
+        let mut request = valid_validation_request();
         request.request_id = "short".to_string();
         assert!(request.validate().is_err());
     }
 
     #[test]
     fn rejects_empty_bundle_path() {
-        let mut request = valid_request();
+        let mut request = valid_validation_request();
         request.bundle_path = "   ".to_string();
         assert!(request.validate().is_err());
     }
