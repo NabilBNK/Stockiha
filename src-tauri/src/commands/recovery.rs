@@ -18,18 +18,27 @@ pub(crate) async fn validate_operator_backup(
         .await
         .map_err(IpcError::from)?;
 
-    let ValidationAttempt::Run {
+    let (
         attempt_id,
         request_id,
         bundle_path,
         bundle_identifier,
         current_schema_version,
-    } = attempt
-    else {
-        let ValidationAttempt::Replay(result) = attempt else {
-            unreachable!("validation attempt has only run or replay variants")
-        };
-        return Ok(result);
+    ) = match attempt {
+        ValidationAttempt::Replay(result) => return Ok(result),
+        ValidationAttempt::Run {
+            attempt_id,
+            request_id,
+            bundle_path,
+            bundle_identifier,
+            current_schema_version,
+        } => (
+            attempt_id,
+            request_id,
+            bundle_path,
+            bundle_identifier,
+            current_schema_version,
+        ),
     };
 
     let validation = tauri::async_runtime::spawn_blocking(move || {
