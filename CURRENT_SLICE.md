@@ -5,9 +5,9 @@
 ## Released baseline
 
 - **Branch:** `main`
-- **Commit:** `c767e47a111700198d47cc6531d57a2e950216fc`
+- **Commit:** `0bde507d8e3bc1d503314f9a1afd3ff9d19f4726`
 - **Verified boundary:** UI foundation, S0 through S4-003, and R2 supplier-accounting repair
-- **Integrated work:** PR #11 (S4-003 + R2) merged; PR #9 superseded
+- **Integrated work:** PR #11 (S4-003 + R2) and PR #12 (tracker synchronization) merged
 
 ## Completed recent work
 
@@ -16,20 +16,32 @@
 - **MVP financial boundary:** TVA and discounts remain deferred. Non-zero values are rejected rather than posted under guessed rules.
 - **CI:** current migration and SQL regression coverage passed on the exact merge candidate.
 
-## Current roadmap position
+## Current implementation slice
 
-**Next critical path:** R0/R4/R5 — establish the data-onboarding contract, prove spreadsheet parsing against representative anonymized workbooks, then implement a reconciled opening-state import.
+- **Roadmap step:** R6 — productionize database configuration and recovery
+- **Slice:** R6-001 — operator backup creation and bundle validation
+- **Branch:** `task/r6-001-operator-backup-validation`
+- **Status:** specification committed; implementation starting
+- **Safety boundary:** backup creation and read-only validation only. No live restore command or destructive database replacement is authorized in this slice.
+- **Specification:** [`docs/slices/R6-001-operator-backup-validation.md`](./docs/slices/R6-001-operator-backup-validation.md)
+
+R6-001 proceeds while representative physical paperwork is unavailable. It does not replace the R0/R4/R5 data-onboarding critical path.
+
+## Data-onboarding critical path
+
+**R0/R4/R5 remain launch-critical:** establish the data-onboarding contract, prove parsing against representative anonymized/transcribed source files, then implement a reconciled opening-state import.
 
 Required before a live import:
 
-1. Anonymized representative source files and their expected totals.
+1. Representative source material and independently checked expected totals.
 2. A decision to import opening operational state into live ledgers and retain historical documents separately, or to require a full historical replay.
 3. Approved mapping/reconciliation rules for the selected source columns.
 
-R6 (operator backup/restore) may proceed in parallel once the pilot database shape and operational workflow are selected.
+The existing 1.5 years of physical paperwork is retained as source history. It is not silently replayed into live stock, cash, AR, AP, or journals.
 
 ## Explicitly deferred
 
+- Live database restore or replacement until temporary-restore reconciliation and destructive-operation safety are implemented and proven
 - TVA, HT/TTC, and discount calculation/posting
 - Historical transaction replay unless separately approved
 - Payroll, broad returns/transfers, advanced analytics, automatic updating, and unselected hardware/package work
