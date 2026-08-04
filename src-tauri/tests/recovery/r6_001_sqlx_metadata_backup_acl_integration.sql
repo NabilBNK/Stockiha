@@ -5,6 +5,12 @@
 
 DO $$
 BEGIN
+    ASSERT NOT (
+        SELECT rolcanlogin
+        FROM pg_roles
+        WHERE rolname = 'stockiha_owner'
+    ), 'The owner role must remain NOLOGIN; backup setup must never require owner login';
+
     ASSERT has_schema_privilege('stockiha_backup', 'public', 'USAGE'),
         'Backup role must have USAGE on public for SQLx migration metadata';
 
