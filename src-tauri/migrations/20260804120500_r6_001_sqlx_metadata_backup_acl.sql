@@ -8,11 +8,10 @@
 --
 -- This migration keeps `stockiha_owner` NOLOGIN and grants the fixed backup
 -- role read-only access only to SQLx's metadata table when it exists. Raw-SQL
--- deployments that do not create the table remain supported.
+-- deployments that do not create the table remain supported. PostgreSQL 18
+-- grants USAGE on `public` by default; the migration intentionally does not
+-- change schema ownership or broaden CREATE privileges.
 RESET ROLE;
-
-REVOKE CREATE ON SCHEMA public FROM stockiha_backup;
-GRANT USAGE ON SCHEMA public TO stockiha_backup;
 
 DO $$
 BEGIN
