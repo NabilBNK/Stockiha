@@ -2,24 +2,26 @@
 
 ## Status
 
-Implementation is complete on draft PR #13. Automated verification is running on the exact hardened head. Real Windows/Tauri creation, independent checksum verification, and tamper-detection evidence remain mandatory before the PR may leave draft state.
+Implementation remains on draft PR #13. Exact-head automated verification and one clean Windows/Tauri acceptance run are required before the PR may leave draft state.
 
 ## Objective
 
-Turn the existing S0-009 backup proof into a typed, permission-controlled operator workflow that can:
+Turn the existing backup proof into a typed, permission-controlled operator workflow that can:
 
 1. create a complete Stockiha backup bundle;
 2. validate an existing bundle without modifying the live database;
-3. return a redacted, auditable result suitable for a Settings/Recovery screen.
+3. return a redacted, auditable result suitable for Settings → Backup and recovery.
 
 ## Safety boundary
 
-This slice **must not**:
+This slice must not:
 
 - restore into or replace the live database;
-- delete, overwrite, or silently reuse an unrelated existing bundle directory;
+- delete, overwrite, or silently reuse an unrelated existing bundle;
 - accept caller-supplied PostgreSQL roles, credentials, database URLs, asset paths, destination roots, or dump executables;
 - expose credential bytes, connection strings, filesystem diagnostics, or child-process output through IPC;
+- make `stockiha_owner` login-capable;
+- require manual schema ownership or ACL repair;
 - claim that restore or production startup configuration is complete.
 
 Live restore, temporary-database reconciliation, retention, scheduling, and production credential-backed startup remain later R6 work.
@@ -46,175 +48,71 @@ Both commands use typed request/response DTOs and stable public error codes. Int
 
 The request contains only an idempotency request id. The backend resolves:
 
-- the configured `STOCKIHA_BACKUP_ROOT`;
-- the fixed `stockiha_backup` PostgreSQL role;
-- the fixed Windows Credential Manager target;
-- the PostgreSQL host, port, and database from the existing application database configuration;
-- the PostgreSQL 18 `pg_dump` executable;
-- fixed application-data locations for attachments, generated customer documents, and company assets.
+- configured `STOCKIHA_BACKUP_ROOT`;
+- fixed `stockiha_backup` PostgreSQL role;
+- fixed Windows Credential Manager target;
+- host, port, and database from application database configuration;
+- PostgreSQL 18 `pg_dump`;
+- fixed application-data asset locations.
 
-Creation flow:
-
-1. reject a missing, non-directory, symlink, or Windows reparse-point backup root;
-2. reserve the request and bundle identifier in the database audit;
-3. discover and require PostgreSQL 18 `pg_dump`;
-4. read the fixed backup credential without logging or returning it;
-5. create the bundle in a hidden staging directory on the destination filesystem;
-6. replace the proof-only schema value with the database-owned migration version and regenerate manifest/checksums;
-7. validate the staged bundle;
-8. atomically publish it without overwrite;
-9. validate the published bundle again;
-10. complete the audit with safe metadata only.
-
-If publication succeeded but audit completion failed, retrying the same request validates and returns that exact published bundle instead of creating a duplicate. A first attempt never reuses a pre-existing directory.
+Creation stages the bundle on the destination filesystem, rewrites real recoverable schema metadata, validates before publication, publishes atomically without overwrite, validates again, and records only safe result metadata.
 
 ### Read-only validation
 
-Validation verifies:
+Validation checks root containment, original paths before canonicalization, symlinks and Windows reparse points, layout, manifest, required files, dump non-emptiness, sizes, SHA-256 values, traversal, and application/schema/PostgreSQL compatibility. Invalid bundles are never changed or repaired.
 
-- configured-root and direct-child containment;
-- the original selected root/bundle path before canonicalization;
-- symlink and Windows reparse-point rejection;
-- bundle layout and required directories/files;
-- manifest format and schema;
-- path traversal and canonical containment;
-- dump non-emptiness;
-- all recorded SHA-256 checksums and file sizes;
-- application, schema, and PostgreSQL compatibility metadata.
+## SQLx metadata compatibility
 
-Invalid bundles are never modified or repaired.
+Windows acceptance exposed that `sqlx migrate` creates `public._sqlx_migrations` before repository migrations. That table is not directly owned by `stockiha_owner`, so the previous owner-schema ACL sweep did not cover it and PostgreSQL `pg_dump` could fail.
 
-### Safe result
+Forward migration `20260804120500_r6_001_sqlx_metadata_backup_acl.sql` grants `stockiha_backup` read-only `SELECT` on `public._sqlx_migrations` when present. It does not:
 
-Creation and validation return only:
+- make `stockiha_owner` login-capable;
+- change `public` schema ownership;
+- grant CREATE;
+- grant writes to SQLx metadata;
+- broaden access to unrelated public objects.
 
-- request id;
-- bundle identifier/name;
-- creation timestamp label;
-- application version;
-- schema/migration version;
-- PostgreSQL major version;
-- integrity and compatibility flags;
-- total bundle bytes and file count.
+CI now creates a representative SQLx metadata table outside `stockiha_owner` ownership before repository migrations and requires:
 
-No credential, connection string, database URL, process output, or unrestricted filesystem path is returned.
+- `stockiha_owner` to remain `NOLOGIN`;
+- backup SELECT access to SQLx metadata;
+- no INSERT, UPDATE, DELETE, or TRUNCATE access;
+- a successful PostgreSQL 18 custom-format `pg_dump` as `stockiha_backup`.
 
 ## Frontend
 
-Settings now supports:
+Settings supports:
 
 - creating a backup in the configured root;
 - selecting and validating an existing backup;
-- one global in-flight lock to prevent duplicate submissions;
+- one global in-flight lock;
 - safe success and failure states;
 - EN/FR/AR copy and RTL behavior;
-- a clear warning that restore is unavailable.
+- an explicit warning that restore is unavailable.
 
-## Automated verification
+## Windows acceptance requirements
 
-Covered by unit, SQL, and frontend workflow tests:
+Acceptance must use:
 
-- authorization and role defaults;
-- request replay/idempotency;
-- actor/workstation ownership;
-- same-name creation collision rejection;
-- root/path containment;
-- existing destination behavior;
-- PostgreSQL version and credential proof mappings;
-- interrupted creation cleanup through staged-directory guards;
-- manifest/checksum rewriting with the real schema version;
-- tamper/layout/path traversal/symlink proof coverage;
-- redacted creation and validation errors;
-- request-id-only creation payload;
-- duplicate-submit prevention;
-- EN/FR/AR and RTL states;
-- proof that no restore command is registered.
+1. A fresh dedicated test database.
+2. Normal role posture, including `stockiha_owner NOLOGIN` throughout.
+3. The normal SQLx migration path without manual schema ownership or ACL repair.
+4. The official `scripts/r6-001-provision-backup-credential.ps1` helper only.
+5. A new empty backup root.
+6. Creation through the real Tauri Settings UI.
+7. Complete sanitized JSON from `scripts/r6-001-verify-bundle.ps1`.
+8. A copied tampered bundle rejected by the application.
+9. Revalidation of the untouched original.
+10. A clean working tree and preserved stashes.
 
-## Windows acceptance procedure
+Evidence is rejected if it contains passwords, complete database URLs, credential bytes, secret-bearing commands, custom credential provisioning code, manual owner-login changes, manual schema ownership changes, manual ACL repair, or temporary weakening of PostgreSQL authentication.
 
-Use a dedicated local test database, never a live production database.
-
-### 1. Prepare configuration
-
-Set the existing development database URL, a real backup directory, and the PostgreSQL 18 `pg_dump.exe` path in the same PowerShell session that starts Tauri:
-
-```powershell
-$env:STOCKIHA_DEV_DATABASE_URL = 'postgres://stockiha_runtime:<runtime-password>@127.0.0.1:5432/stockiha_test?sslmode=disable'
-$env:STOCKIHA_BACKUP_ROOT = 'C:\Stockiha-R6-Test-Backups'
-$env:STOCKIHA_PG_DUMP_PATH = 'C:\Program Files\PostgreSQL\18\bin\pg_dump.exe'
-New-Item -ItemType Directory -Force -Path $env:STOCKIHA_BACKUP_ROOT | Out-Null
-```
-
-Do not paste real credentials into logs, screenshots, issue comments, or chat.
-
-### 2. Set the PostgreSQL backup-role password
-
-Open `psql` as an authorized local administrator and use its interactive hidden prompt:
-
-```text
-\password stockiha_backup
-```
-
-The role must remain `LOGIN`, `NOINHERIT`, non-superuser, and without owner membership.
-
-### 3. Provision the matching Credential Manager secret
-
-Run the repository helper and enter the same password at its hidden prompt:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\r6-001-provision-backup-credential.ps1
-```
-
-The helper writes and verifies only the fixed target `Stockiha/PostgreSQL/backup/password` as raw UTF-8 bytes. It never passes the password through Tauri IPC or prints it.
-
-### 4. Run Stockiha and create the bundle
-
-```powershell
-npm ci
-npm run tauri dev
-```
-
-Sign in as an administrator, open **Settings → Backup and recovery**, and select **Create backup**. Record only the returned safe metadata and bundle identifier.
-
-### 5. Independently verify checksums
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\r6-001-verify-bundle.ps1 `
-  -BundlePath 'C:\Stockiha-R6-Test-Backups\GestStock-Backup-YYYYMMDD-HHMMSS'
-```
-
-The script independently parses `checksums.sha256` and `manifest.json`, rejects traversal/reparse points, recomputes SHA-256, checks file sizes, and emits safe JSON evidence.
-
-### 6. Create a tampered copy
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\r6-001-verify-bundle.ps1 `
-  -BundlePath 'C:\Stockiha-R6-Test-Backups\GestStock-Backup-YYYYMMDD-HHMMSS' `
-  -CreateTamperedCopy
-```
-
-The script copies the valid bundle to a new canonical bundle name and appends one byte to the copied `database.dump`. It never changes the original.
-
-Use the Settings validation action on the returned tampered path. The expected public result is `BACKUP_VALIDATION_FAILED`. Then validate the original again and confirm it still succeeds.
-
-### 7. Capture evidence
-
-Record:
-
-- exact branch commit;
-- PostgreSQL and `pg_dump` major version;
-- safe creation result;
-- independent verifier JSON;
-- tampered bundle rejection;
-- original bundle revalidation;
-- confirmation that no restore action exists.
-
-Redact passwords, URLs containing passwords, local usernames, and unrelated filesystem paths.
-
-## Remaining completion evidence
+## Remaining completion gate
 
 - exact final commit SHA and green exact-head CI;
-- Windows/Tauri backup creation against a dedicated test database;
-- independent checksum verification of the created bundle;
-- tamper-detection evidence on a copied bundle;
-- proof that no live restore command is registered.
+- clean Windows/Tauri backup creation against a fresh dedicated test database;
+- independent checksum verification;
+- copied-bundle tamper rejection;
+- untouched-original revalidation;
+- confirmation that no restore command exists.
