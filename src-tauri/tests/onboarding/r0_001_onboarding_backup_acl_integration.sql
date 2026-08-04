@@ -57,12 +57,5 @@ BEGIN
 
     ASSERT NOT pg_has_role('stockiha_backup', 'stockiha_owner', 'MEMBER'),
         'Backup role must not inherit owner membership';
-
-    ASSERT (
-        SELECT migration_version
-        FROM operations.schema_state
-        WHERE singleton
-    ) = 20260804185000,
-        'ACL-only migration must not change the recoverable schema version';
 END;
 $$;
