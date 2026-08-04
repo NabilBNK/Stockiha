@@ -1,11 +1,12 @@
 //! Infrastructure layer — technical adapters that connect the application to
 //! external systems (S0-003: PostgreSQL via SQLx). No business logic lives here.
 
-// S0-009: Backup bundle creation proof. Crate-private and consumer-free (no
-// Tauri command, no IPC); dead code in non-test builds until a later slice
-// runs real scheduled backups. The exemption is removed then.
+// S0-009/R6-001: backup bundle creation proof and authoritative read-only
+// validator. R6-001 consumes validation through the recovery application
+// service; creation remains unexposed until its schema/version metadata and
+// production configuration boundary are completed.
 #[cfg_attr(not(test), allow(dead_code))]
-mod backup_proof;
+pub(crate) mod backup_proof;
 pub(crate) mod bootstrap;
 // S0-005: Windows Credential Manager proof. Crate-private. S0-009 is a real
 // consumer of `CredentialTarget::Backup` / `read_secret` on Windows, but most

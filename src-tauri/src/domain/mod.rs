@@ -16,6 +16,7 @@ pub(crate) mod procurement;
 mod product;
 mod queue;
 pub(crate) mod receivables;
+pub(crate) mod recovery;
 pub(crate) mod residual;
 mod sale;
 pub(crate) mod stock;
