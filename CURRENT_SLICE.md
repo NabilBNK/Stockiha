@@ -19,17 +19,16 @@
 ## Current implementation slice
 
 - **Roadmap path:** R0/R4/R5 — historical finance onboarding and opening-state preparation
-- **Slice:** R0-001 — finance-only historical staging contract
+- **Slice:** R0-001 — finance-only historical onboarding
 - **Branch:** `task/r0-001-paper-intake-contract`
-- **PR:** not opened yet
-- **Confirmed workflow:** paid employee enters 1.5 years of paper history manually; controlled Excel is primary; direct Stockiha entry is secondary; scanning every paper is not required; product-level reconstruction is excluded by default.
+- **PR:** #14, draft
+- **Confirmed workflow:** a paid employee enters 1.5 years of paper history manually; the controlled Excel workbook is primary; direct Stockiha entry is secondary; scanning every paper is not required; product-level reconstruction is excluded by default.
 - **Implemented on branch:**
-  - clarified finance-only onboarding contract;
-  - representative fixture retained as transcription evidence only;
-  - isolated `onboarding` schema;
-  - CEO/administrator-visible historical-import setting, default ON;
+  - finance-only onboarding contract and representative fixtures;
+  - isolated `onboarding` staging schema;
+  - administrator-visible import setting, default ON, with immutable setting-change audit;
   - administrator-only manage/review permissions;
-  - replay-safe EXCEL/MANUAL batches;
+  - replay-safe `EXCEL` and `MANUAL` batches;
   - minimal transaction rows matching the approved workbook columns;
   - optional supplier/fournisseur and customer/client fields;
   - opening/closing balance rows, including inventory value;
@@ -38,9 +37,17 @@
   - audited approval for historical reporting only;
   - preliminary and inventory-adjusted finance summary functions;
   - explicit no-direct-posting boundary for stock, cash, AR, AP, and journals;
-  - SQL regression coverage registered in the current database suite.
-- **Current automated gate:** exact-head migration and SQL regression CI must pass.
-- **Next implementation increment after schema validation:** typed Tauri commands, `.xlsx` parser for the official minimal template, direct-entry fallback, review UI, and historical finance summary screen.
+  - read-only backup ACL for all onboarding evidence;
+  - typed Rust application services and Tauri commands;
+  - typed frontend IPC gateway and DTOs;
+  - constrained `.xlsx` parser for the official two-sheet template;
+  - formula rejection, archive/path/size/integrity guards, exact-header checks, and row limits;
+  - direct-entry fallback form;
+  - Excel staging, validation, approval, feature-toggle, and historical-summary UI;
+  - EN/FR/AR copy and RTL behavior;
+  - focused frontend, Rust, SQL, backup, and workflow regressions.
+- **Automated evidence before final documentation sync:** frontend typecheck/lint/tests/build and the complete PostgreSQL migration/backup/SQL/concurrency gate passed. Exact final-head CI remains mandatory after this tracker update.
+- **Remaining R0-001 gate:** one targeted Windows/Tauri acceptance using a small populated copy of the official workbook, plus one manual-entry row and a historical summary check.
 
 ## Safety boundary
 
