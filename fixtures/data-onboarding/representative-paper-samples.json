@@ -1,0 +1,129 @@
+{
+  "fixtureVersion": 1,
+  "sourceDate": "2026-08-04",
+  "currencyEncoding": "UNCONFIRMED_INTEGER_AS_WRITTEN",
+  "approvalState": "TRANSCRIPTION_PROOF_ONLY",
+  "documents": [
+    {
+      "fixtureId": "paper-01",
+      "sourceFamily": "HANDWRITTEN_NOTE",
+      "sourceReferenceRaw": "13",
+      "documentDateRaw": "06-07-2026?",
+      "transactionDirection": "UNKNOWN",
+      "paymentState": "UNPAID",
+      "paymentAnnotationRaw": "غير خالص",
+      "lines": [
+        {"order": 1, "quantity": 6, "unitPrice": 10900, "writtenTotal": 65400, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 2, "quantity": 5, "unitPrice": 9800, "writtenTotal": 49000, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 3, "quantity": 6, "unitPrice": 6500, "writtenTotal": 39000, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 4, "quantity": 1, "unitPrice": 6600, "writtenTotal": 6600, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 5, "quantity": 4, "unitPrice": 5800, "writtenTotal": 23200, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"}
+      ],
+      "calculatedLineSubtotal": 183200,
+      "writtenSubtotal": 183200,
+      "adjustments": [
+        {"amount": 1000, "raw": "+1000", "meaning": "UNKNOWN", "confidence": "MEDIUM"}
+      ],
+      "writtenNetTotal": null,
+      "reviewFlags": ["CONFIRM_DATE", "CONFIRM_DIRECTION", "MAP_COUNTERPARTY", "MAP_PRODUCTS", "CONFIRM_ADJUSTMENT_MEANING", "CONFIRM_CURRENCY_SCALE"]
+    },
+    {
+      "fixtureId": "paper-02",
+      "sourceFamily": "PRINTED_DELIVERY_SLIP",
+      "sourceReferenceRaw": "04 / printed number unclear",
+      "documentDateRaw": null,
+      "transactionDirection": "UNKNOWN",
+      "paymentState": "UNKNOWN",
+      "lines": [
+        {"order": 1, "quantity": 7, "unitPrice": 2600, "writtenTotal": 18200, "descriptionRaw": null, "confidence": "MEDIUM_NUMERIC_LOW_TEXT"},
+        {"order": 2, "quantity": 1, "unitPrice": 5800, "writtenTotal": 5800, "descriptionRaw": null, "confidence": "MEDIUM_NUMERIC_LOW_TEXT"},
+        {"order": 3, "quantity": 1, "unitPrice": 9000, "writtenTotal": 9000, "descriptionRaw": null, "confidence": "MEDIUM_NUMERIC_LOW_TEXT"}
+      ],
+      "calculatedLineSubtotal": 33000,
+      "writtenSubtotal": null,
+      "adjustments": [],
+      "writtenNetTotal": null,
+      "reviewFlags": ["VERIFY_ALL_NUMBERS_FROM_ORIGINAL", "CONFIRM_DATE", "CONFIRM_DIRECTION", "MAP_COUNTERPARTY", "MAP_PRODUCTS", "RECONCILE_WRITTEN_TOTAL", "CONFIRM_CURRENCY_SCALE"]
+    },
+    {
+      "fixtureId": "paper-03",
+      "sourceFamily": "HANDWRITTEN_NOTE",
+      "sourceReferenceRaw": "12",
+      "documentDateRaw": "21-06-2016/2026?",
+      "transactionDirection": "UNKNOWN",
+      "paymentState": "UNKNOWN",
+      "lines": [
+        {"order": 1, "quantity": 7, "unitPrice": 6400, "writtenTotal": 44800, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"}
+      ],
+      "calculatedLineSubtotal": 44800,
+      "writtenSubtotal": 44800,
+      "adjustments": [],
+      "writtenNetTotal": 44800,
+      "reviewFlags": ["CONFIRM_YEAR", "CONFIRM_DIRECTION", "MAP_COUNTERPARTY", "MAP_PRODUCT", "CONFIRM_CURRENCY_SCALE"]
+    },
+    {
+      "fixtureId": "paper-04",
+      "sourceFamily": "HANDWRITTEN_NOTE",
+      "sourceReferenceRaw": "3",
+      "documentDateRaw": "18-05-2026?",
+      "transactionDirection": "UNKNOWN",
+      "paymentState": "UNKNOWN",
+      "lines": [
+        {"order": 1, "quantity": 24, "unitPrice": 5500, "writtenTotal": 132000, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 2, "quantity": 24, "unitPrice": 5500, "writtenTotal": 132000, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 3, "quantity": 24, "unitPrice": 6600, "writtenTotal": 158400, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 4, "quantity": 12, "unitPrice": 1450, "writtenTotal": 17400, "descriptionRaw": null, "confidence": "MEDIUM_NUMERIC_LOW_TEXT"}
+      ],
+      "calculatedLineSubtotal": 439800,
+      "writtenSubtotal": 422400,
+      "adjustments": [
+        {"amount": -500, "raw": "-500?", "meaning": "UNKNOWN", "confidence": "LOW"}
+      ],
+      "writtenNetTotal": null,
+      "reviewFlags": ["CONFIRM_DATE", "CONFIRM_DIRECTION", "MAP_COUNTERPARTY", "MAP_PRODUCTS", "CONFIRM_LINE4_RELATION", "CONFIRM_ADJUSTMENT", "RECONCILE_NET_TOTAL", "CONFIRM_CURRENCY_SCALE"]
+    },
+    {
+      "fixtureId": "paper-05",
+      "sourceFamily": "HANDWRITTEN_NOTE",
+      "sourceReferenceRaw": "3",
+      "documentDateRaw": null,
+      "secondaryDateRaw": "10-06-2026?",
+      "transactionDirection": "UNKNOWN",
+      "paymentState": "PAID",
+      "paymentAnnotationRaw": "خالص",
+      "lines": [
+        {"order": 1, "quantity": 10, "unitPrice": 5300, "writtenTotal": 53000, "descriptionRaw": null, "confidence": "LOW_NUMERIC_LOW_TEXT"},
+        {"order": 2, "quantity": 20, "unitPrice": 2100, "writtenTotal": 42000, "descriptionRaw": null, "confidence": "MEDIUM_NUMERIC_LOW_TEXT"}
+      ],
+      "calculatedLineSubtotal": 95000,
+      "writtenSubtotal": null,
+      "adjustments": [
+        {"amount": -7500, "raw": "-7500", "meaning": "UNKNOWN", "confidence": "MEDIUM"}
+      ],
+      "writtenNetTotal": null,
+      "reviewFlags": ["VERIFY_ALL_NUMBERS_FROM_ORIGINAL", "CONFIRM_PRIMARY_DATE", "CONFIRM_SETTLEMENT_DATE", "CONFIRM_DIRECTION", "MAP_COUNTERPARTY", "MAP_PRODUCTS", "CONFIRM_ADJUSTMENT_MEANING", "CONFIRM_CURRENCY_SCALE"]
+    },
+    {
+      "fixtureId": "paper-06",
+      "sourceFamily": "HANDWRITTEN_NOTE",
+      "sourceReferenceRaw": "8",
+      "documentDateRaw": "21-07-2026?",
+      "transactionDirection": "UNKNOWN",
+      "paymentState": "UNKNOWN",
+      "lines": [
+        {"order": 1, "quantity": 2, "unitPrice": 13500, "writtenTotal": 27000, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 2, "quantity": 1, "unitPrice": 14500, "writtenTotal": 14500, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 3, "quantity": 8, "unitPrice": 4700, "writtenTotal": 37600, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 4, "quantity": 1, "unitPrice": 11400, "writtenTotal": 11400, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"},
+        {"order": 5, "quantity": 5, "unitPrice": 5800, "writtenTotal": 29000, "descriptionRaw": null, "confidence": "HIGH_NUMERIC_LOW_TEXT"}
+      ],
+      "calculatedLineSubtotal": 119500,
+      "writtenSubtotal": 119500,
+      "adjustments": [
+        {"amount": -500, "raw": "-500", "meaning": "UNKNOWN", "confidence": "MEDIUM"}
+      ],
+      "writtenNetTotal": 119000,
+      "reviewFlags": ["CONFIRM_DATE", "CONFIRM_DIRECTION", "MAP_COUNTERPARTY", "MAP_PRODUCTS", "CONFIRM_ADJUSTMENT_MEANING", "CONFIRM_CURRENCY_SCALE"]
+    }
+  ]
+}
