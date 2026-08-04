@@ -18,12 +18,23 @@ DECLARE
     v_failed_attempt_id bigint;
     v_denied boolean := false;
     v_conflict boolean := false;
-    v_result jsonb := jsonb_build_object(
+    v_schema_version text;
+    v_result jsonb;
+BEGIN
+    SELECT migration_version::text
+    INTO v_schema_version
+    FROM operations.schema_state
+    WHERE singleton;
+
+    ASSERT v_schema_version IS NOT NULL,
+        'Recovery schema version must exist in database state';
+
+    v_result := jsonb_build_object(
         'requestId', 'r6-validate-0001',
         'bundleIdentifier', 'GestStock-Backup-20260803-195700',
         'createdAtLabel', '20260803-195700',
         'applicationVersion', '0.1.0',
-        'schemaVersion', '20260803201500',
+        'schemaVersion', v_schema_version,
         'postgresMajorVersion', 18,
         'integrityValid', true,
         'applicationCompatible', true,
@@ -32,7 +43,7 @@ DECLARE
         'fileCount', 7,
         'totalBytes', 2048
     );
-BEGIN
+
     INSERT INTO iam.users (username, display_name, password_hash)
     VALUES ('r6_001_admin', 'R6 Admin', 'hash')
     RETURNING id INTO v_admin_id;
@@ -104,7 +115,7 @@ BEGIN
 
     ASSERT v_started ->> 'status' = 'STARTED', 'First request must start';
     ASSERT (v_started ->> 'is_replay')::boolean = false, 'First request is not a replay';
-    ASSERT v_started ->> 'current_schema_version' = '20260803201500',
+    ASSERT v_started ->> 'current_schema_version' = v_schema_version,
         'Recovery schema version must be database-authoritative';
     ASSERT v_started ->> 'bundle_identifier' = 'GestStock-Backup-20260803-195700',
         'Begin response must return the database-owned bundle identifier';
