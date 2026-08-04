@@ -114,7 +114,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      - name: Bootstrap database roles
+      - name: Bootstrap database roles and representative SQLx metadata
         run: |
           psql "$ADMIN_URL" -v ON_ERROR_STOP=1 <<'SQL'
           CREATE ROLE stockiha_owner NOLOGIN;
@@ -122,6 +122,32 @@ jobs:
           CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
           CREATE ROLE stockiha_backup LOGIN PASSWORD 'backup_ci_password';
           GRANT CREATE ON DATABASE stockiha_ci_test TO stockiha_owner;
+
+          -- `sqlx migrate` creates this table before repository migrations.
+          -- Keep it outside stockiha_owner ownership so CI reproduces the
+          -- Windows acceptance failure mode instead of bypassing it.
+          CREATE TABLE public._sqlx_migrations (
+            version bigint PRIMARY KEY,
+            description text NOT NULL,
+            installed_on timestamptz NOT NULL DEFAULT now(),
+            success boolean NOT NULL,
+            checksum bytea NOT NULL,
+            execution_time bigint NOT NULL
+          );
+          ALTER TABLE public._sqlx_migrations OWNER TO stockiha_migrator;
+          INSERT INTO public._sqlx_migrations (
+            version,
+            description,
+            success,
+            checksum,
+            execution_time
+          ) VALUES (
+            1,
+            'ci representative metadata',
+            true,
+            decode('00', 'hex'),
+            1
+          );
           SQL
 
       - name: Apply all migrations in filename order
