@@ -1,154 +1,196 @@
-# R0-001 — Representative Paper Intake Contract
+# R0-001 — Historical Finance Onboarding Contract
 
 ## Status
 
-This contract is based on six representative physical-paper images supplied on 4 August 2026. It establishes the minimum safe data shape for digitizing historical paperwork without silently posting uncertain history into live stock, cash, receivables, payables, or journals.
+This contract reflects the confirmed business workflow on 4 August 2026:
 
-The source images remain the authority. Transcription is reviewable evidence, not a replacement for the original paper.
+1. The 1.5 years of physical paperwork will be read and entered manually by a paid employee.
+2. A controlled Excel workbook is the primary high-volume entry path.
+3. Direct entry inside Stockiha is the secondary path for corrections, missing rows, and smaller batches.
+4. Scanning or photographing every paper is **not required**.
+5. Historical product and supply-line details are not required unless needed to understand a document total.
+6. The historical backlog exists primarily to reconstruct finance: sales, purchases, expenses, payments, balances, and an inventory-adjusted profit/loss estimate.
 
-## Observed source families
+The physical papers remain the external source evidence. Stockiha preserves the employee's `Paper_ID`, review status, and audit trail, but does not require a digital image attachment for MVP import.
 
-### 1. Free-form handwritten notes
+## Primary and secondary workflows
 
-Five samples use blank paper with no stable column layout. Common characteristics:
+### Primary: controlled Excel import
 
-- a small sequence/reference number near the top-left;
-- one or more handwritten dates;
-- Arabic product/customer text;
-- arithmetic written as `quantity × unit price = line total`;
-- handwritten subtotal or net total;
-- later additions, deductions, corrections, or payment annotations;
-- red ink used for material annotations such as payment status or a later date.
+The employee enters one summary row per paper in the official Stockiha workbook. The required columns are ordered first:
 
-### 2. Printed delivery slip
+- `Paper_ID`
+- `Transaction_Date`
+- `Transaction_Type`
+- `Description_or_Category`
+- `Net_Amount_DZD`
+- `Payment_Status`
+- `Review_Status`
 
-One sample is a bilingual Arabic/French **BON DE LIVRAISON** form with printed fields for:
+Optional columns:
 
-- document number;
-- date;
-- delivered-to party;
-- quantity;
-- designation;
-- unit price;
-- line total;
-- document total.
+- `Amount_Paid_DZD_Optional`
+- `Expense_Category_Optional`
+- `Supplier_Fournisseur_Optional`
+- `Customer_Client_Optional`
+- `Notes_Optional`
 
-The handwriting still crosses printed columns, so the form structure helps but does not make unattended OCR reliable.
+A second `Balances` sheet records opening/closing cash, bank, inventory value, receivables, payables, loans, tax, and owner capital.
 
-## Evidence-backed observations
+### Secondary: direct Stockiha entry
 
-The following numeric observations are readable enough to demonstrate the required reconciliation model. They are not approved historical entries.
+The application uses the same fields and staging tables for:
 
-| Sample | Readable arithmetic | Observation |
-|---|---|---|
-| Paper 01 | `6×10900=65400`, `5×9800=49000`, `6×6500=39000`, `1×6600=6600`, `4×5800=23200` | Line arithmetic totals `183200`; a red unpaid annotation and a separate `+1000` appear to exist. |
-| Paper 02 | approximately `7×2600=18200`, `1×5800=5800`, `1×9000=9000` | Printed delivery form; written final total is visually ambiguous and must be reviewed against the line arithmetic. |
-| Paper 03 | `7×6400=44800` | One-line handwritten document with a written total of `44800`. |
-| Paper 04 | `24×5500=132000`, `24×5500=132000`, `24×6600=158400`, `12×1450=17400` | The first three lines total `422400`; an additional line and a possible deduction require explicit adjustment capture. |
-| Paper 05 | approximately `10×5300=53000`, `20×2100=42000` | A separate `-7500` and a later red paid annotation/date appear. Exact net semantics require review. |
-| Paper 06 | `2×13500=27000`, `1×14500=14500`, `8×4700=37600`, `1×11400=11400`, `5×5800=29000` | Line arithmetic totals `119500`; a written `-500` likely produces `119000`, but this must remain an explicit adjustment pending review. |
+- one-off historical rows;
+- corrections after Excel validation;
+- rows that were missing from the workbook;
+- small additional batches after the bulk import.
 
-Product descriptions, counterparty names, and some dates are not consistently legible enough to approve from these images alone. The system must preserve raw text and uncertainty rather than normalize guesses.
+Excel and direct entry must never create separate financial models.
 
-## Required document fields
+## Historical transaction types
 
-Every paper document must retain:
+Allowed transaction types:
 
-- immutable source-image identifier;
-- source-image SHA-256;
-- original filename and capture timestamp;
-- source family: `HANDWRITTEN_NOTE` or `PRINTED_DELIVERY_SLIP`;
-- source reference/sequence as raw text;
-- primary document date, when confidently known;
-- secondary annotation/payment date, when present;
-- transaction direction: `UNKNOWN`, `CUSTOMER_DELIVERY`, `SUPPLIER_DELIVERY`, `RETURN`, or `OTHER`;
-- counterparty raw text;
-- optional mapped customer or supplier identifier;
-- payment state: `UNKNOWN`, `PAID`, `UNPAID`, or `PARTIAL`;
-- written subtotal;
-- signed adjustment amount;
-- written net total;
-- calculated line subtotal;
-- reconciliation variance;
-- free-form notes;
-- transcription confidence and reviewer status.
+- `SALE`
+- `PURCHASE`
+- `EXPENSE`
+- `OTHER_INCOME`
+- `CUSTOMER_REFUND`
+- `SUPPLIER_REFUND`
+- `LOAN_RECEIVED`
+- `LOAN_REPAYMENT`
+- `OWNER_CONTRIBUTION`
+- `OWNER_WITHDRAWAL`
+- `TAX_PAYMENT`
+- `SALARY`
+- `OTHER`
 
-## Required line fields
+Owner contributions and loans must not be reported as sales revenue. Loan repayments and owner withdrawals must not be treated as merchandise purchases.
 
-Each line must retain:
+## Historical balance types
 
-- source line order;
-- raw handwritten description;
-- optional normalized description;
-- optional mapped product/variant identifier;
-- quantity;
-- unit price;
-- written line total;
-- calculated line total;
-- line variance;
-- confidence per field;
-- reviewer note.
+Allowed balance types:
 
-Quantity, unit price, and totals must use integer minor units until the business confirms whether the handwriting represents whole DZD or centimes. No conversion is permitted during transcription.
+- `OPENING_CASH`
+- `CLOSING_CASH`
+- `OPENING_BANK`
+- `CLOSING_BANK`
+- `OPENING_INVENTORY_VALUE`
+- `CLOSING_INVENTORY_VALUE`
+- `CUSTOMER_RECEIVABLE`
+- `SUPPLIER_PAYABLE`
+- `LOAN_BALANCE`
+- `TAX_PAYABLE`
+- `OWNER_CAPITAL`
+- `OTHER`
 
-## Reconciliation rules
+Supplier/fournisseur and customer/client names remain optional for normal paid transactions. They become important when a receivable, payable, partial payment, or unresolved balance must be tracked individually.
 
-1. Never overwrite written values with calculated values.
-2. Calculate `quantity × unit price` independently when both operands exist.
-3. Store the difference between calculated and written line totals.
-4. Calculate the sum of line totals independently from the written document subtotal.
-5. Store additions and deductions as signed adjustments, not as edits to historical lines.
-6. Treat red annotations as separate source evidence with their own raw text and optional date.
-7. A document with any unresolved direction, counterparty, product mapping, payment state, or material variance cannot be approved for opening-state application.
-8. Duplicate detection must use source hash plus normalized reference/date/total signals; it must never delete the original evidence.
+## Finance calculation boundary
+
+From approved historical rows, Stockiha may calculate:
+
+- total sales;
+- total purchases;
+- operating expenses;
+- salaries and taxes included in expenses;
+- customer and supplier refunds;
+- other income;
+- preliminary result before inventory adjustment;
+- outstanding receivables and payables when payment information is available;
+- inventory-adjusted estimated profit or loss when opening and closing inventory values are available.
+
+The inventory-adjusted formula is:
+
+```text
+Cost of goods sold
+= Opening inventory + Purchases - Supplier refunds - Closing inventory
+
+Estimated profit/loss
+= Sales + Other income - Customer refunds - Cost of goods sold - Expenses
+```
+
+If opening and closing inventory values are missing, Stockiha must label the result:
+
+```text
+INCOMPLETE_WITHOUT_OPENING_AND_CLOSING_INVENTORY
+```
+
+It must not present the preliminary result as exact accounting profit.
+
+## Staging and safety rules
+
+1. Excel and manual entry write only to `onboarding` staging tables.
+2. Staged historical rows cannot call live sale, purchase, payment, stock, cash, receivable, payable, or journal-posting functions.
+3. `Paper_ID` is unique across historical batches to prevent duplicate physical papers.
+4. Every batch has a source type: `EXCEL` or `MANUAL`.
+5. Excel imports retain the original filename, but not unrestricted filesystem paths.
+6. Invalid or uncertain rows remain `NEEDS_REVIEW`.
+7. Approved batches become available for historical reporting only.
+8. Approval does not replay 1.5 years of historical transactions into live operational ledgers.
+9. Current opening state, if later applied, requires a separate idempotent reconciliation and approval operation.
+10. Direct table access is denied to the runtime role; guarded database functions enforce permissions and audit.
+
+## Validation rules
+
+The importer must reject or flag:
+
+- missing or duplicate `Paper_ID`;
+- invalid dates or future dates;
+- unsupported transaction or balance types;
+- zero or negative transaction totals;
+- inconsistent partial payments;
+- unpaid rows that contain a payment amount;
+- paid rows whose explicit paid amount differs from the net amount;
+- unknown payment status;
+- missing category for expenses, salaries, or tax payments;
+- customer receivable without a customer name;
+- supplier payable without a supplier name;
+- rows explicitly marked `NEEDS_REVIEW`.
+
+The employee must use `UNKNOWN` or `NEEDS_REVIEW` instead of guessing.
 
 ## Workflow states
 
-- `RECEIVED` — image stored; no transcription approved.
-- `TRANSCRIBING` — draft fields or lines exist.
-- `NEEDS_REVIEW` — transcription complete but unresolved fields/variances remain.
-- `RECONCILED` — arithmetic and mappings independently checked.
-- `APPROVED_FOR_OPENING_STATE` — explicitly selected to contribute to opening stock or balances.
-- `ARCHIVED_ONLY` — retained as historical evidence but never posted.
-- `REJECTED` — unusable duplicate, unreadable source, or invalid record; source remains retained.
+Batch states:
 
-## MVP data-onboarding decision
+- `DRAFT`
+- `VALIDATED`
+- `NEEDS_REVIEW`
+- `APPROVED_FOR_REPORTING`
+- `REJECTED`
 
-The default MVP policy is:
+Row review states:
 
-1. Digitize and retain all physical-paper images as historical source evidence.
-2. Transcribe through an assisted/manual review screen; OCR suggestions may accelerate entry but never approve data.
-3. Reconcile current opening stock, customer receivables, supplier payables, and cash separately.
-4. Apply only an approved opening state to live operational ledgers.
-5. Keep the 1.5-year transaction history isolated and searchable.
-6. Do not replay historical sales, purchases, cash movements, or journals unless a later project explicitly proves complete and balanced reconstruction.
+- `READY`
+- `NEEDS_REVIEW`
+- `APPROVED`
+- `REJECTED`
 
-## Mandatory controls
+Approval is replay-safe and audited with actor, workstation, timestamp, and status transition.
 
-- Only an administrator/CEO-authorized role may approve opening-state application.
-- Approval and rejection are audited with actor, workstation, timestamp, and reason.
-- Source images and prior transcription revisions are immutable.
-- No staging record may call live sale, purchase, payment, stock-adjustment, or journal-posting functions directly.
-- All opening-state application must be idempotent and produce a reconciliation report before commit.
-- The feature is controlled by a CEO-visible setting and defaults ON, consistent with the Stockiha feature-toggle policy.
+## Feature-toggle policy
 
-## Business confirmations still required
+Historical finance import is controlled by a CEO/administrator-visible setting and defaults **ON**. Disabling the feature blocks creation of new batches without deleting or modifying retained historical evidence.
 
-These questions do not block creation of staging and review tooling, but they block live opening-state approval:
-
-1. Are these pages customer sales/deliveries, supplier purchases/deliveries, or a mixture?
-2. Are handwritten monetary values whole Algerian dinars or minor-unit/centime values?
-3. What does the large number at the top-left represent: daily sequence, customer code, page number, or something else?
-4. Do red `خالص` / `غير خالص` annotations represent final settlement state, and is the nearby red date the settlement date?
-5. Do `+` and `-` values represent delivery charges, discounts, returns, prior balance, or cash paid?
-6. Are product descriptions expected to map to the current Stockiha catalog, or must new legacy aliases be created?
-
-## R0-001 completion boundary
+## MVP completion boundary
 
 R0-001 is complete when:
 
-- representative fixtures encode these source patterns and uncertainties;
-- a staging schema enforces evidence retention, review states, arithmetic variance, and no-direct-posting boundaries;
-- SQL tests prove role authorization and immutable approval/audit behavior;
-- a minimal Tauri intake/review screen can create and review draft documents;
-- one consolidated Windows check transcribes these representative patterns and exports a reconciliation report.
+- the staging schema and permission model pass SQL regressions;
+- Excel and manual entry produce the same typed row payload;
+- the official minimal `.xlsx` template is parsed and validated;
+- a review screen shows row errors and batch totals;
+- an authorized user can approve a validated batch for historical reporting;
+- finance summaries clearly distinguish preliminary results from inventory-adjusted estimates;
+- one targeted Windows/Tauri test imports a representative workbook, fixes one invalid row, approves the batch, and views the resulting historical summary.
+
+## Explicitly deferred
+
+- automated OCR;
+- mandatory scanning or image storage;
+- historical product-line reconstruction;
+- replay of historical stock, sales, purchases, cash, AR, AP, or journals;
+- exact tax/accounting certification;
+- bankruptcy prediction presented as certainty.
