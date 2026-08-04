@@ -1,0 +1,471 @@
+use serde::{Deserialize, Serialize};
+use time::{Date, Month};
+
+const REQUEST_ID_MIN_LEN: usize = 8;
+const REQUEST_ID_MAX_LEN: usize = 128;
+const PAPER_ID_MAX_LEN: usize = 128;
+const DESCRIPTION_MAX_LEN: usize = 500;
+const OPTIONAL_TEXT_MAX_LEN: usize = 500;
+const FILENAME_MAX_LEN: usize = 255;
+const MAX_TRANSACTION_ROWS_PER_REQUEST: usize = 10_000;
+const MAX_BALANCE_ROWS_PER_REQUEST: usize = 5_000;
+
+const TRANSACTION_TYPES: &[&str] = &[
+    "SALE",
+    "PURCHASE",
+    "EXPENSE",
+    "OTHER_INCOME",
+    "CUSTOMER_REFUND",
+    "SUPPLIER_REFUND",
+    "LOAN_RECEIVED",
+    "LOAN_REPAYMENT",
+    "OWNER_CONTRIBUTION",
+    "OWNER_WITHDRAWAL",
+    "TAX_PAYMENT",
+    "SALARY",
+    "OTHER",
+];
+
+const PAYMENT_STATUSES: &[&str] = &["PAID", "UNPAID", "PARTIAL", "UNKNOWN"];
+const REVIEW_STATUSES: &[&str] = &["READY", "NEEDS_REVIEW", "APPROVED", "REJECTED"];
+const BALANCE_TYPES: &[&str] = &[
+    "OPENING_CASH",
+    "CLOSING_CASH",
+    "OPENING_BANK",
+    "CLOSING_BANK",
+    "OPENING_INVENTORY_VALUE",
+    "CLOSING_INVENTORY_VALUE",
+    "CUSTOMER_RECEIVABLE",
+    "SUPPLIER_PAYABLE",
+    "LOAN_BALANCE",
+    "TAX_PAYABLE",
+    "OWNER_CAPITAL",
+    "OTHER",
+];
+
+fn validate_request_id(request_id: &str) -> Result<(), String> {
+    let request_id = request_id.trim();
+    if !(REQUEST_ID_MIN_LEN..=REQUEST_ID_MAX_LEN).contains(&request_id.len()) {
+        return Err(format!(
+            "requestId length must be between {REQUEST_ID_MIN_LEN} and {REQUEST_ID_MAX_LEN} characters"
+        ));
+    }
+    if request_id.chars().any(char::is_control) {
+        return Err("requestId must not contain control characters".to_string());
+    }
+    Ok(())
+}
+
+fn validate_optional_text(value: &Option<String>, field: &str, max_len: usize) -> Result<(), String> {
+    if let Some(value) = value {
+        let value = value.trim();
+        if value.is_empty() || value.len() > max_len || value.chars().any(char::is_control) {
+            return Err(format!("{field} is empty, too long, or contains control characters"));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn parse_iso_date(value: &str, field: &str) -> Result<Date, String> {
+    let parts: Vec<&str> = value.trim().split('-').collect();
+    if parts.len() != 3 {
+        return Err(format!("{field} must use YYYY-MM-DD"));
+    }
+
+    let year: i32 = parts[0]
+        .parse()
+        .map_err(|_| format!("{field} has an invalid year"))?;
+    let month_number: u8 = parts[1]
+        .parse()
+        .map_err(|_| format!("{field} has an invalid month"))?;
+    let day: u8 = parts[2]
+        .parse()
+        .map_err(|_| format!("{field} has an invalid day"))?;
+    let month = Month::try_from(month_number)
+        .map_err(|_| format!("{field} has an invalid month"))?;
+
+    Date::from_calendar_date(year, month, day)
+        .map_err(|_| format!("{field} is not a valid calendar date"))
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateHistoricalFinanceSettingRequest {
+    pub(crate) enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceSettingResult {
+    pub(crate) enabled: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CreateHistoricalFinanceBatchRequest {
+    pub(crate) request_id: String,
+    pub(crate) source_type: String,
+    pub(crate) original_filename: Option<String>,
+}
+
+impl CreateHistoricalFinanceBatchRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_request_id(&self.request_id)?;
+
+        let source_type = self.source_type.trim().to_ascii_uppercase();
+        if !matches!(source_type.as_str(), "EXCEL" | "MANUAL") {
+            return Err("sourceType must be EXCEL or MANUAL".to_string());
+        }
+
+        match (source_type.as_str(), self.original_filename.as_ref()) {
+            ("EXCEL", Some(filename)) => {
+                let filename = filename.trim();
+                if filename.is_empty()
+                    || filename.len() > FILENAME_MAX_LEN
+                    || filename.chars().any(char::is_control)
+                    || filename.contains('/')
+                    || filename.contains('\\')
+                    || !filename.to_ascii_lowercase().ends_with(".xlsx")
+                {
+                    return Err("originalFilename must be a safe .xlsx filename".to_string());
+                }
+            }
+            ("EXCEL", None) => {
+                return Err("Excel batches require originalFilename".to_string());
+            }
+            ("MANUAL", Some(_)) => {
+                return Err("Manual batches must not include originalFilename".to_string());
+            }
+            ("MANUAL", None) => {}
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceBatchResult {
+    pub(crate) batch_id: i64,
+    pub(crate) status: String,
+    pub(crate) is_replay: bool,
+    pub(crate) source_type: String,
+    pub(crate) original_filename: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceRowInput {
+    pub(crate) source_row_number: i32,
+    pub(crate) paper_id: String,
+    pub(crate) transaction_date: String,
+    pub(crate) transaction_type: String,
+    pub(crate) description_or_category: String,
+    pub(crate) net_amount_dzd: i64,
+    pub(crate) payment_status: String,
+    pub(crate) amount_paid_dzd: Option<i64>,
+    pub(crate) expense_category: Option<String>,
+    pub(crate) supplier_fournisseur: Option<String>,
+    pub(crate) customer_client: Option<String>,
+    pub(crate) notes: Option<String>,
+    pub(crate) review_status: String,
+}
+
+impl HistoricalFinanceRowInput {
+    fn validate(&self) -> Result<(), String> {
+        if self.source_row_number < 2 {
+            return Err("sourceRowNumber must be at least 2".to_string());
+        }
+
+        let paper_id = self.paper_id.trim();
+        if paper_id.is_empty()
+            || paper_id.len() > PAPER_ID_MAX_LEN
+            || paper_id.chars().any(char::is_control)
+        {
+            return Err("paperId is empty, too long, or contains control characters".to_string());
+        }
+
+        parse_iso_date(&self.transaction_date, "transactionDate")?;
+
+        let transaction_type = self.transaction_type.trim().to_ascii_uppercase();
+        if !TRANSACTION_TYPES.contains(&transaction_type.as_str()) {
+            return Err("transactionType is unsupported".to_string());
+        }
+
+        let description = self.description_or_category.trim();
+        if description.is_empty()
+            || description.len() > DESCRIPTION_MAX_LEN
+            || description.chars().any(char::is_control)
+        {
+            return Err(
+                "descriptionOrCategory is empty, too long, or contains control characters"
+                    .to_string(),
+            );
+        }
+
+        if self.net_amount_dzd <= 0 {
+            return Err("netAmountDzd must be greater than zero".to_string());
+        }
+        if self.amount_paid_dzd.is_some_and(|value| value < 0) {
+            return Err("amountPaidDzd must not be negative".to_string());
+        }
+
+        let payment_status = self.payment_status.trim().to_ascii_uppercase();
+        if !PAYMENT_STATUSES.contains(&payment_status.as_str()) {
+            return Err("paymentStatus is unsupported".to_string());
+        }
+
+        let review_status = self.review_status.trim().to_ascii_uppercase();
+        if !REVIEW_STATUSES.contains(&review_status.as_str()) {
+            return Err("reviewStatus is unsupported".to_string());
+        }
+
+        validate_optional_text(&self.expense_category, "expenseCategory", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(
+            &self.supplier_fournisseur,
+            "supplierFournisseur",
+            OPTIONAL_TEXT_MAX_LEN,
+        )?;
+        validate_optional_text(&self.customer_client, "customerClient", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(&self.notes, "notes", OPTIONAL_TEXT_MAX_LEN)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceBalanceInput {
+    pub(crate) source_row_number: i32,
+    pub(crate) balance_date: String,
+    pub(crate) balance_type: String,
+    pub(crate) amount_dzd: i64,
+    pub(crate) supplier_fournisseur: Option<String>,
+    pub(crate) customer_client: Option<String>,
+    pub(crate) notes: Option<String>,
+    pub(crate) review_status: String,
+}
+
+impl HistoricalFinanceBalanceInput {
+    fn validate(&self) -> Result<(), String> {
+        if self.source_row_number < 2 {
+            return Err("balance sourceRowNumber must be at least 2".to_string());
+        }
+
+        parse_iso_date(&self.balance_date, "balanceDate")?;
+
+        let balance_type = self.balance_type.trim().to_ascii_uppercase();
+        if !BALANCE_TYPES.contains(&balance_type.as_str()) {
+            return Err("balanceType is unsupported".to_string());
+        }
+        if self.amount_dzd < 0 {
+            return Err("balance amountDzd must not be negative".to_string());
+        }
+
+        let review_status = self.review_status.trim().to_ascii_uppercase();
+        if !REVIEW_STATUSES.contains(&review_status.as_str()) {
+            return Err("balance reviewStatus is unsupported".to_string());
+        }
+
+        validate_optional_text(
+            &self.supplier_fournisseur,
+            "supplierFournisseur",
+            OPTIONAL_TEXT_MAX_LEN,
+        )?;
+        validate_optional_text(&self.customer_client, "customerClient", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(&self.notes, "notes", OPTIONAL_TEXT_MAX_LEN)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReplaceHistoricalFinanceBatchDataRequest {
+    pub(crate) batch_id: i64,
+    pub(crate) rows: Vec<HistoricalFinanceRowInput>,
+    pub(crate) balances: Vec<HistoricalFinanceBalanceInput>,
+}
+
+impl ReplaceHistoricalFinanceBatchDataRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.batch_id <= 0 {
+            return Err("batchId must be positive".to_string());
+        }
+        if self.rows.len() > MAX_TRANSACTION_ROWS_PER_REQUEST {
+            return Err(format!(
+                "A request may contain at most {MAX_TRANSACTION_ROWS_PER_REQUEST} transaction rows"
+            ));
+        }
+        if self.balances.len() > MAX_BALANCE_ROWS_PER_REQUEST {
+            return Err(format!(
+                "A request may contain at most {MAX_BALANCE_ROWS_PER_REQUEST} balance rows"
+            ));
+        }
+
+        for (index, row) in self.rows.iter().enumerate() {
+            row.validate()
+                .map_err(|error| format!("rows[{index}]: {error}"))?;
+        }
+        for (index, balance) in self.balances.iter().enumerate() {
+            balance
+                .validate()
+                .map_err(|error| format!("balances[{index}]: {error}"))?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceBatchDataResult {
+    pub(crate) batch_id: i64,
+    pub(crate) status: String,
+    pub(crate) transaction_row_count: i64,
+    pub(crate) balance_row_count: i64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceBatchIdRequest {
+    pub(crate) batch_id: i64,
+}
+
+impl HistoricalFinanceBatchIdRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.batch_id <= 0 {
+            return Err("batchId must be positive".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceValidationResult {
+    pub(crate) batch_id: i64,
+    pub(crate) status: String,
+    pub(crate) row_count: i64,
+    pub(crate) invalid_row_count: i64,
+    pub(crate) total_sales_dzd: i64,
+    pub(crate) total_purchases_dzd: i64,
+    pub(crate) total_expenses_dzd: i64,
+    pub(crate) total_other_income_dzd: i64,
+    pub(crate) total_customer_refunds_dzd: i64,
+    pub(crate) total_supplier_refunds_dzd: i64,
+    pub(crate) preliminary_result_before_inventory_dzd: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceApprovalResult {
+    pub(crate) batch_id: i64,
+    pub(crate) status: String,
+    pub(crate) is_replay: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceSummaryRequest {
+    pub(crate) date_from: String,
+    pub(crate) date_to: String,
+}
+
+impl HistoricalFinanceSummaryRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let from = parse_iso_date(&self.date_from, "dateFrom")?;
+        let to = parse_iso_date(&self.date_to, "dateTo")?;
+        if from > to {
+            return Err("dateFrom must not be after dateTo".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalFinanceSummaryResult {
+    pub(crate) date_from: String,
+    pub(crate) date_to: String,
+    pub(crate) sales_dzd: i64,
+    pub(crate) purchases_dzd: i64,
+    pub(crate) expenses_dzd: i64,
+    pub(crate) other_income_dzd: i64,
+    pub(crate) customer_refunds_dzd: i64,
+    pub(crate) supplier_refunds_dzd: i64,
+    pub(crate) preliminary_result_before_inventory_dzd: i64,
+    pub(crate) opening_inventory_dzd: Option<i64>,
+    pub(crate) closing_inventory_dzd: Option<i64>,
+    pub(crate) inventory_data_complete: bool,
+    pub(crate) estimated_profit_loss_dzd: Option<i64>,
+    pub(crate) profit_calculation_status: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_row() -> HistoricalFinanceRowInput {
+        HistoricalFinanceRowInput {
+            source_row_number: 2,
+            paper_id: "PAPER-000001".to_string(),
+            transaction_date: "2025-01-10".to_string(),
+            transaction_type: "SALE".to_string(),
+            description_or_category: "Historical sale".to_string(),
+            net_amount_dzd: 100_000,
+            payment_status: "PAID".to_string(),
+            amount_paid_dzd: Some(100_000),
+            expense_category: None,
+            supplier_fournisseur: None,
+            customer_client: Some("Customer A".to_string()),
+            notes: None,
+            review_status: "READY".to_string(),
+        }
+    }
+
+    #[test]
+    fn accepts_minimal_excel_batch_request() {
+        let request = CreateHistoricalFinanceBatchRequest {
+            request_id: "historical-20260804-001".to_string(),
+            source_type: "EXCEL".to_string(),
+            original_filename: Some("historical.xlsx".to_string()),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_excel_path_instead_of_filename() {
+        let request = CreateHistoricalFinanceBatchRequest {
+            request_id: "historical-20260804-001".to_string(),
+            source_type: "EXCEL".to_string(),
+            original_filename: Some(r"C:\private\historical.xlsx".to_string()),
+        };
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_calendar_date() {
+        let mut row = valid_row();
+        row.transaction_date = "2025-02-30".to_string();
+        assert!(row.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_nonpositive_finance_amount() {
+        let mut row = valid_row();
+        row.net_amount_dzd = 0;
+        assert!(row.validate().is_err());
+    }
+
+    #[test]
+    fn accepts_valid_summary_period() {
+        assert!(HistoricalFinanceSummaryRequest {
+            date_from: "2025-01-01".to_string(),
+            date_to: "2026-06-30".to_string(),
+        }
+        .validate()
+        .is_ok());
+    }
+}
