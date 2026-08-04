@@ -19,6 +19,7 @@ suites=(
   src-tauri/tests/receivables/s4_003_drawer_refund_integration.sql
   src-tauri/tests/recovery/r6_001_recovery_authorization_audit_integration.sql
   src-tauri/tests/recovery/r6_001_backup_role_read_privileges_integration.sql
+  src-tauri/tests/recovery/r6_001_sqlx_metadata_backup_acl_integration.sql
 )
 
 for suite in "${suites[@]}"; do
