@@ -18,6 +18,7 @@ suites=(
   src-tauri/tests/cash/s4_002_cash_session_ownership_integration.sql
   src-tauri/tests/receivables/s4_003_drawer_refund_integration.sql
   src-tauri/tests/onboarding/r0_001_historical_finance_staging_integration.sql
+  src-tauri/tests/onboarding/r0_001_setting_audit_integration.sql
   src-tauri/tests/onboarding/r0_001_onboarding_backup_acl_integration.sql
   src-tauri/tests/recovery/r6_001_recovery_authorization_audit_integration.sql
   src-tauri/tests/recovery/r6_001_backup_role_read_privileges_integration.sql
