@@ -12,6 +12,7 @@ mod fiscal_period;
 mod identifiers;
 mod journal;
 mod money;
+pub(crate) mod onboarding;
 pub(crate) mod procurement;
 mod product;
 mod queue;
