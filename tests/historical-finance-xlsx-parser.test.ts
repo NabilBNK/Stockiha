@@ -209,9 +209,12 @@ function workbookFile({ formula = false, wrongHeader = false }: { formula?: bool
   };
 
   const archive = storedZip(files);
-  return new File([archive], 'historical.xlsx', {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
+  const bytes = archive.slice();
+  return {
+    name: 'historical.xlsx',
+    size: bytes.byteLength,
+    arrayBuffer: async () => bytes.buffer,
+  } as File;
 }
 
 describe('R0-001 constrained historical finance xlsx parser', () => {
