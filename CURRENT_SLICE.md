@@ -5,67 +5,59 @@
 ## Released baseline
 
 - **Branch:** `main`
-- **Commit:** `820d85c3dce9925f0cb7e5e0a8b615c96748942c`
-- **Verified boundary:** UI foundation, S0 through S4-003, R2 supplier-accounting repair, and R6-001 operator backup creation/validation
-- **Most recent integration:** PR #13 — R6-001 backup creation and validation
+- **Commit:** `4e282b4c799d96c4c8f745e9487e956bbb6334ca`
+- **Verified boundary:** UI foundation, S0 through S4-003, R2 supplier-accounting repair, R6-001 operator backup creation/validation, and R0-001 finance-only historical onboarding
+- **Most recent integration:** PR #14 — historical finance onboarding
 
 ## Completed recent work
 
-- **S4-003:** central drawer policy, customer-payment refunds, cash/bank invariants, and customer-payment controls.
 - **R2:** forward-only supplier accounting repair using GRNI/AP semantics and selected Cash/Bank settlement accounts.
 - **R6-001:** administrator-only backup creation and validation, PostgreSQL 18 `pg_dump`, Credential Manager secret consumption, immutable audit, hidden staging, independent checksum validation, SQLx metadata compatibility, and no restore command.
+- **R0-001:** controlled Excel/manual historical-finance staging, validation, reporting approval, estimated profit/loss, duplicate protection, feature toggle, and operational-ledger isolation.
 - **MVP financial boundary:** TVA and discounts remain deferred; unsupported non-zero values are rejected rather than guessed.
 
 ## Current implementation slice
 
-- **Roadmap path:** R0/R4/R5 — historical finance onboarding and opening-state preparation
-- **Slice:** R0-001 — finance-only historical onboarding
-- **Branch:** `task/r0-001-paper-intake-contract`
-- **PR:** #14, draft
-- **Confirmed workflow:** a paid employee enters 1.5 years of paper history manually; the controlled Excel workbook is primary; direct Stockiha entry is secondary; scanning every paper is not required; product-level reconstruction is excluded by default.
-- **Implemented on branch:**
-  - finance-only onboarding contract and representative fixtures;
-  - isolated `onboarding` staging schema;
-  - administrator-visible import setting, default ON, with immutable setting-change audit;
+- **Roadmap path:** R5 — opening operational state
+- **Slice:** R5-002 — current opening-state reconciliation
+- **Branch:** `task/r5-002-opening-state-reconciliation`
+- **Purpose:** establish what the business owns and owes on the Stockiha cutover date, separately from the 1.5-year historical archive.
+- **Current increment:**
   - administrator-only manage/review permissions;
-  - replay-safe `EXCEL` and `MANUAL` batches;
-  - minimal transaction rows matching the approved workbook columns;
-  - optional supplier/fournisseur and customer/client fields;
-  - opening/closing balance rows, including inventory value;
-  - unique `Paper_ID` duplicate protection;
-  - batch-scoped validation and issue storage;
-  - audited approval for historical reporting only;
-  - preliminary and inventory-adjusted finance summary functions;
-  - explicit no-direct-posting boundary for stock, cash, AR, AP, and journals;
-  - read-only backup ACL for all onboarding evidence;
-  - typed Rust application services and Tauri commands;
-  - typed frontend IPC gateway and DTOs;
-  - constrained `.xlsx` parser for the official two-sheet template;
-  - formula rejection, archive/path/size/integrity guards, exact-header checks, and row limits;
-  - direct-entry fallback form;
-  - Excel staging, validation, approval, feature-toggle, and historical-summary UI;
-  - EN/FR/AR copy and RTL behavior;
-  - focused frontend, Rust, SQL, backup, and workflow regressions.
-- **Automated evidence before final documentation sync:** frontend typecheck/lint/tests/build and the complete PostgreSQL migration/backup/SQL/concurrency gate passed. Exact final-head CI remains mandatory after this tracker update.
-- **Remaining R0-001 gate:** one targeted Windows/Tauri acceptance using a small populated copy of the official workbook, plus one manual-entry row and a historical summary check.
+  - feature toggle, default ON;
+  - one cutover-date package with Excel/manual source metadata;
+  - current cash, bank, inventory value, customer receivables, supplier payables, loans, taxes, owner capital, retained earnings, and other described assets/liabilities;
+  - customer/supplier identity requirements for open balances;
+  - accounting-equation validation (`Assets = Liabilities + Equity`);
+  - exact reconciliation difference;
+  - audited `APPROVED_FOR_APPLICATION` evidence;
+  - single-approved-package guard;
+  - direct runtime table access denied;
+  - read-only backup inclusion;
+  - explicit no-live-posting boundary;
+  - SQL integration regression added to the current suite.
 
 ## Safety boundary
 
-Approved historical batches become available for historical reporting only. They do **not** replay 1.5 years of paper transactions into live operational ledgers. A later opening-state application requires its own idempotent reconciliation and approval boundary.
+R5-002 approval does not create live sales, purchases, cash movements, inventory movements, customer receivables, supplier payables, or journals. A later forward-only application slice must define and test the idempotent posting matrix.
 
-## MVP finance interpretation
+## Historical versus opening state
 
-Stockiha can show sales, purchases, expenses, other income, refunds, receivables/payables when available, and a preliminary result. A trustworthy inventory-adjusted profit/loss estimate requires both opening and closing inventory values. Missing inventory values must be shown explicitly as incomplete, not as exact profit.
+- **Historical finance:** prior 1.5-year sales, purchases, expenses, payments, and estimated result; product details excluded by default; reporting-only.
+- **Opening state:** current cutover balances needed to start Stockiha; reconciled as assets, liabilities, and equity.
+- **Physical stock quantities:** separate later workflow when item-level inventory control is required. Current inventory financial value belongs in R5-002, but historical product reconstruction does not.
 
 ## Deadline control
 
-The one-week pilot target remains approximately 9 August 2026. Verification policy is one implementation cycle, automated checks, one targeted Windows/Tauri acceptance, then merge unless evidence reveals a real product defect. Do not reopen completed R6 work or start deferred breadth.
+The pilot target remains approximately 9 August 2026. Verification policy is one implementation cycle, automated checks, one targeted Windows/Tauri acceptance, then merge unless evidence reveals a real product defect. Do not reopen completed R0/R6 work or start deferred breadth.
 
 ## Explicitly deferred
 
-- mandatory OCR or scanning of every paper;
+- direct application of opening balances to live ledgers;
+- opening item quantities and WAC posting;
+- automatic customer/supplier master creation;
+- mandatory OCR or scanning;
 - historical product-line reconstruction;
-- direct historical replay into live stock, cash, AR, AP, or journals;
 - live database restore;
 - TVA/HT/TTC/discount accounting;
 - payroll, advanced analytics, updater, and non-selected hardware/package work.
