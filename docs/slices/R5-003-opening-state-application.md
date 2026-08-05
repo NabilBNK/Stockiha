@@ -1,5 +1,26 @@
 # R5-003 — Approved Opening-State Application
 
+## Product Lifecycle
+
+Opening state is a **one-time optional cutover workflow**, not a permanent daily module and not an annual process.
+
+The first CEO/administrator receives the choice during initial setup:
+
+1. **Enter now** — complete and approve the opening-state package before finishing setup.
+2. **Do later** — continue using Stockiha and expose the unfinished workflow later only inside restricted Settings.
+3. **Do not use** — explicitly decline opening state and hide the workflow.
+
+The authoritative lifecycle is:
+
+| Status | Meaning | Visibility |
+|---|---|---|
+| `PENDING` | The initial CEO/administrator has not decided or completed it yet. | Initial setup only; restricted access. |
+| `DEFERRED` | It was intentionally postponed. | Restricted Settings card for CEO/admin only. |
+| `DECLINED` | The CEO/admin chose to start without existing balances. | Hidden; ordinary users cannot reopen it. |
+| `COMPLETED` | One balanced package was approved. | Hidden from normal navigation and disabled for new entry. |
+
+Opening state must never appear in the normal application sidebar. Cashiers and ordinary operators must not discover or access the workflow. Every deferral, decline, and completion decision is audited. Existing databases with an approved package migrate directly to `COMPLETED`.
+
 ## Purpose
 
 Apply exactly one approved R5-002 opening-state package to Stockiha's controlled live financial state. This is the cutover bridge between reviewed onboarding evidence and operational use.
@@ -81,6 +102,9 @@ The UI must show the evidence name and the selected operational record together.
 
 Record at minimum:
 
+- setup deferred;
+- setup declined;
+- setup completed;
 - application requested;
 - mapping changed before application;
 - validation failed;
@@ -95,6 +119,10 @@ Every event records actor, workstation, package, application request, stable rea
 
 R5-003 must not:
 
+- display opening state as a daily navigation module;
+- allow cashier/operator access;
+- force a CEO to enter an opening state;
+- reopen an ordinarily completed or declined setup;
 - replay historical sales or purchases;
 - create historical inventory movements;
 - infer product quantities or WAC from inventory value;
@@ -109,18 +137,22 @@ R5-003 must not:
 
 Automated tests must prove:
 
-1. permission and feature-toggle enforcement;
-2. approved-package and open-period prerequisites;
-3. required customer/supplier mappings;
-4. exact journal semantics and balance;
-5. receivable and payable subledger creation;
-6. no inventory movements or positions from `INVENTORY_VALUE`;
-7. no live sales or purchases;
-8. application idempotency and conflict rejection;
-9. all-or-nothing rollback on a forced mid-transaction failure;
-10. immutable successful evidence and mappings;
-11. backup-role read access and no write access;
-12. existing migration, SQL, concurrency, Rust, frontend, and upgrade suites remain green.
+1. `PENDING`, `DEFERRED`, `DECLINED`, and `COMPLETED` lifecycle behavior;
+2. initial setup choices and restricted deferred access;
+3. cashier/operator denial and absence from normal navigation;
+4. completed/declined workflows cannot be ordinarily reopened;
+5. permission and feature-toggle enforcement;
+6. approved-package and open-period prerequisites;
+7. required customer/supplier mappings;
+8. exact journal semantics and balance;
+9. receivable and payable subledger creation;
+10. no inventory movements or positions from `INVENTORY_VALUE`;
+11. no live sales or purchases;
+12. application idempotency and conflict rejection;
+13. all-or-nothing rollback on a forced mid-transaction failure;
+14. immutable successful evidence and mappings;
+15. backup-role read access and no write access;
+16. existing migration, SQL, concurrency, Rust, frontend, and upgrade suites remain green.
 
 ## Deferred
 
