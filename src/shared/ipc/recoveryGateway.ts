@@ -5,7 +5,9 @@ import type {
   CreateOperatorBackupRequest,
   OperatorBackupCreationResult,
   OperatorBackupValidationResult,
+  OperatorRestoreVerificationResult,
   ValidateOperatorBackupRequest,
+  VerifyOperatorBackupRestoreRequest,
 } from './recoveryDto';
 import { GatewayError } from './gateway';
 import { parseTauriError } from '../utils/tauriError';
@@ -33,6 +35,20 @@ export async function validateOperatorBackup(
       sessionToken,
       request,
     });
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+export async function verifyOperatorBackupRestore(
+  sessionToken: string,
+  request: VerifyOperatorBackupRestoreRequest,
+): Promise<OperatorRestoreVerificationResult> {
+  try {
+    return await invoke<OperatorRestoreVerificationResult>(
+      COMMANDS.VERIFY_OPERATOR_BACKUP_RESTORE,
+      { sessionToken, request },
+    );
   } catch (error: unknown) {
     throw new GatewayError(parseTauriError(error));
   }
