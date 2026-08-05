@@ -4,7 +4,7 @@
  * are passed in by callers (already localized); these components hardcode no
  * business strings.
  */
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import { useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 
 import { useI18n } from '../i18n';
 
@@ -39,7 +39,8 @@ export function TextField({
   id,
   ...rest
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }) {
-  const fieldId = id ?? `sk-field-${label.replace(/\s+/g, '-').toLowerCase()}`;
+  const generatedId = useId();
+  const fieldId = id ?? `sk-field-${generatedId.replace(/:/g, '')}`;
   return (
     <div className="sk-field">
       <label className="sk-field__label" htmlFor={fieldId}>

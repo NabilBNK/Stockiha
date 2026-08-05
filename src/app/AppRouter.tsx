@@ -27,6 +27,7 @@ import { CashSessionScreen } from '../features/cash-session/CashSessionScreen';
 import { DocumentsScreen } from '../features/documents/DocumentsScreen';
 import { CustomersScreen } from '../features/customers/CustomersScreen';
 import { HistoricalFinanceScreen } from '../features/onboarding/HistoricalFinanceScreen';
+import { OpeningStateScreen } from '../features/onboarding/OpeningStateScreen';
 import { DrawerPolicySettingsScreen } from '../features/settings/DrawerPolicySettingsScreen';
 import { RecoverySettingsScreen } from '../features/settings/RecoverySettingsScreen';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
@@ -111,6 +112,9 @@ function AuthenticatedApp() {
       {view === 'dashboard' && <DashboardScreen />}
       {view === 'historical_finance' && (
         <HistoricalFinanceScreen sessionToken={user?.token ?? ''} />
+      )}
+      {view === 'opening_state' && (
+        <OpeningStateScreen sessionToken={user?.token ?? ''} />
       )}
       {view === 'settings' && (
         <>

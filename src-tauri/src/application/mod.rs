@@ -26,6 +26,7 @@ pub(crate) mod documents;
 pub(crate) mod drawer;
 pub(crate) mod fiscal;
 pub(crate) mod onboarding;
+pub(crate) mod opening_state;
 pub(crate) mod procurement_service;
 pub(crate) mod receivables;
 pub(crate) mod recovery;

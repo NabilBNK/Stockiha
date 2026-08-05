@@ -13,6 +13,7 @@ mod identifiers;
 mod journal;
 mod money;
 pub(crate) mod onboarding;
+pub(crate) mod opening_state;
 pub(crate) mod procurement;
 mod product;
 mod queue;
