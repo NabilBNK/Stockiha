@@ -168,7 +168,7 @@ describe('R5-003 opening-state application workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Apply permanently' }));
 
     expect(await screen.findByText('Opening state applied successfully.')).toBeInTheDocument();
-    expect(screen.getByText(/Opening journal ID/)).toHaveTextContent('88');
+    expect(screen.getByText('88')).toBeInTheDocument();
 
     const applyCall = calls.find((call) => call.command === 'apply_opening_state');
     expect(applyCall?.args).toMatchObject({
