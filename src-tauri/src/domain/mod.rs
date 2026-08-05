@@ -14,6 +14,7 @@ mod journal;
 mod money;
 pub(crate) mod onboarding;
 pub(crate) mod opening_state;
+pub(crate) mod opening_state_application;
 pub(crate) mod opening_state_lifecycle;
 pub(crate) mod procurement;
 mod product;
