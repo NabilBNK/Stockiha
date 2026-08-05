@@ -5,8 +5,8 @@
  * application process — never written to localStorage, disk, or logs (the
  * architecture provides no secure client persistence yet, so none is used).
  * The raw token is passed to protected IPC commands via the gateway and is
- * never rendered. A `SESSION_INVALID` result anywhere clears the session,
- * routing the user back to login.
+ * never rendered. A `SESSION_INVALID` result anywhere clears the session
+ * and routes the user back to login.
  */
 import {
   createContext,
@@ -30,7 +30,7 @@ interface SessionContextValue {
   user: AuthenticatedUser | null;
   activeCashSession: ActiveCashSession | null;
   workstationId: string;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<string>;
   logout: () => Promise<void>;
   /** Clears local session state without an IPC call (e.g. on SESSION_INVALID). */
   clearSession: () => void;
@@ -47,6 +47,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (username: string, password: string) => {
     const result = await ipc.login(username, password, WORKSTATION_ID);
     setUser({ username, token: result.session_token });
+    return result.session_token;
   }, []);
 
   const clearSession = useCallback(() => {

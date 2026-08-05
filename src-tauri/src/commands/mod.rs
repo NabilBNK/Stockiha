@@ -10,6 +10,8 @@ pub mod documents;
 pub mod drawer;
 pub mod onboarding;
 pub mod opening_state;
+pub mod opening_state_application;
+pub mod opening_state_lifecycle;
 pub mod procurement;
 pub mod receivables;
 pub mod recovery;
