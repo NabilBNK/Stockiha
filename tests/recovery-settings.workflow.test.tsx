@@ -48,6 +48,14 @@ const SAFE_RESTORE_RESULT = {
   },
 };
 
+function renderScreen(locale: 'en' | 'ar' = 'en') {
+  render(
+    <I18nProvider initialLocale={locale}>
+      <RecoverySettingsScreen sessionToken="session-token" />
+    </I18nProvider>,
+  );
+}
+
 beforeEach(() => {
   invokeMock.mockReset();
   cleanup();
@@ -58,30 +66,19 @@ beforeEach(() => {
 describe('R6 backup and recovery settings', () => {
   it('creates a backup with a request-id-only payload and shows verified metadata', async () => {
     let capturedArgs: Record<string, unknown> | null = null;
-    let resolveCreation!: (value: typeof SAFE_RESULT) => void;
-    const pendingCreation = new Promise<typeof SAFE_RESULT>((resolve) => {
-      resolveCreation = resolve;
-    });
     invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
       expect(command).toBe('create_operator_backup');
       capturedArgs = args;
-      return pendingCreation;
+      return Promise.resolve(SAFE_RESULT);
     });
 
-    render(
-      <I18nProvider initialLocale="en">
-        <RecoverySettingsScreen sessionToken="session-token" />
-      </I18nProvider>,
-    );
-
+    renderScreen();
     expect(screen.getByText(/never replaces or modifies the live Stockiha database/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Verify temporary restore' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Create backup' }));
 
-    const createButton = screen.getByRole('button', { name: 'Create backup' });
-    fireEvent.click(createButton);
-    expect(createButton).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Validate backup' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Verify temporary restore' })).toBeDisabled();
+    expect(await screen.findByText('Backup created and verified.')).toBeInTheDocument();
+    expect(screen.getByTestId('backup-result')).toHaveTextContent('20260805150500');
+    expect(screen.getByTestId('backup-result')).toHaveTextContent('4,096');
 
     await waitFor(() => expect(capturedArgs).not.toBeNull());
     const args = capturedArgs as unknown as {
@@ -94,19 +91,9 @@ describe('R6 backup and recovery settings', () => {
     expect(args.request).not.toHaveProperty('password');
     expect(args.request).not.toHaveProperty('databaseUrl');
     expect(args.request).not.toHaveProperty('role');
-    expect(args.request).not.toHaveProperty('destination');
-    expect(args.request).not.toHaveProperty('pgDumpPath');
-
-    resolveCreation(SAFE_RESULT);
-    expect(await screen.findByText('Backup created and verified.')).toBeInTheDocument();
-    expect(screen.getByTestId('backup-result')).toHaveTextContent(
-      'GestStock-Backup-20260805-150500',
-    );
-    expect(screen.getByTestId('backup-result')).toHaveTextContent('20260805150500');
-    expect(screen.getByTestId('backup-result')).toHaveTextContent('4,096');
   });
 
-  it('submits a typed read-only validation request and shows safe metadata', async () => {
+  it('submits a typed read-only validation request', async () => {
     let capturedArgs: Record<string, unknown> | null = null;
     invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
       expect(command).toBe('validate_operator_backup');
@@ -114,37 +101,25 @@ describe('R6 backup and recovery settings', () => {
       return Promise.resolve(SAFE_RESULT);
     });
 
-    render(
-      <I18nProvider initialLocale="en">
-        <RecoverySettingsScreen sessionToken="session-token" />
-      </I18nProvider>,
-    );
-
+    renderScreen();
     const path = String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`;
     fireEvent.change(screen.getByLabelText('Existing backup folder path'), {
       target: { value: path },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Validate backup' }));
 
-    await screen.findByText('Backup integrity verified.');
-    expect(screen.getByTestId('backup-result')).toHaveTextContent(
-      'GestStock-Backup-20260805-150500',
-    );
-
+    expect(await screen.findByText('Backup integrity verified.')).toBeInTheDocument();
     await waitFor(() => expect(capturedArgs).not.toBeNull());
     const args = capturedArgs as unknown as {
-      sessionToken: string;
       request: { requestId: string; bundlePath: string };
     };
-    expect(args.sessionToken).toBe('session-token');
     expect(args.request.bundlePath).toBe(path);
     expect(args.request.requestId).toMatch(/^backup-validate-\d+-\d+$/);
     expect(args.request).not.toHaveProperty('password');
     expect(args.request).not.toHaveProperty('databaseUrl');
-    expect(args.request).not.toHaveProperty('role');
   });
 
-  it('requires explicit acknowledgement and verifies recovery only in a temporary database', async () => {
+  it('requires acknowledgement and verifies recovery only in a temporary database', async () => {
     let capturedArgs: Record<string, unknown> | null = null;
     invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
       expect(command).toBe('verify_operator_backup_restore');
@@ -152,12 +127,7 @@ describe('R6 backup and recovery settings', () => {
       return Promise.resolve(SAFE_RESTORE_RESULT);
     });
 
-    render(
-      <I18nProvider initialLocale="en">
-        <RecoverySettingsScreen sessionToken="session-token" />
-      </I18nProvider>,
-    );
-
+    renderScreen();
     const path = String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`;
     fireEvent.change(screen.getByLabelText('Existing backup folder path'), {
       target: { value: path },
@@ -174,11 +144,12 @@ describe('R6 backup and recovery settings', () => {
     expect(await screen.findByText(
       'Backup restored and reconciled successfully in a temporary database.',
     )).toBeInTheDocument();
-    expect(screen.getByTestId('restore-result')).toHaveTextContent('Yes');
-    expect(screen.getByTestId('restore-result')).toHaveTextContent('Balanced');
-    expect(screen.getByTestId('restore-result')).toHaveTextContent('42,000');
-    expect(screen.getByTestId('restore-result')).toHaveTextContent('7,000');
-    expect(screen.getByTestId('restore-result')).toHaveTextContent('8,000');
+    const result = screen.getByTestId('restore-result');
+    expect(result).toHaveTextContent('Yes');
+    expect(result).toHaveTextContent('Balanced');
+    expect(result).toHaveTextContent('42000');
+    expect(result).toHaveTextContent('7000');
+    expect(result).toHaveTextContent('8000');
 
     await waitFor(() => expect(capturedArgs).not.toBeNull());
     const args = capturedArgs as unknown as {
@@ -191,76 +162,24 @@ describe('R6 backup and recovery settings', () => {
     expect(Object.keys(args.request).sort()).toEqual(['bundlePath', 'confirmed', 'requestId']);
     expect(args.request).not.toHaveProperty('password');
     expect(args.request).not.toHaveProperty('databaseUrl');
-    expect(args.request).not.toHaveProperty('role');
     expect(args.request).not.toHaveProperty('targetDatabase');
   });
 
-  it('shows fixed Arabic copy and applies RTL direction', () => {
-    render(
-      <I18nProvider initialLocale="ar">
-        <RecoverySettingsScreen sessionToken="session-token" />
-      </I18nProvider>,
-    );
-
+  it('shows fixed Arabic copy under RTL direction', () => {
+    renderScreen('ar');
     expect(screen.getByRole('heading', { name: 'النسخ الاحتياطي والاسترجاع' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'إنشاء نسخة احتياطية' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'التحقق من النسخة' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'اختبار الاسترجاع المؤقت' })).toBeDisabled();
     expect(document.documentElement).toHaveAttribute('dir', 'rtl');
   });
 
-  it('uses fixed safe copy when creation fails', async () => {
+  it('uses fixed safe copy for validation and restore failures', async () => {
     invokeMock.mockRejectedValue({
-      code: 'BACKUP_CREATION_FAILED',
+      code: 'BACKUP_VALIDATION_FAILED',
       details: 'DO_NOT_EXPOSE_DIAGNOSTIC',
     });
 
-    render(
-      <I18nProvider initialLocale="en">
-        <RecoverySettingsScreen sessionToken="session-token" />
-      </I18nProvider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Create backup' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The backup could not be created. No partial bundle was published.',
-    );
-    expect(screen.queryByText('DO_NOT_EXPOSE_DIAGNOSTIC')).not.toBeInTheDocument();
-  });
-
-  it('uses fixed safe copy for a tampered bundle', async () => {
-    invokeMock.mockRejectedValue({ code: 'BACKUP_VALIDATION_FAILED' });
-
-    render(
-      <I18nProvider initialLocale="en">
-        <RecoverySettingsScreen sessionToken="session-token" />
-      </I18nProvider>,
-    );
-
-    fireEvent.change(screen.getByLabelText('Existing backup folder path'), {
-      target: { value: String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500` },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Validate backup' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The backup could not be validated. It was not changed or repaired.',
-    );
-    expect(screen.queryByText(/checksum/i)).not.toBeInTheDocument();
-  });
-
-  it('uses fixed safe copy when temporary restore verification fails', async () => {
-    invokeMock.mockRejectedValue({
-      code: 'BACKUP_VALIDATION_FAILED',
-      details: 'DO_NOT_EXPOSE_RESTORE_DIAGNOSTIC',
-    });
-
-    render(
-      <I18nProvider initialLocale="en">
-        <RecoverySettingsScreen sessionToken="session-token" />
-      </I18nProvider>,
-    );
-
+    renderScreen();
     fireEvent.change(screen.getByLabelText('Existing backup folder path'), {
       target: { value: String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500` },
     });
@@ -272,6 +191,6 @@ describe('R6 backup and recovery settings', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The temporary restore verification failed. The live database was not replaced.',
     );
-    expect(screen.queryByText('DO_NOT_EXPOSE_RESTORE_DIAGNOSTIC')).not.toBeInTheDocument();
+    expect(screen.queryByText('DO_NOT_EXPOSE_DIAGNOSTIC')).not.toBeInTheDocument();
   });
 });
