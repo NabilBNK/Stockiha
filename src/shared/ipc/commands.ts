@@ -44,7 +44,7 @@ export const COMMANDS = {
   VALIDATE_HISTORICAL_FINANCE_BATCH: 'validate_historical_finance_batch',
   APPROVE_HISTORICAL_FINANCE_BATCH: 'approve_historical_finance_batch',
   GET_HISTORICAL_FINANCE_SUMMARY: 'get_historical_finance_summary',
-  // R5 — current opening-state reconciliation
+  // R5 — current opening-state reconciliation and one-time application
   GET_OPENING_STATE_SETTING: 'get_opening_state_setting',
   UPDATE_OPENING_STATE_SETTING: 'update_opening_state_setting',
   CREATE_OPENING_STATE_PACKAGE: 'create_opening_state_package',
@@ -54,6 +54,9 @@ export const COMMANDS = {
   GET_OPENING_STATE_PACKAGE: 'get_opening_state_package',
   GET_OPENING_STATE_ONBOARDING_STATUS: 'get_opening_state_onboarding_status',
   SET_OPENING_STATE_ONBOARDING_CHOICE: 'set_opening_state_onboarding_choice',
+  GET_OPENING_STATE_APPLICATION_CONTEXT: 'get_opening_state_application_context',
+  UPDATE_OPENING_STATE_APPLICATION_SETTING: 'update_opening_state_application_setting',
+  APPLY_OPENING_STATE: 'apply_opening_state',
   CREATE_OPERATOR_BACKUP: 'create_operator_backup',
   VALIDATE_OPERATOR_BACKUP: 'validate_operator_backup',
   CONFIRM_CASH_SALE: 'confirm_cash_sale',
