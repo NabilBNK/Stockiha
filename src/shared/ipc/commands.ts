@@ -52,6 +52,8 @@ export const COMMANDS = {
   VALIDATE_OPENING_STATE_PACKAGE: 'validate_opening_state_package',
   APPROVE_OPENING_STATE_PACKAGE: 'approve_opening_state_package',
   GET_OPENING_STATE_PACKAGE: 'get_opening_state_package',
+  GET_OPENING_STATE_ONBOARDING_STATUS: 'get_opening_state_onboarding_status',
+  SET_OPENING_STATE_ONBOARDING_CHOICE: 'set_opening_state_onboarding_choice',
   CREATE_OPERATOR_BACKUP: 'create_operator_backup',
   VALIDATE_OPERATOR_BACKUP: 'validate_operator_backup',
   CONFIRM_CASH_SALE: 'confirm_cash_sale',
