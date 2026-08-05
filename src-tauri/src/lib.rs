@@ -62,6 +62,7 @@ pub fn run() {
             commands::opening_state_application::apply_opening_state,
             commands::recovery::create_operator_backup,
             commands::recovery::validate_operator_backup,
+            commands::recovery::verify_operator_backup_restore,
             commands::setup::get_setup_status,
             commands::setup::bootstrap_first_admin,
             commands::catalog::create_product,
