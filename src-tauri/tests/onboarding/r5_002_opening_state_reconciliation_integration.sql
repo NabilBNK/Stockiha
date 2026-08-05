@@ -183,31 +183,9 @@ BEGIN
     ASSERT jsonb_array_length(v_result -> 'validationErrors') = 0,
         'Balanced package must have no package validation errors';
 
-    v_result := onboarding.approve_opening_state_package(v_admin_token, v_package_id);
-    ASSERT v_result ->> 'status' = 'APPROVED_FOR_APPLICATION',
-        'Reconciled package must become ready for later application';
-    ASSERT NOT (v_result ->> 'isReplay')::boolean,
-        'First approval must not be replay';
-
-    v_result := onboarding.approve_opening_state_package(v_admin_token, v_package_id);
-    ASSERT (v_result ->> 'isReplay')::boolean,
-        'Repeated approval must be replay-safe';
-
-    v_result := onboarding.get_opening_state_package(v_admin_token, v_package_id);
-    ASSERT v_result ->> 'status' = 'APPROVED_FOR_APPLICATION',
-        'Approved package must remain queryable';
-    ASSERT v_result ->> 'cutoverDate' = '2026-08-05',
-        'Cutover date must remain immutable';
-
-    -- Approval in this slice is evidence-only and must not touch live ledgers.
-    ASSERT (SELECT count(*) FROM sales.cash_sales) = v_cash_sales_before,
-        'Opening-state approval must not create live sales';
-    ASSERT (SELECT count(*) FROM inventory.movements) = v_movements_before,
-        'Opening-state approval must not create stock movements';
-    ASSERT (SELECT count(*) FROM finance.journal_entries) = v_journals_before,
-        'Opening-state approval must not create finance journals';
-
-    -- Missing supplier identity and an unbalanced equation must require review.
+    -- Validate all correction and setting behavior before the one-time package
+    -- is approved. Approval completes the lifecycle and intentionally disables
+    -- creation of any later opening-state package.
     v_invalid := onboarding.create_opening_state_package(
         v_admin_token,
         'r5-opening-0002',
@@ -291,11 +269,35 @@ BEGIN
     END;
     ASSERT v_blocked, 'Disabled opening-state feature must block new packages';
 
-    -- Existing approved evidence remains readable while new work is disabled.
+    -- Validated evidence remains readable while entry is temporarily disabled.
+    v_result := onboarding.get_opening_state_package(v_admin_token, v_package_id);
+    ASSERT v_result ->> 'status' = 'VALIDATED',
+        'Disabling entry must not delete validated evidence';
+    PERFORM onboarding.update_opening_state_setting(v_admin_token, true);
+
+    v_result := onboarding.approve_opening_state_package(v_admin_token, v_package_id);
+    ASSERT v_result ->> 'status' = 'APPROVED_FOR_APPLICATION',
+        'Reconciled package must become ready for later application';
+    ASSERT NOT (v_result ->> 'isReplay')::boolean,
+        'First approval must not be replay';
+
+    v_result := onboarding.approve_opening_state_package(v_admin_token, v_package_id);
+    ASSERT (v_result ->> 'isReplay')::boolean,
+        'Repeated approval must be replay-safe';
+
     v_result := onboarding.get_opening_state_package(v_admin_token, v_package_id);
     ASSERT v_result ->> 'status' = 'APPROVED_FOR_APPLICATION',
-        'Disabling new reconciliation must not delete approved evidence';
-    PERFORM onboarding.update_opening_state_setting(v_admin_token, true);
+        'Approved package must remain queryable';
+    ASSERT v_result ->> 'cutoverDate' = '2026-08-05',
+        'Cutover date must remain immutable';
+
+    -- Approval remains evidence-only in R5-002 and must not touch live ledgers.
+    ASSERT (SELECT count(*) FROM sales.cash_sales) = v_cash_sales_before,
+        'Opening-state approval must not create live sales';
+    ASSERT (SELECT count(*) FROM inventory.movements) = v_movements_before,
+        'Opening-state approval must not create stock movements';
+    ASSERT (SELECT count(*) FROM finance.journal_entries) = v_journals_before,
+        'Opening-state approval must not create finance journals';
 
     ASSERT NOT has_table_privilege(
         'stockiha_runtime',
