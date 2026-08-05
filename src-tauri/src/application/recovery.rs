@@ -4,15 +4,17 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
-use sqlx::{query_scalar, PgPool};
+use sqlx::{query_scalar, Connection, PgConnection, PgPool};
 
 use crate::domain::recovery::{
-    OperatorBackupValidationResult, ValidateOperatorBackupRequest,
+    OperatorBackupValidationResult, OperatorRestoreVerificationResult, RestoreControlTotals,
+    ValidateOperatorBackupRequest, VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::AppError;
-use crate::infrastructure::backup_proof;
+use crate::infrastructure::{backup_proof, restore_proof};
 
 pub(crate) const BACKUP_ROOT_ENV: &str = "STOCKIHA_BACKUP_ROOT";
+pub(crate) const RESTORE_ADMIN_URL_ENV: &str = "STOCKIHA_RESTORE_ADMIN_DATABASE_URL";
 
 #[derive(Deserialize)]
 struct RecoveryAttemptEnvelope {
@@ -35,6 +37,17 @@ pub(crate) enum ValidationAttempt {
     Replay(OperatorBackupValidationResult),
 }
 
+pub(crate) enum RestoreVerificationAttempt {
+    Run {
+        attempt_id: i64,
+        request_id: String,
+        bundle_path: PathBuf,
+        bundle_identifier: String,
+        current_schema_version: String,
+    },
+    Replay(OperatorRestoreVerificationResult),
+}
+
 pub(crate) async fn begin_operator_backup_validation(
     pool: &PgPool,
     session_token: &str,
@@ -44,21 +57,7 @@ pub(crate) async fn begin_operator_backup_validation(
         .validate()
         .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
 
-    let bundle_path = PathBuf::from(request.bundle_path.trim());
-    let bundle_identifier = bundle_path
-        .file_name()
-        .and_then(OsStr::to_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| AppError::ValidationError {
-            diagnostic: "backup bundle path has no safe final directory name".to_string(),
-        })?
-        .to_string();
-
-    if !is_canonical_bundle_identifier(&bundle_identifier) {
-        return Err(AppError::ValidationError {
-            diagnostic: "backup bundle identifier does not match the Stockiha format".to_string(),
-        });
-    }
+    let (bundle_path, bundle_identifier) = selected_bundle_identity(&request.bundle_path)?;
 
     let value: JsonValue = query_scalar(
         "SELECT operations.begin_recovery_attempt($1, $2, 'VALIDATE_BACKUP', $3)",
@@ -70,9 +69,7 @@ pub(crate) async fn begin_operator_backup_validation(
     .await
     .map_err(AppError::from_posting_error)?;
 
-    let envelope: RecoveryAttemptEnvelope = serde_json::from_value(value).map_err(|error| {
-        AppError::internal(format!("failed to parse recovery attempt envelope: {error}"))
-    })?;
+    let envelope = parse_attempt_envelope(value)?;
 
     match envelope.status.as_str() {
         "SUCCEEDED" => {
@@ -113,15 +110,100 @@ pub(crate) async fn begin_operator_backup_validation(
     }
 }
 
-pub(crate) fn validate_operator_backup_files(
-    request_id: String,
-    bundle_path: PathBuf,
-    bundle_identifier: String,
-    current_schema_version: String,
-) -> Result<OperatorBackupValidationResult, AppError> {
+pub(crate) async fn begin_operator_restore_verification(
+    pool: &PgPool,
+    session_token: &str,
+    request: VerifyOperatorBackupRestoreRequest,
+) -> Result<RestoreVerificationAttempt, AppError> {
+    request
+        .validate()
+        .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
+
+    let (bundle_path, bundle_identifier) = selected_bundle_identity(&request.bundle_path)?;
+
+    let value: JsonValue = query_scalar(
+        "SELECT operations.begin_restore_verification_attempt($1, $2, $3)",
+    )
+    .bind(session_token)
+    .bind(request.request_id.trim())
+    .bind(&bundle_identifier)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    let envelope = parse_attempt_envelope(value)?;
+
+    match envelope.status.as_str() {
+        "SUCCEEDED" => {
+            let result = envelope.result.ok_or_else(|| {
+                AppError::internal("completed restore verification has no result metadata")
+            })?;
+            let parsed: OperatorRestoreVerificationResult = serde_json::from_value(result)
+                .map_err(|error| {
+                    AppError::internal(format!(
+                        "failed to parse completed restore verification result: {error}"
+                    ))
+                })?;
+            if parsed.request_id != request.request_id.trim()
+                || parsed.bundle_identifier != bundle_identifier
+            {
+                return Err(AppError::internal(
+                    "completed restore verification result does not match its request",
+                ));
+            }
+            Ok(RestoreVerificationAttempt::Replay(parsed))
+        }
+        "FAILED" => Err(AppError::BackupValidationFailed {
+            diagnostic: envelope
+                .error_code
+                .unwrap_or_else(|| "RESTORE_VERIFICATION_FAILED".to_string()),
+        }),
+        "STARTED" => Ok(RestoreVerificationAttempt::Run {
+            attempt_id: envelope.attempt_id,
+            request_id: request.request_id.trim().to_string(),
+            bundle_path,
+            bundle_identifier,
+            current_schema_version: envelope.current_schema_version,
+        }),
+        other => Err(AppError::internal(format!(
+            "unknown restore verification status: {other}"
+        ))),
+    }
+}
+
+fn parse_attempt_envelope(value: JsonValue) -> Result<RecoveryAttemptEnvelope, AppError> {
+    serde_json::from_value(value).map_err(|error| {
+        AppError::internal(format!("failed to parse recovery attempt envelope: {error}"))
+    })
+}
+
+fn selected_bundle_identity(bundle_path: &str) -> Result<(PathBuf, String), AppError> {
+    let bundle_path = PathBuf::from(bundle_path.trim());
+    let bundle_identifier = bundle_path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::ValidationError {
+            diagnostic: "backup bundle path has no safe final directory name".to_string(),
+        })?
+        .to_string();
+
+    if !is_canonical_bundle_identifier(&bundle_identifier) {
+        return Err(AppError::ValidationError {
+            diagnostic: "backup bundle identifier does not match the Stockiha format".to_string(),
+        });
+    }
+
+    Ok((bundle_path, bundle_identifier))
+}
+
+fn canonical_selected_bundle(
+    bundle_path: &Path,
+    bundle_identifier: &str,
+) -> Result<PathBuf, AppError> {
     let canonical_root = configured_backup_root()?;
 
-    let selected_metadata = fs::symlink_metadata(&bundle_path).map_err(|_| {
+    let selected_metadata = fs::symlink_metadata(bundle_path).map_err(|_| {
         AppError::BackupValidationFailed {
             diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
         }
@@ -153,13 +235,23 @@ pub(crate) fn validate_operator_backup_files(
             diagnostic: "backup bundle is outside the configured root".to_string(),
         });
     }
-    if canonical_bundle.file_name().and_then(OsStr::to_str) != Some(bundle_identifier.as_str()) {
+    if canonical_bundle.file_name().and_then(OsStr::to_str) != Some(bundle_identifier) {
         return Err(AppError::ValidationError {
             diagnostic: "canonical backup bundle identifier changed during path resolution"
                 .to_string(),
         });
     }
 
+    Ok(canonical_bundle)
+}
+
+pub(crate) fn validate_operator_backup_files(
+    request_id: String,
+    bundle_path: PathBuf,
+    bundle_identifier: String,
+    current_schema_version: String,
+) -> Result<OperatorBackupValidationResult, AppError> {
+    let canonical_bundle = canonical_selected_bundle(&bundle_path, &bundle_identifier)?;
     let validated = backup_proof::validate_bundle(&canonical_bundle).map_err(|error| {
         AppError::BackupValidationFailed {
             diagnostic: error.to_string(),
@@ -185,6 +277,209 @@ pub(crate) fn validate_operator_backup_files(
         file_count,
         total_bytes,
     })
+}
+
+pub(crate) async fn verify_operator_backup_restore_runtime(
+    request_id: String,
+    bundle_path: PathBuf,
+    bundle_identifier: String,
+    current_schema_version: String,
+) -> Result<OperatorRestoreVerificationResult, AppError> {
+    let canonical_bundle = canonical_selected_bundle(&bundle_path, &bundle_identifier)?;
+    let validated = restore_proof::preflight_bundle(&canonical_bundle).map_err(map_restore_error)?;
+
+    if validated.application_version != env!("CARGO_PKG_VERSION")
+        || validated.schema_version != current_schema_version
+        || validated.postgres_major_version != backup_proof::REQUIRED_PG_MAJOR_VERSION
+    {
+        return Err(AppError::PreconditionFailed {
+            diagnostic: "backup versions are not compatible with this Stockiha build".to_string(),
+        });
+    }
+
+    let raw_admin_url = std::env::var(RESTORE_ADMIN_URL_ENV).map_err(|_| {
+        AppError::database_configuration(format!("{RESTORE_ADMIN_URL_ENV} is not configured"))
+    })?;
+    let parsed = restore_proof::parse_admin_url(&raw_admin_url).map_err(map_restore_error)?;
+    let maintenance_options = restore_proof::admin_connect_options(&parsed);
+    let mut maintenance = PgConnection::connect_with(&maintenance_options)
+        .await
+        .map_err(|_| AppError::database_unavailable("restore maintenance connection failed"))?;
+    restore_proof::verify_maintenance_database(&mut maintenance)
+        .await
+        .map_err(map_restore_error)?;
+
+    let temporary_database = restore_proof::generate_temp_db_name("verify");
+    if let Err(original) = restore_proof::create_database(&mut maintenance, &temporary_database).await {
+        let original = map_restore_error(original);
+        let _ = restore_proof::drop_database_with_force(&mut maintenance, &temporary_database).await;
+        return Err(original);
+    }
+
+    let operation_result = async {
+        let executable = restore_proof::resolve_pg_restore_executable();
+        let dump_path = validated.dump_path.clone();
+        let host = parsed.host.clone();
+        let port = parsed.port;
+        let username = parsed.username.clone();
+        let password = parsed.password.clone();
+        let database = temporary_database.clone();
+
+        let restore_result = tokio::task::spawn_blocking(move || {
+            restore_proof::discover_and_validate_pg_restore(&executable)?;
+            let target = restore_proof::PgRestoreTarget {
+                host: &host,
+                port,
+                database: &database,
+            };
+            restore_proof::run_pg_restore(
+                &executable,
+                &target,
+                &username,
+                &password,
+                &dump_path,
+            )
+        })
+        .await
+        .map_err(|_| AppError::BackupValidationFailed {
+            diagnostic: "RESTORE_VERIFICATION_WORKER_FAILED".to_string(),
+        })?;
+        restore_result.map_err(map_restore_error)?;
+
+        let restored_options = restore_proof::admin_connect_options(&parsed).database(&temporary_database);
+        let mut restored = PgConnection::connect_with(&restored_options)
+            .await
+            .map_err(|_| AppError::database_unavailable("temporary restored database unavailable"))?;
+
+        let (control_totals, journal_balanced) = collect_restore_control_totals(&mut restored).await?;
+        restored.close().await.map_err(|_| AppError::BackupValidationFailed {
+            diagnostic: "RESTORE_VERIFICATION_CONNECTION_CLOSE_FAILED".to_string(),
+        })?;
+
+        Ok::<_, AppError>((control_totals, journal_balanced))
+    }
+    .await;
+
+    let cleanup_result =
+        restore_proof::drop_database_with_force(&mut maintenance, &temporary_database).await;
+
+    let (control_totals, journal_balanced) = match operation_result {
+        Err(original) => {
+            let _ = cleanup_result;
+            return Err(original);
+        }
+        Ok(result) => {
+            cleanup_result.map_err(map_restore_error)?;
+            result
+        }
+    };
+
+    Ok(OperatorRestoreVerificationResult {
+        request_id,
+        bundle_identifier,
+        schema_version: validated.schema_version,
+        postgres_major_version: validated.postgres_major_version,
+        temporary_database_cleaned: true,
+        journal_balanced,
+        control_totals,
+    })
+}
+
+async fn collect_restore_control_totals(
+    connection: &mut PgConnection,
+) -> Result<(RestoreControlTotals, bool), AppError> {
+    async fn count(connection: &mut PgConnection, sql: &str) -> Result<i64, AppError> {
+        query_scalar(sql)
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(|_| AppError::BackupValidationFailed {
+                diagnostic: "RESTORE_VERIFICATION_RECONCILIATION_FAILED".to_string(),
+            })
+    }
+
+    let schema_count = count(
+        connection,
+        "SELECT count(*)::bigint FROM information_schema.schemata WHERE schema_name NOT LIKE 'pg_%' AND schema_name <> 'information_schema'",
+    )
+    .await?;
+    let table_count = count(
+        connection,
+        "SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema NOT LIKE 'pg_%' AND table_schema <> 'information_schema' AND table_type = 'BASE TABLE'",
+    )
+    .await?;
+    let user_count = count(connection, "SELECT count(*)::bigint FROM iam.users").await?;
+    let product_count = count(connection, "SELECT count(*)::bigint FROM catalog.products").await?;
+    let customer_count =
+        count(connection, "SELECT count(*)::bigint FROM receivables.customers").await?;
+    let supplier_count =
+        count(connection, "SELECT count(*)::bigint FROM procurement.suppliers").await?;
+    let inventory_position_count =
+        count(connection, "SELECT count(*)::bigint FROM inventory.positions").await?;
+    let inventory_movement_count =
+        count(connection, "SELECT count(*)::bigint FROM inventory.movements").await?;
+    let cash_sale_count = count(connection, "SELECT count(*)::bigint FROM sales.cash_sales").await?;
+    let journal_count =
+        count(connection, "SELECT count(*)::bigint FROM finance.journal_entries").await?;
+    let opening_state_application_count = count(
+        connection,
+        "SELECT count(*)::bigint FROM onboarding.opening_state_applications WHERE status = 'APPLIED'",
+    )
+    .await?;
+
+    let (journal_debit_total, journal_credit_total, journal_balanced): (String, String, bool) =
+        sqlx::query_as(
+            "SELECT COALESCE(sum(debit), 0)::text, COALESCE(sum(credit), 0)::text, COALESCE(sum(debit), 0) = COALESCE(sum(credit), 0) FROM finance.journal_lines",
+        )
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(|_| AppError::BackupValidationFailed {
+            diagnostic: "RESTORE_VERIFICATION_RECONCILIATION_FAILED".to_string(),
+        })?;
+
+    let customer_exposure_total: String = query_scalar(
+        "SELECT COALESCE(sum(exposure_amount), 0)::text FROM receivables.customer_credit_state",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .map_err(|_| AppError::BackupValidationFailed {
+        diagnostic: "RESTORE_VERIFICATION_RECONCILIATION_FAILED".to_string(),
+    })?;
+
+    let supplier_outstanding_total: String = query_scalar(
+        "SELECT COALESCE(sum(outstanding_amount), 0)::text FROM procurement.supplier_liabilities",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .map_err(|_| AppError::BackupValidationFailed {
+        diagnostic: "RESTORE_VERIFICATION_RECONCILIATION_FAILED".to_string(),
+    })?;
+
+    Ok((
+        RestoreControlTotals {
+            schema_count,
+            table_count,
+            user_count,
+            product_count,
+            customer_count,
+            supplier_count,
+            inventory_position_count,
+            inventory_movement_count,
+            cash_sale_count,
+            journal_count,
+            journal_debit_total,
+            journal_credit_total,
+            customer_exposure_total,
+            supplier_outstanding_total,
+            opening_state_application_count,
+        },
+        journal_balanced,
+    ))
+}
+
+fn map_restore_error(error: restore_proof::RestoreProofError) -> AppError {
+    AppError::BackupValidationFailed {
+        diagnostic: error.to_string(),
+    }
 }
 
 pub(crate) async fn complete_operator_backup_validation_success(
@@ -219,6 +514,49 @@ pub(crate) async fn complete_operator_backup_validation_failure(
     let stable_code = stable_error_code(error);
     let _: JsonValue = query_scalar(
         "SELECT operations.complete_recovery_attempt($1, $2, false, $3, NULL)",
+    )
+    .bind(session_token)
+    .bind(attempt_id)
+    .bind(stable_code)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(())
+}
+
+pub(crate) async fn complete_operator_restore_verification_success(
+    pool: &PgPool,
+    session_token: &str,
+    attempt_id: i64,
+    result: &OperatorRestoreVerificationResult,
+) -> Result<(), AppError> {
+    let result_json = serde_json::to_value(result).map_err(|error| {
+        AppError::internal(format!("failed to serialize restore verification result: {error}"))
+    })?;
+
+    let _: JsonValue = query_scalar(
+        "SELECT operations.complete_restore_verification_attempt($1, $2, true, NULL, $3)",
+    )
+    .bind(session_token)
+    .bind(attempt_id)
+    .bind(result_json)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(())
+}
+
+pub(crate) async fn complete_operator_restore_verification_failure(
+    pool: &PgPool,
+    session_token: &str,
+    attempt_id: i64,
+    error: &AppError,
+) -> Result<(), AppError> {
+    let stable_code = stable_error_code(error);
+    let _: JsonValue = query_scalar(
+        "SELECT operations.complete_restore_verification_attempt($1, $2, false, $3, NULL)",
     )
     .bind(session_token)
     .bind(attempt_id)
@@ -398,7 +736,7 @@ mod tests {
     }
 
     #[test]
-    fn result_json_uses_only_safe_metadata() {
+    fn validation_result_json_uses_only_safe_metadata() {
         let result = OperatorBackupValidationResult {
             request_id: "validate-20260803-001".to_string(),
             bundle_identifier: "GestStock-Backup-20260803-195700".to_string(),
@@ -416,6 +754,40 @@ mod tests {
         let value = serde_json::to_value(&result).unwrap();
         assert_eq!(value["bundleIdentifier"], json!(result.bundle_identifier));
         assert!(value.get("bundlePath").is_none());
+        assert!(value.get("databaseUrl").is_none());
+        assert!(value.get("credential").is_none());
+    }
+
+    #[test]
+    fn restore_result_json_hides_the_temporary_target() {
+        let result = OperatorRestoreVerificationResult {
+            request_id: "restore-20260805-001".to_string(),
+            bundle_identifier: "GestStock-Backup-20260805-150500".to_string(),
+            schema_version: "20260805150500".to_string(),
+            postgres_major_version: 18,
+            temporary_database_cleaned: true,
+            journal_balanced: true,
+            control_totals: RestoreControlTotals {
+                schema_count: 12,
+                table_count: 42,
+                user_count: 1,
+                product_count: 0,
+                customer_count: 0,
+                supplier_count: 0,
+                inventory_position_count: 0,
+                inventory_movement_count: 0,
+                cash_sale_count: 0,
+                journal_count: 0,
+                journal_debit_total: "0".to_string(),
+                journal_credit_total: "0".to_string(),
+                customer_exposure_total: "0".to_string(),
+                supplier_outstanding_total: "0".to_string(),
+                opening_state_application_count: 0,
+            },
+        };
+        let value = serde_json::to_value(result).unwrap();
+        assert_eq!(value["temporaryDatabaseCleaned"], true);
+        assert!(value.get("temporaryDatabaseName").is_none());
         assert!(value.get("databaseUrl").is_none());
         assert!(value.get("credential").is_none());
     }
