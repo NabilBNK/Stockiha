@@ -14,6 +14,7 @@ export type AppView =
   | 'settings'
   | 'historical_finance'
   | 'opening_state'
+  | 'opening_state_application'
   | 'products'
   | 'stock'
   | 'adjustment'
