@@ -24,30 +24,47 @@
 - **Branch:** `task/r5-003-opening-state-application`
 - **PR:** #16, draft
 - **Purpose:** make opening state an optional, CEO/admin-controlled one-time setup step, then apply exactly one approved R5-002 package to controlled live financial and counterparty subledgers atomically and idempotently.
-- **Implemented lifecycle correction:**
-  - opening state removed from normal daily navigation;
-  - first administrator receives `Enter now`, `Do later`, and `Do not use` choices during initial setup;
-  - lifecycle states: `PENDING`, `DEFERRED`, `DECLINED`, and `COMPLETED`;
-  - deferred access appears later only inside restricted Settings;
-  - declined and completed workflows remain hidden from normal access;
-  - cashier/operator permission denial prevents discovery and access;
-  - existing approved packages migrate directly to `COMPLETED`;
-  - approval completes the lifecycle and disables additional entry;
-  - defer, decline, and completion decisions are immutable-audited;
-  - typed Rust/Tauri and frontend IPC boundaries added;
-  - lifecycle SQL regression added;
-  - frontend and complete PostgreSQL/backup/accounting/concurrency suites pass on the implementation head; final exact-head Rust and workflow completion remain required after documentation sync.
-- **Application contract frozen:**
-  - dedicated application permission and feature toggle planned, default ON;
-  - explicit mapping from reviewed customer/supplier names to existing operational master records;
-  - no automatic customer or supplier creation;
-  - one posted opening journal for the cutover date;
-  - customer receivable and supplier payable opening subledger records;
-  - Cash, Bank, Inventory Value, Loan, Tax, Owner Capital, Retained Earnings, and explicitly mapped other balances;
-  - inventory value remains financial-only until item quantities and WAC are applied later;
-  - exact one-package and one-application guards;
-  - immutable application, mapping, journal-link, and audit evidence;
-  - all-or-nothing rollback and conflicting-replay rejection required.
+
+### Implemented lifecycle correction
+
+- opening state removed from normal daily navigation;
+- first administrator receives `Enter now`, `Do later`, and `Do not use` choices during initial setup;
+- lifecycle states: `PENDING`, `DEFERRED`, `DECLINED`, and `COMPLETED`;
+- deferred access appears later only inside restricted Settings;
+- declined and completed workflows remain hidden from normal access;
+- cashier/operator permission denial prevents discovery and access;
+- existing approved packages migrate directly to `COMPLETED`;
+- approval completes the lifecycle and disables additional entry;
+- defer, decline, and completion decisions are immutable-audited;
+- typed Rust/Tauri and frontend IPC boundaries added.
+
+### Implemented one-time application
+
+- dedicated `APPLY_OPENING_STATE` permission for ADMIN and future CEO roles;
+- separate application feature toggle, default ON;
+- restricted Settings card appears only when one approved package still requires application;
+- final review UI displays approved evidence, cutover totals, controlled account destinations, and irreversible-action warnings;
+- every customer receivable requires an explicit existing-customer mapping;
+- every supplier payable requires an explicit existing-supplier mapping;
+- no customer or supplier is automatically created, merged, or guessed;
+- one atomic, balanced, posted opening journal dated on the approved cutover date;
+- Cash, Bank, Inventory Value, Accounts Receivable, Accounts Payable, Loan, Tax, Owner Capital, Retained Earnings, and controlled other-account semantics;
+- opening customer receivables enter the customer ledger and exposure state;
+- opening supplier payables enter the supplier-liability subledger;
+- value-only inventory posts only to the financial inventory account and explicitly leaves physical inventory incomplete;
+- no product quantities, warehouse positions, WAC, inventory movements, sales, purchases, or purchase receipts are fabricated;
+- one successful application per package, exact replay support, conflicting-request rejection, immutable snapshots, and immutable audit evidence;
+- runtime has no direct table access and backup remains read-only.
+
+### Automated verification
+
+- lifecycle SQL regression;
+- atomic application SQL regression covering permission, toggle, approval, period, mapping, journal, AR/AP subledgers, no-stock/no-sales boundaries, replay/conflict, immutability, audit, and backup ACL;
+- focused frontend application workflow regression;
+- complete migration chain and PostgreSQL 18 `pg_dump`;
+- existing SQL integration and concurrency suites;
+- frontend typecheck, lint, tests, and production build;
+- Rust unit verification and historical upgrade workflows required green on the final exact head before Windows acceptance.
 
 ## Opening-State Lifecycle
 
@@ -56,7 +73,7 @@
 | `PENDING` | Initial setup choice is unresolved. | Offered only to first CEO/admin. |
 | `DEFERRED` | CEO/admin postponed it. | Available later only from restricted Settings. |
 | `DECLINED` | CEO/admin chose not to use it. | Hidden and disabled. |
-| `COMPLETED` | One balanced package was approved. | Hidden and disabled for new entry. |
+| `COMPLETED` | One balanced package was approved. | Hidden and disabled for new entry; approved package may still require one controlled application. |
 
 Opening state is not annual. Normal fiscal-year closing and balance carry-forward are separate future accounting workflows.
 
@@ -68,7 +85,7 @@ R5-003 must not replay the 1.5-year historical archive, infer product quantities
 
 - **Historical finance:** prior 1.5-year sales, purchases, expenses, payments, and estimated result; product details excluded by default; reporting-only.
 - **Opening state:** optional one-time current cutover balances needed to start Stockiha; reconciled and then applied through a separate controlled transaction.
-- **Physical stock quantities:** separate later workflow when item-level inventory control is required. R5-003 may post the financial inventory asset value but must not fabricate quantities or WAC.
+- **Physical stock quantities:** separate later workflow when item-level inventory control is required. R5-003 posts only the approved financial inventory asset value and never fabricates quantities or WAC.
 
 ## Deadline control
 
@@ -82,6 +99,7 @@ The pilot target remains approximately 9 August 2026. Verification policy is one
 - mandatory OCR or scanning;
 - live database restore;
 - TVA/HT/TTC/discount accounting;
+- opening-state reversal/correction UI after application;
 - payroll, advanced analytics, updater, and non-selected hardware/package work.
 
 Do not merge stale S5–S7 branches. New work must follow the redesigned roadmap and current `main`.
