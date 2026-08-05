@@ -9,6 +9,7 @@ pub mod db_health;
 pub mod documents;
 pub mod drawer;
 pub mod onboarding;
+pub mod opening_state;
 pub mod procurement;
 pub mod receivables;
 pub mod recovery;
