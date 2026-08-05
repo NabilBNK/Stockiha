@@ -22,6 +22,7 @@ suites=(
   src-tauri/tests/onboarding/r0_001_setting_audit_integration.sql
   src-tauri/tests/onboarding/r0_001_onboarding_backup_acl_integration.sql
   src-tauri/tests/onboarding/r5_002_opening_state_reconciliation_integration.sql
+  src-tauri/tests/onboarding/r5_003_opening_state_setup_lifecycle_integration.sql
   src-tauri/tests/recovery/r6_001_recovery_authorization_audit_integration.sql
   src-tauri/tests/recovery/r6_001_backup_role_read_privileges_integration.sql
   src-tauri/tests/recovery/r6_001_sqlx_metadata_backup_acl_integration.sql
