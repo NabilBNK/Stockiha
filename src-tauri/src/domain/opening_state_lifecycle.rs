@@ -21,7 +21,13 @@ pub(crate) struct OpeningStateOnboardingStatusResult {
     pub(crate) status: String,
     pub(crate) enabled: bool,
     pub(crate) has_approved_package: bool,
+    #[serde(default)]
+    pub(crate) approved_package_id: Option<i64>,
+    #[serde(default)]
+    pub(crate) has_applied_opening_state: bool,
     pub(crate) show_deferred_access: bool,
+    #[serde(default)]
+    pub(crate) show_application_access: bool,
     #[serde(default)]
     pub(crate) is_replay: Option<bool>,
 }
