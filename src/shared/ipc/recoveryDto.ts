@@ -13,6 +13,10 @@ export interface VerifyOperatorBackupRestoreRequest {
   confirmed: boolean;
 }
 
+export interface RestoreVerificationSetting {
+  enabled: boolean;
+}
+
 export interface OperatorBackupValidationResult {
   requestId: string;
   bundleIdentifier: string;
