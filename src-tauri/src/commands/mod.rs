@@ -8,6 +8,7 @@ pub mod customer;
 pub mod db_health;
 pub mod documents;
 pub mod drawer;
+pub mod onboarding;
 pub mod procurement;
 pub mod receivables;
 pub mod recovery;

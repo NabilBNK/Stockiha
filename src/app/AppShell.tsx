@@ -12,6 +12,7 @@ import { useSession } from '../shared/session/SessionContext';
 export type AppView =
   | 'dashboard'
   | 'settings'
+  | 'historical_finance'
   | 'products'
   | 'stock'
   | 'adjustment'
@@ -36,6 +37,7 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard', group: 'main', icon: '⌂' },
+  { view: 'historical_finance', labels: { fr: 'Finance historique', ar: 'المالية التاريخية', en: 'Historical finance' }, group: 'main', icon: '▥' },
   { view: 'settings', labels: { fr: 'Paramètres', ar: 'الإعدادات', en: 'Settings' }, group: 'main', icon: '⚙' },
   { view: 'products', labelKey: 'nav.products', group: 'stock', icon: '□' },
   { view: 'stock', labelKey: 'nav.stockReceipt', group: 'stock', icon: '↓' },
