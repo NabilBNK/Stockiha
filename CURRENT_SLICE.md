@@ -24,18 +24,23 @@
 - **Branch:** `task/r6-002-controlled-restore-recovery`
 - **PR:** #17, draft
 - **Base:** merged `main` at `9112820e8b4c2e2c72fd69dc660d564493bbc1d9`
+- **Current schema version:** `20260805151000`
 - **Purpose:** prove that a validated R6-001 backup is actually recoverable by restoring it into one generated temporary PostgreSQL database, reconciling critical control totals, and deleting the temporary database before reporting success.
 
-### Implemented authorization and audit
+### Implemented authorization, policy, and audit
 
 - dedicated `VERIFY_BACKUP_RESTORE` permission for ADMIN and future CEO roles;
 - CASHIER/operator denial;
+- restore-verification feature setting defaults ON;
+- CEO/admin can disable or re-enable new restore drills;
+- disabling restore drills does not disable backup creation or read-only validation;
+- setting changes are audited with actor and workstation;
+- database trigger blocks new restore attempts while disabled;
 - recovery audit operation `VERIFY_RESTORE`;
 - replay-safe request IDs and conflicting-request rejection;
 - only the initiating actor and workstation may complete the attempt;
-- runtime has no direct access to recovery audit tables;
-- backup role includes audit evidence read-only;
-- schema version advanced to `20260805150500`.
+- runtime has no direct access to recovery settings or audit tables;
+- backup role includes settings/audit evidence read-only.
 
 ### Implemented recovery drill
 
@@ -55,6 +60,7 @@
 
 ### Implemented Settings workflow
 
+- default-ON temporary restore-verification toggle;
 - create backup;
 - validate an existing backup;
 - explicitly acknowledge the temporary database drill;
@@ -80,14 +86,14 @@ Live database replacement remains deferred until a separate maintenance-mode des
 
 Implemented automated coverage includes:
 
-- permission, operator denial, replay, conflict, actor/workstation ownership, runtime ACL, and backup ACL SQL regression;
+- permission, operator denial, default-ON setting, audited enable/disable, database enforcement, replay, conflict, actor/workstation ownership, runtime ACL, and backup ACL SQL regression;
 - request confirmation and safe result DTO tests;
-- focused Settings create/validate/temporary-restore workflow tests;
+- focused Settings toggle/create/validate/temporary-restore workflow tests;
 - complete migration chain and PostgreSQL 18 backup verification;
 - all existing accounting SQL and concurrency suites;
 - Rust, frontend, production build, and historical-upgrade workflows.
 
-One exact-head Windows/Tauri recovery drill remains required before merge. It must use a real R6-001 bundle, execute PostgreSQL 18 `pg_restore`, compare restored control totals, prove the live database remains unchanged, and prove no generated temporary database remains.
+One exact-head Windows/Tauri recovery drill remains required before merge. It must use a real R6-001 bundle, verify the OFF/ON setting behavior, execute PostgreSQL 18 `pg_restore`, compare restored control totals, prove the live database remains unchanged, and prove no generated temporary database remains.
 
 ## Deadline control
 
