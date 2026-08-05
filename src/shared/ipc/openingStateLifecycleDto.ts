@@ -10,7 +10,10 @@ export interface OpeningStateOnboardingStatusResult {
   status: OpeningStateSetupStatus;
   enabled: boolean;
   hasApprovedPackage: boolean;
+  approvedPackageId?: number | null;
+  hasAppliedOpeningState?: boolean;
   showDeferredAccess: boolean;
+  showApplicationAccess?: boolean;
   isReplay?: boolean | null;
 }
 
