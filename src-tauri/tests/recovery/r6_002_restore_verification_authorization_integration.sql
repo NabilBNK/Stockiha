@@ -1,4 +1,4 @@
--- R6-002 restore-verification authorization and replay regression.
+-- R6-002 restore-verification authorization, toggle, and replay regression.
 -- Runs inside the transaction owned by run_current_sql_suites.sh.
 \set ON_ERROR_STOP on
 
@@ -15,6 +15,7 @@ DECLARE
     v_completed jsonb;
     v_attempt_id bigint;
     v_denied boolean := false;
+    v_disabled boolean := false;
     v_conflict boolean := false;
     v_result jsonb;
 BEGIN
@@ -60,6 +61,45 @@ BEGIN
           AND p.code = 'VERIFY_BACKUP_RESTORE'
     ), 'CASHIER must not receive VERIFY_BACKUP_RESTORE';
 
+    ASSERT (operations.get_restore_verification_setting(v_admin_token) ->> 'enabled')::boolean,
+        'Restore verification must default ON';
+
+    BEGIN
+        PERFORM operations.get_restore_verification_setting(v_cashier_token);
+    EXCEPTION WHEN insufficient_privilege THEN
+        v_denied := true;
+    END;
+    ASSERT v_denied, 'Cashier must not read the restore setting';
+
+    PERFORM operations.update_restore_verification_setting(v_admin_token, false);
+    ASSERT NOT (operations.get_restore_verification_setting(v_admin_token) ->> 'enabled')::boolean,
+        'Administrator must be able to disable restore verification';
+    ASSERT EXISTS (
+        SELECT 1
+        FROM operations.recovery_setting_audit
+        WHERE setting_code = 'RESTORE_VERIFICATION_ENABLED'
+          AND previous_value
+          AND NOT new_value
+          AND actor_id = v_admin_id
+          AND workstation_id = 'R6-RESTORE-WKS'
+    ), 'Setting change must be audited';
+
+    BEGIN
+        PERFORM operations.begin_restore_verification_attempt(
+            v_admin_token,
+            'r6-restore-disabled',
+            'GestStock-Backup-20260805-150500'
+        );
+    EXCEPTION WHEN object_not_in_prerequisite_state THEN
+        v_disabled := true;
+    END;
+    ASSERT v_disabled, 'Disabled policy must block a new restore attempt in the database';
+
+    PERFORM operations.update_restore_verification_setting(v_admin_token, true);
+    ASSERT (operations.get_restore_verification_setting(v_admin_token) ->> 'enabled')::boolean,
+        'Administrator must be able to re-enable restore verification';
+
+    v_denied := false;
     BEGIN
         PERFORM operations.begin_restore_verification_attempt(
             v_cashier_token,
@@ -80,7 +120,7 @@ BEGIN
 
     ASSERT v_started ->> 'status' = 'STARTED', 'First restore verification must start';
     ASSERT NOT (v_started ->> 'is_replay')::boolean, 'First restore verification is not replay';
-    ASSERT v_started ->> 'current_schema_version' = '20260805150500',
+    ASSERT v_started ->> 'current_schema_version' = '20260805151000',
         'Restore verification must expose the current database schema version';
 
     v_replay := operations.begin_restore_verification_attempt(
@@ -121,7 +161,7 @@ BEGIN
     v_result := jsonb_build_object(
         'requestId', 'r6-restore-0001',
         'bundleIdentifier', 'GestStock-Backup-20260805-150500',
-        'schemaVersion', '20260805150500',
+        'schemaVersion', '20260805151000',
         'postgresMajorVersion', 18,
         'temporaryDatabaseCleaned', true,
         'journalBalanced', true,
@@ -176,19 +216,44 @@ BEGIN
         'operations.complete_restore_verification_attempt(text,bigint,boolean,text,jsonb)',
         'EXECUTE'
     ), 'Runtime must execute the guarded restore-verification completion function';
+    ASSERT has_function_privilege(
+        'stockiha_runtime',
+        'operations.get_restore_verification_setting(text)',
+        'EXECUTE'
+    ), 'Runtime must execute the guarded setting read function';
+    ASSERT has_function_privilege(
+        'stockiha_runtime',
+        'operations.update_restore_verification_setting(text,boolean)',
+        'EXECUTE'
+    ), 'Runtime must execute the guarded setting update function';
     ASSERT NOT has_table_privilege(
         'stockiha_runtime',
         'operations.recovery_attempts',
         'SELECT,INSERT,UPDATE,DELETE'
     ), 'Runtime must not access recovery audit rows directly';
+    ASSERT NOT has_table_privilege(
+        'stockiha_runtime',
+        'operations.recovery_settings',
+        'SELECT,INSERT,UPDATE,DELETE'
+    ), 'Runtime must not access recovery settings directly';
     ASSERT has_table_privilege(
         'stockiha_backup',
         'operations.recovery_attempts',
         'SELECT'
-    ), 'Backup role must include restore-verification audit in a backup';
+    ), 'Backup role must include restore-verification audit';
+    ASSERT has_table_privilege(
+        'stockiha_backup',
+        'operations.recovery_settings',
+        'SELECT'
+    ), 'Backup role must include recovery settings';
+    ASSERT has_table_privilege(
+        'stockiha_backup',
+        'operations.recovery_setting_audit',
+        'SELECT'
+    ), 'Backup role must include recovery setting audit';
     ASSERT NOT has_table_privilege(
         'stockiha_backup',
-        'operations.recovery_attempts',
+        'operations.recovery_setting_audit',
         'INSERT,UPDATE,DELETE'
     ), 'Backup role must remain read-only';
 END;
