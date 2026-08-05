@@ -51,6 +51,11 @@ sqlx = { version = "0.8.6", default-features = false, features = [
     "time",
     "json",
 ] }
+# R6-002 uses Tokio's blocking-task boundary for the PostgreSQL `pg_restore`
+# child process while keeping database creation, reconciliation, and cleanup
+# asynchronous. This is the same runtime selected by SQLx/Tauri; promoting the
+# already-resolved crate adds no second runtime.
+tokio = { version = "1", features = ["rt"] }
 # S1-001: exact decimal type for every authoritative money/quantity/cost/
 # debit/credit value (final-architecture.md section 3.D-ter — never f32/f64).
 # `serde` support is enabled because the domain value types derive
