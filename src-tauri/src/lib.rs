@@ -55,6 +55,8 @@ pub fn run() {
             commands::opening_state::validate_opening_state_package,
             commands::opening_state::approve_opening_state_package,
             commands::opening_state::get_opening_state_package,
+            commands::opening_state_lifecycle::get_opening_state_onboarding_status,
+            commands::opening_state_lifecycle::set_opening_state_onboarding_choice,
             commands::recovery::create_operator_backup,
             commands::recovery::validate_operator_backup,
             commands::setup::get_setup_status,
