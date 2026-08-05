@@ -17,6 +17,17 @@ fn validate_request_id(request_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_bundle_path(bundle_path: &str) -> Result<(), String> {
+    let bundle_path = bundle_path.trim();
+    if bundle_path.is_empty() || bundle_path.len() > PATH_MAX_LEN {
+        return Err("bundlePath is empty or too long".to_string());
+    }
+    if bundle_path.contains('\0') {
+        return Err("bundlePath contains a NUL character".to_string());
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CreateOperatorBackupRequest {
@@ -39,15 +50,27 @@ pub(crate) struct ValidateOperatorBackupRequest {
 impl ValidateOperatorBackupRequest {
     pub(crate) fn validate(&self) -> Result<(), String> {
         validate_request_id(&self.request_id)?;
+        validate_bundle_path(&self.bundle_path)
+    }
+}
 
-        let bundle_path = self.bundle_path.trim();
-        if bundle_path.is_empty() || bundle_path.len() > PATH_MAX_LEN {
-            return Err("bundlePath is empty or too long".to_string());
-        }
-        if bundle_path.contains('\0') {
-            return Err("bundlePath contains a NUL character".to_string());
-        }
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct VerifyOperatorBackupRestoreRequest {
+    pub(crate) request_id: String,
+    pub(crate) bundle_path: String,
+    pub(crate) confirmed: bool,
+}
 
+impl VerifyOperatorBackupRestoreRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_request_id(&self.request_id)?;
+        validate_bundle_path(&self.bundle_path)?;
+        if !self.confirmed {
+            return Err(
+                "temporary restore verification requires explicit confirmation".to_string(),
+            );
+        }
         Ok(())
     }
 }
@@ -73,6 +96,38 @@ pub(crate) struct OperatorBackupValidationResult {
 /// Neither result exposes a credential, connection string, process output, or
 /// unrestricted filesystem path.
 pub(crate) type OperatorBackupCreationResult = OperatorBackupValidationResult;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RestoreControlTotals {
+    pub(crate) schema_count: i64,
+    pub(crate) table_count: i64,
+    pub(crate) user_count: i64,
+    pub(crate) product_count: i64,
+    pub(crate) customer_count: i64,
+    pub(crate) supplier_count: i64,
+    pub(crate) inventory_position_count: i64,
+    pub(crate) inventory_movement_count: i64,
+    pub(crate) cash_sale_count: i64,
+    pub(crate) journal_count: i64,
+    pub(crate) journal_debit_total: String,
+    pub(crate) journal_credit_total: String,
+    pub(crate) customer_exposure_total: String,
+    pub(crate) supplier_outstanding_total: String,
+    pub(crate) opening_state_application_count: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OperatorRestoreVerificationResult {
+    pub(crate) request_id: String,
+    pub(crate) bundle_identifier: String,
+    pub(crate) schema_version: String,
+    pub(crate) postgres_major_version: u32,
+    pub(crate) temporary_database_cleaned: bool,
+    pub(crate) journal_balanced: bool,
+    pub(crate) control_totals: RestoreControlTotals,
+}
 
 #[cfg(test)]
 mod tests {
@@ -100,7 +155,23 @@ mod tests {
     }
 
     #[test]
-    fn rejects_short_request_id_for_both_operations() {
+    fn restore_verification_requires_explicit_confirmation() {
+        let request = VerifyOperatorBackupRestoreRequest {
+            request_id: "restore-20260805-001".to_string(),
+            bundle_path: r"C:\Stockiha Backups\GestStock-Backup-20260805-150500".to_string(),
+            confirmed: false,
+        };
+        assert!(request.validate().is_err());
+        assert!(VerifyOperatorBackupRestoreRequest {
+            confirmed: true,
+            ..request
+        }
+        .validate()
+        .is_ok());
+    }
+
+    #[test]
+    fn rejects_short_request_id_for_all_operations() {
         assert!(CreateOperatorBackupRequest {
             request_id: "short".to_string(),
         }
@@ -110,6 +181,14 @@ mod tests {
         let mut request = valid_validation_request();
         request.request_id = "short".to_string();
         assert!(request.validate().is_err());
+
+        assert!(VerifyOperatorBackupRestoreRequest {
+            request_id: "short".to_string(),
+            bundle_path: request.bundle_path,
+            confirmed: true,
+        }
+        .validate()
+        .is_err());
     }
 
     #[test]
@@ -120,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn result_serializes_with_camel_case_wire_names() {
+    fn validation_result_serializes_with_camel_case_wire_names() {
         let result = OperatorBackupValidationResult {
             request_id: "validate-20260803-001".to_string(),
             bundle_identifier: "GestStock-Backup-20260803-190000".to_string(),
@@ -140,5 +219,39 @@ mod tests {
         assert!(json.contains("\"bundleIdentifier\""));
         assert!(json.contains("\"schemaCompatible\":true"));
         assert!(!json.contains("bundle_identifier"));
+    }
+
+    #[test]
+    fn restore_result_contains_no_target_or_secret_fields() {
+        let result = OperatorRestoreVerificationResult {
+            request_id: "restore-20260805-001".to_string(),
+            bundle_identifier: "GestStock-Backup-20260805-150500".to_string(),
+            schema_version: "20260805150500".to_string(),
+            postgres_major_version: 18,
+            temporary_database_cleaned: true,
+            journal_balanced: true,
+            control_totals: RestoreControlTotals {
+                schema_count: 12,
+                table_count: 42,
+                user_count: 1,
+                product_count: 0,
+                customer_count: 0,
+                supplier_count: 0,
+                inventory_position_count: 0,
+                inventory_movement_count: 0,
+                cash_sale_count: 0,
+                journal_count: 0,
+                journal_debit_total: "0".to_string(),
+                journal_credit_total: "0".to_string(),
+                customer_exposure_total: "0".to_string(),
+                supplier_outstanding_total: "0".to_string(),
+                opening_state_application_count: 0,
+            },
+        };
+        let value = serde_json::to_value(result).unwrap();
+        assert_eq!(value["temporaryDatabaseCleaned"], true);
+        assert!(value.get("temporaryDatabaseName").is_none());
+        assert!(value.get("databaseUrl").is_none());
+        assert!(value.get("credential").is_none());
     }
 }

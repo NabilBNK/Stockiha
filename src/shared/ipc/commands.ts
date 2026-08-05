@@ -57,8 +57,12 @@ export const COMMANDS = {
   GET_OPENING_STATE_APPLICATION_CONTEXT: 'get_opening_state_application_context',
   UPDATE_OPENING_STATE_APPLICATION_SETTING: 'update_opening_state_application_setting',
   APPLY_OPENING_STATE: 'apply_opening_state',
+  // R6 — backup creation, validation, and temporary restore verification
+  GET_RESTORE_VERIFICATION_SETTING: 'get_restore_verification_setting',
+  UPDATE_RESTORE_VERIFICATION_SETTING: 'update_restore_verification_setting',
   CREATE_OPERATOR_BACKUP: 'create_operator_backup',
   VALIDATE_OPERATOR_BACKUP: 'validate_operator_backup',
+  VERIFY_OPERATOR_BACKUP_RESTORE: 'verify_operator_backup_restore',
   CONFIRM_CASH_SALE: 'confirm_cash_sale',
   GET_SALE_DOCUMENT: 'get_sale_document',
   LIST_SALE_LINES: 'list_sale_lines',

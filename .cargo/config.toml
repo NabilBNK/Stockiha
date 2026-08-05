@@ -1,0 +1,8 @@
+# Stockiha's infrastructure proof tests intentionally exercise child-process
+# environment boundaries. Rust's default parallel test harness can otherwise
+# let one fake-process failure scenario leak its temporary process-wide test
+# environment into another proof. Serial execution keeps those proofs
+# deterministic in CI and on developer machines without changing production
+# process behavior.
+[env]
+RUST_TEST_THREADS = { value = "1", force = true }
