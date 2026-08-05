@@ -1,8 +1,8 @@
+use serde_json::Value as JsonValue;
+use sqlx::query_scalar;
 use tauri::{AppHandle, Manager, State};
 
-use crate::application::recovery::{
-    self, RestoreVerificationAttempt, ValidationAttempt,
-};
+use crate::application::recovery::{self, RestoreVerificationAttempt, ValidationAttempt};
 use crate::application::recovery_creation::{self, CreationAttempt};
 use crate::domain::recovery::{
     CreateOperatorBackupRequest, OperatorBackupCreationResult,
@@ -11,6 +11,36 @@ use crate::domain::recovery::{
 };
 use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
+
+#[tauri::command]
+pub(crate) async fn get_restore_verification_setting(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    query_scalar("SELECT operations.get_restore_verification_setting($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn update_restore_verification_setting(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    enabled: bool,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    query_scalar("SELECT operations.update_restore_verification_setting($1, $2)")
+        .bind(session_token)
+        .bind(enabled)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
+        .map_err(IpcError::from)
+}
 
 #[tauri::command]
 pub(crate) async fn create_operator_backup(
@@ -165,10 +195,6 @@ pub(crate) async fn validate_operator_backup(
             Ok(result)
         }
         Err(error) => {
-            // Preserve the original validation error for the caller. If the
-            // audit completion itself fails, the STARTED attempt remains
-            // resumable with the same request id rather than being falsely
-            // marked complete.
             let _ = recovery::complete_operator_backup_validation_failure(
                 pool,
                 &session_token,
