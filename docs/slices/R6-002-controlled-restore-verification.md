@@ -17,29 +17,45 @@ validated backup bundle
 
 This slice does **not** replace the live Stockiha database.
 
-## Authorization
+## Authorization and Policy
 
 The workflow requires the dedicated `VERIFY_BACKUP_RESTORE` permission.
 
 - `ADMIN` receives the permission.
 - A future `CEO` role receives it automatically when present.
 - `CASHIER` and ordinary operators do not receive it.
-- The runtime role can call only the guarded begin/complete functions and has no direct access to recovery audit tables.
+- The runtime role can call only guarded functions and has no direct access to recovery settings or audit tables.
+
+Temporary restore verification has a separate CEO/administrator-controlled feature setting:
+
+```text
+RESTORE_VERIFICATION_ENABLED = ON by default
+```
+
+When the setting is OFF:
+
+- new temporary restore attempts are blocked by a database trigger;
+- backup creation remains available;
+- read-only bundle validation remains available;
+- previous restore-verification evidence remains immutable and readable;
+- a retry of an already completed request can still return its historical result;
+- every setting change is audited with actor and workstation.
 
 ## Preconditions
 
-A restore verification request is valid only when:
+A new restore verification request is valid only when:
 
 1. the caller has `VERIFY_BACKUP_RESTORE`;
-2. the caller explicitly confirms the temporary-database drill;
-3. the selected folder is a canonical `GestStock-Backup-YYYYMMDD-HHMMSS` bundle;
-4. the folder is directly inside `STOCKIHA_BACKUP_ROOT`;
-5. the folder and its contents are real files/directories rather than symlinks or Windows reparse points;
-6. every manifest/checksum entry passes the existing authoritative bundle validator;
-7. application version matches the running Stockiha build;
-8. schema version matches `operations.schema_state` exactly;
-9. the bundle and installed tools use PostgreSQL major version 18;
-10. the deployer-configured `STOCKIHA_RESTORE_ADMIN_DATABASE_URL` targets the `postgres` maintenance database.
+2. restore verification is enabled by policy;
+3. the caller explicitly confirms the temporary-database drill;
+4. the selected folder is a canonical `GestStock-Backup-YYYYMMDD-HHMMSS` bundle;
+5. the folder is directly inside `STOCKIHA_BACKUP_ROOT`;
+6. the folder and its contents are real files/directories rather than symlinks or Windows reparse points;
+7. every manifest/checksum entry passes the existing authoritative bundle validator;
+8. application version matches the running Stockiha build;
+9. schema version matches `operations.schema_state` exactly;
+10. the bundle and installed tools use PostgreSQL major version 18;
+11. the deployer-configured `STOCKIHA_RESTORE_ADMIN_DATABASE_URL` targets the `postgres` maintenance database.
 
 The administrative connection configuration is resolved inside the backend. No database role, password, connection URL, executable path, or target database name crosses Tauri IPC.
 
@@ -99,7 +115,7 @@ The result never contains:
 
 The generated database must be deleted with `DROP DATABASE ... WITH (FORCE)` before success is reported.
 
-- Successful restore + successful reconciliation + successful cleanup → audited success.
+- Successful restore + reconciliation + cleanup → audited success.
 - Restore or reconciliation failure → preserve the original failure and attempt cleanup.
 - Successful restore but failed cleanup → failure; never report success while a temporary database remains.
 - A retry with the same request ID and bundle replays the immutable result.
@@ -108,14 +124,17 @@ The generated database must be deleted with `DROP DATABASE ... WITH (FORCE)` bef
 
 ## User Experience
 
-The restricted Backup and recovery Settings screen provides:
+The restricted **Backup and recovery** Settings screen provides:
 
-1. Create backup.
-2. Validate backup.
-3. Select the existing backup folder.
-4. Explicitly acknowledge temporary database creation/deletion.
-5. Run **Verify temporary restore**.
-6. Review cleanup status, journal balance, and critical control totals.
+1. Default-ON policy toggle for temporary restore verification.
+2. Create backup.
+3. Validate backup.
+4. Select the existing backup folder.
+5. Explicitly acknowledge temporary database creation/deletion.
+6. Run **Verify temporary restore**.
+7. Review cleanup status, journal balance, and critical control totals.
+
+Disabling the policy removes only the ability to start a new recovery drill. Create and Validate remain usable.
 
 Copy is provided in English, French, and Arabic with RTL support.
 
@@ -140,17 +159,23 @@ A future live replacement workflow would require a separate maintenance-mode des
 Automated verification must prove:
 
 - permission grant and operator denial;
+- setting defaults ON;
+- admin enable/disable and audited changes;
+- database enforcement while disabled;
+- backup creation and validation remain available while restore is disabled;
 - replay and request-conflict behavior;
 - actor/workstation ownership;
 - runtime table-access denial;
-- backup-role read-only audit inclusion;
+- backup-role read-only settings/audit inclusion;
 - bundle path and confirmation validation;
 - no secret or temporary target in IPC results;
-- frontend confirmation and fixed safe failure copy;
+- frontend policy control, confirmation, and fixed safe failure copy;
 - complete migration, SQL, Rust, frontend, concurrency, backup, and historical-upgrade suites remain green.
 
 One targeted Windows/Tauri recovery drill must then prove:
 
+- the default-ON policy can be turned OFF and ON through the real UI;
+- OFF blocks new restore drills without blocking Create or Validate;
 - a real R6-001 backup is selected through the application;
 - `npm run tauri dev` runs the actual UI;
 - PostgreSQL 18 `pg_restore` executes;
