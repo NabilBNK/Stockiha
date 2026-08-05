@@ -1,10 +1,13 @@
 use tauri::{AppHandle, Manager, State};
 
-use crate::application::recovery::{self, ValidationAttempt};
+use crate::application::recovery::{
+    self, RestoreVerificationAttempt, ValidationAttempt,
+};
 use crate::application::recovery_creation::{self, CreationAttempt};
 use crate::domain::recovery::{
     CreateOperatorBackupRequest, OperatorBackupCreationResult,
-    OperatorBackupValidationResult, ValidateOperatorBackupRequest,
+    OperatorBackupValidationResult, OperatorRestoreVerificationResult,
+    ValidateOperatorBackupRequest, VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
@@ -167,6 +170,73 @@ pub(crate) async fn validate_operator_backup(
             // resumable with the same request id rather than being falsely
             // marked complete.
             let _ = recovery::complete_operator_backup_validation_failure(
+                pool,
+                &session_token,
+                attempt_id,
+                &error,
+            )
+            .await;
+            Err(IpcError::from(error))
+        }
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn verify_operator_backup_restore(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: VerifyOperatorBackupRestoreRequest,
+) -> Result<OperatorRestoreVerificationResult, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let attempt = recovery::begin_operator_restore_verification(pool, &session_token, request)
+        .await
+        .map_err(IpcError::from)?;
+
+    let (
+        attempt_id,
+        request_id,
+        bundle_path,
+        bundle_identifier,
+        current_schema_version,
+    ) = match attempt {
+        RestoreVerificationAttempt::Replay(result) => return Ok(result),
+        RestoreVerificationAttempt::Run {
+            attempt_id,
+            request_id,
+            bundle_path,
+            bundle_identifier,
+            current_schema_version,
+        } => (
+            attempt_id,
+            request_id,
+            bundle_path,
+            bundle_identifier,
+            current_schema_version,
+        ),
+    };
+
+    let verification = recovery::verify_operator_backup_restore_runtime(
+        request_id,
+        bundle_path,
+        bundle_identifier,
+        current_schema_version,
+    )
+    .await;
+
+    match verification {
+        Ok(result) => {
+            recovery::complete_operator_restore_verification_success(
+                pool,
+                &session_token,
+                attempt_id,
+                &result,
+            )
+            .await
+            .map_err(IpcError::from)?;
+            Ok(result)
+        }
+        Err(error) => {
+            let _ = recovery::complete_operator_restore_verification_failure(
                 pool,
                 &session_token,
                 attempt_id,
