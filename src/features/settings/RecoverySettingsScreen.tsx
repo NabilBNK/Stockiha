@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Banner, Button, TextField } from '../../shared/components';
 import { codeForError, useErrorText } from '../../shared/hooks/useErrorText';
@@ -9,6 +9,8 @@ import type {
 } from '../../shared/ipc/recoveryDto';
 import {
   createOperatorBackup,
+  getRestoreVerificationSetting,
+  updateRestoreVerificationSetting,
   validateOperatorBackup,
   verifyOperatorBackupRestore,
 } from '../../shared/ipc/recoveryGateway';
@@ -17,13 +19,16 @@ interface Props {
   sessionToken: string;
 }
 
-type BusyAction = 'create' | 'validate' | 'restore' | null;
+type BusyAction = 'setting' | 'create' | 'validate' | 'restore' | null;
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
     title: 'Backup and recovery',
     subtitle: 'Create, validate, or verify recovery from a Stockiha backup',
-    createHelp: 'Creates a new verified bundle inside the configured backup directory. The destination, PostgreSQL role, credential, and pg_dump executable are resolved by the backend.',
+    setting: 'Temporary restore verification enabled',
+    settingHelp: 'When disabled, new temporary restore drills are blocked. Backup creation and read-only validation remain available.',
+    settingUpdated: 'Restore-verification policy updated.',
+    createHelp: 'Creates a verified bundle inside the configured backup directory. The destination, PostgreSQL role, credential, and pg_dump executable are resolved by the backend.',
     create: 'Create backup',
     created: 'Backup created and verified.',
     creationFailed: 'The backup could not be created. No partial bundle was published.',
@@ -72,7 +77,10 @@ const COPY: Record<Locale, Record<string, string>> = {
   fr: {
     title: 'Sauvegarde et récupération',
     subtitle: 'Créer, valider ou vérifier la récupération d’une sauvegarde Stockiha',
-    createHelp: 'Crée une nouvelle sauvegarde vérifiée dans le répertoire configuré. La destination, le rôle PostgreSQL, le secret et pg_dump sont résolus par le backend.',
+    setting: 'Vérification de restauration temporaire activée',
+    settingHelp: 'Lorsqu’elle est désactivée, les nouveaux tests de restauration sont bloqués. La création et la validation restent disponibles.',
+    settingUpdated: 'Politique de vérification de restauration mise à jour.',
+    createHelp: 'Crée une sauvegarde vérifiée dans le répertoire configuré. La destination, le rôle PostgreSQL, le secret et pg_dump sont résolus par le backend.',
     create: 'Créer une sauvegarde',
     created: 'Sauvegarde créée et vérifiée.',
     creationFailed: 'La sauvegarde n’a pas pu être créée. Aucun dossier partiel n’a été publié.',
@@ -121,6 +129,9 @@ const COPY: Record<Locale, Record<string, string>> = {
   ar: {
     title: 'النسخ الاحتياطي والاسترجاع',
     subtitle: 'إنشاء نسخة Stockiha أو التحقق منها أو اختبار استرجاعها',
+    setting: 'تفعيل اختبار الاسترجاع المؤقت',
+    settingHelp: 'عند التعطيل يتم منع اختبارات الاسترجاع الجديدة، بينما يبقى إنشاء النسخ والتحقق منها متاحاً.',
+    settingUpdated: 'تم تحديث سياسة اختبار الاسترجاع.',
     createHelp: 'ينشئ نسخة جديدة ويتم التحقق منها داخل مجلد النسخ المضبوط. يحدد النظام المسار ودور PostgreSQL وكلمة السر وpg_dump داخلياً.',
     create: 'إنشاء نسخة احتياطية',
     created: 'تم إنشاء النسخة الاحتياطية والتحقق منها.',
@@ -176,10 +187,7 @@ function nextRequestId(operation: 'create' | 'validate' | 'restore'): string {
   return `backup-${operation}-${Date.now()}-${requestSequence}`;
 }
 
-function compatibilityLabel(
-  compatible: boolean,
-  text: Record<string, string>,
-): string {
+function compatibilityLabel(compatible: boolean, text: Record<string, string>): string {
   return compatible ? text.compatible : text.incompatible;
 }
 
@@ -188,6 +196,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   const text = COPY[locale];
   const errorText = useErrorText();
   const [bundlePath, setBundlePath] = useState('');
+  const [restoreEnabled, setRestoreEnabled] = useState<boolean | null>(null);
   const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [error, setError] = useState<string | null>(null);
@@ -195,11 +204,42 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   const [result, setResult] = useState<OperatorBackupValidationResult | null>(null);
   const [restoreResult, setRestoreResult] = useState<OperatorRestoreVerificationResult | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    void getRestoreVerificationSetting(sessionToken)
+      .then((setting) => {
+        if (active) setRestoreEnabled(setting.enabled);
+      })
+      .catch((settingError) => {
+        if (active) setError(errorText(settingError));
+      });
+    return () => {
+      active = false;
+    };
+  }, [errorText, sessionToken]);
+
   function resetMessages() {
     setError(null);
     setFeedback(null);
     setResult(null);
     setRestoreResult(null);
+  }
+
+  async function changeRestoreSetting(enabled: boolean) {
+    if (busy || restoreEnabled === null) return;
+    setBusy('setting');
+    setError(null);
+    setFeedback(null);
+    try {
+      const updated = await updateRestoreVerificationSetting(sessionToken, enabled);
+      setRestoreEnabled(updated.enabled);
+      if (!updated.enabled) setRestoreConfirmed(false);
+      setFeedback(text.settingUpdated);
+    } catch (settingError) {
+      setError(errorText(settingError));
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function create() {
@@ -246,7 +286,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   }
 
   async function verifyRestore() {
-    if (!bundlePath.trim() || !restoreConfirmed || busy) return;
+    if (!bundlePath.trim() || !restoreConfirmed || !restoreEnabled || busy) return;
     setBusy('restore');
     resetMessages();
     try {
@@ -279,6 +319,18 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
         {feedback ? <Banner tone="success">{feedback}</Banner> : null}
 
         <div className="sk-stack">
+          <label className="sk-checkbox-row">
+            <input
+              type="checkbox"
+              aria-label={text.setting}
+              checked={restoreEnabled === true}
+              disabled={restoreEnabled === null || busy !== null}
+              onChange={(event) => void changeRestoreSetting(event.target.checked)}
+            />
+            <span>{text.setting}</span>
+          </label>
+          <small className="sk-field-help">{text.settingHelp}</small>
+
           <div>
             <Button
               type="button"
@@ -320,7 +372,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
             <input
               type="checkbox"
               checked={restoreConfirmed}
-              disabled={!bundlePath.trim() || busy !== null}
+              disabled={!bundlePath.trim() || !restoreEnabled || busy !== null}
               onChange={(event) => setRestoreConfirmed(event.target.checked)}
             />
             <span>{text.restoreConfirm}</span>
@@ -330,7 +382,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
               type="button"
               variant="secondary"
               loading={busy === 'restore'}
-              disabled={!bundlePath.trim() || !restoreConfirmed || busy !== null}
+              disabled={!bundlePath.trim() || !restoreConfirmed || !restoreEnabled || busy !== null}
               onClick={() => void verifyRestore()}
             >
               {text.restore}
@@ -341,36 +393,12 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
 
         {result ? (
           <dl className="sk-details-grid" data-testid="backup-result">
-            <div>
-              <dt>{text.bundle}</dt>
-              <dd>{result.bundleIdentifier}</dd>
-            </div>
-            <div>
-              <dt>{text.application}</dt>
-              <dd>
-                {result.applicationVersion} · {compatibilityLabel(result.applicationCompatible, text)}
-              </dd>
-            </div>
-            <div>
-              <dt>{text.schema}</dt>
-              <dd>
-                {result.schemaVersion} · {compatibilityLabel(result.schemaCompatible, text)}
-              </dd>
-            </div>
-            <div>
-              <dt>{text.postgres}</dt>
-              <dd>
-                {result.postgresMajorVersion} · {compatibilityLabel(result.postgresCompatible, text)}
-              </dd>
-            </div>
-            <div>
-              <dt>{text.files}</dt>
-              <dd>{new Intl.NumberFormat(locale).format(result.fileCount)}</dd>
-            </div>
-            <div>
-              <dt>{text.bytes}</dt>
-              <dd>{new Intl.NumberFormat(locale).format(result.totalBytes)}</dd>
-            </div>
+            <div><dt>{text.bundle}</dt><dd>{result.bundleIdentifier}</dd></div>
+            <div><dt>{text.application}</dt><dd>{result.applicationVersion} · {compatibilityLabel(result.applicationCompatible, text)}</dd></div>
+            <div><dt>{text.schema}</dt><dd>{result.schemaVersion} · {compatibilityLabel(result.schemaCompatible, text)}</dd></div>
+            <div><dt>{text.postgres}</dt><dd>{result.postgresMajorVersion} · {compatibilityLabel(result.postgresCompatible, text)}</dd></div>
+            <div><dt>{text.files}</dt><dd>{new Intl.NumberFormat(locale).format(result.fileCount)}</dd></div>
+            <div><dt>{text.bytes}</dt><dd>{new Intl.NumberFormat(locale).format(result.totalBytes)}</dd></div>
           </dl>
         ) : null}
 
