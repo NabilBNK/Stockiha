@@ -60,6 +60,8 @@ pub fn run() {
             commands::opening_state_application::get_opening_state_application_context,
             commands::opening_state_application::update_opening_state_application_setting,
             commands::opening_state_application::apply_opening_state,
+            commands::recovery::get_restore_verification_setting,
+            commands::recovery::update_restore_verification_setting,
             commands::recovery::create_operator_backup,
             commands::recovery::validate_operator_backup,
             commands::recovery::verify_operator_backup_restore,
