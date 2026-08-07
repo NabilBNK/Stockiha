@@ -159,4 +159,3 @@ pub(crate) async fn get_historical_trade_analytics(
         .await
         .map_err(IpcError::from)
 }
-

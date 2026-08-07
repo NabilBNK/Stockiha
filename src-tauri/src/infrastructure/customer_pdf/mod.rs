@@ -78,10 +78,14 @@ impl From<std::io::Error> for CustomerPdfError {
     }
 }
 
-pub(crate) fn render_customer_document(payload: &Value) -> Result<RenderedCustomerPdf, CustomerPdfError> {
+pub(crate) fn render_customer_document(
+    payload: &Value,
+) -> Result<RenderedCustomerPdf, CustomerPdfError> {
     let document_kind = required_string(payload, "document_kind")?;
     if document_kind != "CREDIT_SALE" && document_kind != "CUSTOMER_PAYMENT" {
-        return Err(CustomerPdfError::Validation("unsupported customer document kind"));
+        return Err(CustomerPdfError::Validation(
+            "unsupported customer document kind",
+        ));
     }
 
     let document_number = required_string(payload, "document_number")?;
@@ -102,10 +106,9 @@ pub(crate) fn render_customer_document(payload: &Value) -> Result<RenderedCustom
             let subtotal = required_string(payload, "subtotal")?;
             let total = required_string(payload, "total_amount")?;
             let due_date = required_string(payload, "due_date")?;
-            let rows = payload
-                .get("lines")
-                .and_then(Value::as_array)
-                .ok_or(CustomerPdfError::Validation("credit sale lines are missing"))?;
+            let rows = payload.get("lines").and_then(Value::as_array).ok_or(
+                CustomerPdfError::Validation("credit sale lines are missing"),
+            )?;
             if rows.is_empty() {
                 return Err(CustomerPdfError::Validation("credit sale has no lines"));
             }
@@ -135,12 +138,13 @@ pub(crate) fn render_customer_document(payload: &Value) -> Result<RenderedCustom
             let total = required_string(payload, "amount")?;
             let method = required_string(payload, "payment_method")?;
             let note = optional_string(payload.get("note"));
-            let rows = payload
-                .get("allocations")
-                .and_then(Value::as_array)
-                .ok_or(CustomerPdfError::Validation("payment allocations are missing"))?;
+            let rows = payload.get("allocations").and_then(Value::as_array).ok_or(
+                CustomerPdfError::Validation("payment allocations are missing"),
+            )?;
             if rows.is_empty() {
-                return Err(CustomerPdfError::Validation("customer payment has no allocations"));
+                return Err(CustomerPdfError::Validation(
+                    "customer payment has no allocations",
+                ));
             }
             let mut rendered = String::new();
             for row in rows {
@@ -186,10 +190,15 @@ pub(crate) fn render_customer_document(payload: &Value) -> Result<RenderedCustom
 
     let main = format!("{}\n#render-customer-document({})\n", TEMPLATE, dict);
     let world = CustomerPdfWorld::new(main);
-    let Warned { output, warnings: _ } = typst::compile::<PagedDocument>(&world);
+    let Warned {
+        output,
+        warnings: _,
+    } = typst::compile::<PagedDocument>(&world);
     let document = output.map_err(|diags| CustomerPdfError::Render(render_diagnostics(&diags)))?;
     if document.pages().is_empty() {
-        return Err(CustomerPdfError::Render("document produced zero pages".to_string()));
+        return Err(CustomerPdfError::Render(
+            "document produced zero pages".to_string(),
+        ));
     }
 
     let bytes = typst_pdf::pdf(&document, &PdfOptions::default())
@@ -215,13 +224,17 @@ pub(crate) fn write_pdf_atomic(dest: &Path, bytes: &[u8]) -> Result<(), Customer
         if existing == bytes {
             return Ok(());
         }
-        return Err(CustomerPdfError::Validation("generated destination already exists with different bytes"));
+        return Err(CustomerPdfError::Validation(
+            "generated destination already exists with different bytes",
+        ));
     }
 
-    let file_name = dest
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or(CustomerPdfError::Validation("generated destination has no file name"))?;
+    let file_name =
+        dest.file_name()
+            .and_then(|name| name.to_str())
+            .ok_or(CustomerPdfError::Validation(
+                "generated destination has no file name",
+            ))?;
     let tmp: PathBuf = parent.join(format!(
         ".{file_name}.tmp-{}-{}",
         std::process::id(),
@@ -252,12 +265,14 @@ pub(crate) fn write_pdf_atomic(dest: &Path, bytes: &[u8]) -> Result<(), Customer
 }
 
 fn required_string(value: &Value, key: &str) -> Result<String, CustomerPdfError> {
-    let value = value
-        .get(key)
-        .ok_or(CustomerPdfError::Validation("required document field is missing"))?;
+    let value = value.get(key).ok_or(CustomerPdfError::Validation(
+        "required document field is missing",
+    ))?;
     let result = scalar_string(Some(value))?;
     if result.trim().is_empty() {
-        return Err(CustomerPdfError::Validation("required document field is blank"));
+        return Err(CustomerPdfError::Validation(
+            "required document field is blank",
+        ));
     }
     Ok(result)
 }
@@ -268,7 +283,9 @@ fn object_required_string(
 ) -> Result<String, CustomerPdfError> {
     let result = scalar_string(object.get(key))?;
     if result.trim().is_empty() {
-        return Err(CustomerPdfError::Validation("required customer snapshot field is blank"));
+        return Err(CustomerPdfError::Validation(
+            "required customer snapshot field is blank",
+        ));
     }
     Ok(result)
 }
@@ -287,7 +304,9 @@ fn scalar_string(value: Option<&Value>) -> Result<String, CustomerPdfError> {
         Some(Value::String(value)) => Ok(value.clone()),
         Some(Value::Number(value)) => Ok(value.to_string()),
         Some(Value::Bool(value)) => Ok(value.to_string()),
-        _ => Err(CustomerPdfError::Validation("document field must be scalar")),
+        _ => Err(CustomerPdfError::Validation(
+            "document field must be scalar",
+        )),
     }
 }
 

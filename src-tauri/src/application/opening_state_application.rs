@@ -3,9 +3,8 @@ use sqlx::{query_scalar, PgPool};
 
 use crate::domain::canonical_json::payload_hash;
 use crate::domain::opening_state_application::{
-    ApplyOpeningStateRequest, OpeningStateApplicationContextResult,
-    OpeningStateApplicationResult, OpeningStateApplicationSettingResult,
-    UpdateOpeningStateApplicationSettingRequest,
+    ApplyOpeningStateRequest, OpeningStateApplicationContextResult, OpeningStateApplicationResult,
+    OpeningStateApplicationSettingResult, UpdateOpeningStateApplicationSettingRequest,
 };
 use crate::error::AppError;
 

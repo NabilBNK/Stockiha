@@ -2,11 +2,10 @@ use tauri::State;
 
 use crate::application::opening_state;
 use crate::domain::opening_state::{
-    CreateOpeningStatePackageRequest, OpeningStateApprovalResult,
-    OpeningStatePackageDataResult, OpeningStatePackageIdRequest,
-    OpeningStatePackageResult, OpeningStatePackageSummaryResult,
-    OpeningStateSettingResult, OpeningStateValidationResult,
-    ReplaceOpeningStatePackageDataRequest, UpdateOpeningStateSettingRequest,
+    CreateOpeningStatePackageRequest, OpeningStateApprovalResult, OpeningStatePackageDataResult,
+    OpeningStatePackageIdRequest, OpeningStatePackageResult, OpeningStatePackageSummaryResult,
+    OpeningStateSettingResult, OpeningStateValidationResult, ReplaceOpeningStatePackageDataRequest,
+    UpdateOpeningStateSettingRequest,
 };
 use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};

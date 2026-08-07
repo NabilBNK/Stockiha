@@ -108,7 +108,10 @@ mod tests {
         ];
 
         for status in statuses {
-            assert_eq!(CashSessionStatus::from_db_str(status.as_db_str()), Ok(status));
+            assert_eq!(
+                CashSessionStatus::from_db_str(status.as_db_str()),
+                Ok(status)
+            );
         }
 
         assert!(CashSessionStatus::Open.is_cash_operational());
@@ -130,29 +133,46 @@ mod tests {
     #[test]
     fn denomination_counts_require_unique_positive_ids_and_non_negative_quantity() {
         assert!(validate_denomination_counts(&[
-            DenominationCountInput { denomination_id: 1, quantity: 3 },
-            DenominationCountInput { denomination_id: 2, quantity: 0 },
+            DenominationCountInput {
+                denomination_id: 1,
+                quantity: 3
+            },
+            DenominationCountInput {
+                denomination_id: 2,
+                quantity: 0
+            },
         ])
         .is_ok());
 
-        assert_eq!(validate_denomination_counts(&[]), Err(DomainError::InvalidIdentifier));
         assert_eq!(
-            validate_denomination_counts(&[
-                DenominationCountInput { denomination_id: 1, quantity: 1 },
-                DenominationCountInput { denomination_id: 1, quantity: 2 },
-            ]),
+            validate_denomination_counts(&[]),
             Err(DomainError::InvalidIdentifier)
         );
         assert_eq!(
             validate_denomination_counts(&[
-                DenominationCountInput { denomination_id: 0, quantity: 1 },
+                DenominationCountInput {
+                    denomination_id: 1,
+                    quantity: 1
+                },
+                DenominationCountInput {
+                    denomination_id: 1,
+                    quantity: 2
+                },
             ]),
             Err(DomainError::InvalidIdentifier)
         );
         assert_eq!(
-            validate_denomination_counts(&[
-                DenominationCountInput { denomination_id: 1, quantity: -1 },
-            ]),
+            validate_denomination_counts(&[DenominationCountInput {
+                denomination_id: 0,
+                quantity: 1
+            },]),
+            Err(DomainError::InvalidIdentifier)
+        );
+        assert_eq!(
+            validate_denomination_counts(&[DenominationCountInput {
+                denomination_id: 1,
+                quantity: -1
+            },]),
             Err(DomainError::NegativeAmount)
         );
     }

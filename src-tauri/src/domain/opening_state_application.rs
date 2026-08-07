@@ -97,7 +97,9 @@ impl OpeningStateApplicationMappingInput {
             }
         }
         if self.customer_id.is_none() && self.supplier_id.is_none() && self.account_code.is_none() {
-            return Err("a mapping must select a customer, supplier, or controlled account".to_string());
+            return Err(
+                "a mapping must select a customer, supplier, or controlled account".to_string(),
+            );
         }
         Ok(())
     }
@@ -115,7 +117,10 @@ pub(crate) struct ApplyOpeningStateRequest {
 impl ApplyOpeningStateRequest {
     pub(crate) fn validate(&self) -> Result<(), String> {
         let request_id = self.request_id.trim();
-        if request_id.len() < 8 || request_id.len() > 128 || request_id.chars().any(char::is_control) {
+        if request_id.len() < 8
+            || request_id.len() > 128
+            || request_id.chars().any(char::is_control)
+        {
             return Err("requestId is invalid".to_string());
         }
         if self.package_id <= 0 || self.fiscal_period_id <= 0 {

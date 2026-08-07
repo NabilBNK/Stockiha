@@ -154,7 +154,9 @@ impl OpeningStateLineInput {
             || description.len() > DESCRIPTION_MAX_LEN
             || description.chars().any(char::is_control)
         {
-            return Err("description is empty, too long, or contains control characters".to_string());
+            return Err(
+                "description is empty, too long, or contains control characters".to_string(),
+            );
         }
 
         if self.amount_dzd < 0 {

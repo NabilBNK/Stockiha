@@ -29,12 +29,11 @@ pub(crate) async fn get_historical_finance_setting(
     pool: &PgPool,
     session_token: &str,
 ) -> Result<HistoricalFinanceSettingResult, AppError> {
-    let result: JsonValue =
-        query_scalar("SELECT onboarding.get_historical_finance_setting($1)")
-            .bind(session_token)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
+    let result: JsonValue = query_scalar("SELECT onboarding.get_historical_finance_setting($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "historical finance setting")
 }
@@ -69,16 +68,15 @@ pub(crate) async fn create_historical_finance_batch(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    let result: JsonValue = query_scalar(
-        "SELECT onboarding.create_historical_finance_batch($1, $2, $3, $4)",
-    )
-    .bind(session_token)
-    .bind(request.request_id.trim())
-    .bind(source_type)
-    .bind(original_filename)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.create_historical_finance_batch($1, $2, $3, $4)")
+            .bind(session_token)
+            .bind(request.request_id.trim())
+            .bind(source_type)
+            .bind(original_filename)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "historical finance batch")
 }
@@ -129,16 +127,15 @@ pub(crate) async fn replace_historical_finance_batch_data(
         })
         .collect::<Vec<_>>();
 
-    let result: JsonValue = query_scalar(
-        "SELECT onboarding.replace_historical_finance_batch_data($1, $2, $3, $4)",
-    )
-    .bind(session_token)
-    .bind(request.batch_id)
-    .bind(JsonValue::Array(rows))
-    .bind(JsonValue::Array(balances))
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.replace_historical_finance_batch_data($1, $2, $3, $4)")
+            .bind(session_token)
+            .bind(request.batch_id)
+            .bind(JsonValue::Array(rows))
+            .bind(JsonValue::Array(balances))
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "historical finance batch data result")
 }
@@ -208,18 +205,21 @@ pub(crate) async fn create_historical_trade_batch(
     request.validate().map_err(validation_error)?;
 
     let original_filename = request.original_filename.trim();
-    let content_hash = request.content_hash.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let content_hash = request
+        .content_hash
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
 
-    let result: JsonValue = query_scalar(
-        "SELECT onboarding.create_historical_trade_batch($1, $2, $3, $4)",
-    )
-    .bind(session_token)
-    .bind(request.request_id.trim())
-    .bind(original_filename)
-    .bind(content_hash)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.create_historical_trade_batch($1, $2, $3, $4)")
+            .bind(session_token)
+            .bind(request.request_id.trim())
+            .bind(original_filename)
+            .bind(content_hash)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "historical trade batch")
 }
@@ -266,15 +266,14 @@ pub(crate) async fn replace_historical_trade_batch_data(
         })
         .collect::<Vec<_>>();
 
-    let result: JsonValue = query_scalar(
-        "SELECT onboarding.replace_historical_trade_batch_data($1, $2, $3)",
-    )
-    .bind(session_token)
-    .bind(request.batch_id)
-    .bind(JsonValue::Array(transactions))
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.replace_historical_trade_batch_data($1, $2, $3)")
+            .bind(session_token)
+            .bind(request.batch_id)
+            .bind(JsonValue::Array(transactions))
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "historical trade batch data result")
 }
@@ -335,4 +334,3 @@ pub(crate) async fn get_historical_trade_analytics(
 
     Ok(result)
 }
-

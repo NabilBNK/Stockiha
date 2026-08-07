@@ -56,11 +56,17 @@ fn validate_request_id(request_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_optional_text(value: &Option<String>, field: &str, max_len: usize) -> Result<(), String> {
+fn validate_optional_text(
+    value: &Option<String>,
+    field: &str,
+    max_len: usize,
+) -> Result<(), String> {
     if let Some(value) = value {
         let value = value.trim();
         if value.is_empty() || value.len() > max_len || value.chars().any(char::is_control) {
-            return Err(format!("{field} is empty, too long, or contains control characters"));
+            return Err(format!(
+                "{field} is empty, too long, or contains control characters"
+            ));
         }
     }
     Ok(())
@@ -81,8 +87,8 @@ pub(crate) fn parse_iso_date(value: &str, field: &str) -> Result<Date, String> {
     let day: u8 = parts[2]
         .parse()
         .map_err(|_| format!("{field} has an invalid day"))?;
-    let month = Month::try_from(month_number)
-        .map_err(|_| format!("{field} has an invalid month"))?;
+    let month =
+        Month::try_from(month_number).map_err(|_| format!("{field} has an invalid month"))?;
 
     Date::from_calendar_date(year, month, day)
         .map_err(|_| format!("{field} is not a valid calendar date"))
@@ -221,13 +227,21 @@ impl HistoricalFinanceRowInput {
             return Err("reviewStatus is unsupported".to_string());
         }
 
-        validate_optional_text(&self.expense_category, "expenseCategory", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(
+            &self.expense_category,
+            "expenseCategory",
+            OPTIONAL_TEXT_MAX_LEN,
+        )?;
         validate_optional_text(
             &self.supplier_fournisseur,
             "supplierFournisseur",
             OPTIONAL_TEXT_MAX_LEN,
         )?;
-        validate_optional_text(&self.customer_client, "customerClient", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(
+            &self.customer_client,
+            "customerClient",
+            OPTIONAL_TEXT_MAX_LEN,
+        )?;
         validate_optional_text(&self.notes, "notes", OPTIONAL_TEXT_MAX_LEN)?;
 
         Ok(())
@@ -273,7 +287,11 @@ impl HistoricalFinanceBalanceInput {
             "supplierFournisseur",
             OPTIONAL_TEXT_MAX_LEN,
         )?;
-        validate_optional_text(&self.customer_client, "customerClient", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(
+            &self.customer_client,
+            "customerClient",
+            OPTIONAL_TEXT_MAX_LEN,
+        )?;
         validate_optional_text(&self.notes, "notes", OPTIONAL_TEXT_MAX_LEN)?;
 
         Ok(())
@@ -428,7 +446,9 @@ impl CreateHistoricalTradeBatchRequest {
         }
         if let Some(hash) = &self.content_hash {
             let hash = hash.trim();
-            if !hash.is_empty() && (hash.len() != 64 || hash.chars().any(|c| !c.is_ascii_hexdigit())) {
+            if !hash.is_empty()
+                && (hash.len() != 64 || hash.chars().any(|c| !c.is_ascii_hexdigit()))
+            {
                 return Err("contentHash must be a valid SHA-256 hex string".to_string());
             }
         }
@@ -621,7 +641,6 @@ impl HistoricalTradeAnalyticsRequest {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {

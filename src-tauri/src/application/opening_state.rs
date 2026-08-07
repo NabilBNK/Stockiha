@@ -3,11 +3,10 @@ use sqlx::{query_scalar, PgPool};
 
 use crate::application::parse_iso_date;
 use crate::domain::opening_state::{
-    CreateOpeningStatePackageRequest, OpeningStateApprovalResult,
-    OpeningStatePackageDataResult, OpeningStatePackageIdRequest,
-    OpeningStatePackageResult, OpeningStatePackageSummaryResult,
-    OpeningStateSettingResult, OpeningStateValidationResult,
-    ReplaceOpeningStatePackageDataRequest, UpdateOpeningStateSettingRequest,
+    CreateOpeningStatePackageRequest, OpeningStateApprovalResult, OpeningStatePackageDataResult,
+    OpeningStatePackageIdRequest, OpeningStatePackageResult, OpeningStatePackageSummaryResult,
+    OpeningStateSettingResult, OpeningStateValidationResult, ReplaceOpeningStatePackageDataRequest,
+    UpdateOpeningStateSettingRequest,
 };
 use crate::error::AppError;
 
@@ -41,13 +40,12 @@ pub(crate) async fn update_opening_state_setting(
     session_token: &str,
     request: UpdateOpeningStateSettingRequest,
 ) -> Result<OpeningStateSettingResult, AppError> {
-    let result: JsonValue =
-        query_scalar("SELECT onboarding.update_opening_state_setting($1, $2)")
-            .bind(session_token)
-            .bind(request.enabled)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
+    let result: JsonValue = query_scalar("SELECT onboarding.update_opening_state_setting($1, $2)")
+        .bind(session_token)
+        .bind(request.enabled)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "updated opening-state setting")
 }
@@ -67,17 +65,16 @@ pub(crate) async fn create_opening_state_package(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    let result: JsonValue = query_scalar(
-        "SELECT onboarding.create_opening_state_package($1, $2, $3, $4, $5)",
-    )
-    .bind(session_token)
-    .bind(request.request_id.trim())
-    .bind(source_type)
-    .bind(original_filename)
-    .bind(cutover_date)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.create_opening_state_package($1, $2, $3, $4, $5)")
+            .bind(session_token)
+            .bind(request.request_id.trim())
+            .bind(source_type)
+            .bind(original_filename)
+            .bind(cutover_date)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "opening-state package")
 }
@@ -106,15 +103,14 @@ pub(crate) async fn replace_opening_state_package_data(
         })
         .collect::<Vec<_>>();
 
-    let result: JsonValue = query_scalar(
-        "SELECT onboarding.replace_opening_state_package_data($1, $2, $3)",
-    )
-    .bind(session_token)
-    .bind(request.package_id)
-    .bind(JsonValue::Array(lines))
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.replace_opening_state_package_data($1, $2, $3)")
+            .bind(session_token)
+            .bind(request.package_id)
+            .bind(JsonValue::Array(lines))
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "opening-state package data result")
 }
@@ -144,13 +140,12 @@ pub(crate) async fn approve_opening_state_package(
 ) -> Result<OpeningStateApprovalResult, AppError> {
     request.validate().map_err(validation_error)?;
 
-    let result: JsonValue =
-        query_scalar("SELECT onboarding.approve_opening_state_package($1, $2)")
-            .bind(session_token)
-            .bind(request.package_id)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
+    let result: JsonValue = query_scalar("SELECT onboarding.approve_opening_state_package($1, $2)")
+        .bind(session_token)
+        .bind(request.package_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "opening-state approval result")
 }
@@ -162,13 +157,12 @@ pub(crate) async fn get_opening_state_package(
 ) -> Result<OpeningStatePackageSummaryResult, AppError> {
     request.validate().map_err(validation_error)?;
 
-    let result: JsonValue =
-        query_scalar("SELECT onboarding.get_opening_state_package($1, $2)")
-            .bind(session_token)
-            .bind(request.package_id)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
+    let result: JsonValue = query_scalar("SELECT onboarding.get_opening_state_package($1, $2)")
+        .bind(session_token)
+        .bind(request.package_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "opening-state package summary")
 }

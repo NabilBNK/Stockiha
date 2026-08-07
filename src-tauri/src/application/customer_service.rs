@@ -8,9 +8,11 @@ use serde_json::Value as JsonValue;
 use sqlx::{query_scalar, PgPool};
 
 fn parse_amount(value: &str, field: &str) -> Result<Decimal, AppError> {
-    value.parse::<Decimal>().map_err(|_| AppError::ValidationError {
-        diagnostic: format!("{field} is not a valid decimal amount"),
-    })
+    value
+        .parse::<Decimal>()
+        .map_err(|_| AppError::ValidationError {
+            diagnostic: format!("{field} is not a valid decimal amount"),
+        })
 }
 
 pub(crate) async fn create_customer(
@@ -107,8 +109,9 @@ pub(crate) async fn get_customer_capabilities(
         .await
         .map_err(AppError::from_posting_error)?;
 
-    serde_json::from_value(result)
-        .map_err(|error| AppError::internal(format!("Failed to parse customer capabilities: {error}")))
+    serde_json::from_value(result).map_err(|error| {
+        AppError::internal(format!("Failed to parse customer capabilities: {error}"))
+    })
 }
 
 pub(crate) async fn get_customer_credit_summary(
@@ -122,13 +125,12 @@ pub(crate) async fn get_customer_credit_summary(
         });
     }
 
-    let result: JsonValue =
-        query_scalar("SELECT receivables.get_customer_credit_summary($1, $2)")
-            .bind(session_token)
-            .bind(customer_id)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
+    let result: JsonValue = query_scalar("SELECT receivables.get_customer_credit_summary($1, $2)")
+        .bind(session_token)
+        .bind(customer_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     serde_json::from_value(result).map_err(|error| {
         AppError::internal(format!("Failed to parse customer credit summary: {error}"))

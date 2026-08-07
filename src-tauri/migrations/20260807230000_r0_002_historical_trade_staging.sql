@@ -12,11 +12,21 @@ ALTER TABLE onboarding.historical_finance_batches
     ADD COLUMN IF NOT EXISTS override_count integer NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS missing_qty_count integer NOT NULL DEFAULT 0;
 
-ALTER TABLE onboarding.historical_finance_batches
-    ADD CONSTRAINT historical_finance_batches_profile_valid
-        CHECK (import_profile IN ('GENERIC_V1', 'PAPER_BOOK_V1'));
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'onboarding.historical_finance_batches'::regclass
+          AND conname = 'historical_finance_batches_profile_valid'
+    ) THEN
+        ALTER TABLE onboarding.historical_finance_batches
+            ADD CONSTRAINT historical_finance_batches_profile_valid
+                CHECK (import_profile IN ('GENERIC_V1', 'PAPER_BOOK_V1'));
+    END IF;
+END;
+$$;
 
-CREATE TABLE onboarding.historical_trade_transactions (
+CREATE TABLE IF NOT EXISTS onboarding.historical_trade_transactions (
     id                           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     batch_id                     bigint NOT NULL REFERENCES onboarding.historical_finance_batches(id) ON DELETE RESTRICT,
     source_transaction_sequence  integer NOT NULL,
@@ -47,14 +57,14 @@ CREATE TABLE onboarding.historical_trade_transactions (
         CHECK (jsonb_typeof(validation_errors) = 'array')
 );
 
-CREATE INDEX historical_trade_txns_batch_idx
+CREATE INDEX IF NOT EXISTS historical_trade_txns_batch_idx
     ON onboarding.historical_trade_transactions (batch_id, source_transaction_sequence);
-CREATE INDEX historical_trade_txns_date_type_idx
+CREATE INDEX IF NOT EXISTS historical_trade_txns_date_type_idx
     ON onboarding.historical_trade_transactions (transaction_date, transaction_type);
-CREATE INDEX historical_trade_txns_party_idx
+CREATE INDEX IF NOT EXISTS historical_trade_txns_party_idx
     ON onboarding.historical_trade_transactions (party_company);
 
-CREATE TABLE onboarding.historical_trade_lines (
+CREATE TABLE IF NOT EXISTS onboarding.historical_trade_lines (
     id                           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     transaction_id               bigint NOT NULL REFERENCES onboarding.historical_trade_transactions(id) ON DELETE CASCADE,
     source_row_number            integer NOT NULL,
@@ -87,13 +97,13 @@ CREATE TABLE onboarding.historical_trade_lines (
         CHECK (jsonb_typeof(validation_errors) = 'array')
 );
 
-CREATE INDEX historical_trade_lines_txn_idx
+CREATE INDEX IF NOT EXISTS historical_trade_lines_txn_idx
     ON onboarding.historical_trade_lines (transaction_id, line_sequence);
-CREATE INDEX historical_trade_lines_product_name_idx
+CREATE INDEX IF NOT EXISTS historical_trade_lines_product_name_idx
     ON onboarding.historical_trade_lines (product_name);
-CREATE INDEX historical_trade_lines_brand_idx
+CREATE INDEX IF NOT EXISTS historical_trade_lines_brand_idx
     ON onboarding.historical_trade_lines (brand);
-CREATE INDEX historical_trade_lines_matched_product_idx
+CREATE INDEX IF NOT EXISTS historical_trade_lines_matched_product_idx
     ON onboarding.historical_trade_lines (matched_product_id);
 
 REVOKE ALL ON onboarding.historical_trade_transactions FROM PUBLIC;
@@ -102,7 +112,7 @@ REVOKE ALL ON onboarding.historical_trade_transactions FROM stockiha_runtime;
 REVOKE ALL ON onboarding.historical_trade_lines FROM stockiha_runtime;
 
 -- Function: create_historical_trade_batch
-CREATE FUNCTION onboarding.create_historical_trade_batch(
+CREATE OR REPLACE FUNCTION onboarding.create_historical_trade_batch(
     p_session_token text,
     p_request_id text,
     p_original_filename text,
@@ -226,7 +236,7 @@ END;
 $$;
 
 -- Function: replace_historical_trade_batch_data
-CREATE FUNCTION onboarding.replace_historical_trade_batch_data(
+CREATE OR REPLACE FUNCTION onboarding.replace_historical_trade_batch_data(
     p_session_token text,
     p_batch_id bigint,
     p_transactions jsonb
@@ -456,7 +466,7 @@ END;
 $$;
 
 -- Function: validate_historical_trade_batch
-CREATE FUNCTION onboarding.validate_historical_trade_batch(
+CREATE OR REPLACE FUNCTION onboarding.validate_historical_trade_batch(
     p_session_token text,
     p_batch_id bigint
 )
@@ -594,7 +604,7 @@ END;
 $$;
 
 -- Function: approve_historical_trade_batch
-CREATE FUNCTION onboarding.approve_historical_trade_batch(
+CREATE OR REPLACE FUNCTION onboarding.approve_historical_trade_batch(
     p_session_token text,
     p_batch_id bigint
 )
@@ -672,7 +682,7 @@ END;
 $$;
 
 -- Function: get_historical_trade_analytics
-CREATE FUNCTION onboarding.get_historical_trade_analytics(
+CREATE OR REPLACE FUNCTION onboarding.get_historical_trade_analytics(
     p_session_token text,
     p_date_from date,
     p_date_to date
@@ -706,8 +716,16 @@ BEGIN
     SELECT jsonb_build_object(
         'dateFrom', p_date_from,
         'dateTo', p_date_to,
-        'transactionCount', COALESCE(count(DISTINCT t.id), 0),
-        'lineCount', COALESCE(count(l.id), 0),
+        'transactionCount', COALESCE(count(t.id), 0),
+        'lineCount', COALESCE((
+            SELECT count(l.id)
+            FROM onboarding.historical_trade_lines l
+            JOIN onboarding.historical_trade_transactions t2 ON t2.id = l.transaction_id
+            JOIN onboarding.historical_finance_batches b2 ON b2.id = t2.batch_id
+            WHERE b2.status = 'APPROVED_FOR_REPORTING'
+              AND t2.review_status = 'APPROVED'
+              AND t2.transaction_date BETWEEN p_date_from AND p_date_to
+        ), 0),
         'totalSalesDzd', COALESCE(sum(t.transaction_total_dzd) FILTER (WHERE t.transaction_type = 'SALE'), 0),
         'totalPurchasesDzd', COALESCE(sum(t.transaction_total_dzd) FILTER (WHERE t.transaction_type = 'PURCHASE'), 0),
         'paidSalesDzd', COALESCE(sum(t.transaction_total_dzd) FILTER (WHERE t.transaction_type = 'SALE' AND t.payment_status = 'PAID'), 0),
@@ -729,7 +747,6 @@ BEGIN
     INTO v_overview
     FROM onboarding.historical_trade_transactions t
     JOIN onboarding.historical_finance_batches b ON b.id = t.batch_id
-    LEFT JOIN onboarding.historical_trade_lines l ON l.transaction_id = t.id
     WHERE b.status = 'APPROVED_FOR_REPORTING'
       AND t.review_status = 'APPROVED'
       AND t.transaction_date BETWEEN p_date_from AND p_date_to;
