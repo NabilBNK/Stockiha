@@ -403,6 +403,226 @@ pub(crate) struct HistoricalFinanceSummaryResult {
     pub(crate) profit_calculation_status: String,
 }
 
+// --- R0-002 Paper-Book Domain Types ---
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CreateHistoricalTradeBatchRequest {
+    pub(crate) request_id: String,
+    pub(crate) original_filename: String,
+    pub(crate) content_hash: Option<String>,
+}
+
+impl CreateHistoricalTradeBatchRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_request_id(&self.request_id)?;
+        let filename = self.original_filename.trim();
+        if filename.is_empty()
+            || filename.len() > FILENAME_MAX_LEN
+            || filename.chars().any(char::is_control)
+            || filename.contains('/')
+            || filename.contains('\\')
+            || !filename.to_ascii_lowercase().ends_with(".xlsx")
+        {
+            return Err("originalFilename must be a safe .xlsx filename".to_string());
+        }
+        if let Some(hash) = &self.content_hash {
+            let hash = hash.trim();
+            if !hash.is_empty() && (hash.len() != 64 || hash.chars().any(|c| !c.is_ascii_hexdigit())) {
+                return Err("contentHash must be a valid SHA-256 hex string".to_string());
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalTradeBatchResult {
+    pub(crate) batch_id: i64,
+    pub(crate) status: String,
+    pub(crate) is_replay: bool,
+    pub(crate) import_profile: String,
+    pub(crate) original_filename: String,
+    pub(crate) content_hash: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalTradeLineInput {
+    pub(crate) source_row_number: i32,
+    pub(crate) line_sequence: i32,
+    pub(crate) product_name: Option<String>,
+    pub(crate) brand: Option<String>,
+    pub(crate) custom_details: Option<String>,
+    pub(crate) quantity: Option<i64>,
+    pub(crate) unit_price_dzd: i64,
+    pub(crate) manual_line_total_dzd: Option<i64>,
+}
+
+impl HistoricalTradeLineInput {
+    fn validate(&self) -> Result<(), String> {
+        if self.source_row_number < 2 {
+            return Err("sourceRowNumber must be at least 2".to_string());
+        }
+        if self.line_sequence < 1 {
+            return Err("lineSequence must be at least 1".to_string());
+        }
+        if self.unit_price_dzd < 0 {
+            return Err("unitPriceDzd must not be negative".to_string());
+        }
+        if let Some(qty) = self.quantity {
+            if qty <= 0 {
+                return Err("quantity must be positive".to_string());
+            }
+        }
+        if let Some(total) = self.manual_line_total_dzd {
+            if total < 0 {
+                return Err("manualLineTotalDzd must not be negative".to_string());
+            }
+        }
+        if self.quantity.is_none() && self.manual_line_total_dzd.is_none() {
+            return Err("line must have either quantity or manualLineTotalDzd".to_string());
+        }
+        validate_optional_text(&self.product_name, "productName", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(&self.brand, "brand", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(&self.custom_details, "customDetails", OPTIONAL_TEXT_MAX_LEN)?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalTradeTransactionInput {
+    pub(crate) source_transaction_sequence: i32,
+    pub(crate) source_first_excel_row: i32,
+    pub(crate) source_excel_txn_ref: Option<String>,
+    pub(crate) transaction_date: String,
+    pub(crate) transaction_type: String,
+    pub(crate) payment_status: String,
+    pub(crate) party_company: Option<String>,
+    pub(crate) page_number: Option<i32>,
+    pub(crate) lines: Vec<HistoricalTradeLineInput>,
+}
+
+impl HistoricalTradeTransactionInput {
+    fn validate(&self) -> Result<(), String> {
+        if self.source_transaction_sequence < 1 {
+            return Err("sourceTransactionSequence must be at least 1".to_string());
+        }
+        if self.source_first_excel_row < 2 {
+            return Err("sourceFirstExcelRow must be at least 2".to_string());
+        }
+        parse_iso_date(&self.transaction_date, "transactionDate")?;
+
+        let txn_type = self.transaction_type.trim().to_ascii_uppercase();
+        if !matches!(txn_type.as_str(), "SALE" | "PURCHASE") {
+            return Err("transactionType must be SALE or PURCHASE".to_string());
+        }
+
+        let payment = self.payment_status.trim().to_ascii_uppercase();
+        if !matches!(payment.as_str(), "PAID" | "UNPAID") {
+            return Err("paymentStatus must be PAID or UNPAID".to_string());
+        }
+
+        if let Some(page) = self.page_number {
+            if page <= 0 {
+                return Err("pageNumber must be positive".to_string());
+            }
+        }
+
+        if self.lines.is_empty() {
+            return Err("transaction must contain at least one product line".to_string());
+        }
+
+        validate_optional_text(&self.party_company, "partyCompany", OPTIONAL_TEXT_MAX_LEN)?;
+
+        for (idx, line) in self.lines.iter().enumerate() {
+            line.validate()
+                .map_err(|err| format!("lines[{idx}]: {err}"))?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReplaceHistoricalTradeBatchDataRequest {
+    pub(crate) batch_id: i64,
+    pub(crate) transactions: Vec<HistoricalTradeTransactionInput>,
+}
+
+impl ReplaceHistoricalTradeBatchDataRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.batch_id <= 0 {
+            return Err("batchId must be positive".to_string());
+        }
+        if self.transactions.len() > MAX_TRANSACTION_ROWS_PER_REQUEST {
+            return Err(format!(
+                "A request may contain at most {MAX_TRANSACTION_ROWS_PER_REQUEST} transactions"
+            ));
+        }
+
+        for (idx, txn) in self.transactions.iter().enumerate() {
+            txn.validate()
+                .map_err(|err| format!("transactions[{idx}]: {err}"))?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalTradeBatchDataResult {
+    pub(crate) batch_id: i64,
+    pub(crate) status: String,
+    pub(crate) transaction_count: i64,
+    pub(crate) line_count: i64,
+    pub(crate) unmatched_product_count: i64,
+    pub(crate) override_count: i64,
+    pub(crate) missing_qty_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalTradeValidationResult {
+    pub(crate) batch_id: i64,
+    pub(crate) status: String,
+    pub(crate) transaction_count: i64,
+    pub(crate) line_count: i64,
+    pub(crate) invalid_row_count: i64,
+    pub(crate) total_sales_dzd: i64,
+    pub(crate) total_purchases_dzd: i64,
+    pub(crate) paid_sales_dzd: i64,
+    pub(crate) unpaid_sales_dzd: i64,
+    pub(crate) paid_purchases_dzd: i64,
+    pub(crate) unpaid_purchases_dzd: i64,
+    pub(crate) unmatched_product_count: i64,
+    pub(crate) override_count: i64,
+    pub(crate) missing_qty_count: i64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalTradeAnalyticsRequest {
+    pub(crate) date_from: String,
+    pub(crate) date_to: String,
+}
+
+impl HistoricalTradeAnalyticsRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let from = parse_iso_date(&self.date_from, "dateFrom")?;
+        let to = parse_iso_date(&self.date_to, "dateTo")?;
+        if from > to {
+            return Err("dateFrom must not be after dateTo".to_string());
+        }
+        Ok(())
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

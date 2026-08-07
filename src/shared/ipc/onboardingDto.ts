@@ -141,3 +141,181 @@ export interface HistoricalFinanceSummaryResult {
     | 'INVENTORY_ADJUSTED_ESTIMATE'
     | 'INCOMPLETE_WITHOUT_OPENING_AND_CLOSING_INVENTORY';
 }
+
+// --- R0-002 Paper-Book XLSX Import & Analytics DTOs ---
+
+export type PaperBookTransactionType = 'SALE' | 'PURCHASE';
+export type PaperBookPaymentStatus = 'PAID' | 'UNPAID';
+
+export interface HistoricalTradeLineInput {
+  sourceRowNumber: number;
+  lineSequence: number;
+  productName: string | null;
+  brand: string | null;
+  customDetails: string | null;
+  quantity: number | null;
+  unitPriceDzd: number;
+  manualLineTotalDzd: number | null;
+}
+
+export interface HistoricalTradeTransactionInput {
+  sourceTransactionSequence: number;
+  sourceFirstExcelRow: number;
+  sourceExcelTxnRef: string | null;
+  transactionDate: string;
+  transactionType: PaperBookTransactionType;
+  paymentStatus: PaperBookPaymentStatus;
+  partyCompany: string | null;
+  pageNumber: number | null;
+  lines: HistoricalTradeLineInput[];
+}
+
+export interface CreateHistoricalTradeBatchRequest {
+  requestId: string;
+  originalFilename: string;
+  contentHash?: string | null;
+}
+
+export interface HistoricalTradeBatchResult {
+  batchId: number;
+  status: string;
+  isReplay: boolean;
+  importProfile: 'PAPER_BOOK_V1';
+  originalFilename: string;
+  contentHash?: string | null;
+}
+
+export interface ReplaceHistoricalTradeBatchDataRequest {
+  batchId: number;
+  transactions: HistoricalTradeTransactionInput[];
+}
+
+export interface HistoricalTradeBatchDataResult {
+  batchId: number;
+  status: string;
+  transactionCount: number;
+  lineCount: number;
+  unmatchedProductCount: number;
+  overrideCount: number;
+  missingQtyCount: number;
+}
+
+export interface HistoricalTradeValidationResult {
+  batchId: number;
+  status: 'VALIDATED' | 'NEEDS_REVIEW';
+  transactionCount: number;
+  lineCount: number;
+  invalidRowCount: number;
+  totalSalesDzd: number;
+  totalPurchasesDzd: number;
+  paidSalesDzd: number;
+  unpaidSalesDzd: number;
+  paidPurchasesDzd: number;
+  unpaidPurchasesDzd: number;
+  unmatchedProductCount: number;
+  overrideCount: number;
+  missingQtyCount: number;
+}
+
+export interface HistoricalTradeAnalyticsRequest {
+  dateFrom: string;
+  dateTo: string;
+}
+
+export interface HistoricalTradeAnalyticsOverview {
+  dateFrom: string;
+  dateTo: string;
+  transactionCount: number;
+  lineCount: number;
+  totalSalesDzd: number;
+  totalPurchasesDzd: number;
+  paidSalesDzd: number;
+  unpaidSalesDzd: number;
+  paidPurchasesDzd: number;
+  unpaidPurchasesDzd: number;
+  avgSaleValueDzd: number;
+  avgPurchaseValueDzd: number;
+  tradeDifferenceDzd: number;
+}
+
+export interface HistoricalTradeAnalyticsPayment {
+  sales: { total: number; paid: number; unpaid: number };
+  purchases: { total: number; paid: number; unpaid: number };
+}
+
+export interface HistoricalTradeAnalyticsTimelineMonth {
+  month: string;
+  salesDzd: number;
+  purchasesDzd: number;
+  saleCount: number;
+  purchaseCount: number;
+  paidSalesDzd: number;
+  unpaidSalesDzd: number;
+}
+
+export interface HistoricalTradeAnalyticsProduct {
+  productName: string;
+  matchedProductId: number | null;
+  qtySold: number;
+  salesDzd: number;
+  qtyPurchased: number;
+  purchasesDzd: number;
+  avgSaleUnitPriceDzd: number;
+  avgPurchaseUnitPriceDzd: number;
+  transactionCount: number;
+}
+
+export interface HistoricalTradeAnalyticsBrand {
+  brand: string;
+  salesDzd: number;
+  purchasesDzd: number;
+  qtySold: number;
+  qtyPurchased: number;
+  transactionCount: number;
+}
+
+export interface HistoricalTradeAnalyticsParty {
+  partyCompany: string;
+  salesDzd: number;
+  purchasesDzd: number;
+  totalVolumeDzd: number;
+  paidSalesDzd: number;
+  unpaidSalesDzd: number;
+  paidPurchasesDzd: number;
+  unpaidPurchasesDzd: number;
+  transactionCount: number;
+}
+
+export interface HistoricalTradeDataQuality {
+  totalLines: number;
+  productNameCoveragePct: number;
+  brandCoveragePct: number;
+  partyCoveragePct: number;
+  pageNumberCoveragePct: number;
+  quantityCoveragePct: number;
+  unmatchedProductCount: number;
+  matchedProductCount: number;
+  manualOverrideCount: number;
+  missingQtyCount: number;
+}
+
+export interface HistoricalTradeManualOverrides {
+  totalLines: number;
+  calculatedLineCount: number;
+  manualOverrideCount: number;
+  calculatedMathematicalTotalDzd: number;
+  finalEffectiveTotalDzd: number;
+  totalOverrideDifferenceDzd: number;
+}
+
+export interface HistoricalTradeAnalyticsResult {
+  overview: HistoricalTradeAnalyticsOverview;
+  payment: HistoricalTradeAnalyticsPayment;
+  timeline: HistoricalTradeAnalyticsTimelineMonth[];
+  products: HistoricalTradeAnalyticsProduct[];
+  brands: HistoricalTradeAnalyticsBrand[];
+  parties: HistoricalTradeAnalyticsParty[];
+  dataQuality: HistoricalTradeDataQuality;
+  manualOverrides: HistoricalTradeManualOverrides;
+}
+

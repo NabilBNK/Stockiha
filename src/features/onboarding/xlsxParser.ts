@@ -5,6 +5,9 @@ import type {
   HistoricalPaymentStatus,
   HistoricalReviewStatus,
   HistoricalTransactionType,
+  HistoricalTradeTransactionInput,
+  PaperBookPaymentStatus,
+  PaperBookTransactionType,
 } from '../../shared/ipc/onboardingDto';
 
 const MAX_XLSX_BYTES = 20 * 1024 * 1024;
@@ -36,6 +39,21 @@ export const HISTORICAL_BALANCE_HEADERS = [
   'Supplier_Fournisseur_Optional',
   'Customer_Client_Optional',
   'Notes_Optional',
+] as const;
+
+export const PAPER_BOOK_HEADERS = [
+  'Txn No. (Auto)',
+  'Date',
+  'Type',
+  'Paid',
+  'Party / Company (Optional)',
+  'Product Name (Optional)',
+  'Brand (Optional)',
+  'Custom Details (Optional)',
+  'Quantity',
+  'Unit Price',
+  'Line Total',
+  'Page No. (Optional)',
 ] as const;
 
 const TRANSACTION_TYPES = new Set<HistoricalTransactionType>([
@@ -85,6 +103,11 @@ const BALANCE_TYPES = new Set<HistoricalBalanceType>([
 
 type CellValue = string | number | boolean | null;
 
+export interface RawCellDetails {
+  value: CellValue;
+  hasFormula: boolean;
+}
+
 interface ZipEntry {
   name: string;
   compressionMethod: number;
@@ -96,7 +119,7 @@ interface ZipEntry {
 
 interface ParsedSheet {
   name: string;
-  rows: Map<number, CellValue[]>;
+  rows: Map<number, RawCellDetails[]>;
 }
 
 export interface HistoricalFinanceImportError {
@@ -110,6 +133,28 @@ export interface HistoricalFinanceWorkbookData {
   rows: HistoricalFinanceRowInput[];
   balances: HistoricalFinanceBalanceInput[];
   errors: HistoricalFinanceImportError[];
+}
+
+export interface PaperBookSummary {
+  transactionCount: number;
+  lineCount: number;
+  salesCount: number;
+  purchaseCount: number;
+  totalSalesDzd: number;
+  totalPurchasesDzd: number;
+  minDate: string | null;
+  maxDate: string | null;
+  unmatchedProductCount: number;
+  manualOverrideCount: number;
+  missingQtyCount: number;
+}
+
+export interface PaperBookWorkbookData {
+  transactions: HistoricalTradeTransactionInput[];
+  errors: HistoricalFinanceImportError[];
+  warnings: HistoricalFinanceImportError[];
+  contentHash: string;
+  summary: PaperBookSummary;
 }
 
 class WorkbookParseError extends Error {}
@@ -389,41 +434,42 @@ function columnIndexFromReference(reference: string): number {
   return index - 1;
 }
 
-function readCellValue(
+function readCellValueWithDetails(
   cell: Element,
   sharedStrings: string[],
   dateStyles: Set<number>,
-): CellValue {
-  if (elementsByLocalName(cell, 'f').length > 0) {
-    throw new WorkbookParseError('Formulas are not allowed in the historical import workbook.');
-  }
-
+): RawCellDetails {
+  const hasFormula = elementsByLocalName(cell, 'f').length > 0;
   const type = cell.getAttribute('t') ?? '';
   const valueNode = elementsByLocalName(cell, 'v')[0];
   const raw = valueNode?.textContent ?? '';
-  if (raw === '' && type !== 'inlineStr') return null;
+  if (raw === '' && type !== 'inlineStr') return { value: null, hasFormula };
 
   if (type === 'inlineStr') {
-    return elementsByLocalName(cell, 't')
-      .map((text) => text.textContent ?? '')
-      .join('');
+    return {
+      value: elementsByLocalName(cell, 't')
+        .map((text) => text.textContent ?? '')
+        .join(''),
+      hasFormula,
+    };
   }
   if (type === 's') {
     const index = Number(raw);
     if (!Number.isInteger(index) || index < 0 || index >= sharedStrings.length) {
       throw new WorkbookParseError('The workbook contains an invalid shared-string reference.');
     }
-    return sharedStrings[index];
+    return { value: sharedStrings[index], hasFormula };
   }
-  if (type === 'str') return raw;
-  if (type === 'b') return raw === '1';
+  if (type === 'str') return { value: raw, hasFormula };
+  if (type === 'b') return { value: raw === '1', hasFormula };
   if (type === 'e') throw new WorkbookParseError('The workbook contains an Excel error cell.');
-  if (type === 'd') return raw.slice(0, 10);
+  if (type === 'd') return { value: raw.slice(0, 10), hasFormula };
 
   const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) return raw;
+  if (!Number.isFinite(numeric)) return { value: raw, hasFormula };
   const styleIndex = Number(cell.getAttribute('s') ?? '0');
-  return dateStyles.has(styleIndex) ? excelSerialToIsoDate(numeric) : numeric;
+  const value = dateStyles.has(styleIndex) ? excelSerialToIsoDate(numeric) : numeric;
+  return { value, hasFormula };
 }
 
 function parseSheet(
@@ -432,14 +478,14 @@ function parseSheet(
   sharedStrings: string[],
   dateStyles: Set<number>,
 ): ParsedSheet {
-  const rows = new Map<number, CellValue[]>();
+  const rows = new Map<number, RawCellDetails[]>();
   for (const rowElement of elementsByLocalName(xml, 'row')) {
     const rowNumber = Number(rowElement.getAttribute('r'));
     if (!Number.isInteger(rowNumber) || rowNumber < 1) {
       throw new WorkbookParseError(`${name} contains an invalid row number.`);
     }
 
-    const values: CellValue[] = [];
+    const values: RawCellDetails[] = [];
     for (const cell of Array.from(rowElement.children).filter(
       (child) => child.localName === 'c',
     )) {
@@ -449,7 +495,7 @@ function parseSheet(
       if (columnIndex > 100) {
         throw new WorkbookParseError(`${name} contains data beyond the supported columns.`);
       }
-      values[columnIndex] = readCellValue(cell, sharedStrings, dateStyles);
+      values[columnIndex] = readCellValueWithDetails(cell, sharedStrings, dateStyles);
     }
     rows.set(rowNumber, values);
   }
@@ -513,7 +559,7 @@ function pushError(
 function assertHeaders(sheet: ParsedSheet, expected: readonly string[]): void {
   const actual = sheet.rows.get(1) ?? [];
   expected.forEach((header, index) => {
-    if (normalizeString(actual[index]) !== header) {
+    if (normalizeString(actual[index]?.value) !== header) {
       throw new WorkbookParseError(
         `${sheet.name} column ${index + 1} must be named ${header}. Use the official Stockiha template.`,
       );
@@ -521,13 +567,353 @@ function assertHeaders(sheet: ParsedSheet, expected: readonly string[]): void {
   });
 }
 
-function isEmptyDataRow(values: CellValue[], columnCount: number): boolean {
+function isEmptyDataRow(values: RawCellDetails[], columnCount: number): boolean {
   for (let index = 0; index < columnCount; index += 1) {
-    if (normalizeString(values[index]) !== '') return false;
+    if (normalizeString(values[index]?.value) !== '') return false;
   }
   return true;
 }
 
+// Compute deterministic SHA-256 fingerprint over canonical JSON serialization of parsed transactions
+export async function computeContentHash(transactions: HistoricalTradeTransactionInput[]): Promise<string> {
+  const canonicalStr = JSON.stringify(
+    transactions.map((t) => ({
+      d: t.transactionDate,
+      t: t.transactionType,
+      p: t.paymentStatus,
+      c: t.partyCompany,
+      pg: t.pageNumber,
+      l: t.lines.map((l) => ({
+        pn: l.productName,
+        b: l.brand,
+        cd: l.customDetails,
+        q: l.quantity,
+        u: l.unitPriceDzd,
+        m: l.manualLineTotalDzd,
+      })),
+    })),
+  );
+  const encoder = new TextEncoder();
+  const data = encoder.encode(canonicalStr);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Date parser supporting DD/MM/YYYY and YYYY-MM-DD
+function parsePaperBookDate(value: string, rowNumber: number): string {
+  const trimmed = value.trim();
+  const ddMmYyyy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
+  if (ddMmYyyy) {
+    const day = ddMmYyyy[1].padStart(2, '0');
+    const month = ddMmYyyy[2].padStart(2, '0');
+    const year = ddMmYyyy[3];
+    return parseIsoDate(`${year}-${month}-${day}`, `Row ${rowNumber} Date`);
+  }
+  return parseIsoDate(trimmed, `Row ${rowNumber} Date`);
+}
+
+function normalizeType(value: string, rowNumber: number): PaperBookTransactionType {
+  const upper = value.trim().toUpperCase();
+  if (upper === 'SELL' || upper === 'SALE') return 'SALE';
+  if (upper === 'BUY' || upper === 'PURCHASE') return 'PURCHASE';
+  throw new Error(`Row ${rowNumber}: Invalid transaction type '${value}'. Only Buy or Sell allowed.`);
+}
+
+function normalizePaid(value: string, rowNumber: number): PaperBookPaymentStatus {
+  const upper = value.trim().toUpperCase();
+  if (upper === 'PAID') return 'PAID';
+  if (upper === 'NOT PAID' || upper === 'UNPAID' || upper === 'NOTPAID') return 'UNPAID';
+  throw new Error(`Row ${rowNumber}: Invalid payment status '${value}'. Only Paid or Not Paid allowed.`);
+}
+
+export function parsePaperBookSheet(
+  sheet: ParsedSheet,
+  errors: HistoricalFinanceImportError[],
+  warnings: HistoricalFinanceImportError[],
+): HistoricalTradeTransactionInput[] {
+  const transactions: HistoricalTradeTransactionInput[] = [];
+  const sortedRows = [...sheet.rows.entries()].sort((a, b) => a[0] - b[0]);
+
+  let activeTxn: HistoricalTradeTransactionInput | null = null;
+  let txnSequence = 0;
+
+  for (const [rowNumber, cells] of sortedRows) {
+    if (rowNumber === 1 || isEmptyDataRow(cells, PAPER_BOOK_HEADERS.length)) continue;
+
+    // Check forbidden formulas on non-formula columns
+    // Allowed formulas ONLY on Col 0 (Txn No) and Col 10 (Line Total)
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 11].forEach((colIdx) => {
+      if (cells[colIdx]?.hasFormula) {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          column: PAPER_BOOK_HEADERS[colIdx],
+          message: `Formulas are not allowed in ${PAPER_BOOK_HEADERS[colIdx]}.`,
+        });
+      }
+    });
+
+    const dateCell = cells[1];
+    const dateStr = normalizeString(dateCell?.value);
+    const typeStr = normalizeString(cells[2]?.value);
+    const paidStr = normalizeString(cells[3]?.value);
+    const partyStr = optionalString(cells[4]?.value);
+    const pageNoVal = parseOptionalInteger(cells[11]?.value, 'Page No');
+
+    if (dateStr !== '') {
+      // NEW TRANSACTION
+      let isoDate: string;
+      let normType: PaperBookTransactionType;
+      let normPaid: PaperBookPaymentStatus;
+
+      try {
+        isoDate = parsePaperBookDate(dateStr, rowNumber);
+        normType = normalizeType(typeStr, rowNumber);
+        normPaid = normalizePaid(paidStr, rowNumber);
+      } catch (err) {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          message: err instanceof Error ? err.message : 'Invalid transaction header.',
+        });
+        continue;
+      }
+
+      txnSequence += 1;
+      activeTxn = {
+        sourceTransactionSequence: txnSequence,
+        sourceFirstExcelRow: rowNumber,
+        sourceExcelTxnRef: optionalString(cells[0]?.value),
+        transactionDate: isoDate,
+        transactionType: normType,
+        paymentStatus: normPaid,
+        partyCompany: partyStr,
+        pageNumber: pageNoVal,
+        lines: [],
+      };
+      transactions.push(activeTxn);
+    } else {
+      // CONTINUATION ROW
+      if (!activeTxn) {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          message: 'ORPHAN_PRODUCT_LINE: Continuation row has no owning transaction header above it.',
+        });
+        continue;
+      }
+
+      // Check conflicting fields
+      if (typeStr !== '') {
+        try {
+          const normType = normalizeType(typeStr, rowNumber);
+          if (normType !== activeTxn.transactionType) {
+            pushError(errors, {
+              sheet: sheet.name,
+              row: rowNumber,
+              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Type (${typeStr}) conflicts with header (${activeTxn.transactionType}).`,
+            });
+          }
+        } catch {
+          // Ignore type error if invalid
+        }
+      }
+      if (paidStr !== '') {
+        try {
+          const normPaid = normalizePaid(paidStr, rowNumber);
+          if (normPaid !== activeTxn.paymentStatus) {
+            pushError(errors, {
+              sheet: sheet.name,
+              row: rowNumber,
+              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Paid (${paidStr}) conflicts with header (${activeTxn.paymentStatus}).`,
+            });
+          }
+        } catch {
+          // Ignore
+        }
+      }
+      if (partyStr !== null && activeTxn.partyCompany !== null && partyStr !== activeTxn.partyCompany) {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Party (${partyStr}) conflicts with header (${activeTxn.partyCompany}).`,
+        });
+      }
+      if (pageNoVal !== null && activeTxn.pageNumber !== null && pageNoVal !== activeTxn.pageNumber) {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Page No (${pageNoVal}) conflicts with header (${activeTxn.pageNumber}).`,
+        });
+      }
+    }
+
+    // Parse product line
+    const lineSeq = activeTxn.lines.length + 1;
+    const productName = optionalString(cells[5]?.value);
+    const brand = optionalString(cells[6]?.value);
+    const customDetails = optionalString(cells[7]?.value);
+    const qtyVal = parseOptionalInteger(cells[8]?.value, 'Quantity');
+    const unitPriceVal = parseInteger(cells[9]?.value, 'Unit Price', true);
+
+    const lineTotalCell = cells[10];
+    let manualLineTotalDzd: number | null = null;
+
+    if (
+      lineTotalCell &&
+      !lineTotalCell.hasFormula &&
+      lineTotalCell.value !== null &&
+      normalizeString(lineTotalCell.value) !== ''
+    ) {
+      manualLineTotalDzd = parseInteger(lineTotalCell.value, 'Line Total', true);
+      warnings.push({
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Line Total',
+        message: 'MANUAL_LINE_TOTAL_OVERRIDE: Line Total is a literal override instead of calculated formula.',
+      });
+    }
+
+    if (qtyVal === null && manualLineTotalDzd === null) {
+      pushError(errors, {
+        sheet: sheet.name,
+        row: rowNumber,
+        message: 'Quantity can only be blank if a valid manual Line Total is entered.',
+      });
+    }
+
+    if (!productName) {
+      warnings.push({
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Product Name',
+        message: 'MISSING_PRODUCT_NAME: Product Name is blank.',
+      });
+    }
+
+    activeTxn.lines.push({
+      sourceRowNumber: rowNumber,
+      lineSequence: lineSeq,
+      productName,
+      brand,
+      customDetails,
+      quantity: qtyVal,
+      unitPriceDzd: unitPriceVal,
+      manualLineTotalDzd,
+    });
+  }
+
+  return transactions;
+}
+
+export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkbookData> {
+  if (!file.name.toLowerCase().endsWith('.xlsx')) {
+    throw new WorkbookParseError('Select an .xlsx file created from the Stockiha paper-book template.');
+  }
+  if (file.size <= 0 || file.size > MAX_XLSX_BYTES) {
+    throw new WorkbookParseError('The workbook is empty or exceeds the 20 MB limit.');
+  }
+
+  const archiveBytes = new Uint8Array(await file.arrayBuffer());
+  const entries = parseCentralDirectory(archiveBytes);
+  const workbook = await loadRequiredXml(archiveBytes, entries, 'xl/workbook.xml', 'Workbook metadata');
+  const relationships = await loadRequiredXml(archiveBytes, entries, 'xl/_rels/workbook.xml.rels', 'Workbook relationships');
+  const styles = await loadRequiredXml(archiveBytes, entries, 'xl/styles.xml', 'Workbook styles');
+  const sharedEntry = entries.get('xl/sharedStrings.xml');
+  const sharedStrings = parseSharedStrings(
+    sharedEntry ? parseXml(await extractEntry(archiveBytes, sharedEntry), 'Shared strings') : null,
+  );
+  const dateStyles = parseDateStyleIndexes(styles);
+
+  const targets = new Map<string, string>();
+  for (const relationship of elementsByLocalName(relationships, 'Relationship')) {
+    const id = relationship.getAttribute('Id');
+    const target = relationship.getAttribute('Target');
+    if (id && target) targets.set(id, normalizeWorkbookTarget(target));
+  }
+
+  const sheets = new Map<string, ParsedSheet>();
+  for (const sheet of elementsByLocalName(workbook, 'sheet')) {
+    const name = sheet.getAttribute('name');
+    const relationshipId =
+      sheet.getAttributeNS(
+        'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+        'id',
+      ) ?? sheet.getAttribute('r:id');
+    if (!name || !relationshipId) continue;
+    const target = targets.get(relationshipId);
+    if (!target) throw new WorkbookParseError(`Worksheet relationship for ${name} is missing.`);
+    const xml = await loadRequiredXml(archiveBytes, entries, target, `Worksheet ${name}`);
+    sheets.set(name, parseSheet(name, xml, sharedStrings, dateStyles));
+  }
+
+  const transactionSheet = sheets.get('Transactions') ?? sheets.get('Historical_Transactions');
+  if (!transactionSheet) {
+    throw new WorkbookParseError('The paper-book workbook must contain a Transactions sheet.');
+  }
+
+  const errors: HistoricalFinanceImportError[] = [];
+  const warnings: HistoricalFinanceImportError[] = [];
+  const transactions = parsePaperBookSheet(transactionSheet, errors, warnings);
+
+  const contentHash = await computeContentHash(transactions);
+
+  // Compute summary stats
+  let lineCount = 0;
+  let salesCount = 0;
+  let purchaseCount = 0;
+  let totalSalesDzd = 0;
+  let totalPurchasesDzd = 0;
+  let minDate: string | null = null;
+  let maxDate: string | null = null;
+  let manualOverrideCount = 0;
+  let missingQtyCount = 0;
+
+  transactions.forEach((t) => {
+    if (!minDate || t.transactionDate < minDate) minDate = t.transactionDate;
+    if (!maxDate || t.transactionDate > maxDate) maxDate = t.transactionDate;
+
+    if (t.transactionType === 'SALE') salesCount += 1;
+    if (t.transactionType === 'PURCHASE') purchaseCount += 1;
+
+    t.lines.forEach((l) => {
+      lineCount += 1;
+      const calcTotal = l.quantity !== null ? l.quantity * l.unitPriceDzd : null;
+      const effTotal = l.manualLineTotalDzd !== null ? l.manualLineTotalDzd : calcTotal ?? 0;
+
+      if (t.transactionType === 'SALE') totalSalesDzd += effTotal;
+      if (t.transactionType === 'PURCHASE') totalPurchasesDzd += effTotal;
+
+      if (l.manualLineTotalDzd !== null) manualOverrideCount += 1;
+      if (l.quantity === null) missingQtyCount += 1;
+    });
+  });
+
+  const summary: PaperBookSummary = {
+    transactionCount: transactions.length,
+    lineCount,
+    salesCount,
+    purchaseCount,
+    totalSalesDzd,
+    totalPurchasesDzd,
+    minDate,
+    maxDate,
+    unmatchedProductCount: 0,
+    manualOverrideCount,
+    missingQtyCount,
+  };
+
+  return {
+    transactions,
+    errors,
+    warnings,
+    contentHash,
+    summary,
+  };
+}
+
+// Preserve existing generic R0-001 parser
 function parseTransactionRows(
   sheet: ParsedSheet,
   errors: HistoricalFinanceImportError[],
@@ -536,48 +922,51 @@ function parseTransactionRows(
   const parsed: HistoricalFinanceRowInput[] = [];
   const paperIds = new Set<string>();
 
-  for (const [rowNumber, values] of [...sheet.rows.entries()].sort((a, b) => a[0] - b[0])) {
-    if (rowNumber === 1 || isEmptyDataRow(values, HISTORICAL_TRANSACTION_HEADERS.length)) continue;
+  for (const [rowNumber, cells] of [...sheet.rows.entries()].sort((a, b) => a[0] - b[0])) {
+    if (rowNumber === 1 || isEmptyDataRow(cells, HISTORICAL_TRANSACTION_HEADERS.length)) continue;
+    if (cells.some((c) => c.hasFormula)) {
+      throw new WorkbookParseError('Formulas are not allowed in the historical finance template.');
+    }
     if (parsed.length >= MAX_TRANSACTION_ROWS) {
       throw new WorkbookParseError(`Historical_Transactions exceeds ${MAX_TRANSACTION_ROWS} rows.`);
     }
 
     try {
-      const paperId = normalizeString(values[0]);
+      const paperId = normalizeString(cells[0]?.value);
       if (paperId === '') throw new Error('Paper_ID is required.');
       if (paperIds.has(paperId)) throw new Error('Paper_ID is duplicated inside the workbook.');
       paperIds.add(paperId);
 
-      const transactionType = normalizeString(values[2]).toUpperCase() as HistoricalTransactionType;
+      const transactionType = normalizeString(cells[2]?.value).toUpperCase() as HistoricalTransactionType;
       if (!TRANSACTION_TYPES.has(transactionType)) {
         throw new Error('Transaction_Type is not supported.');
       }
-      const paymentStatus = normalizeString(values[5]).toUpperCase() as HistoricalPaymentStatus;
+      const paymentStatus = normalizeString(cells[5]?.value).toUpperCase() as HistoricalPaymentStatus;
       if (!PAYMENT_STATUSES.has(paymentStatus)) {
         throw new Error('Payment_Status is not supported.');
       }
-      const reviewStatus = normalizeString(values[6]).toUpperCase() as HistoricalReviewStatus;
+      const reviewStatus = normalizeString(cells[6]?.value).toUpperCase() as HistoricalReviewStatus;
       if (!REVIEW_STATUSES.has(reviewStatus)) {
         throw new Error('Review_Status is not supported.');
       }
 
-      const description = normalizeString(values[3]);
+      const description = normalizeString(cells[3]?.value);
       if (description === '') throw new Error('Description_or_Category is required.');
 
       parsed.push({
         sourceRowNumber: rowNumber,
         paperId,
-        transactionDate: parseIsoDate(values[1], 'Transaction_Date'),
+        transactionDate: parseIsoDate(cells[1]?.value, 'Transaction_Date'),
         transactionType,
         descriptionOrCategory: description,
-        netAmountDzd: parseInteger(values[4], 'Net_Amount_DZD', false),
+        netAmountDzd: parseInteger(cells[4]?.value, 'Net_Amount_DZD', false),
         paymentStatus,
         reviewStatus,
-        amountPaidDzd: parseOptionalInteger(values[7], 'Amount_Paid_DZD_Optional'),
-        expenseCategory: optionalString(values[8]),
-        supplierFournisseur: optionalString(values[9]),
-        customerClient: optionalString(values[10]),
-        notes: optionalString(values[11]),
+        amountPaidDzd: parseOptionalInteger(cells[7]?.value, 'Amount_Paid_DZD_Optional'),
+        expenseCategory: optionalString(cells[8]?.value),
+        supplierFournisseur: optionalString(cells[9]?.value),
+        customerClient: optionalString(cells[10]?.value),
+        notes: optionalString(cells[11]?.value),
       });
     } catch (error) {
       pushError(errors, {
@@ -598,27 +987,27 @@ function parseBalanceRows(
   assertHeaders(sheet, HISTORICAL_BALANCE_HEADERS);
   const parsed: HistoricalFinanceBalanceInput[] = [];
 
-  for (const [rowNumber, values] of [...sheet.rows.entries()].sort((a, b) => a[0] - b[0])) {
-    if (rowNumber === 1 || isEmptyDataRow(values, HISTORICAL_BALANCE_HEADERS.length)) continue;
+  for (const [rowNumber, cells] of [...sheet.rows.entries()].sort((a, b) => a[0] - b[0])) {
+    if (rowNumber === 1 || isEmptyDataRow(cells, HISTORICAL_BALANCE_HEADERS.length)) continue;
     if (parsed.length >= MAX_BALANCE_ROWS) {
       throw new WorkbookParseError(`Balances exceeds ${MAX_BALANCE_ROWS} rows.`);
     }
 
     try {
-      const balanceType = normalizeString(values[1]).toUpperCase() as HistoricalBalanceType;
+      const balanceType = normalizeString(cells[1]?.value).toUpperCase() as HistoricalBalanceType;
       if (!BALANCE_TYPES.has(balanceType)) throw new Error('Balance_Type is not supported.');
-      const reviewStatus = normalizeString(values[3]).toUpperCase() as HistoricalReviewStatus;
+      const reviewStatus = normalizeString(cells[3]?.value).toUpperCase() as HistoricalReviewStatus;
       if (!REVIEW_STATUSES.has(reviewStatus)) throw new Error('Review_Status is not supported.');
 
       parsed.push({
         sourceRowNumber: rowNumber,
-        balanceDate: parseIsoDate(values[0], 'Balance_Date'),
+        balanceDate: parseIsoDate(cells[0]?.value, 'Balance_Date'),
         balanceType,
-        amountDzd: parseInteger(values[2], 'Amount_DZD', true),
+        amountDzd: parseInteger(cells[2]?.value, 'Amount_DZD', true),
         reviewStatus,
-        supplierFournisseur: optionalString(values[4]),
-        customerClient: optionalString(values[5]),
-        notes: optionalString(values[6]),
+        supplierFournisseur: optionalString(cells[4]?.value),
+        customerClient: optionalString(cells[5]?.value),
+        notes: optionalString(cells[6]?.value),
       });
     } catch (error) {
       pushError(errors, {

@@ -2,11 +2,13 @@ use serde_json::{json, Value as JsonValue};
 use sqlx::{query_scalar, PgPool};
 
 use crate::domain::onboarding::{
-    parse_iso_date, CreateHistoricalFinanceBatchRequest, HistoricalFinanceApprovalResult,
-    HistoricalFinanceBatchDataResult, HistoricalFinanceBatchIdRequest,
-    HistoricalFinanceBatchResult, HistoricalFinanceSettingResult,
+    parse_iso_date, CreateHistoricalFinanceBatchRequest, CreateHistoricalTradeBatchRequest,
+    HistoricalFinanceApprovalResult, HistoricalFinanceBatchDataResult,
+    HistoricalFinanceBatchIdRequest, HistoricalFinanceBatchResult, HistoricalFinanceSettingResult,
     HistoricalFinanceSummaryRequest, HistoricalFinanceSummaryResult,
-    HistoricalFinanceValidationResult, ReplaceHistoricalFinanceBatchDataRequest,
+    HistoricalFinanceValidationResult, HistoricalTradeAnalyticsRequest,
+    HistoricalTradeBatchDataResult, HistoricalTradeBatchResult, HistoricalTradeValidationResult,
+    ReplaceHistoricalFinanceBatchDataRequest, ReplaceHistoricalTradeBatchDataRequest,
     UpdateHistoricalFinanceSettingRequest,
 };
 use crate::error::AppError;
@@ -197,3 +199,140 @@ pub(crate) async fn get_historical_finance_summary(
 
     parse_result(result, "historical finance summary")
 }
+
+pub(crate) async fn create_historical_trade_batch(
+    pool: &PgPool,
+    session_token: &str,
+    request: CreateHistoricalTradeBatchRequest,
+) -> Result<HistoricalTradeBatchResult, AppError> {
+    request.validate().map_err(validation_error)?;
+
+    let original_filename = request.original_filename.trim();
+    let content_hash = request.content_hash.as_deref().map(str::trim).filter(|v| !v.is_empty());
+
+    let result: JsonValue = query_scalar(
+        "SELECT onboarding.create_historical_trade_batch($1, $2, $3, $4)",
+    )
+    .bind(session_token)
+    .bind(request.request_id.trim())
+    .bind(original_filename)
+    .bind(content_hash)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    parse_result(result, "historical trade batch")
+}
+
+pub(crate) async fn replace_historical_trade_batch_data(
+    pool: &PgPool,
+    session_token: &str,
+    request: ReplaceHistoricalTradeBatchDataRequest,
+) -> Result<HistoricalTradeBatchDataResult, AppError> {
+    request.validate().map_err(validation_error)?;
+
+    let transactions = request
+        .transactions
+        .iter()
+        .map(|txn| {
+            let lines = txn
+                .lines
+                .iter()
+                .map(|line| {
+                    json!({
+                        "source_row_number": line.source_row_number,
+                        "line_sequence": line.line_sequence,
+                        "product_name": line.product_name.as_deref().map(str::trim),
+                        "brand": line.brand.as_deref().map(str::trim),
+                        "custom_details": line.custom_details.as_deref().map(str::trim),
+                        "quantity": line.quantity,
+                        "unit_price_dzd": line.unit_price_dzd,
+                        "manual_line_total_dzd": line.manual_line_total_dzd,
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            json!({
+                "source_transaction_sequence": txn.source_transaction_sequence,
+                "source_first_excel_row": txn.source_first_excel_row,
+                "source_excel_txn_ref": txn.source_excel_txn_ref.as_deref().map(str::trim),
+                "transaction_date": txn.transaction_date.trim(),
+                "transaction_type": txn.transaction_type.trim().to_ascii_uppercase(),
+                "payment_status": txn.payment_status.trim().to_ascii_uppercase(),
+                "party_company": txn.party_company.as_deref().map(str::trim),
+                "page_number": txn.page_number,
+                "lines": lines,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let result: JsonValue = query_scalar(
+        "SELECT onboarding.replace_historical_trade_batch_data($1, $2, $3)",
+    )
+    .bind(session_token)
+    .bind(request.batch_id)
+    .bind(JsonValue::Array(transactions))
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    parse_result(result, "historical trade batch data result")
+}
+
+pub(crate) async fn validate_historical_trade_batch(
+    pool: &PgPool,
+    session_token: &str,
+    request: HistoricalFinanceBatchIdRequest,
+) -> Result<HistoricalTradeValidationResult, AppError> {
+    request.validate().map_err(validation_error)?;
+
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.validate_historical_trade_batch($1, $2)")
+            .bind(session_token)
+            .bind(request.batch_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    parse_result(result, "historical trade validation result")
+}
+
+pub(crate) async fn approve_historical_trade_batch(
+    pool: &PgPool,
+    session_token: &str,
+    request: HistoricalFinanceBatchIdRequest,
+) -> Result<HistoricalFinanceApprovalResult, AppError> {
+    request.validate().map_err(validation_error)?;
+
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.approve_historical_trade_batch($1, $2)")
+            .bind(session_token)
+            .bind(request.batch_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    parse_result(result, "historical trade approval result")
+}
+
+pub(crate) async fn get_historical_trade_analytics(
+    pool: &PgPool,
+    session_token: &str,
+    request: HistoricalTradeAnalyticsRequest,
+) -> Result<JsonValue, AppError> {
+    request.validate().map_err(validation_error)?;
+    let date_from = parse_iso_date(&request.date_from, "dateFrom").map_err(validation_error)?;
+    let date_to = parse_iso_date(&request.date_to, "dateTo").map_err(validation_error)?;
+
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.get_historical_trade_analytics($1, $2, $3)")
+            .bind(session_token)
+            .bind(date_from)
+            .bind(date_to)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    Ok(result)
+}
+
