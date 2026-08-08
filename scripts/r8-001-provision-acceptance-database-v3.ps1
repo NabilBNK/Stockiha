@@ -134,14 +134,10 @@ THEN 'OK' ELSE 'BAD' END;
     [void](Invoke-Psql $psqlPath 'REVOKE CREATE ON SCHEMA public FROM PUBLIC;')
     [void](Invoke-Psql $psqlPath 'GRANT USAGE, CREATE ON SCHEMA public TO stockiha_migrator;')
 
-    # Phase A: modern least-privilege migrator until the immutable S3 owner band.
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $migratorUrl 'Pre-S3 SQLx phase failed; reject this database and do not repair it.' '20260725120200')
     $metadataOwner = Invoke-Psql $psqlPath "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='public._sqlx_migrations'::regclass;"
     if ($metadataOwner -ne 'stockiha_migrator') { Fail 'SQLx metadata must be created and owned by stockiha_migrator.' }
 
-    # Phase B: immutable S3 files predate explicit SET ROLE. Authenticate as the
-    # migrator but select stockiha_owner only for these SQLx sessions. Owner gets
-    # temporary DML on SQLx metadata so SQLx can record its own migration rows.
     $ownerMetadataGrant = $false
     try {
         [void](Invoke-Psql $psqlPath 'GRANT SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations TO stockiha_owner;')
@@ -155,38 +151,23 @@ THEN 'OK' ELSE 'BAD' END;
     $residualOwnerAcl = Invoke-Psql $psqlPath "SELECT has_table_privilege('stockiha_owner','public._sqlx_migrations','SELECT')::int || ':' || has_table_privilege('stockiha_owner','public._sqlx_migrations','INSERT')::int || ':' || has_table_privilege('stockiha_owner','public._sqlx_migrations','UPDATE')::int;"
     if ($residualOwnerAcl -ne '0:0:0') { Fail 'Temporary owner SQLx metadata rights were not fully revoked.' }
 
-    # Phase C: ordinary migrator to the first S4-002 administrative compatibility shim.
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $migratorUrl 'Migration phase before S4-002 admin shim failed.' '20260731125950')
-
-    # Phase D: direct administrator for the historical shim explicitly written
-    # to normalize objects that may still be postgres-owned on old databases.
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $adminMigrationUrl 'S4-002 function-owner compatibility migration failed.' '20260731125975')
-
-    # Phase E/F: back to migrator for the owner-aware shape shim, then admin for
-    # the legacy API collision quarantine shim.
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $migratorUrl 'Migration phase before S4-002 API compatibility shim failed.' '20260731125985')
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $adminMigrationUrl 'S4-002 API-collision compatibility migration failed.' '20260731125990')
-
-    # Phase G/H: normal cash-session migrations, then the S4-003 owner-normalizer
-    # under the same direct administrator compatibility connection.
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $migratorUrl 'Cash-session migration phase failed.' '20260731131000')
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $adminMigrationUrl 'S4-003 function-owner compatibility migration failed.' '20260801100000')
-
-    # Phase I/J: drawer/refund migrations normally, then the R2 legacy S3 owner
-    # normalizer administratively. On canonical fresh state these are expected
-    # no-ops, but schema visibility/legacy ownership inspection is administrative.
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $migratorUrl 'S4-003 migration phase failed.' '20260801110500')
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $adminMigrationUrl 'R2 legacy S3 owner compatibility migration failed.' '20260803125900')
 
-    # Phase K/L: all current migrations normally as stockiha_migrator, then a
-    # second complete pass for checksum/pending/dirty verification.
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $migratorUrl 'Post-compatibility SQLx migration phase failed.')
     [void](Invoke-Sqlx $sqlxPath $migrationsPath $migratorUrl 'Second SQLx verification failed; reject this database.')
 
     $metadataOwner = Invoke-Psql $psqlPath "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='public._sqlx_migrations'::regclass;"
     $latest = Invoke-Psql $psqlPath "SELECT version::text || ':' || success::text || ':' || octet_length(checksum)::text FROM public._sqlx_migrations ORDER BY version DESC LIMIT 1;"
     $schemaVersion = Invoke-Psql $psqlPath 'SELECT migration_version::text FROM operations.schema_state WHERE singleton;'
-    if ($metadataOwner -ne 'stockiha_migrator' -or $latest -ne "$ExpectedSchemaVersion:true:48" -or $schemaVersion -ne $ExpectedSchemaVersion) { Fail 'Final SQLx metadata/schema state does not match the R8 acceptance baseline.' }
+    $expectedLatest = "${ExpectedSchemaVersion}:true:48"
+    if ($metadataOwner -ne 'stockiha_migrator' -or $latest -ne $expectedLatest -or $schemaVersion -ne $ExpectedSchemaVersion) { Fail 'Final SQLx metadata/schema state does not match the R8 acceptance baseline.' }
 
     $backupAcl = Invoke-Psql $psqlPath "SELECT has_table_privilege('stockiha_backup','public._sqlx_migrations','SELECT')::int || ':' || has_table_privilege('stockiha_backup','public._sqlx_migrations','INSERT')::int || ':' || has_table_privilege('stockiha_backup','public._sqlx_migrations','UPDATE')::int || ':' || has_table_privilege('stockiha_backup','public._sqlx_migrations','DELETE')::int || ':' || has_table_privilege('stockiha_backup','public._sqlx_migrations','TRUNCATE')::int;"
     if ($backupAcl -ne '1:0:0:0:0') { Fail 'Backup ACL for SQLx metadata is not read-only.' }
