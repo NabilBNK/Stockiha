@@ -109,6 +109,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate R8 Windows provisioning helper
+        shell: pwsh
+        run: |
+          $path = 'scripts/r8-001-provision-acceptance-database.ps1'
+          $content = Get-Content -Raw $path
+          [void][scriptblock]::Create($content)
+          $forbidden = @(
+            'GRANT ALL ON SCHEMA public',
+            'ALTER SCHEMA public OWNER',
+            'ALTER ROLE stockiha_migrator IN DATABASE',
+            'ALTER TABLE IF EXISTS public._sqlx_migrations OWNER',
+            'GRANT ALL ON ALL TABLES IN SCHEMA public'
+          )
+          foreach ($pattern in $forbidden) {
+            if ($content.Contains($pattern)) {
+              throw "R8 provisioning helper contains forbidden manual-repair pattern: $pattern"
+            }
+          }
+          if (-not $content.Contains('GRANT USAGE, CREATE ON SCHEMA public TO stockiha_migrator')) {
+            throw 'R8 provisioning helper is missing the minimal SQLx metadata schema grant.'
+          }
+
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update
