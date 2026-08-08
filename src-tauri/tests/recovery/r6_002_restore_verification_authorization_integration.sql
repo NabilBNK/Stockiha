@@ -120,7 +120,7 @@ BEGIN
 
     ASSERT v_started ->> 'status' = 'STARTED', 'First restore verification must start';
     ASSERT NOT (v_started ->> 'is_replay')::boolean, 'First restore verification is not replay';
-    ASSERT v_started ->> 'current_schema_version' = '20260805151000',
+    ASSERT v_started ->> 'current_schema_version' = '20260807230000',
         'Restore verification must expose the current database schema version';
 
     v_replay := operations.begin_restore_verification_attempt(
@@ -161,7 +161,7 @@ BEGIN
     v_result := jsonb_build_object(
         'requestId', 'r6-restore-0001',
         'bundleIdentifier', 'GestStock-Backup-20260805-150500',
-        'schemaVersion', '20260805151000',
+        'schemaVersion', '20260807230000',
         'postgresMajorVersion', 18,
         'temporaryDatabaseCleaned', true,
         'journalBalanced', true,
