@@ -19,9 +19,13 @@ function Require-ProcessEnv([string]$Name) {
 
 function Parse-UrlIdentity([string]$Url, [string]$Label) {
     try { $uri = [System.Uri]$Url } catch { Fail "$Label could not be parsed as a PostgreSQL URL." }
-    if ($uri.Scheme -notin @('postgres', 'postgresql')) { Fail "$Label must use postgres or postgresql." }
+    if (-not $uri.IsAbsoluteUri -or $uri.Scheme -notin @('postgres', 'postgresql')) { Fail "$Label must use postgres or postgresql." }
+    if ([string]::IsNullOrWhiteSpace($uri.Host)) { Fail "$Label must contain one explicit host." }
+    if (-not [string]::IsNullOrEmpty($uri.Query) -or -not [string]::IsNullOrEmpty($uri.Fragment)) {
+        Fail "$Label must not contain query parameters or fragments. Session options are controlled only by this helper."
+    }
     $parts = $uri.UserInfo.Split(':', 2)
-    if ($parts.Count -ne 2) { Fail "$Label must contain username and password." }
+    if ($parts.Count -ne 2 -or [string]::IsNullOrWhiteSpace($parts[0]) -or [string]::IsNullOrEmpty($parts[1])) { Fail "$Label must contain username and password." }
     $port = if ($uri.IsDefaultPort) { '5432' } else { [string]$uri.Port }
     return [pscustomobject]@{
         Host = $uri.Host
@@ -121,6 +125,16 @@ SELECT CASE WHEN
     )
     AND (SELECT count(*) FROM pg_auth_members am JOIN pg_roles r ON r.oid=am.member WHERE r.rolname='stockiha_migrator')=1
     AND (SELECT count(*) FROM pg_auth_members am JOIN pg_roles r ON r.oid=am.member WHERE r.rolname IN ('stockiha_owner','stockiha_runtime','stockiha_backup'))=0
+    AND (SELECT count(*) FROM pg_auth_members am JOIN pg_roles r ON r.oid=am.roleid WHERE r.rolname IN ('stockiha_owner','stockiha_migrator','stockiha_runtime','stockiha_backup'))=1
+    AND NOT EXISTS (
+        SELECT 1
+        FROM pg_db_role_setting s
+        JOIN pg_roles r ON r.oid=s.setrole
+        CROSS JOIN LATERAL unnest(s.setconfig) AS config(setting)
+        WHERE s.setdatabase=0
+          AND r.rolname IN ('stockiha_owner','stockiha_migrator','stockiha_runtime','stockiha_backup')
+          AND lower(split_part(config.setting, '=', 1))='role'
+    )
 THEN 'OK' ELSE 'BAD' END;
 "@
     if ($rolePosture -ne 'OK') { Fail 'Stockiha database role posture does not match the required least-privilege architecture.' }

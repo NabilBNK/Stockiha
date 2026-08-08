@@ -45,6 +45,8 @@ The exact helper is exercised on PostgreSQL 18 by `.github/workflows/r8-sqlx-fre
 
 The helper accepts secrets only from the current process environment. Do not print or persist them.
 
+Both SQLx connection URLs must use one explicit authority and database path with no query parameters or fragments. In particular, URL-level `options=-c role=...` overrides are forbidden: the helper owns the only accepted session-role override and applies it solely to the immutable S3 compatibility interval. The four Stockiha roles must also have no persistent global `role` setting.
+
 Administrator `psql` connection:
 
 - `PGHOST`
@@ -70,13 +72,14 @@ Valid R8 provisioning evidence requires all of the following:
 3. SQLx CLI 0.8.x, matching the repository SQLx dependency line.
 4. `public._sqlx_migrations` created by SQLx and owned by `stockiha_migrator`.
 5. S3 owner bridge bounded to the immutable S3 legacy band only; no persistent owner-role default.
-6. Temporary owner DML rights on SQLx metadata fully revoked after the S3 bridge.
-7. Direct administrator SQLx used only for the four documented compatibility shims.
-8. All historical migration files remain byte-for-byte unchanged.
-9. Repository migrations reach `20260807230000`.
-10. A second complete `sqlx migrate run` as `stockiha_migrator` succeeds without checksum, dirty-state, missing-migration, or pending-migration failure.
-11. `stockiha_backup` has `SELECT` only on SQLx metadata.
-12. `stockiha_runtime` has no `CREATE` privilege on `public`.
+6. Connection URLs contain no query/fragment override, and the role graph contains no global persistent `role` setting.
+7. Temporary owner DML rights on SQLx metadata fully revoked after the S3 bridge.
+8. Direct administrator SQLx used only for the four documented compatibility shims.
+9. All historical migration files remain byte-for-byte unchanged.
+10. Repository migrations reach `20260807230000`.
+11. A second complete `sqlx migrate run` as `stockiha_migrator` succeeds without checksum, dirty-state, missing-migration, or pending-migration failure.
+12. `stockiha_backup` has `SELECT` only on SQLx metadata.
+13. `stockiha_runtime` has no `CREATE` privilege on `public`.
 
 ## Forbidden acceptance repairs
 
@@ -89,6 +92,7 @@ The following invalidate the database as release evidence:
 - `ALTER SCHEMA public OWNER ...` as a workaround;
 - `GRANT ALL ON SCHEMA public ...` or `GRANT ALL ON ALL TABLES ...` as a workaround;
 - persistent `ALTER ROLE stockiha_migrator IN DATABASE ... SET role = stockiha_owner`;
+- global persistent role defaults or connection-URL query/fragment overrides that alter session role posture;
 - expanding the session-only owner bridge beyond the documented S3 interval;
 - using the administrative SQLx connection for ordinary migrations outside the four documented compatibility shims;
 - running Tauri as `postgres`, `stockiha_owner`, or `stockiha_migrator`;

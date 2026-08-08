@@ -70,6 +70,66 @@ jobs:
           GRANT stockiha_owner TO stockiha_migrator WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
           SQL
 
+      - name: Reject connection URL session overrides
+        shell: pwsh
+        run: |
+          $urls = @{
+            DATABASE_URL = $env:DATABASE_URL
+            STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL = $env:STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL
+          }
+          foreach ($name in $urls.Keys) {
+            try {
+              [Environment]::SetEnvironmentVariable(
+                $name,
+                "$($urls[$name])?options=-c%20role%3Dstockiha_owner",
+                'Process'
+              )
+              $failure = $null
+              try {
+                ./scripts/r8-001-provision-acceptance-database.ps1 `
+                  -DatabaseName stockiha_r8_acceptance_ci_test
+              } catch {
+                $failure = $_.Exception.Message
+              }
+              if ($failure -notlike '*must not contain query parameters or fragments*') {
+                throw "$name did not reject a connection-URL session override before provisioning."
+              }
+            } finally {
+              [Environment]::SetEnvironmentVariable($name, $urls[$name], 'Process')
+            }
+          }
+
+      - name: Reject persistent owner-role defaults
+        shell: pwsh
+        run: |
+          $testDatabase = 'stockiha_r8_acceptance_role_test'
+          $safeMigratorUrl = $env:DATABASE_URL
+          $safeAdminUrl = $env:STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL
+          $env:DATABASE_URL = $safeMigratorUrl.Replace('stockiha_r8_acceptance_ci_test', $testDatabase)
+          $env:STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL = $safeAdminUrl.Replace('stockiha_r8_acceptance_ci_test', $testDatabase)
+          psql -X -v ON_ERROR_STOP=1 -c "ALTER ROLE stockiha_migrator SET role = stockiha_owner;"
+          $failure = $null
+          try {
+            try {
+              ./scripts/r8-001-provision-acceptance-database.ps1 `
+                -DatabaseName $testDatabase
+            } catch {
+              $failure = $_.Exception.Message
+            }
+          } finally {
+            $env:DATABASE_URL = $safeMigratorUrl
+            $env:STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL = $safeAdminUrl
+            psql -X -v ON_ERROR_STOP=1 -c "ALTER ROLE stockiha_migrator RESET role;"
+          }
+          $databaseCount = psql -X -v ON_ERROR_STOP=1 -At -c "SELECT count(*) FROM pg_database WHERE datname='$testDatabase';"
+          if ($databaseCount -ne '0') {
+            psql -X -v ON_ERROR_STOP=1 -c "DROP DATABASE $testDatabase;"
+            throw 'Persistent role-default rejection created an acceptance database before it failed.'
+          }
+          if ($failure -notlike '*role posture does not match*') {
+            throw 'The helper did not reject a persistent owner-role default before provisioning.'
+          }
+
       - name: Run exact cross-platform R8 provisioning helper
         shell: pwsh
         run: |
