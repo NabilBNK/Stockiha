@@ -5,9 +5,9 @@
 ## Released baseline
 
 - **Branch:** `main`
-- **Commit:** `3e77f5d`
+- **Code baseline:** `460dcebfd68a20b7fb21dd31fbca34e3308f1e28`
 - **Verified boundary:** UI foundation, S0 through S4-003, R2 supplier-accounting repair, R6-001 operator backup creation/validation, R6-002 temporary database restore verification, R0-001 finance-only historical onboarding, R5-002/R5-003 opening-state application, and R0-002 historical XLSX trade staging/analytics.
-- **Most recent integration:** Merge R0-002 historical paper-book XLSX import & analytics
+- **Most recent integrations:** PR #18 removed the committed development-runner database credential and restored the real Tauri launch; PR #19 made the R0-002 SQL regression mandatory, corrected its suite transaction ownership, and synchronized the R6 restore regression with schema `20260807230000`.
 
 ## Completed recent work
 
@@ -15,97 +15,81 @@
 - **R6-001/R6-002:** administrator-only backup creation, validation, and temporary database restore verification with control-total reconciliation.
 - **R0-001/R0-002:** controlled Excel/manual historical trade and finance staging, validation, reporting approval, estimated profit/loss, duplicate protection, feature toggle, and operational analytics.
 - **R5-002/R5-003:** optional one-time CEO/admin setup, current cutover reconciliation, explicit customer/supplier mapping, one atomic opening journal, opening AR/AP subledgers, replay safety, and no fabricated physical stock.
+- **R0-002 stabilization:** the historical-trade SQL integration test is now part of the mandatory PostgreSQL CI runner; cross-slice recovery schema-version expectations track the new migration.
+- **Development runner hardening:** `run-app.bat` no longer contains a tracked database connection secret and again launches `npm run tauri dev` after successful build preflight.
 - **MVP financial boundary:** TVA and discounts remain deferred; unsupported non-zero values are rejected rather than guessed.
 
 ## Current implementation slice
 
 - **Roadmap path:** R8 — Consolidated Pilot Release Acceptance Gate
 - **Slice:** R8-001 — Consolidated Pilot Release Verification
-- **Branch:** `main` at `3e77f5d`
+- **Base:** hardened `main` after PR #18 and PR #19
 - **Current schema version:** `20260807230000`
-- **Purpose:** verify end-to-end user workflows across the complete pilot boundary (Onboarding cutover -> Catalog -> POS Sales -> Cashier Session -> Backup verification) on Windows desktop.
+- **Purpose:** verify end-to-end user workflows across the complete pilot boundary on the real Windows/Tauri application: setup/opening cutover -> historical onboarding -> catalog/stock -> procurement -> POS cash/credit -> customer payments/refunds -> cashier-session lifecycle -> restart -> backup/validation/temporary restore.
 
-### Implemented authorization, policy, and audit
+## R8 entry evidence
 
-- dedicated `VERIFY_BACKUP_RESTORE` permission for ADMIN and future CEO roles;
-- CASHIER/operator denial;
-- restore-verification feature setting defaults ON;
-- CEO/admin can disable or re-enable new restore drills;
-- disabling restore drills does not disable backup creation or read-only validation;
-- setting changes are audited with actor and workstation;
-- database trigger blocks new restore attempts while disabled;
-- recovery audit operation `VERIFY_RESTORE`;
-- replay-safe request IDs and conflicting-request rejection;
-- only the initiating actor and workstation may complete the attempt;
-- runtime has no direct access to recovery settings or audit tables;
-- backup role includes settings/audit evidence read-only.
+The exact PR #19 candidate passed the mandatory automated gate after the R0-002 regression was wired into CI:
 
-### Implemented recovery drill
+- frontend typecheck, lint, test suite, and production build;
+- Rust unit verification;
+- complete PostgreSQL 18 migration chain through `20260807230000`;
+- PostgreSQL 18 backup-role `pg_dump` verification;
+- mandatory R0-002 historical-trade staging/analytics/operational-isolation SQL regression;
+- all current accounting/onboarding/recovery SQL suites;
+- S2 stock-adjustment and zero-quantity races;
+- S3 purchase-receipt race;
+- S4 cash-session and credit-limit races;
+- all four historical/existing-database S4 upgrade workflows.
 
-- explicit user acknowledgement required;
-- selected bundle must be a canonical direct child of `STOCKIHA_BACKUP_ROOT`;
-- existing authoritative bundle checksum/path/symlink validator reused;
-- exact application, schema, and PostgreSQL 18 compatibility required;
-- administrative connection configuration resolved only by the backend from `STOCKIHA_RESTORE_ADMIN_DATABASE_URL`;
-- generated `stockiha_restore_proof_*` target names only;
-- fixed PostgreSQL 18 `pg_restore` adapter with single-transaction and exit-on-error behavior;
-- blocking restore process isolated from the async Tauri runtime;
-- control-total reconciliation for schemas, tables, users, products, parties, inventory, sales, journals, AR/AP, and applied opening state;
-- journal debit/credit equality reported explicitly;
-- generated database forcibly deleted before success;
-- original operation failure preserved even if cleanup also fails;
-- no temporary database name, connection URL, credential, raw process output, or database diagnostic crosses IPC.
+## R8 Windows/Tauri gate
 
-### Implemented Settings workflow
+Automated verification is no longer the blocking evidence. The remaining release decision must come from one exact-candidate Windows/Tauri journey using the real application UI and a controlled test database.
 
-- default-ON temporary restore-verification toggle;
-- create backup;
-- validate an existing backup;
-- explicitly acknowledge the temporary database drill;
-- run **Verify temporary restore**;
-- review cleanup status, journal balance, and critical control totals;
-- English, French, and Arabic/RTL copy;
-- fixed safe failure messages.
+Required proof:
+
+1. pull the hardened `main` and configure the database URL outside tracked source;
+2. rotate/remove the PostgreSQL credential that was previously committed in the public repository before using the environment again;
+3. start the app through the fixed `run-app.bat` / `npm run tauri dev` path;
+4. verify setup/login/permissions and default-ON CEO/admin toggles;
+5. exercise representative R0-002 XLSX historical paper-book import, validation, approval, analytics, and prove no live operational ledger mutation;
+6. verify opening-state reconciliation/application behavior where applicable;
+7. run catalog, stock, procurement, cash sale, credit sale, customer payment/refund, and cashier-session workflows;
+8. restart the app and verify persisted state and idempotency-sensitive operations;
+9. create and validate a real backup, run temporary restore verification, reconcile control totals, and prove the live database is unchanged and no temporary restore database remains;
+10. smoke EN/FR/AR, RTL, narrow-window, and core touch workflows;
+11. record exact SHA, database identity, test results, defects, and control totals. Any unexplained money/stock/AR/AP/journal/import variance blocks release.
 
 ## Safety boundary
 
-R6-002 does **not**:
+R8 does **not** authorize scope expansion. In particular, it does not add:
 
-- replace, rename, stop, or modify the live Stockiha database;
-- accept a caller-selected database, role, password, connection URL, or executable;
-- restore an incompatible bundle;
-- copy backup assets into live directories;
-- expose a live restore button;
-- implement scheduler, retention, encryption, cloud upload, or off-device replication.
+- live database replacement;
+- automatic replay of the 1.5-year historical archive into live ledgers;
+- mandatory OCR or historical product reconstruction;
+- scheduled/retained/off-device/encrypted backups;
+- TVA/HT/TTC/discount accounting;
+- payroll, advanced analytics, updater, or unconfirmed hardware/package work.
 
-Live database replacement remains deferred until a separate maintenance-mode design includes a pre-restore backup, explicit destructive confirmation, rollback plan, and dedicated acceptance gate.
+The historical paper workflow remains staged and reviewable. Historical-only rows must not alter live stock, cash, AR, AP, sales, purchases, or journals.
 
-## Verification state
+## Security follow-up
 
-Implemented automated coverage includes:
-
-- permission, operator denial, default-ON setting, audited enable/disable, database enforcement, replay, conflict, actor/workstation ownership, runtime ACL, and backup ACL SQL regression;
-- request confirmation and safe result DTO tests;
-- focused Settings toggle/create/validate/temporary-restore workflow tests;
-- complete migration chain and PostgreSQL 18 backup verification;
-- all existing accounting SQL and concurrency suites;
-- Rust, frontend, production build, and historical-upgrade workflows.
-
-One exact-head Windows/Tauri recovery drill remains required before merge. It must use a real R6-001 bundle, verify the OFF/ON setting behavior, execute PostgreSQL 18 `pg_restore`, compare restored control totals, prove the live database remains unchanged, and prove no generated temporary database remains.
+A database administrator credential was committed in an earlier `run-app.bat` revision and therefore must be treated as exposed even though PR #18 removed it from the current tree. Rotate that credential or destroy/recreate the disposable local database environment. Do not restore the old value into tracked files, chat logs, screenshots, or acceptance reports.
 
 ## Deadline control
 
-The pilot target remains approximately 9 August 2026. Verification policy is one implementation cycle, automated checks, one targeted Windows/Tauri acceptance, then merge unless evidence reveals a real product defect.
+The pilot target remains approximately 9 August 2026. R8 is a feature freeze and consolidated acceptance gate: fix only defects that prevent the selected pilot journeys or violate security/accounting/data-integrity invariants. Defer new feature breadth.
 
 ## Next release gate
 
-After R6-002, move to the consolidated R8 pilot acceptance gate unless the client confirms a launch-critical R7 hardware/installer requirement. Do not revive or merge stale S5–S7 branches.
+Complete R8 on one exact candidate. If the full Windows/Tauri gate passes with zero unexplained financial/inventory/import/recovery variance, freeze/tag that exact candidate as the pilot baseline. R7 hardware/installer work remains conditional unless explicitly required for launch.
 
 ## Explicitly deferred
 
 - live database replacement workflow;
 - scheduled/retained/off-device/encrypted backups;
-- opening item quantities and WAC posting;
+- opening item quantities and WAC posting beyond the approved opening-state boundary;
 - automatic customer/supplier creation or fuzzy matching;
 - historical product reconstruction and mandatory OCR;
 - TVA/HT/TTC/discount accounting;
