@@ -34,7 +34,32 @@ SELECT
     (SELECT count(*) FROM finance.journal_entries) AS journal_count,
     (SELECT count(*) FROM receivables.customer_ledger_entries) AS customer_ledger_count;
 
--- 2. Create Paper-Book V2 Batch
+-- 2. Verify 4-argument create_historical_trade_batch regression (PAPER_BOOK_V1 default)
+DO $$
+DECLARE
+    v_batch_v1 jsonb;
+    v_batch_v1_id bigint;
+BEGIN
+    v_batch_v1 := onboarding.create_historical_trade_batch(
+        'token_r0_003',
+        'req-r0-003-v1-compat',
+        'paperbook_v1_legacy.xlsx',
+        'c1c2c3c4c5c6c7c8c9c0c1c2c3c4c5c6c7c8c9c0c1c2c3c4c5c6c7c8c9c0c1c2'
+    );
+    v_batch_v1_id := (v_batch_v1->>'batchId')::bigint;
+
+    IF (v_batch_v1->>'importProfile') <> 'PAPER_BOOK_V1' THEN
+        RAISE EXCEPTION 'Expected 4-arg create_historical_trade_batch to set importProfile PAPER_BOOK_V1, got %',
+            (v_batch_v1->>'importProfile');
+    END IF;
+    IF (v_batch_v1->>'status') <> 'DRAFT' THEN
+        RAISE EXCEPTION 'Expected 4-arg create_historical_trade_batch to set status DRAFT, got %',
+            (v_batch_v1->>'status');
+    END IF;
+END;
+$$;
+
+-- 3. Create Paper-Book V2 Batch (5-argument signature)
 DO $$
 DECLARE
     v_batch_res jsonb;
@@ -42,6 +67,7 @@ DECLARE
     v_replace_res jsonb;
     v_validate_res jsonb;
     v_approve_res jsonb;
+    v_audit_count integer;
 BEGIN
     v_batch_res := onboarding.create_historical_trade_batch(
         'token_r0_003',
@@ -54,6 +80,17 @@ BEGIN
 
     IF (v_batch_res->>'importProfile') <> 'PAPER_BOOK_V2' THEN
         RAISE EXCEPTION 'Expected importProfile PAPER_BOOK_V2, got %', (v_batch_res->>'importProfile');
+    END IF;
+    IF (v_batch_res->>'status') <> 'DRAFT' THEN
+        RAISE EXCEPTION 'Expected status DRAFT on creation, got %', (v_batch_res->>'status');
+    END IF;
+
+    -- Assert audit record CREATED
+    SELECT count(*) INTO v_audit_count
+    FROM onboarding.historical_finance_audit
+    WHERE batch_id = v_batch_id AND action_code = 'CREATED' AND to_status = 'DRAFT';
+    IF v_audit_count <> 1 THEN
+        RAISE EXCEPTION 'Expected 1 CREATED audit record for batch %, got %', v_batch_id, v_audit_count;
     END IF;
 
     v_replace_res := onboarding.replace_historical_trade_batch_data(
@@ -159,6 +196,18 @@ BEGIN
         )
     );
 
+    IF (v_replace_res->>'status') <> 'DRAFT' THEN
+        RAISE EXCEPTION 'Expected status DRAFT after replace data, got %', (v_replace_res->>'status');
+    END IF;
+
+    -- Assert audit record DATA_REPLACED
+    SELECT count(*) INTO v_audit_count
+    FROM onboarding.historical_finance_audit
+    WHERE batch_id = v_batch_id AND action_code = 'DATA_REPLACED' AND to_status = 'DRAFT';
+    IF v_audit_count <> 1 THEN
+        RAISE EXCEPTION 'Expected 1 DATA_REPLACED audit record for batch %, got %', v_batch_id, v_audit_count;
+    END IF;
+
     v_validate_res := onboarding.validate_historical_trade_batch('token_r0_003', v_batch_id);
     IF (v_validate_res->>'status') <> 'VALIDATED' THEN
         RAISE EXCEPTION 'Validation failed: %', v_validate_res;
@@ -172,14 +221,30 @@ BEGIN
         RAISE EXCEPTION 'Expected totalManualBenefitDzd 12000, got %', (v_validate_res->>'totalManualBenefitDzd');
     END IF;
 
+    -- Assert audit record VALIDATED
+    SELECT count(*) INTO v_audit_count
+    FROM onboarding.historical_finance_audit
+    WHERE batch_id = v_batch_id AND action_code = 'VALIDATED' AND to_status = 'VALIDATED';
+    IF v_audit_count <> 1 THEN
+        RAISE EXCEPTION 'Expected 1 VALIDATED audit record for batch %, got %', v_batch_id, v_audit_count;
+    END IF;
+
     v_approve_res := onboarding.approve_historical_trade_batch('token_r0_003', v_batch_id);
     IF (v_approve_res->>'status') <> 'APPROVED_FOR_REPORTING' THEN
         RAISE EXCEPTION 'Approval failed: %', v_approve_res;
     END IF;
+
+    -- Assert audit record APPROVED
+    SELECT count(*) INTO v_audit_count
+    FROM onboarding.historical_finance_audit
+    WHERE batch_id = v_batch_id AND action_code = 'APPROVED' AND to_status = 'APPROVED_FOR_REPORTING';
+    IF v_audit_count <> 1 THEN
+        RAISE EXCEPTION 'Expected 1 APPROVED audit record for batch %, got %', v_batch_id, v_audit_count;
+    END IF;
 END;
 $$;
 
--- 3. Query Historical Trade Analytics
+-- 4. Query Historical Trade Analytics
 DO $$
 DECLARE
     v_analytics jsonb;
@@ -209,7 +274,7 @@ BEGIN
 END;
 $$;
 
--- 4. PROVE OPERATIONAL ISOLATION BOUNDARY
+-- 5. PROVE OPERATIONAL ISOLATION BOUNDARY
 DO $$
 DECLARE
     v_before _op_before_r0_003%ROWTYPE;

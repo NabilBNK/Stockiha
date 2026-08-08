@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Banner, Button, TextField } from '../../shared/components';
+import { Banner, Button, ConfirmDialog, TextField } from '../../shared/components';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useI18n, type Locale } from '../../shared/i18n';
 import type {
@@ -328,6 +328,8 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
   const [pbData, setPbData] = useState<PaperBookWorkbookData | null>(null);
   const [pbValidation, setPbValidation] = useState<HistoricalTradeValidationResult | null>(null);
   const [pbActiveBatchId, setPbActiveBatchId] = useState<number | null>(null);
+  const [showConfirmApprovePaperBook, setShowConfirmApprovePaperBook] = useState(false);
+  const [showConfirmApproveGeneric, setShowConfirmApproveGeneric] = useState(false);
 
   // Analytics & Summary State
   const [dateFrom, setDateFrom] = useState('');
@@ -702,11 +704,31 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             variant="secondary"
             loading={busy === 'approve'}
             disabled={pbValidation?.status !== 'VALIDATED' || busy !== null}
-            onClick={() => void approvePaperBook()}
+            onClick={() => setShowConfirmApprovePaperBook(true)}
           >
             Approve paper-book batch
           </Button>
         </div>
+
+        {showConfirmApprovePaperBook ? (
+          <ConfirmDialog
+            title={locale === 'ar' ? 'تأكيد الموافقة على الدفعة' : 'Confirm Batch Approval'}
+            body={
+              locale === 'ar'
+                ? 'هل أنت تأكد من الموافقة على هذه الدفعة التاريخية؟ بعد الموافقة، سيتم اعتماد المعاملات للتقارير التاريخية ولن يمكن تعديلها.'
+                : 'Are you sure you want to approve this historical paper-book batch? Once approved, the staged transactions will be finalized for reporting and cannot be modified.'
+            }
+            confirmLabel={locale === 'ar' ? 'موافقة' : 'Approve'}
+            cancelLabel={locale === 'ar' ? 'إلغاء' : 'Cancel'}
+            confirmVariant="primary"
+            busy={busy === 'approve'}
+            onConfirm={() => {
+              setShowConfirmApprovePaperBook(false);
+              void approvePaperBook();
+            }}
+            onCancel={() => setShowConfirmApprovePaperBook(false)}
+          />
+        ) : null}
 
         {pbValidation ? (
           <dl className="sk-details-grid" style={{ marginTop: '1rem' }} data-testid="paperbook-validation-result">
@@ -950,11 +972,31 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             variant="secondary"
             loading={busy === 'approve'}
             disabled={validation?.status !== 'VALIDATED' || busy !== null}
-            onClick={() => void approveGeneric()}
+            onClick={() => setShowConfirmApproveGeneric(true)}
           >
             {text.approve}
           </Button>
         </div>
+
+        {showConfirmApproveGeneric ? (
+          <ConfirmDialog
+            title={locale === 'ar' ? 'تأكيد الموافقة على الدفعة' : 'Confirm Batch Approval'}
+            body={
+              locale === 'ar'
+                ? 'هل أنت تأكد من الموافقة على هذه الدفعة المالية التاريخية؟ بعد الموافقة، سيتم اعتماد البيانات للتقارير التاريخية ولن يمكن تعديلها.'
+                : 'Are you sure you want to approve this historical finance batch? Once approved, the staged transactions will be finalized for reporting and cannot be modified.'
+            }
+            confirmLabel={locale === 'ar' ? 'موافقة' : 'Approve'}
+            cancelLabel={locale === 'ar' ? 'إلغاء' : 'Cancel'}
+            confirmVariant="primary"
+            busy={busy === 'approve'}
+            onConfirm={() => {
+              setShowConfirmApproveGeneric(false);
+              void approveGeneric();
+            }}
+            onCancel={() => setShowConfirmApproveGeneric(false)}
+          />
+        ) : null}
 
         {validation ? (
           <ValidationSummary result={validation} locale={locale} text={text} />

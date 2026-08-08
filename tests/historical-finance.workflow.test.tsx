@@ -154,6 +154,7 @@ describe('R0-001 historical finance onboarding', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve for historical reporting' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     expect(await screen.findByText('Historical batch approved for reporting.')).toBeInTheDocument();
     expect(calls.some((call) => call.command === 'approve_historical_finance_batch')).toBe(true);
   });
