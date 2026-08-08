@@ -1,6 +1,5 @@
 -- R0-002: Historical Paper-Book Staging, Analytics, and Operational-Isolation SQL Integration Test
-
-BEGIN;
+-- Runs inside the transaction owned by run_current_sql_suites.sh.
 
 -- 1. Setup session and permissions for ADMIN
 DO $$
@@ -167,5 +166,3 @@ BEGIN
     END IF;
 END;
 $$;
-
-ROLLBACK;
