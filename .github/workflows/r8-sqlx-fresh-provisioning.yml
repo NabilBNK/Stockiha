@@ -5,14 +5,14 @@ on:
     branches:
       - main
     paths:
-      - 'scripts/r8-001-provision-acceptance-database.ps1'
+      - 'scripts/r8-001-provision-acceptance-database-v2.ps1'
       - 'src-tauri/migrations/**'
       - '.github/workflows/r8-sqlx-fresh-provisioning.yml'
   push:
     branches:
       - 'task/r8-001-reproducible-sqlx-provisioning'
     paths:
-      - 'scripts/r8-001-provision-acceptance-database.ps1'
+      - 'scripts/r8-001-provision-acceptance-database-v2.ps1'
       - 'src-tauri/migrations/**'
       - '.github/workflows/r8-sqlx-fresh-provisioning.yml'
 
@@ -38,13 +38,18 @@ jobs:
           --health-retries 12
 
     env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
       PGPASSWORD: postgres
-      ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_r8_control
+      PGDATABASE: stockiha_r8_control
       DATABASE_URL: postgres://stockiha_migrator:migrator_ci_password@127.0.0.1:5432/stockiha_r8_acceptance_ci_test
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install PostgreSQL client
         run: |
@@ -56,62 +61,21 @@ jobs:
 
       - name: Bootstrap exact Stockiha role posture
         run: |
-          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
           CREATE ROLE stockiha_owner NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
           CREATE ROLE stockiha_migrator LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'migrator_ci_password';
           CREATE ROLE stockiha_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'runtime_ci_password';
           CREATE ROLE stockiha_backup LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'backup_ci_password';
           GRANT stockiha_owner TO stockiha_migrator WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
-          CREATE DATABASE stockiha_r8_acceptance_ci_test WITH OWNER = stockiha_owner ENCODING = 'UTF8';
-          GRANT CONNECT ON DATABASE stockiha_r8_acceptance_ci_test TO stockiha_migrator, stockiha_runtime, stockiha_backup;
-          SQL
-          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -d stockiha_r8_acceptance_ci_test <<'SQL'
-          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-          GRANT USAGE, CREATE ON SCHEMA public TO stockiha_migrator;
           SQL
 
-      - name: Run normal pre-S3 SQLx phase
-        run: sqlx migrate run --source src-tauri/migrations --target-version 20260725120200
-
-      - name: Verify SQLx metadata ownership
+      - name: Run exact cross-platform R8 provisioning helper
+        shell: pwsh
         run: |
-          owner="$(psql "$ADMIN_URL" -X -At -v ON_ERROR_STOP=1 -d stockiha_r8_acceptance_ci_test -c "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = 'public._sqlx_migrations'::regclass;")"
-          test "$owner" = "stockiha_migrator"
+          ./scripts/r8-001-provision-acceptance-database-v2.ps1 `
+            -DatabaseName stockiha_r8_acceptance_ci_test
 
-      - name: Run immutable legacy S3 owner bridge
-        run: |
-          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -d stockiha_r8_acceptance_ci_test -c \
-            "GRANT SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations TO stockiha_owner;"
-          PGOPTIONS='-c role=stockiha_owner' sqlx migrate run \
-            --source src-tauri/migrations \
-            --target-version 20260725140200
-          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -d stockiha_r8_acceptance_ci_test -c \
-            "REVOKE SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations FROM stockiha_owner;"
-
-      - name: Continue normal SQLx migration chain
-        run: |
-          unset PGOPTIONS
-          sqlx migrate run --source src-tauri/migrations
-          sqlx migrate run --source src-tauri/migrations
-
-      - name: Verify final least-privilege state
-        run: |
-          result="$(psql "$ADMIN_URL" -X -At -v ON_ERROR_STOP=1 -d stockiha_r8_acceptance_ci_test <<'SQL'
-          SELECT
-            (SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = 'public._sqlx_migrations'::regclass) || ':' ||
-            (SELECT version::text FROM public._sqlx_migrations ORDER BY version DESC LIMIT 1) || ':' ||
-            (SELECT migration_version::text FROM operations.schema_state WHERE singleton) || ':' ||
-            has_table_privilege('stockiha_owner', 'public._sqlx_migrations', 'SELECT')::int || ':' ||
-            has_table_privilege('stockiha_owner', 'public._sqlx_migrations', 'INSERT')::int || ':' ||
-            has_table_privilege('stockiha_owner', 'public._sqlx_migrations', 'UPDATE')::int || ':' ||
-            has_table_privilege('stockiha_backup', 'public._sqlx_migrations', 'SELECT')::int || ':' ||
-            has_table_privilege('stockiha_backup', 'public._sqlx_migrations', 'INSERT')::int || ':' ||
-            has_schema_privilege('stockiha_runtime', 'public', 'CREATE')::int;
-          SQL
-          )"
-          test "$result" = "stockiha_migrator:20260807230000:20260807230000:0:0:0:1:0:0"
-
-      - name: Prove historical migration files were not rewritten
+      - name: Verify historical migration files were not rewritten
         run: |
           git diff --exit-code origin/main -- \
             src-tauri/migrations/20260725130000_procurement_landed_cost_and_invoices.sql \
