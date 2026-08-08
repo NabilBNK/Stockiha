@@ -722,8 +722,7 @@ BEGIN
             FROM onboarding.historical_trade_lines l
             JOIN onboarding.historical_trade_transactions t2 ON t2.id = l.transaction_id
             JOIN onboarding.historical_finance_batches b2 ON b2.id = t2.batch_id
-            WHERE b2.status = 'APPROVED_FOR_REPORTING'
-              AND t2.review_status = 'APPROVED'
+            WHERE b2.status IN ('VALIDATED', 'APPROVED_FOR_REPORTING', 'NEEDS_REVIEW')
               AND t2.transaction_date BETWEEN p_date_from AND p_date_to
         ), 0),
         'totalSalesDzd', COALESCE(sum(t.transaction_total_dzd) FILTER (WHERE t.transaction_type = 'SALE'), 0),
@@ -747,8 +746,7 @@ BEGIN
     INTO v_overview
     FROM onboarding.historical_trade_transactions t
     JOIN onboarding.historical_finance_batches b ON b.id = t.batch_id
-    WHERE b.status = 'APPROVED_FOR_REPORTING'
-      AND t.review_status = 'APPROVED'
+    WHERE b.status IN ('VALIDATED', 'APPROVED_FOR_REPORTING', 'NEEDS_REVIEW')
       AND t.transaction_date BETWEEN p_date_from AND p_date_to;
 
     -- 2. Payment Analysis
@@ -767,8 +765,7 @@ BEGIN
     INTO v_payment
     FROM onboarding.historical_trade_transactions t
     JOIN onboarding.historical_finance_batches b ON b.id = t.batch_id
-    WHERE b.status = 'APPROVED_FOR_REPORTING'
-      AND t.review_status = 'APPROVED'
+    WHERE b.status IN ('VALIDATED', 'APPROVED_FOR_REPORTING', 'NEEDS_REVIEW')
       AND t.transaction_date BETWEEN p_date_from AND p_date_to;
 
     -- 3. Timeline Aggregation (Monthly)
@@ -786,8 +783,7 @@ BEGIN
         ) AS month_data
         FROM onboarding.historical_trade_transactions t
         JOIN onboarding.historical_finance_batches b ON b.id = t.batch_id
-        WHERE b.status = 'APPROVED_FOR_REPORTING'
-          AND t.review_status = 'APPROVED'
+        WHERE b.status IN ('VALIDATED', 'APPROVED_FOR_REPORTING', 'NEEDS_REVIEW')
           AND t.transaction_date BETWEEN p_date_from AND p_date_to
         GROUP BY to_char(t.transaction_date, 'YYYY-MM')
     ) m;
@@ -816,8 +812,7 @@ BEGIN
         FROM onboarding.historical_trade_lines l
         JOIN onboarding.historical_trade_transactions t ON t.id = l.transaction_id
         JOIN onboarding.historical_finance_batches b ON b.id = t.batch_id
-        WHERE b.status = 'APPROVED_FOR_REPORTING'
-          AND t.review_status = 'APPROVED'
+        WHERE b.status IN ('VALIDATED', 'APPROVED_FOR_REPORTING', 'NEEDS_REVIEW')
           AND t.transaction_date BETWEEN p_date_from AND p_date_to
         GROUP BY COALESCE(l.product_name, 'Unspecified Product'), l.matched_product_id
         LIMIT 50
@@ -838,8 +833,7 @@ BEGIN
         FROM onboarding.historical_trade_lines l
         JOIN onboarding.historical_trade_transactions t ON t.id = l.transaction_id
         JOIN onboarding.historical_finance_batches b ON b.id = t.batch_id
-        WHERE b.status = 'APPROVED_FOR_REPORTING'
-          AND t.review_status = 'APPROVED'
+        WHERE b.status IN ('VALIDATED', 'APPROVED_FOR_REPORTING', 'NEEDS_REVIEW')
           AND t.transaction_date BETWEEN p_date_from AND p_date_to
         GROUP BY COALESCE(l.brand, 'Unspecified Brand')
         LIMIT 50
@@ -862,8 +856,7 @@ BEGIN
         ) AS pty
         FROM onboarding.historical_trade_transactions t
         JOIN onboarding.historical_finance_batches b ON b.id = t.batch_id
-        WHERE b.status = 'APPROVED_FOR_REPORTING'
-          AND t.review_status = 'APPROVED'
+        WHERE b.status IN ('VALIDATED', 'APPROVED_FOR_REPORTING', 'NEEDS_REVIEW')
           AND t.transaction_date BETWEEN p_date_from AND p_date_to
         GROUP BY COALESCE(t.party_company, 'Unknown / Unspecified')
         LIMIT 50
@@ -886,8 +879,7 @@ BEGIN
     FROM onboarding.historical_trade_lines l
     JOIN onboarding.historical_trade_transactions t ON t.id = l.transaction_id
     JOIN onboarding.historical_finance_batches b ON b.id = t.batch_id
-    WHERE b.status = 'APPROVED_FOR_REPORTING'
-      AND t.review_status = 'APPROVED'
+    WHERE b.status IN ('VALIDATED', 'APPROVED_FOR_REPORTING', 'NEEDS_REVIEW')
       AND t.transaction_date BETWEEN p_date_from AND p_date_to;
 
     -- 8. Manual Override Metrics
@@ -903,8 +895,7 @@ BEGIN
     FROM onboarding.historical_trade_lines l
     JOIN onboarding.historical_trade_transactions t ON t.id = l.transaction_id
     JOIN onboarding.historical_finance_batches b ON b.id = t.batch_id
-    WHERE b.status = 'APPROVED_FOR_REPORTING'
-      AND t.review_status = 'APPROVED'
+    WHERE b.status IN ('VALIDATED', 'APPROVED_FOR_REPORTING', 'NEEDS_REVIEW')
       AND t.transaction_date BETWEEN p_date_from AND p_date_to;
 
     RETURN jsonb_build_object(

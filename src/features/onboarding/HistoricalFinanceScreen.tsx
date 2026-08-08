@@ -413,6 +413,22 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     }
   }
 
+  async function loadAnalytics(customFrom?: string, customTo?: string) {
+    const f = customFrom || dateFrom;
+    const t = customTo || dateTo;
+    if (!f || !t || busy !== null) return;
+    setBusy('analytics');
+    setError(null);
+    try {
+      const res = await getHistoricalTradeAnalytics(sessionToken, { dateFrom: f, dateTo: t });
+      setAnalytics(res as unknown as HistoricalTradeAnalyticsResult);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function selectPaperBookFile(file: File | null) {
     setPbFile(file);
     setPbData(null);
@@ -426,7 +442,14 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     try {
       const parsed = await parsePaperBookWorkbook(file);
       setPbData(parsed);
-      if (parsed.errors.length === 0) setFeedback(text.fileReady);
+      if (parsed.errors.length === 0) {
+        setFeedback(text.fileReady);
+        const fromDate = parsed.summary.minDate ?? '2025-01-01';
+        const toDate = parsed.summary.maxDate ?? '2026-12-31';
+        setDateFrom(fromDate);
+        setDateTo(toDate);
+        void loadAnalytics(fromDate, toDate);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Paper-Book parse error');
     } finally {
@@ -490,6 +513,12 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
 
       setPbValidation(checked);
       setFeedback(checked.status === 'VALIDATED' ? text.validated : text.needsReview);
+
+      const f = dateFrom || pbData.summary.minDate || '2025-01-01';
+      const t = dateTo || pbData.summary.maxDate || '2026-12-31';
+      if (!dateFrom) setDateFrom(f);
+      if (!dateTo) setDateTo(t);
+      void loadAnalytics(f, t);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -520,6 +549,7 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     try {
       await approveHistoricalTradeBatch(sessionToken, { batchId: pbActiveBatchId });
       setFeedback(text.approved);
+      if (dateFrom && dateTo) void loadAnalytics(dateFrom, dateTo);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -607,49 +637,70 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     }
   }
 
-  async function loadAnalytics() {
-    if (!dateFrom || !dateTo || busy) return;
-    setBusy('analytics');
-    setError(null);
-    setAnalytics(null);
-    try {
-      const res = await getHistoricalTradeAnalytics(sessionToken, { dateFrom, dateTo });
-      setAnalytics(res as unknown as HistoricalTradeAnalyticsResult);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(null);
-    }
-  }
-
   return (
     <section className="sk-page" aria-labelledby="historical-finance-heading">
-      <div className="sk-card">
-        <h1 id="historical-finance-heading">{text.title}</h1>
-        <p>{text.subtitle}</p>
-        <Banner tone="warning">{text.safety}</Banner>
-        {error ? <Banner tone="error">{error}</Banner> : null}
-        {feedback ? <Banner tone="success">{feedback}</Banner> : null}
-
-        <div className="sk-field" style={{ marginTop: '1rem' }}>
-          <label className="sk-field__label" htmlFor="toggle-import-enabled">
-            <input
-              id="toggle-import-enabled"
-              type="checkbox"
-              checked={enabled}
-              disabled={busy !== null}
-              onChange={(event) => void toggleEnabled(event.target.checked)}
-            />{' '}
-            {text.enabled}
-          </label>
-          <small className="sk-field-help">{text.enabledHelp}</small>
+      {/* HEADER & SAFETY CARD */}
+      <div className="sk-card" style={{ borderInlineStart: '4px solid var(--sk-primary)', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+          <div>
+            <h1 id="historical-finance-heading" style={{ margin: '0 0 6px 0', fontSize: '1.5rem', fontWeight: 800 }}>
+              {text.title}
+            </h1>
+            <p style={{ margin: 0, color: 'var(--sk-muted)', fontSize: '0.92rem' }}>{text.subtitle}</p>
+          </div>
+          <div className="sk-field" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <label className="sk-field__label" htmlFor="toggle-import-enabled" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700 }}>
+              <input
+                id="toggle-import-enabled"
+                type="checkbox"
+                checked={enabled}
+                disabled={busy !== null}
+                onChange={(event) => void toggleEnabled(event.target.checked)}
+              />
+              {text.enabled}
+            </label>
+          </div>
+        </div>
+        <div style={{ marginTop: '16px' }}>
+          <Banner tone="warning">{text.safety}</Banner>
+          {error ? <Banner tone="error">{error}</Banner> : null}
+          {feedback ? <Banner tone="success">{feedback}</Banner> : null}
         </div>
       </div>
 
       {/* R0-002 PAPER-BOOK 1.5-YEAR XLSX IMPORT CARD */}
-      <div className="sk-card">
-        <h2>{text.paperBookTitle}</h2>
-        <p>{text.paperBookHelp}</p>
+      <div className="sk-card" style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBlockEnd: '16px' }}>
+          <div>
+            <h2 style={{ margin: '0 0 4px 0', fontSize: '1.2rem', fontWeight: 800 }}>{text.paperBookTitle}</h2>
+            <p style={{ margin: 0, color: 'var(--sk-muted)', fontSize: '0.88rem' }}>{text.paperBookHelp}</p>
+          </div>
+          {pbValidation ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 12px',
+                borderRadius: '20px',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                background:
+                  pbValidation.status === 'VALIDATED'
+                    ? 'color-mix(in srgb, #10B981 15%, transparent)'
+                    : 'color-mix(in srgb, #F59E0B 15%, transparent)',
+                color:
+                  pbValidation.status === 'VALIDATED'
+                    ? '#10B981'
+                    : '#F59E0B',
+              }}
+            >
+              ● Batch {pbValidation.status}
+            </span>
+          ) : null}
+        </div>
 
         <div className="sk-field">
           <label className="sk-field__label" htmlFor="paperbook-xlsx-file">
@@ -666,19 +717,38 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
         </div>
 
         {pbData ? (
-          <dl className="sk-details-grid" data-testid="paperbook-preview">
-            <div><dt>{text.transactions}</dt><dd>{pbData.summary.transactionCount}</dd></div>
-            <div><dt>Product Lines</dt><dd>{pbData.summary.lineCount}</dd></div>
-            <div><dt>{text.sales}</dt><dd>{formatMoney(pbData.summary.totalSalesDzd, locale)}</dd></div>
-            <div><dt>{text.purchases}</dt><dd>{formatMoney(pbData.summary.totalPurchasesDzd, locale)}</dd></div>
-            <div><dt>Coverage</dt><dd>{pbData.summary.minDate ?? '—'} → {pbData.summary.maxDate ?? '—'}</dd></div>
-          </dl>
+          <div className="sk-cards" style={{ marginTop: '16px' }} data-testid="paperbook-preview">
+            <div className="sk-metric" style={{ minHeight: 'auto', padding: '16px' }}>
+              <span className="sk-metric__icon">📋</span>
+              <span className="sk-metric__label">{text.transactions}</span>
+              <span className="sk-metric__value" style={{ fontSize: '1.6rem' }}>{pbData.summary.transactionCount}</span>
+            </div>
+            <div className="sk-metric" style={{ minHeight: 'auto', padding: '16px' }}>
+              <span className="sk-metric__icon">📦</span>
+              <span className="sk-metric__label">Product Lines</span>
+              <span className="sk-metric__value" style={{ fontSize: '1.6rem' }}>{pbData.summary.lineCount}</span>
+            </div>
+            <div className="sk-metric" style={{ minHeight: 'auto', padding: '16px' }}>
+              <span className="sk-metric__icon">💵</span>
+              <span className="sk-metric__label">{text.sales}</span>
+              <span className="sk-metric__value" style={{ fontSize: '1.4rem', color: '#10B981' }}>
+                {formatMoney(pbData.summary.totalSalesDzd, locale)}
+              </span>
+            </div>
+            <div className="sk-metric" style={{ minHeight: 'auto', padding: '16px' }}>
+              <span className="sk-metric__icon">🛒</span>
+              <span className="sk-metric__label">{text.purchases}</span>
+              <span className="sk-metric__value" style={{ fontSize: '1.4rem', color: '#3B82F6' }}>
+                {formatMoney(pbData.summary.totalPurchasesDzd, locale)}
+              </span>
+            </div>
+          </div>
         ) : null}
 
         {pbData?.errors.length ? (
-          <div className="sk-banner sk-banner--error" role="alert">
-            <strong>{text.errors}</strong>
-            <ul>
+          <div className="sk-banner sk-banner--error" role="alert" style={{ marginTop: '16px' }}>
+            <strong>{text.errors} ({pbData.errors.length})</strong>
+            <ul style={{ margin: '8px 0 0 0', paddingInlineStart: '20px' }}>
               {pbData.errors.map((item, index) => (
                 <li key={index}>
                   Row {item.row} · {item.message}
@@ -688,7 +758,7 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
           </div>
         ) : null}
 
-        <div className="sk-stack" style={{ marginTop: '1rem' }}>
+        <div style={{ display: 'flex', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
           <Button
             type="button"
             loading={busy === 'import'}
@@ -709,21 +779,43 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
         </div>
 
         {pbValidation ? (
-          <dl className="sk-details-grid" style={{ marginTop: '1rem' }} data-testid="paperbook-validation-result">
-            <div><dt>Batch Status</dt><dd><strong>{pbValidation.status}</strong></dd></div>
-            <div><dt>Transactions</dt><dd>{pbValidation.transactionCount}</dd></div>
-            <div><dt>Paid Sales</dt><dd>{formatMoney(pbValidation.paidSalesDzd, locale)}</dd></div>
-            <div><dt>Unpaid Sales</dt><dd>{formatMoney(pbValidation.unpaidSalesDzd, locale)}</dd></div>
-            <div><dt>Paid Purchases</dt><dd>{formatMoney(pbValidation.paidPurchasesDzd, locale)}</dd></div>
-            <div><dt>Unpaid Purchases</dt><dd>{formatMoney(pbValidation.unpaidPurchasesDzd, locale)}</dd></div>
-          </dl>
+          <div style={{ marginTop: '20px', padding: '16px', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)', border: '1px solid var(--sk-border)' }} data-testid="paperbook-validation-result">
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: 800 }}>Validation Summary Result</h4>
+            <div className="sk-cards">
+              <div>
+                <span className="sk-muted" style={{ fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: 700 }}>Paid Sales</span>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>{formatMoney(pbValidation.paidSalesDzd, locale)}</div>
+              </div>
+              <div>
+                <span className="sk-muted" style={{ fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: 700 }}>Unpaid Sales</span>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#F59E0B' }}>{formatMoney(pbValidation.unpaidSalesDzd, locale)}</div>
+              </div>
+              <div>
+                <span className="sk-muted" style={{ fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: 700 }}>Paid Purchases</span>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#3B82F6' }}>{formatMoney(pbValidation.paidPurchasesDzd, locale)}</div>
+              </div>
+              <div>
+                <span className="sk-muted" style={{ fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: 700 }}>Unpaid Purchases</span>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#8B5CF6' }}>{formatMoney(pbValidation.unpaidPurchasesDzd, locale)}</div>
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
 
       {/* R0-002 TRADE ANALYTICS DASHBOARD CARD */}
-      <div className="sk-card">
-        <h2>{text.analyticsTitle}</h2>
-        <p>{text.analyticsHelp}</p>
+      <div className="sk-card" style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBlockEnd: '16px' }}>
+          <div>
+            <h2 style={{ margin: '0 0 4px 0', fontSize: '1.25rem', fontWeight: 800 }}>{text.analyticsTitle}</h2>
+            <p style={{ margin: 0, color: 'var(--sk-muted)', fontSize: '0.88rem' }}>{text.analyticsHelp}</p>
+          </div>
+          {analytics ? (
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, padding: '4px 10px', borderRadius: '14px', background: 'var(--sk-primary-soft)', color: 'var(--sk-primary)' }}>
+              Analytics Computed for {analytics.overview.dateFrom} → {analytics.overview.dateTo}
+            </span>
+          ) : null}
+        </div>
 
         <div className="sk-form-grid">
           <TextField
@@ -742,33 +834,107 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
           />
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+        <div style={{ display: 'flex', gap: '10px', marginTop: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
           <Button
             type="button"
-            variant="secondary"
+            variant="primary"
             loading={busy === 'analytics'}
             disabled={!dateFrom || !dateTo || busy !== null}
             onClick={() => void loadAnalytics()}
           >
             {text.loadAnalytics}
           </Button>
+          {pbData?.summary.minDate && pbData?.summary.maxDate ? (
+            <button
+              type="button"
+              className="sk-button sk-button--secondary"
+              style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+              onClick={() => {
+                const minD = pbData.summary.minDate!;
+                const maxD = pbData.summary.maxDate!;
+                setDateFrom(minD);
+                setDateTo(maxD);
+                void loadAnalytics(minD, maxD);
+              }}
+            >
+              Preset: Batch Range ({pbData.summary.minDate} → {pbData.summary.maxDate})
+            </button>
+          ) : null}
         </div>
 
         {analytics ? (
-          <div style={{ marginTop: '1.5rem' }}>
+          <div style={{ marginTop: '24px' }}>
             <Banner tone="info">
               <strong>⚠️ {text.profitWarning}: </strong>
               {text.profitWarningDetail}
             </Banner>
 
+            {/* Overview KPI Cards */}
+            <div className="sk-cards" style={{ marginBlock: '20px' }}>
+              <div className="sk-metric" style={{ background: 'color-mix(in srgb, #10B981 6%, var(--sk-surface-soft))' }}>
+                <span className="sk-metric__icon" style={{ background: 'color-mix(in srgb, #10B981 15%, transparent)', color: '#10B981' }}>📈</span>
+                <span className="sk-metric__label">Total Sales</span>
+                <span className="sk-metric__value" style={{ color: '#10B981', fontSize: '1.65rem' }}>
+                  {formatMoney(analytics.overview.totalSalesDzd, locale)}
+                </span>
+                <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--sk-muted)', marginTop: '4px' }}>
+                  Paid: {formatMoney(analytics.overview.paidSalesDzd, locale)} · Unpaid: {formatMoney(analytics.overview.unpaidSalesDzd, locale)}
+                </div>
+              </div>
+
+              <div className="sk-metric" style={{ background: 'color-mix(in srgb, #3B82F6 6%, var(--sk-surface-soft))' }}>
+                <span className="sk-metric__icon" style={{ background: 'color-mix(in srgb, #3B82F6 15%, transparent)', color: '#3B82F6' }}>🛒</span>
+                <span className="sk-metric__label">Total Purchases</span>
+                <span className="sk-metric__value" style={{ color: '#3B82F6', fontSize: '1.65rem' }}>
+                  {formatMoney(analytics.overview.totalPurchasesDzd, locale)}
+                </span>
+                <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--sk-muted)', marginTop: '4px' }}>
+                  Paid: {formatMoney(analytics.overview.paidPurchasesDzd, locale)} · Unpaid: {formatMoney(analytics.overview.unpaidPurchasesDzd, locale)}
+                </div>
+              </div>
+
+              <div className="sk-metric" style={{ background: 'color-mix(in srgb, var(--sk-primary) 6%, var(--sk-surface-soft))' }}>
+                <span className="sk-metric__icon">⚖️</span>
+                <span className="sk-metric__label">{text.tradeDifference}</span>
+                <span className="sk-metric__value" style={{ fontSize: '1.65rem', color: analytics.overview.tradeDifferenceDzd >= 0 ? '#10B981' : '#EF4444' }}>
+                  {formatMoney(analytics.overview.tradeDifferenceDzd, locale)}
+                </span>
+                <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--sk-muted)', marginTop: '4px' }}>
+                  Avg Sale: {formatMoney(analytics.overview.avgSaleValueDzd, locale)} · Avg Purchase: {formatMoney(analytics.overview.avgPurchaseValueDzd, locale)}
+                </div>
+              </div>
+
+              <div className="sk-metric">
+                <span className="sk-metric__icon">📊</span>
+                <span className="sk-metric__label">Data Volume & Coverage</span>
+                <span className="sk-metric__value" style={{ fontSize: '1.65rem' }}>
+                  {analytics.overview.transactionCount} <span style={{ fontSize: '0.9rem', color: 'var(--sk-muted)' }}>txns / {analytics.overview.lineCount} lines</span>
+                </span>
+                <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--sk-muted)', marginTop: '4px' }}>
+                  Party Name Coverage: {analytics.dataQuality.partyCoveragePct.toFixed(0)}%
+                </div>
+              </div>
+            </div>
+
             {/* Sub-tabs */}
-            <div style={{ display: 'flex', gap: '0.25rem', margin: '1rem 0', overflowX: 'auto' }}>
+            <div style={{ display: 'flex', gap: '6px', margin: '20px 0 16px 0', overflowX: 'auto', borderBottom: '1px solid var(--sk-border)', paddingBottom: '10px' }}>
               {(['overview', 'sales', 'purchases', 'products', 'brands', 'parties', 'quality', 'overrides'] as AnalyticsSubTab[]).map((tab) => (
                 <button
                   key={tab}
                   type="button"
-                  style={{ textTransform: 'capitalize', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
-                  className={`sk-button ${analyticsSubTab === tab ? 'sk-button--primary' : 'sk-button--secondary'}`}
+                  style={{
+                    textTransform: 'capitalize',
+                    padding: '8px 16px',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    borderRadius: 'var(--sk-radius)',
+                    border: '1px solid',
+                    borderColor: analyticsSubTab === tab ? 'var(--sk-primary)' : 'var(--sk-border)',
+                    background: analyticsSubTab === tab ? 'var(--sk-primary)' : 'var(--sk-surface-soft)',
+                    color: analyticsSubTab === tab ? '#fff' : 'var(--sk-text)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
                   onClick={() => setAnalyticsSubTab(tab)}
                 >
                   {tab}
@@ -776,114 +942,159 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
               ))}
             </div>
 
+            {/* TAB CONTENT: OVERVIEW WITH MONTHLY VISUAL CHART */}
             {analyticsSubTab === 'overview' && (
-              <dl className="sk-details-grid">
-                <div><dt>Transactions</dt><dd>{analytics.overview.transactionCount}</dd></div>
-                <div><dt>Product Lines</dt><dd>{analytics.overview.lineCount}</dd></div>
-                <div><dt>Total Sales</dt><dd>{formatMoney(analytics.overview.totalSalesDzd, locale)}</dd></div>
-                <div><dt>Total Purchases</dt><dd>{formatMoney(analytics.overview.totalPurchasesDzd, locale)}</dd></div>
-                <div><dt>Paid Sales</dt><dd>{formatMoney(analytics.overview.paidSalesDzd, locale)}</dd></div>
-                <div><dt>Unpaid Sales</dt><dd>{formatMoney(analytics.overview.unpaidSalesDzd, locale)}</dd></div>
-                <div><dt>{text.tradeDifference}</dt><dd><strong>{formatMoney(analytics.overview.tradeDifferenceDzd, locale)}</strong></dd></div>
-              </dl>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <MonthlyTrendChart timeline={analytics.timeline} locale={locale} />
+
+                <div className="sk-cards">
+                  <div style={{ padding: '16px', borderRadius: 'var(--sk-radius)', background: 'var(--sk-surface-soft)', border: '1px solid var(--sk-border)' }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: 800 }}>Sales Payment Breakdown</h4>
+                    <PaymentProgressBar
+                      paid={analytics.payment.sales.paid}
+                      unpaid={analytics.payment.sales.unpaid}
+                      total={analytics.payment.sales.total}
+                      locale={locale}
+                      paidColor="#10B981"
+                      unpaidColor="#F59E0B"
+                    />
+                  </div>
+                  <div style={{ padding: '16px', borderRadius: 'var(--sk-radius)', background: 'var(--sk-surface-soft)', border: '1px solid var(--sk-border)' }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: 800 }}>Purchases Payment Breakdown</h4>
+                    <PaymentProgressBar
+                      paid={analytics.payment.purchases.paid}
+                      unpaid={analytics.payment.purchases.unpaid}
+                      total={analytics.payment.purchases.total}
+                      locale={locale}
+                      paidColor="#3B82F6"
+                      unpaidColor="#8B5CF6"
+                    />
+                  </div>
+                </div>
+              </div>
             )}
 
             {analyticsSubTab === 'sales' && (
-              <div>
-                <dl className="sk-details-grid">
-                  <div><dt>Total Sales</dt><dd>{formatMoney(analytics.payment.sales.total, locale)}</dd></div>
-                  <div><dt>Paid Sales</dt><dd>{formatMoney(analytics.payment.sales.paid, locale)}</dd></div>
-                  <div><dt>Unpaid Sales</dt><dd>{formatMoney(analytics.payment.sales.unpaid, locale)}</dd></div>
-                </dl>
+              <div style={{ padding: '20px', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)', border: '1px solid var(--sk-border)' }}>
+                <h3 style={{ margin: '0 0 14px 0', fontSize: '1.1rem', fontWeight: 800 }}>Sales & Revenue Analysis</h3>
+                <PaymentProgressBar
+                  paid={analytics.payment.sales.paid}
+                  unpaid={analytics.payment.sales.unpaid}
+                  total={analytics.payment.sales.total}
+                  locale={locale}
+                  paidColor="#10B981"
+                  unpaidColor="#F59E0B"
+                />
               </div>
             )}
 
             {analyticsSubTab === 'purchases' && (
-              <div>
-                <dl className="sk-details-grid">
-                  <div><dt>Total Purchases</dt><dd>{formatMoney(analytics.payment.purchases.total, locale)}</dd></div>
-                  <div><dt>Paid Purchases</dt><dd>{formatMoney(analytics.payment.purchases.paid, locale)}</dd></div>
-                  <div><dt>Unpaid Purchases</dt><dd>{formatMoney(analytics.payment.purchases.unpaid, locale)}</dd></div>
-                </dl>
+              <div style={{ padding: '20px', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)', border: '1px solid var(--sk-border)' }}>
+                <h3 style={{ margin: '0 0 14px 0', fontSize: '1.1rem', fontWeight: 800 }}>Procurement & Purchases Analysis</h3>
+                <PaymentProgressBar
+                  paid={analytics.payment.purchases.paid}
+                  unpaid={analytics.payment.purchases.unpaid}
+                  total={analytics.payment.purchases.total}
+                  locale={locale}
+                  paidColor="#3B82F6"
+                  unpaidColor="#8B5CF6"
+                />
               </div>
             )}
 
             {analyticsSubTab === 'products' && (
-              <table style={{ width: '100%', marginTop: '0.5rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--sk-color-border)', textAlign: 'left' }}>
-                    <th>Product Name</th><th>Matched</th><th>Qty Sold</th><th>Sales DZD</th><th>Qty Purchased</th><th>Purchases DZD</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.products.map((p, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid var(--sk-color-border)' }}>
-                      <td>{p.productName}</td>
-                      <td>{p.matchedProductId ? 'Yes' : 'No'}</td>
-                      <td>{p.qtySold}</td>
-                      <td>{formatMoney(p.salesDzd, locale)}</td>
-                      <td>{p.qtyPurchased}</td>
-                      <td>{formatMoney(p.purchasesDzd, locale)}</td>
+              <div style={{ border: '1px solid var(--sk-border)', borderRadius: 'var(--sk-radius)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--sk-surface-soft)', borderBottom: '1px solid var(--sk-border)', textAlign: 'left', fontSize: '0.82rem', textTransform: 'uppercase', color: 'var(--sk-muted)' }}>
+                      <th style={{ padding: '12px 16px' }}>Product Name</th>
+                      <th style={{ padding: '12px 16px' }}>Matched</th>
+                      <th style={{ padding: '12px 16px' }}>Qty Sold</th>
+                      <th style={{ padding: '12px 16px' }}>Sales DZD</th>
+                      <th style={{ padding: '12px 16px' }}>Qty Purchased</th>
+                      <th style={{ padding: '12px 16px' }}>Purchases DZD</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {analytics.products.map((p, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--sk-border)', fontSize: '0.9rem' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 700 }}>{p.productName}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 700, background: p.matchedProductId ? 'color-mix(in srgb, #10B981 15%, transparent)' : 'var(--sk-surface-soft)', color: p.matchedProductId ? '#10B981' : 'var(--sk-muted)' }}>
+                            {p.matchedProductId ? 'Matched' : 'Unmatched'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>{p.qtySold}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 700, color: '#10B981' }}>{formatMoney(p.salesDzd, locale)}</td>
+                        <td style={{ padding: '12px 16px' }}>{p.qtyPurchased}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 700, color: '#3B82F6' }}>{formatMoney(p.purchasesDzd, locale)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
 
             {analyticsSubTab === 'brands' && (
-              <table style={{ width: '100%', marginTop: '0.5rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--sk-color-border)', textAlign: 'left' }}>
-                    <th>Brand</th><th>Sales DZD</th><th>Purchases DZD</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.brands.map((b, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid var(--sk-color-border)' }}>
-                      <td>{b.brand}</td>
-                      <td>{formatMoney(b.salesDzd, locale)}</td>
-                      <td>{formatMoney(b.purchasesDzd, locale)}</td>
+              <div style={{ border: '1px solid var(--sk-border)', borderRadius: 'var(--sk-radius)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--sk-surface-soft)', borderBottom: '1px solid var(--sk-border)', textAlign: 'left', fontSize: '0.82rem', textTransform: 'uppercase', color: 'var(--sk-muted)' }}>
+                      <th style={{ padding: '12px 16px' }}>Brand</th>
+                      <th style={{ padding: '12px 16px' }}>Sales DZD</th>
+                      <th style={{ padding: '12px 16px' }}>Purchases DZD</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {analytics.brands.map((b, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--sk-border)', fontSize: '0.9rem' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 700 }}>{b.brand}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 700, color: '#10B981' }}>{formatMoney(b.salesDzd, locale)}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 700, color: '#3B82F6' }}>{formatMoney(b.purchasesDzd, locale)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
 
             {analyticsSubTab === 'parties' && (
-              <table style={{ width: '100%', marginTop: '0.5rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--sk-color-border)', textAlign: 'left' }}>
-                    <th>Party / Company</th><th>Sales DZD</th><th>Purchases DZD</th><th>Total Volume</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.parties.map((pty, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid var(--sk-color-border)' }}>
-                      <td>{pty.partyCompany}</td>
-                      <td>{formatMoney(pty.salesDzd, locale)}</td>
-                      <td>{formatMoney(pty.purchasesDzd, locale)}</td>
-                      <td>{formatMoney(pty.totalVolumeDzd, locale)}</td>
+              <div style={{ border: '1px solid var(--sk-border)', borderRadius: 'var(--sk-radius)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--sk-surface-soft)', borderBottom: '1px solid var(--sk-border)', textAlign: 'left', fontSize: '0.82rem', textTransform: 'uppercase', color: 'var(--sk-muted)' }}>
+                      <th style={{ padding: '12px 16px' }}>Party / Company</th>
+                      <th style={{ padding: '12px 16px' }}>Sales DZD</th>
+                      <th style={{ padding: '12px 16px' }}>Purchases DZD</th>
+                      <th style={{ padding: '12px 16px' }}>Total Volume</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {analytics.parties.map((pty, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--sk-border)', fontSize: '0.9rem' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 700 }}>{pty.partyCompany}</td>
+                        <td style={{ padding: '12px 16px', color: '#10B981', fontWeight: 700 }}>{formatMoney(pty.salesDzd, locale)}</td>
+                        <td style={{ padding: '12px 16px', color: '#3B82F6', fontWeight: 700 }}>{formatMoney(pty.purchasesDzd, locale)}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 800 }}>{formatMoney(pty.totalVolumeDzd, locale)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
 
             {analyticsSubTab === 'quality' && (
-              <dl className="sk-details-grid">
-                <div><dt>Total Lines</dt><dd>{analytics.dataQuality.totalLines}</dd></div>
-                <div><dt>Product Name Coverage</dt><dd>{analytics.dataQuality.productNameCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Brand Coverage</dt><dd>{analytics.dataQuality.brandCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Party Coverage</dt><dd>{analytics.dataQuality.partyCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Page No Coverage</dt><dd>{analytics.dataQuality.pageNumberCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Quantity Coverage</dt><dd>{analytics.dataQuality.quantityCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Unmatched Products</dt><dd>{analytics.dataQuality.unmatchedProductCount}</dd></div>
-                <div><dt>Manual Total Overrides</dt><dd>{analytics.dataQuality.manualOverrideCount}</dd></div>
-              </dl>
+              <div className="sk-cards">
+                <QualityCard title="Product Name Coverage" pct={analytics.dataQuality.productNameCoveragePct} />
+                <QualityCard title="Brand Coverage" pct={analytics.dataQuality.brandCoveragePct} />
+                <QualityCard title="Party Coverage" pct={analytics.dataQuality.partyCoveragePct} />
+                <QualityCard title="Page Number Coverage" pct={analytics.dataQuality.pageNumberCoveragePct} />
+                <QualityCard title="Quantity Coverage" pct={analytics.dataQuality.quantityCoveragePct} />
+              </div>
             )}
 
             {analyticsSubTab === 'overrides' && (
-              <dl className="sk-details-grid">
+              <dl className="sk-details-grid" style={{ padding: '20px', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)', border: '1px solid var(--sk-border)' }}>
                 <div><dt>Calculated Formula Lines</dt><dd>{analytics.manualOverrides.calculatedLineCount}</dd></div>
                 <div><dt>Manual Override Lines</dt><dd>{analytics.manualOverrides.manualOverrideCount}</dd></div>
                 <div><dt>Calculated Mathematical Total</dt><dd>{formatMoney(analytics.manualOverrides.calculatedMathematicalTotalDzd, locale)}</dd></div>
@@ -1120,6 +1331,137 @@ function ValidationSummary({
       <div><dt>{text.expenses}</dt><dd>{formatMoney(result.totalExpensesDzd, locale)}</dd></div>
       <div><dt>{text.preliminary}</dt><dd>{formatMoney(result.preliminaryResultBeforeInventoryDzd, locale)}</dd></div>
     </dl>
+  );
+}
+
+function MonthlyTrendChart({
+  timeline,
+  locale,
+}: {
+  timeline: Array<{
+    month: string;
+    salesDzd: number;
+    purchasesDzd: number;
+    saleCount: number;
+    purchaseCount: number;
+  }>;
+  locale: Locale;
+}) {
+  if (!timeline || timeline.length === 0) {
+    return (
+      <div style={{ padding: '24px', textAlign: 'center', color: 'var(--sk-muted)', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)' }}>
+        No monthly timeline records found for this period.
+      </div>
+    );
+  }
+
+  const maxVal = Math.max(
+    ...timeline.map((m) => Math.max(m.salesDzd, m.purchasesDzd)),
+    1000,
+  );
+
+  return (
+    <div style={{ padding: '20px', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)', border: '1px solid var(--sk-border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>Monthly Trade Timeline (Sales vs Purchases)</h4>
+        <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem', fontWeight: 700 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#10B981' }} /> Sales DZD
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#3B82F6' }} /> Purchases DZD
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', height: '180px', paddingTop: '20px', paddingBottom: '24px', borderBottom: '1px solid var(--sk-border)', overflowX: 'auto' }}>
+        {timeline.map((item, idx) => {
+          const salesPct = Math.max(4, Math.round((item.salesDzd / maxVal) * 100));
+          const purchasesPct = Math.max(4, Math.round((item.purchasesDzd / maxVal) * 100));
+
+          return (
+            <div key={idx} style={{ flex: 1, minWidth: '48px', display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '100%', width: '100%', justifyContent: 'center' }}>
+                {/* Sales Bar */}
+                <div
+                  title={`${item.month} Sales: ${formatMoney(item.salesDzd, locale)} (${item.saleCount} txns)`}
+                  style={{
+                    width: '45%',
+                    height: `${salesPct}%`,
+                    background: '#10B981',
+                    borderRadius: '4px 4px 0 0',
+                    transition: 'height 0.3s ease',
+                  }}
+                />
+                {/* Purchases Bar */}
+                <div
+                  title={`${item.month} Purchases: ${formatMoney(item.purchasesDzd, locale)} (${item.purchaseCount} txns)`}
+                  style={{
+                    width: '45%',
+                    height: `${purchasesPct}%`,
+                    background: '#3B82F6',
+                    borderRadius: '4px 4px 0 0',
+                    transition: 'height 0.3s ease',
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--sk-muted)', whiteSpace: 'nowrap' }}>
+                {item.month}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PaymentProgressBar({
+  paid,
+  unpaid,
+  total,
+  locale,
+  paidColor,
+  unpaidColor,
+}: {
+  paid: number;
+  unpaid: number;
+  total: number;
+  locale: Locale;
+  paidColor: string;
+  unpaidColor: string;
+}) {
+  const paidPct = total > 0 ? Math.round((paid / total) * 100) : 0;
+  const unpaidPct = total > 0 ? Math.min(100 - paidPct, Math.round((unpaid / total) * 100)) : 0;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px' }}>
+        <span>Paid: {formatMoney(paid, locale)} ({paidPct}%)</span>
+        <span>Unpaid: {formatMoney(unpaid, locale)} ({unpaidPct}%)</span>
+      </div>
+      <div style={{ display: 'flex', height: '10px', borderRadius: '6px', overflow: 'hidden', background: 'var(--sk-border)' }}>
+        <div style={{ width: `${paidPct}%`, background: paidColor, transition: 'width 0.3s ease' }} />
+        <div style={{ width: `${unpaidPct}%`, background: unpaidColor, transition: 'width 0.3s ease' }} />
+      </div>
+    </div>
+  );
+}
+
+function QualityCard({ title, pct }: { title: string; pct: number }) {
+  const rounded = Math.round(pct);
+  const color = rounded >= 90 ? '#10B981' : rounded >= 60 ? '#F59E0B' : '#EF4444';
+
+  return (
+    <div style={{ padding: '16px', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)', border: '1px solid var(--sk-border)' }}>
+      <div style={{ fontSize: '0.8rem', color: 'var(--sk-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
+        {title}
+      </div>
+      <div style={{ fontSize: '1.6rem', fontWeight: 800, color }}>{rounded}%</div>
+      <div style={{ height: '6px', borderRadius: '3px', background: 'var(--sk-border)', marginTop: '8px', overflow: 'hidden' }}>
+        <div style={{ width: `${rounded}%`, height: '100%', background: color, transition: 'width 0.3s ease' }} />
+      </div>
+    </div>
   );
 }
 
