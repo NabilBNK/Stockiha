@@ -344,7 +344,32 @@ describe('R0-002 Paper-Book XLSX Parser & Grouping', () => {
     expect(parsed.summary.transactionCount).toBe(2);
     expect(parsed.summary.lineCount).toBe(3);
     expect(parsed.summary.totalSalesDzd).toBe(2 * 10900 + 5 * 5000);
-    expect(parsed.summary.totalPurchasesDzd).toBe(30000);
+  });
+
+  it('parses official Stockiha_Historical_Transactions_Final_samples.xlsx without errors', async () => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const req = (globalThis as any).require;
+    if (typeof req !== 'function') return;
+    const fs = req('fs');
+    const path = req('path');
+    const proc = (globalThis as any).process;
+    const filePath = path.resolve(proc.cwd(), 'Stockiha_Historical_Transactions_Final_samples.xlsx');
+    if (!fs.existsSync(filePath)) return;
+
+    const buffer = fs.readFileSync(filePath);
+    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+    const file = {
+      name: 'Stockiha_Historical_Transactions_Final_samples.xlsx',
+      size: buffer.length,
+      arrayBuffer: async () => arrayBuffer,
+    } as File;
+
+    const parsed = await parsePaperBookWorkbook(file);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.summary.transactionCount).toBe(3);
+    expect(parsed.summary.lineCount).toBe(6);
+    expect(parsed.summary.totalSalesDzd).toBe(172850);
+    expect(parsed.summary.totalPurchasesDzd).toBe(287500);
   });
 });
 

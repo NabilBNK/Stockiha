@@ -309,7 +309,11 @@ async function inflateRaw(bytes: Uint8Array): Promise<Uint8Array> {
     throw new WorkbookParseError('This device cannot decompress .xlsx files.');
   }
 
-  const stream = new Blob([bytes]).stream().pipeThrough(
+  const response = new Response(bytes);
+  if (!response.body) {
+    throw new WorkbookParseError('This device cannot decompress .xlsx files.');
+  }
+  const stream = response.body.pipeThrough(
     new DecompressionStream('deflate-raw' as CompressionFormat),
   );
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -513,17 +517,24 @@ function optionalString(value: CellValue): string | null {
 }
 
 function parseInteger(value: CellValue, field: string, allowZero: boolean): number {
+  const normStr = normalizeString(value);
+  if (normStr === '') {
+    if (allowZero) return 0;
+    throw new Error(`${field} is required.`);
+  }
   let parsed: number;
   if (typeof value === 'number') {
     parsed = Math.round(value);
   } else {
-    const normalized = normalizeString(value)
+    const cleaned = normStr
       .replace(/(?:DZD|DA|د\.ج|D\.Z\.D)/gi, '')
-      .replace(/[\s\u00a0,]/g, '')
-      .replace(/\.00$/, '')
-      .replace(/\.0$/, '');
-    if (!/^-?\d+$/.test(normalized)) throw new Error(`${field} must be a whole DZD amount.`);
-    parsed = Number(normalized);
+      .replace(/[\s\u00a0,]/g, '');
+
+    const num = Number(cleaned);
+    if (!Number.isFinite(num)) {
+      throw new Error(`${field} must be a valid numeric DZD amount.`);
+    }
+    parsed = Math.round(num);
   }
 
   if (!Number.isSafeInteger(parsed) || (allowZero ? parsed < 0 : parsed <= 0)) {
@@ -572,7 +583,8 @@ function assertHeaders(sheet: ParsedSheet, expected: readonly string[]): void {
 }
 
 function isEmptyDataRow(values: RawCellDetails[], columnCount: number): boolean {
-  for (let index = 0; index < columnCount; index += 1) {
+  const startIndex = columnCount === PAPER_BOOK_HEADERS.length ? 1 : 0;
+  for (let index = startIndex; index < columnCount; index += 1) {
     if (normalizeString(values[index]?.value) !== '') return false;
   }
   return true;
@@ -876,60 +888,68 @@ export function parsePaperBookSheet(
     }
 
     // Parse product line
-    const currentTxn = activeTxn!;
-    const lineSeq = currentTxn.lines.length + 1;
-    const productName = optionalString(cells[5]?.value);
-    const brand = optionalString(cells[6]?.value);
-    const customDetails = optionalString(cells[7]?.value);
-    const qtyVal = parseOptionalInteger(cells[8]?.value, 'Quantity');
-    const unitPriceVal = parseInteger(cells[9]?.value, 'Unit Price', true);
+    try {
+      const currentTxn = activeTxn!;
+      const lineSeq = currentTxn.lines.length + 1;
+      const productName = optionalString(cells[5]?.value);
+      const brand = optionalString(cells[6]?.value);
+      const customDetails = optionalString(cells[7]?.value);
+      const qtyVal = parseOptionalInteger(cells[8]?.value, 'Quantity');
+      const unitPriceVal = parseInteger(cells[9]?.value, 'Unit Price', true);
 
-    const lineTotalCell = cells[10];
-    let manualLineTotalDzd: number | null = null;
+      const lineTotalCell = cells[10];
+      let manualLineTotalDzd: number | null = null;
 
-    if (
-      lineTotalCell &&
-      !lineTotalCell.hasFormula &&
-      lineTotalCell.value !== null &&
-      normalizeString(lineTotalCell.value) !== ''
-    ) {
-      manualLineTotalDzd = parseInteger(lineTotalCell.value, 'Line Total', true);
-      warnings.push({
-        sheet: sheet.name,
-        row: rowNumber,
-        column: 'Line Total',
-        message:
-          'MANUAL_LINE_TOTAL_OVERRIDE: Line Total is a literal override instead of calculated formula.',
+      if (
+        lineTotalCell &&
+        !lineTotalCell.hasFormula &&
+        lineTotalCell.value !== null &&
+        normalizeString(lineTotalCell.value) !== ''
+      ) {
+        manualLineTotalDzd = parseInteger(lineTotalCell.value, 'Line Total', true);
+        warnings.push({
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Line Total',
+          message:
+            'MANUAL_LINE_TOTAL_OVERRIDE: Line Total is a literal override instead of calculated formula.',
+        });
+      }
+
+      if (qtyVal === null && manualLineTotalDzd === null) {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          message: 'Quantity can only be blank if a valid manual Line Total is entered.',
+        });
+      }
+
+      if (!productName) {
+        warnings.push({
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Product Name',
+          message: 'MISSING_PRODUCT_NAME: Product Name is blank.',
+        });
+      }
+
+      currentTxn.lines.push({
+        sourceRowNumber: rowNumber,
+        lineSequence: lineSeq,
+        productName,
+        brand,
+        customDetails,
+        quantity: qtyVal,
+        unitPriceDzd: unitPriceVal,
+        manualLineTotalDzd,
       });
-    }
-
-    if (qtyVal === null && manualLineTotalDzd === null) {
+    } catch (err) {
       pushError(errors, {
         sheet: sheet.name,
         row: rowNumber,
-        message: 'Quantity can only be blank if a valid manual Line Total is entered.',
+        message: err instanceof Error ? err.message : 'Invalid product line data.',
       });
     }
-
-    if (!productName) {
-      warnings.push({
-        sheet: sheet.name,
-        row: rowNumber,
-        column: 'Product Name',
-        message: 'MISSING_PRODUCT_NAME: Product Name is blank.',
-      });
-    }
-
-    currentTxn.lines.push({
-      sourceRowNumber: rowNumber,
-      lineSequence: lineSeq,
-      productName,
-      brand,
-      customDetails,
-      quantity: qtyVal,
-      unitPriceDzd: unitPriceVal,
-      manualLineTotalDzd,
-    });
   }
 
   return transactions;
