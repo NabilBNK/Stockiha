@@ -46,9 +46,9 @@
 - [x] S4-001 Implement customer master, customer credit state, customer ledger, credit-limit/overdue enforcement, receivables, and customer document pipeline
 - [x] S4-002 Implement full cashier-session lifecycle: blind denomination counts, variance approval, suspension, and handover
 - [x] S4-003 Implement extended drawer eligibility and customer cash-payment/refund integration
-- [ ] R2 Repair supplier-accounting financial semantics with forward-only migrations and regression coverage
-- [ ] R4 Prove spreadsheet parser and mapping against representative anonymized source files
-- [ ] R5 Implement reconciled opening-state import
-- [ ] R6 Implement and prove an operator-facing pilot backup/restore workflow
+- [x] R2 Repair supplier-accounting financial semantics with forward-only migrations and regression coverage
+- [x] R4 Prove spreadsheet parser and mapping against representative anonymized source files
+- [x] R5 Implement reconciled opening-state import
+- [x] R6 Implement and prove an operator-facing pilot backup/restore workflow
 
 > The legacy S4-004 label is superseded by the integrated pilot release gate in the authoritative roadmap.

@@ -5,27 +5,25 @@
 ## Released baseline
 
 - **Branch:** `main`
-- **Commit:** `9112820e8b4c2e2c72fd69dc660d564493bbc1d9`
-- **Verified boundary:** UI foundation, S0 through S4-003, R2 supplier-accounting repair, R6-001 operator backup creation/validation, R0-001 finance-only historical onboarding, and R5-002/R5-003 one-time opening-state reconciliation/application
-- **Most recent integration:** PR #16 — approved opening-state application
+- **Commit:** `3e77f5d`
+- **Verified boundary:** UI foundation, S0 through S4-003, R2 supplier-accounting repair, R6-001 operator backup creation/validation, R6-002 temporary database restore verification, R0-001 finance-only historical onboarding, R5-002/R5-003 opening-state application, and R0-002 historical XLSX trade staging/analytics.
+- **Most recent integration:** Merge R0-002 historical paper-book XLSX import & analytics
 
 ## Completed recent work
 
 - **R2:** forward-only supplier accounting repair using GRNI/AP semantics and selected Cash/Bank settlement accounts.
-- **R6-001:** administrator-only backup creation and validation, PostgreSQL 18 `pg_dump`, Credential Manager backup-role secret consumption, immutable audit, hidden staging, independent checksum validation, SQLx metadata compatibility, and no restore command.
-- **R0-001:** controlled Excel/manual historical-finance staging, validation, reporting approval, estimated profit/loss, duplicate protection, feature toggle, and operational-ledger isolation.
+- **R6-001/R6-002:** administrator-only backup creation, validation, and temporary database restore verification with control-total reconciliation.
+- **R0-001/R0-002:** controlled Excel/manual historical trade and finance staging, validation, reporting approval, estimated profit/loss, duplicate protection, feature toggle, and operational analytics.
 - **R5-002/R5-003:** optional one-time CEO/admin setup, current cutover reconciliation, explicit customer/supplier mapping, one atomic opening journal, opening AR/AP subledgers, replay safety, and no fabricated physical stock.
 - **MVP financial boundary:** TVA and discounts remain deferred; unsupported non-zero values are rejected rather than guessed.
 
 ## Current implementation slice
 
-- **Roadmap path:** R6 — backup, restore, and recovery operations
-- **Slice:** R6-002 — controlled temporary restore verification
-- **Branch:** `task/r6-002-controlled-restore-recovery`
-- **PR:** #17, draft
-- **Base:** merged `main` at `9112820e8b4c2e2c72fd69dc660d564493bbc1d9`
-- **Current schema version:** `20260805151000`
-- **Purpose:** prove that a validated R6-001 backup is actually recoverable by restoring it into one generated temporary PostgreSQL database, reconciling critical control totals, and deleting the temporary database before reporting success.
+- **Roadmap path:** R8 — Consolidated Pilot Release Acceptance Gate
+- **Slice:** R8-001 — Consolidated Pilot Release Verification
+- **Branch:** `main` at `3e77f5d`
+- **Current schema version:** `20260807230000`
+- **Purpose:** verify end-to-end user workflows across the complete pilot boundary (Onboarding cutover -> Catalog -> POS Sales -> Cashier Session -> Backup verification) on Windows desktop.
 
 ### Implemented authorization, policy, and audit
 
