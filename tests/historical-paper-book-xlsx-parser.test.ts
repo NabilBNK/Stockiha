@@ -277,4 +277,74 @@ describe('R0-002 Paper-Book XLSX Parser & Grouping', () => {
     const recomputed = await computeContentHash(parsed.transactions);
     expect(recomputed).toBe(parsed.contentHash);
   });
+
+  it('groups multi-line transactions with repeated header fields and multi-lingual statuses', async () => {
+    const file = createPaperBookFile([
+      // Txn 1 Line 1: Vente, Payé, Client Alpha (2 x 10900 DA)
+      {
+        0: { val: 'INV-101' },
+        1: { val: '06/07/2026' },
+        2: { val: 'Vente' },
+        3: { val: 'Payé' },
+        4: { val: 'Client Alpha' },
+        5: { val: 'Item A' },
+        8: { val: 2 },
+        9: { val: '10 900 DA' },
+      },
+      // Txn 1 Line 2: Repeated Date, Type, Paid, Party (5 x 5000)
+      {
+        0: { val: 'INV-101' },
+        1: { val: '06/07/2026' },
+        2: { val: 'Vente' },
+        3: { val: 'Payé' },
+        4: { val: 'Client Alpha' },
+        5: { val: 'Item B' },
+        8: { val: 5 },
+        9: { val: 5000 },
+      },
+      // Txn 2 Line 1: Achat, Non Payé, Fournisseur Beta (10 x 3000)
+      {
+        0: { val: 'INV-102' },
+        1: { val: '2026-07-07' },
+        2: { val: 'Achat' },
+        3: { val: 'Non Payé' },
+        4: { val: 'Fournisseur Beta' },
+        5: { val: 'Raw Material' },
+        8: { val: 10 },
+        9: { val: 3000 },
+      },
+    ]);
+
+    const parsed = await parsePaperBookWorkbook(file);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.transactions.length).toBe(2);
+
+    // Txn 1 grouped with 2 lines
+    const t1 = parsed.transactions[0];
+    expect(t1.sourceExcelTxnRef).toBe('INV-101');
+    expect(t1.transactionDate).toBe('2026-07-06');
+    expect(t1.transactionType).toBe('SALE');
+    expect(t1.paymentStatus).toBe('PAID');
+    expect(t1.partyCompany).toBe('Client Alpha');
+    expect(t1.lines.length).toBe(2);
+    expect(t1.lines[0].productName).toBe('Item A');
+    expect(t1.lines[0].unitPriceDzd).toBe(10900);
+    expect(t1.lines[1].productName).toBe('Item B');
+    expect(t1.lines[1].unitPriceDzd).toBe(5000);
+
+    // Txn 2
+    const t2 = parsed.transactions[1];
+    expect(t2.sourceExcelTxnRef).toBe('INV-102');
+    expect(t2.transactionDate).toBe('2026-07-07');
+    expect(t2.transactionType).toBe('PURCHASE');
+    expect(t2.paymentStatus).toBe('UNPAID');
+    expect(t2.partyCompany).toBe('Fournisseur Beta');
+    expect(t2.lines.length).toBe(1);
+
+    expect(parsed.summary.transactionCount).toBe(2);
+    expect(parsed.summary.lineCount).toBe(3);
+    expect(parsed.summary.totalSalesDzd).toBe(2 * 10900 + 5 * 5000);
+    expect(parsed.summary.totalPurchasesDzd).toBe(30000);
+  });
 });
+

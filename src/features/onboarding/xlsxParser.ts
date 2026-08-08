@@ -515,9 +515,13 @@ function optionalString(value: CellValue): string | null {
 function parseInteger(value: CellValue, field: string, allowZero: boolean): number {
   let parsed: number;
   if (typeof value === 'number') {
-    parsed = value;
+    parsed = Math.round(value);
   } else {
-    const normalized = normalizeString(value).replace(/[\s\u00a0,]/g, '');
+    const normalized = normalizeString(value)
+      .replace(/(?:DZD|DA|د\.ج|D\.Z\.D)/gi, '')
+      .replace(/[\s\u00a0,]/g, '')
+      .replace(/\.00$/, '')
+      .replace(/\.0$/, '');
     if (!/^-?\d+$/.test(normalized)) throw new Error(`${field} must be a whole DZD amount.`);
     parsed = Number(normalized);
   }
@@ -600,14 +604,21 @@ export async function computeContentHash(transactions: HistoricalTradeTransactio
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Date parser supporting DD/MM/YYYY and YYYY-MM-DD
+// Date parser supporting DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, YYYY/MM/DD, YYYY-MM-DD
 function parsePaperBookDate(value: string, rowNumber: number): string {
   const trimmed = value.trim();
-  const ddMmYyyy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
-  if (ddMmYyyy) {
-    const day = ddMmYyyy[1].padStart(2, '0');
-    const month = ddMmYyyy[2].padStart(2, '0');
-    const year = ddMmYyyy[3];
+  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(trimmed);
+  if (dmy) {
+    const day = dmy[1].padStart(2, '0');
+    const month = dmy[2].padStart(2, '0');
+    const year = dmy[3];
+    return parseIsoDate(`${year}-${month}-${day}`, `Row ${rowNumber} Date`);
+  }
+  const ymd = /^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})$/.exec(trimmed);
+  if (ymd) {
+    const year = ymd[1];
+    const month = ymd[2].padStart(2, '0');
+    const day = ymd[3].padStart(2, '0');
     return parseIsoDate(`${year}-${month}-${day}`, `Row ${rowNumber} Date`);
   }
   return parseIsoDate(trimmed, `Row ${rowNumber} Date`);
@@ -615,16 +626,66 @@ function parsePaperBookDate(value: string, rowNumber: number): string {
 
 function normalizeType(value: string, rowNumber: number): PaperBookTransactionType {
   const upper = value.trim().toUpperCase();
-  if (upper === 'SELL' || upper === 'SALE') return 'SALE';
-  if (upper === 'BUY' || upper === 'PURCHASE') return 'PURCHASE';
-  throw new Error(`Row ${rowNumber}: Invalid transaction type '${value}'. Only Buy or Sell allowed.`);
+  if (
+    upper === 'SELL' ||
+    upper === 'SALE' ||
+    upper === 'SALES' ||
+    upper === 'VENTE' ||
+    upper === 'VENTES' ||
+    upper === 'V' ||
+    upper === 'بيع' ||
+    upper === 'مبيعات'
+  ) {
+    return 'SALE';
+  }
+  if (
+    upper === 'BUY' ||
+    upper === 'PURCHASE' ||
+    upper === 'PURCHASES' ||
+    upper === 'ACHAT' ||
+    upper === 'ACHATS' ||
+    upper === 'A' ||
+    upper === 'شراء' ||
+    upper === 'مشتريات'
+  ) {
+    return 'PURCHASE';
+  }
+  throw new Error(
+    `Row ${rowNumber}: Invalid transaction type '${value}'. Only Buy or Sell allowed.`,
+  );
 }
 
 function normalizePaid(value: string, rowNumber: number): PaperBookPaymentStatus {
   const upper = value.trim().toUpperCase();
-  if (upper === 'PAID') return 'PAID';
-  if (upper === 'NOT PAID' || upper === 'UNPAID' || upper === 'NOTPAID') return 'UNPAID';
-  throw new Error(`Row ${rowNumber}: Invalid payment status '${value}'. Only Paid or Not Paid allowed.`);
+  if (
+    upper === 'PAID' ||
+    upper === 'PAYÉ' ||
+    upper === 'PAYE' ||
+    upper === 'YES' ||
+    upper === 'TRUE' ||
+    upper === '1' ||
+    upper === 'خالص' ||
+    upper === 'مدفوع'
+  ) {
+    return 'PAID';
+  }
+  if (
+    upper === 'NOT PAID' ||
+    upper === 'UNPAID' ||
+    upper === 'NOTPAID' ||
+    upper === 'NON PAYÉ' ||
+    upper === 'NON PAYE' ||
+    upper === 'NO' ||
+    upper === 'FALSE' ||
+    upper === '0' ||
+    upper === 'غير خالص' ||
+    upper === 'غير مدفوع'
+  ) {
+    return 'UNPAID';
+  }
+  throw new Error(
+    `Row ${rowNumber}: Invalid payment status '${value}'. Only Paid or Not Paid allowed.`,
+  );
 }
 
 export function parsePaperBookSheet(
@@ -636,6 +697,7 @@ export function parsePaperBookSheet(
   const sortedRows = [...sheet.rows.entries()].sort((a, b) => a[0] - b[0]);
 
   let activeTxn: HistoricalTradeTransactionInput | null = null;
+  let activeTxnHasFormulaRef = false;
   let txnSequence = 0;
 
   for (const [rowNumber, cells] of sortedRows) {
@@ -654,6 +716,9 @@ export function parsePaperBookSheet(
       }
     });
 
+    const txnRefCell = cells[0];
+    const txnRefStr = optionalString(txnRefCell?.value);
+    const txnRefHasFormula = txnRefCell?.hasFormula ?? false;
     const dateCell = cells[1];
     const dateStr = normalizeString(dateCell?.value);
     const typeStr = normalizeString(cells[2]?.value);
@@ -661,8 +726,67 @@ export function parsePaperBookSheet(
     const partyStr = optionalString(cells[4]?.value);
     const pageNoVal = parseOptionalInteger(cells[11]?.value, 'Page No');
 
-    if (dateStr !== '') {
+    let isContinuation = false;
+
+    if (activeTxn !== null) {
+      // 1. Explicit matching Txn Ref (non-formula)
+      if (
+        txnRefStr !== null &&
+        !txnRefHasFormula &&
+        activeTxn.sourceExcelTxnRef !== null &&
+        !activeTxnHasFormulaRef &&
+        txnRefStr.trim().toLowerCase() === activeTxn.sourceExcelTxnRef.trim().toLowerCase()
+      ) {
+        isContinuation = true;
+      }
+      // 2. Blank or non-conflicting headers
+      else if (
+        txnRefStr === null ||
+        txnRefHasFormula ||
+        (activeTxn.sourceExcelTxnRef !== null &&
+          txnRefStr.trim().toLowerCase() === activeTxn.sourceExcelTxnRef.trim().toLowerCase())
+      ) {
+        if (dateStr === '' && typeStr === '' && paidStr === '') {
+          isContinuation = true;
+        } else if (dateStr !== '') {
+          try {
+            const parsedIsoDate = parsePaperBookDate(dateStr, rowNumber);
+            const matchesDate = parsedIsoDate === activeTxn.transactionDate;
+            const matchesType =
+              typeStr === '' || normalizeType(typeStr, rowNumber) === activeTxn.transactionType;
+            const matchesPaid =
+              paidStr === '' || normalizePaid(paidStr, rowNumber) === activeTxn.paymentStatus;
+            const matchesParty =
+              partyStr === null ||
+              activeTxn.partyCompany === null ||
+              partyStr.trim().toLowerCase() === activeTxn.partyCompany.trim().toLowerCase();
+            const matchesPage =
+              pageNoVal === null ||
+              activeTxn.pageNumber === null ||
+              pageNoVal === activeTxn.pageNumber;
+
+            if (matchesDate && matchesType && matchesPaid && matchesParty && matchesPage) {
+              isContinuation = true;
+            }
+          } catch {
+            // If date/type/paid normalization fails, let it be handled as a new txn attempt
+          }
+        }
+      }
+    }
+
+    if (!isContinuation) {
       // NEW TRANSACTION
+      if (dateStr === '') {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          message:
+            'ORPHAN_PRODUCT_LINE: Continuation row has no owning transaction header above it.',
+        });
+        continue;
+      }
+
       let isoDate: string;
       let normType: PaperBookTransactionType;
       let normPaid: PaperBookPaymentStatus;
@@ -681,10 +805,11 @@ export function parsePaperBookSheet(
       }
 
       txnSequence += 1;
+      activeTxnHasFormulaRef = txnRefHasFormula;
       activeTxn = {
         sourceTransactionSequence: txnSequence,
         sourceFirstExcelRow: rowNumber,
-        sourceExcelTxnRef: optionalString(cells[0]?.value),
+        sourceExcelTxnRef: txnRefStr,
         transactionDate: isoDate,
         transactionType: normType,
         paymentStatus: normPaid,
@@ -695,62 +820,64 @@ export function parsePaperBookSheet(
       transactions.push(activeTxn);
     } else {
       // CONTINUATION ROW
-      if (!activeTxn) {
-        pushError(errors, {
-          sheet: sheet.name,
-          row: rowNumber,
-          message: 'ORPHAN_PRODUCT_LINE: Continuation row has no owning transaction header above it.',
-        });
-        continue;
-      }
+      const currentActiveTxn = activeTxn!;
 
-      // Check conflicting fields
+      // Check conflicting fields on continuation row
       if (typeStr !== '') {
         try {
           const normType = normalizeType(typeStr, rowNumber);
-          if (normType !== activeTxn.transactionType) {
+          if (normType !== currentActiveTxn.transactionType) {
             pushError(errors, {
               sheet: sheet.name,
               row: rowNumber,
-              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Type (${typeStr}) conflicts with header (${activeTxn.transactionType}).`,
-            });
-          }
-        } catch {
-          // Ignore type error if invalid
-        }
-      }
-      if (paidStr !== '') {
-        try {
-          const normPaid = normalizePaid(paidStr, rowNumber);
-          if (normPaid !== activeTxn.paymentStatus) {
-            pushError(errors, {
-              sheet: sheet.name,
-              row: rowNumber,
-              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Paid (${paidStr}) conflicts with header (${activeTxn.paymentStatus}).`,
+              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Type (${typeStr}) conflicts with header (${currentActiveTxn.transactionType}).`,
             });
           }
         } catch {
           // Ignore
         }
       }
-      if (partyStr !== null && activeTxn.partyCompany !== null && partyStr !== activeTxn.partyCompany) {
+      if (paidStr !== '') {
+        try {
+          const normPaid = normalizePaid(paidStr, rowNumber);
+          if (normPaid !== currentActiveTxn.paymentStatus) {
+            pushError(errors, {
+              sheet: sheet.name,
+              row: rowNumber,
+              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Paid (${paidStr}) conflicts with header (${currentActiveTxn.paymentStatus}).`,
+            });
+          }
+        } catch {
+          // Ignore
+        }
+      }
+      if (
+        partyStr !== null &&
+        currentActiveTxn.partyCompany !== null &&
+        partyStr.trim().toLowerCase() !== currentActiveTxn.partyCompany.trim().toLowerCase()
+      ) {
         pushError(errors, {
           sheet: sheet.name,
           row: rowNumber,
-          message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Party (${partyStr}) conflicts with header (${activeTxn.partyCompany}).`,
+          message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Party (${partyStr}) conflicts with header (${currentActiveTxn.partyCompany}).`,
         });
       }
-      if (pageNoVal !== null && activeTxn.pageNumber !== null && pageNoVal !== activeTxn.pageNumber) {
+      if (
+        pageNoVal !== null &&
+        currentActiveTxn.pageNumber !== null &&
+        pageNoVal !== currentActiveTxn.pageNumber
+      ) {
         pushError(errors, {
           sheet: sheet.name,
           row: rowNumber,
-          message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Page No (${pageNoVal}) conflicts with header (${activeTxn.pageNumber}).`,
+          message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Page No (${pageNoVal}) conflicts with header (${currentActiveTxn.pageNumber}).`,
         });
       }
     }
 
     // Parse product line
-    const lineSeq = activeTxn.lines.length + 1;
+    const currentTxn = activeTxn!;
+    const lineSeq = currentTxn.lines.length + 1;
     const productName = optionalString(cells[5]?.value);
     const brand = optionalString(cells[6]?.value);
     const customDetails = optionalString(cells[7]?.value);
@@ -771,7 +898,8 @@ export function parsePaperBookSheet(
         sheet: sheet.name,
         row: rowNumber,
         column: 'Line Total',
-        message: 'MANUAL_LINE_TOTAL_OVERRIDE: Line Total is a literal override instead of calculated formula.',
+        message:
+          'MANUAL_LINE_TOTAL_OVERRIDE: Line Total is a literal override instead of calculated formula.',
       });
     }
 
@@ -792,7 +920,7 @@ export function parsePaperBookSheet(
       });
     }
 
-    activeTxn.lines.push({
+    currentTxn.lines.push({
       sourceRowNumber: rowNumber,
       lineSequence: lineSeq,
       productName,
@@ -848,7 +976,29 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
     sheets.set(name, parseSheet(name, xml, sharedStrings, dateStyles));
   }
 
-  const transactionSheet = sheets.get('Transactions') ?? sheets.get('Historical_Transactions');
+  // Flex sheet resolution supporting various naming conventions
+  const candidateNames = [
+    'transactions',
+    'historical_transactions',
+    'historical transactions',
+    'trade_transactions',
+    'paper_book',
+    'paperbook',
+    'sheet1',
+  ];
+  let transactionSheet: ParsedSheet | undefined;
+  for (const candidate of candidateNames) {
+    for (const [sheetName, parsedSheet] of sheets.entries()) {
+      if (sheetName.trim().toLowerCase().replace(/[\s-]+/g, '_') === candidate) {
+        transactionSheet = parsedSheet;
+        break;
+      }
+    }
+    if (transactionSheet) break;
+  }
+  if (!transactionSheet && sheets.size === 1) {
+    transactionSheet = Array.from(sheets.values())[0];
+  }
   if (!transactionSheet) {
     throw new WorkbookParseError('The paper-book workbook must contain a Transactions sheet.');
   }
