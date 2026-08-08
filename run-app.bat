@@ -16,12 +16,26 @@ set "STOCKIHA_BACKUP_ROOT=C:\Stockiha-R6-SQLx-Final-Acceptance"
 set "STOCKIHA_PG_DUMP_PATH=C:\Program Files\PostgreSQL\18\bin\pg_dump.exe"
 
 echo ========================================================
-echo Launching Stockiha UI Redesign (Tauri v2 + React 19)
+echo Compiling Stockiha (Tauri v2 + React 19)
 echo ========================================================
 echo Database: stockiha_test
 echo Backup Root: %STOCKIHA_BACKUP_ROOT%
 echo ========================================================
 
-npm run tauri dev
+echo Compiling frontend production bundle...
+call npm run build
+if %errorlevel% neq 0 (
+    echo Frontend compilation failed!
+    exit /b %errorlevel%
+)
 
-pause
+echo Compiling Rust backend binary...
+cargo build --manifest-path src-tauri/Cargo.toml
+if %errorlevel% neq 0 (
+    echo Backend compilation failed!
+    exit /b %errorlevel%
+)
+
+echo ========================================================
+echo Stockiha compiled successfully to the latest version.
+echo ========================================================
