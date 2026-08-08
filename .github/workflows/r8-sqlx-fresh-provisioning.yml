@@ -5,14 +5,14 @@ on:
     branches:
       - main
     paths:
-      - 'scripts/r8-001-provision-acceptance-database-v3.ps1'
+      - 'scripts/r8-001-provision-acceptance-database.ps1'
       - 'src-tauri/migrations/**'
       - '.github/workflows/r8-sqlx-fresh-provisioning.yml'
   push:
     branches:
       - 'task/r8-001-reproducible-sqlx-provisioning'
     paths:
-      - 'scripts/r8-001-provision-acceptance-database-v3.ps1'
+      - 'scripts/r8-001-provision-acceptance-database.ps1'
       - 'src-tauri/migrations/**'
       - '.github/workflows/r8-sqlx-fresh-provisioning.yml'
 
@@ -73,7 +73,7 @@ jobs:
       - name: Run exact cross-platform R8 provisioning helper
         shell: pwsh
         run: |
-          ./scripts/r8-001-provision-acceptance-database-v3.ps1 `
+          ./scripts/r8-001-provision-acceptance-database.ps1 `
             -DatabaseName stockiha_r8_acceptance_ci_test
 
       - name: Verify historical migration files were not rewritten
