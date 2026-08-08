@@ -46,19 +46,26 @@ The exact PR #19 candidate passed the mandatory automated gate after the R0-002 
 
 Automated verification is no longer the blocking evidence. The remaining release decision must come from one exact-candidate Windows/Tauri journey using the real application UI and a controlled test database.
 
-Required proof:
+Two local R8-entry attempts were rejected as release evidence:
 
-1. pull the hardened `main` and configure the database URL outside tracked source;
-2. rotate/remove the PostgreSQL credential that was previously committed in the public repository before using the environment again;
-3. start the app through the fixed `run-app.bat` / `npm run tauri dev` path;
-4. verify setup/login/permissions and default-ON CEO/admin toggles;
-5. exercise representative R0-002 XLSX historical paper-book import, validation, approval, analytics, and prove no live operational ledger mutation;
-6. verify opening-state reconciliation/application behavior where applicable;
-7. run catalog, stock, procurement, cash sale, credit sale, customer payment/refund, and cashier-session workflows;
-8. restart the app and verify persisted state and idempotency-sensitive operations;
-9. create and validate a real backup, run temporary restore verification, reconcile control totals, and prove the live database is unchanged and no temporary restore database remains;
-10. smoke EN/FR/AR, RTL, narrow-window, and core touch workflows;
-11. record exact SHA, database identity, test results, defects, and control totals. Any unexplained money/stock/AR/AP/journal/import variance blocks release.
+1. the first manually executed the R0-002 migration and forged a `_sqlx_migrations` metadata row after the normal path failed;
+2. the second used SQLx but then repaired the fresh database manually with broad `public` schema/table grants, changed `public` schema and SQLx metadata ownership, and configured `stockiha_migrator` to assume `stockiha_owner` automatically per database.
+
+Those databases may be used for diagnosis only, not R8 acceptance.
+
+The repository now treats fresh-database provisioning as an explicit R8 gate. Use [`docs/slices/R8-001-integrated-pilot-acceptance.md`](./docs/slices/R8-001-integrated-pilot-acceptance.md) and `scripts/r8-001-provision-acceptance-database.ps1`. The helper validates PostgreSQL 18 and the fixed role graph, grants only `USAGE, CREATE` on `public` to `stockiha_migrator` so SQLx can create its own metadata table, requires SQLx CLI 0.8.x, runs migrations twice, and verifies metadata ownership, schema version, runtime isolation, and R6 backup ACL. A provisioning failure invalidates that database; do not repair it manually into a passing state.
+
+Required proof after clean provisioning:
+
+1. start the app through the fixed `run-app.bat` / `npm run tauri dev` path using `stockiha_runtime`, never `postgres`/owner/migrator;
+2. verify setup/login/permissions and default-ON CEO/admin toggles;
+3. exercise representative R0-002 XLSX historical paper-book import, validation, approval, analytics, and prove no live operational ledger mutation;
+4. verify opening-state reconciliation/application behavior where applicable;
+5. run catalog, stock, procurement, cash sale, credit sale, customer payment/refund, and cashier-session workflows;
+6. restart the app and verify persisted state and idempotency-sensitive operations;
+7. create and validate a real backup, run temporary restore verification, reconcile control totals, and prove the live database is unchanged and no temporary restore database remains;
+8. smoke EN/FR/AR, RTL, narrow-window, and core touch workflows with real GUI evidence;
+9. record exact SHA, database identity, test results, defects, and control totals. Any unexplained money/stock/AR/AP/journal/import variance blocks release.
 
 ## Safety boundary
 
@@ -75,7 +82,7 @@ The historical paper workflow remains staged and reviewable. Historical-only row
 
 ## Security follow-up
 
-A database administrator credential was committed in an earlier `run-app.bat` revision and therefore must be treated as exposed even though PR #18 removed it from the current tree. Rotate that credential or destroy/recreate the disposable local database environment. Do not restore the old value into tracked files, chat logs, screenshots, or acceptance reports.
+A database administrator credential was committed in an earlier `run-app.bat` revision and therefore must be treated as exposed even though PR #18 removed it from the current tree. The local credential was rotated during R8 preparation. Do not restore the old value into tracked files, chat logs, screenshots, or acceptance reports.
 
 ## Deadline control
 
@@ -83,7 +90,7 @@ The pilot target remains approximately 9 August 2026. R8 is a feature freeze and
 
 ## Next release gate
 
-Complete R8 on one exact candidate. If the full Windows/Tauri gate passes with zero unexplained financial/inventory/import/recovery variance, freeze/tag that exact candidate as the pilot baseline. R7 hardware/installer work remains conditional unless explicitly required for launch.
+First prove one fresh database through the official R8 provisioning helper and a real `stockiha_runtime` Tauri startup/UI smoke. Then complete R8 on that exact candidate. If the full Windows/Tauri gate passes with zero unexplained financial/inventory/import/recovery variance, freeze/tag that exact candidate as the pilot baseline. R7 hardware/installer work remains conditional unless explicitly required for launch.
 
 ## Explicitly deferred
 
