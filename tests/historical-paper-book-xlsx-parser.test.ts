@@ -199,7 +199,67 @@ function createPaperBookFile(rowSpecs: Array<Record<number, { val: string | numb
   } as File;
 }
 
-describe('R0-002 Paper-Book XLSX Parser & Grouping', () => {
+function createPaperBookV2File(rowSpecs: Array<Record<number, { val: string | number; formula?: string }>>): File {
+  const headerCells = [
+    'Txn No. (Auto)',
+    'Date',
+    'Type',
+    'Paid',
+    'Party / Company (Optional)',
+    'Product Name (Optional)',
+    'Brand (Optional)',
+    'Custom Details (Optional)',
+    'Quantity',
+    'Unit Price',
+    'Line Total',
+    'Benefit (Sell Only)',
+    'Page No. (Optional)',
+  ].map((h, idx) => stringCell(idx, 1, h));
+  const rowsXml: string[] = [rowXml(1, headerCells)];
+
+  rowSpecs.forEach((spec, rowIdx) => {
+    const rowNum = rowIdx + 2;
+    const cells: string[] = [];
+    Object.entries(spec).forEach(([colStr, item]) => {
+      const col = Number(colStr);
+      if (typeof item.val === 'number') {
+        cells.push(numberCell(col, rowNum, item.val, item.formula));
+      } else {
+        cells.push(stringCell(col, rowNum, item.val));
+      }
+    });
+    rowsXml.push(rowXml(rowNum, cells));
+  });
+
+  const files = {
+    'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8"?>
+      <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+        <sheets>
+          <sheet name="Transactions" sheetId="1" r:id="rId1"/>
+        </sheets>
+      </workbook>`,
+    'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8"?>
+      <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+        <Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/>
+      </Relationships>`,
+    'xl/styles.xml': `<?xml version="1.0" encoding="UTF-8"?>
+      <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <cellXfs count="1"><xf numFmtId="0"/></cellXfs>
+      </styleSheet>`,
+    'xl/worksheets/sheet1.xml': worksheet(rowsXml),
+  };
+
+  const archive = storedZip(files);
+  const bytes = archive.slice();
+  return {
+    name: 'paperbook_v2.xlsx',
+    size: bytes.byteLength,
+    arrayBuffer: async () => bytes.buffer,
+  } as File;
+}
+
+describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
   it('groups multi-product transactions correctly from non-empty and blank Date rows', async () => {
     const file = createPaperBookFile([
       // Txn 1 (Row 2): 15/03/2025 Sell Chair (2 x 5000)
@@ -266,9 +326,65 @@ describe('R0-002 Paper-Book XLSX Parser & Grouping', () => {
     expect(parsed.warnings.some((w) => w.message.includes('MANUAL_LINE_TOTAL_OVERRIDE'))).toBe(true);
   });
 
-  it('computes deterministic SHA-256 content hash for duplicate dataset protection', async () => {
-    const file = createPaperBookFile([
-      { 0: { val: 'TX-001' }, 1: { val: '15/03/2025' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 5: { val: 'Desk' }, 8: { val: 1 }, 9: { val: 5000 } },
+  it('parses PAPER_BOOK_V2 contract with same date multi-txns, signed benefit, and expenses', async () => {
+    const file = createPaperBookV2File([
+      // Txn 1: 15/04/2026 Sell with positive benefit (14500)
+      { 0: { val: 'TX-001', formula: 'IF(C2<>"","TX-001","")' }, 1: { val: '15/04/2026' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 4: { val: 'Client A' }, 5: { val: 'Bed' }, 8: { val: 1 }, 9: { val: 40000 }, 10: { val: 40000, formula: 'I2*J2' }, 11: { val: 14500 }, 12: { val: 42 } },
+      // Txn 2: 15/04/2026 Sell (SAME DATE) with negative benefit (-2500 loss)
+      { 0: { val: 'TX-002' }, 1: { val: '15/04/2026' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 4: { val: 'Client B' }, 5: { val: 'Mattress' }, 8: { val: 1 }, 9: { val: 15000 }, 10: { val: 15000 }, 11: { val: -2500 } },
+      // Txn 3: 15/04/2026 Buy (SAME DATE)
+      { 0: { val: 'TX-003' }, 1: { val: '15/04/2026' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 4: { val: 'Supplier S' }, 5: { val: 'Raw Wood' }, 8: { val: 5 }, 9: { val: 3000 } },
+      // Txn 4: 15/04/2026 Expense (SAME DATE) with no Qty/Price, literal Line Total=3500
+      { 0: { val: 'TX-004' }, 1: { val: '15/04/2026' }, 2: { val: 'Expense' }, 3: { val: 'Paid' }, 7: { val: 'Transport' }, 10: { val: 3500 } },
+      // Unused formula row: Column A & Column K formulas, but blank content
+      { 0: { val: '', formula: 'IF(C6<>"","TX-005","")' }, 10: { val: '', formula: 'I6*J6' } },
+    ]);
+
+    const parsed = await parsePaperBookWorkbook(file);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.transactions.length).toBe(4);
+
+    // Txn 1: Sell + Positive Benefit
+    expect(parsed.transactions[0].transactionType).toBe('SALE');
+    expect(parsed.transactions[0].manualBenefitDzd).toBe(14500);
+
+    // Txn 2: Sell + Negative Benefit
+    expect(parsed.transactions[1].transactionType).toBe('SALE');
+    expect(parsed.transactions[1].manualBenefitDzd).toBe(-2500);
+
+    // Txn 3: Buy
+    expect(parsed.transactions[2].transactionType).toBe('PURCHASE');
+    expect(parsed.transactions[2].manualBenefitDzd).toBeNull();
+
+    // Txn 4: Expense
+    expect(parsed.transactions[3].transactionType).toBe('EXPENSE');
+    expect(parsed.transactions[3].lines[0].quantity).toBeNull();
+    expect(parsed.transactions[3].lines[0].unitPriceDzd).toBeNull();
+    expect(parsed.transactions[3].lines[0].manualLineTotalDzd).toBe(3500);
+
+    // Summary stats
+    expect(parsed.summary.salesCount).toBe(2);
+    expect(parsed.summary.purchaseCount).toBe(1);
+    expect(parsed.summary.expenseCount).toBe(1);
+    expect(parsed.summary.totalSalesDzd).toBe(55000);
+    expect(parsed.summary.totalPurchasesDzd).toBe(15000);
+    expect(parsed.summary.totalExpensesDzd).toBe(3500);
+    expect(parsed.summary.totalManualBenefitDzd).toBe(12000);
+  });
+
+  it('rejects Benefit on Buy or Expense transactions', async () => {
+    const file = createPaperBookV2File([
+      { 0: { val: 'TX-001' }, 1: { val: '15/04/2026' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 5: { val: 'Wood' }, 8: { val: 1 }, 9: { val: 5000 }, 11: { val: 1000 } },
+    ]);
+
+    const parsed = await parsePaperBookWorkbook(file);
+    expect(parsed.errors.length).toBe(1);
+    expect(parsed.errors[0].message).toContain('BENEFIT_NOT_ALLOWED_FOR_NON_SALE');
+  });
+
+  it('computes deterministic SHA-256 content hash including manual benefit', async () => {
+    const file = createPaperBookV2File([
+      { 0: { val: 'TX-001' }, 1: { val: '15/04/2026' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 5: { val: 'Desk' }, 8: { val: 1 }, 9: { val: 5000 }, 11: { val: 1500 } },
     ]);
 
     const parsed = await parsePaperBookWorkbook(file);

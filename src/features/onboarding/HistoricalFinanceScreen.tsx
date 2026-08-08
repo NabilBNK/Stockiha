@@ -716,6 +716,8 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             <div><dt>Unpaid Sales</dt><dd>{formatMoney(pbValidation.unpaidSalesDzd, locale)}</dd></div>
             <div><dt>Paid Purchases</dt><dd>{formatMoney(pbValidation.paidPurchasesDzd, locale)}</dd></div>
             <div><dt>Unpaid Purchases</dt><dd>{formatMoney(pbValidation.unpaidPurchasesDzd, locale)}</dd></div>
+            <div><dt>Total Expenses</dt><dd>{formatMoney(pbValidation.totalExpensesDzd ?? 0, locale)}</dd></div>
+            <div><dt>Recorded Manual Benefit</dt><dd><strong>{formatMoney(pbValidation.totalManualBenefitDzd ?? 0, locale)}</strong></dd></div>
           </dl>
         ) : null}
       </div>
@@ -763,7 +765,7 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
 
             {/* Sub-tabs */}
             <div style={{ display: 'flex', gap: '0.25rem', margin: '1rem 0', overflowX: 'auto' }}>
-              {(['overview', 'sales', 'purchases', 'products', 'brands', 'parties', 'quality', 'overrides'] as AnalyticsSubTab[]).map((tab) => (
+              {(['overview', 'sales', 'purchases', 'expenses', 'benefits', 'products', 'brands', 'parties', 'quality', 'overrides'] as AnalyticsSubTab[]).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -782,8 +784,8 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
                 <div><dt>Product Lines</dt><dd>{analytics.overview.lineCount}</dd></div>
                 <div><dt>Total Sales</dt><dd>{formatMoney(analytics.overview.totalSalesDzd, locale)}</dd></div>
                 <div><dt>Total Purchases</dt><dd>{formatMoney(analytics.overview.totalPurchasesDzd, locale)}</dd></div>
-                <div><dt>Paid Sales</dt><dd>{formatMoney(analytics.overview.paidSalesDzd, locale)}</dd></div>
-                <div><dt>Unpaid Sales</dt><dd>{formatMoney(analytics.overview.unpaidSalesDzd, locale)}</dd></div>
+                <div><dt>Total Expenses</dt><dd>{formatMoney(analytics.overview.totalExpensesDzd ?? 0, locale)}</dd></div>
+                <div><dt>Recorded Manual Benefit</dt><dd><strong>{formatMoney(analytics.overview.totalManualBenefitDzd ?? 0, locale)}</strong></dd></div>
                 <div><dt>{text.tradeDifference}</dt><dd><strong>{formatMoney(analytics.overview.tradeDifferenceDzd, locale)}</strong></dd></div>
               </dl>
             )}

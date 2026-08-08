@@ -429,6 +429,7 @@ pub(crate) struct CreateHistoricalTradeBatchRequest {
     pub(crate) request_id: String,
     pub(crate) original_filename: String,
     pub(crate) content_hash: Option<String>,
+    pub(crate) import_profile: Option<String>,
 }
 
 impl CreateHistoricalTradeBatchRequest {
@@ -443,6 +444,12 @@ impl CreateHistoricalTradeBatchRequest {
             || !filename.to_ascii_lowercase().ends_with(".xlsx")
         {
             return Err("originalFilename must be a safe .xlsx filename".to_string());
+        }
+        if let Some(profile) = &self.import_profile {
+            let profile = profile.trim().to_ascii_uppercase();
+            if !matches!(profile.as_str(), "PAPER_BOOK_V1" | "PAPER_BOOK_V2") {
+                return Err("importProfile must be PAPER_BOOK_V1 or PAPER_BOOK_V2".to_string());
+            }
         }
         if let Some(hash) = &self.content_hash {
             let hash = hash.trim();
@@ -476,7 +483,7 @@ pub(crate) struct HistoricalTradeLineInput {
     pub(crate) brand: Option<String>,
     pub(crate) custom_details: Option<String>,
     pub(crate) quantity: Option<i64>,
-    pub(crate) unit_price_dzd: i64,
+    pub(crate) unit_price_dzd: Option<i64>,
     pub(crate) manual_line_total_dzd: Option<i64>,
 }
 
@@ -488,8 +495,10 @@ impl HistoricalTradeLineInput {
         if self.line_sequence < 1 {
             return Err("lineSequence must be at least 1".to_string());
         }
-        if self.unit_price_dzd < 0 {
-            return Err("unitPriceDzd must not be negative".to_string());
+        if let Some(price) = self.unit_price_dzd {
+            if price < 0 {
+                return Err("unitPriceDzd must not be negative".to_string());
+            }
         }
         if let Some(qty) = self.quantity {
             if qty <= 0 {
@@ -501,8 +510,11 @@ impl HistoricalTradeLineInput {
                 return Err("manualLineTotalDzd must not be negative".to_string());
             }
         }
-        if self.quantity.is_none() && self.manual_line_total_dzd.is_none() {
-            return Err("line must have either quantity or manualLineTotalDzd".to_string());
+        if self.quantity.is_none()
+            && self.unit_price_dzd.is_none()
+            && self.manual_line_total_dzd.is_none()
+        {
+            return Err("line must have quantity/unit price or manualLineTotalDzd".to_string());
         }
         validate_optional_text(&self.product_name, "productName", OPTIONAL_TEXT_MAX_LEN)?;
         validate_optional_text(&self.brand, "brand", OPTIONAL_TEXT_MAX_LEN)?;
@@ -521,6 +533,7 @@ pub(crate) struct HistoricalTradeTransactionInput {
     pub(crate) transaction_type: String,
     pub(crate) payment_status: String,
     pub(crate) party_company: Option<String>,
+    pub(crate) manual_benefit_dzd: Option<i64>,
     pub(crate) page_number: Option<i32>,
     pub(crate) lines: Vec<HistoricalTradeLineInput>,
 }
@@ -536,8 +549,12 @@ impl HistoricalTradeTransactionInput {
         parse_iso_date(&self.transaction_date, "transactionDate")?;
 
         let txn_type = self.transaction_type.trim().to_ascii_uppercase();
-        if !matches!(txn_type.as_str(), "SALE" | "PURCHASE") {
-            return Err("transactionType must be SALE or PURCHASE".to_string());
+        if !matches!(txn_type.as_str(), "SALE" | "PURCHASE" | "EXPENSE") {
+            return Err("transactionType must be SALE, PURCHASE, or EXPENSE".to_string());
+        }
+
+        if txn_type != "SALE" && self.manual_benefit_dzd.is_some() {
+            return Err("manualBenefitDzd is only allowed for SALE transactions".to_string());
         }
 
         let payment = self.payment_status.trim().to_ascii_uppercase();
@@ -552,7 +569,7 @@ impl HistoricalTradeTransactionInput {
         }
 
         if self.lines.is_empty() {
-            return Err("transaction must contain at least one product line".to_string());
+            return Err("transaction must contain at least one line".to_string());
         }
 
         validate_optional_text(&self.party_company, "partyCompany", OPTIONAL_TEXT_MAX_LEN)?;

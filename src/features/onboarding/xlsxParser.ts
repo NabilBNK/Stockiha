@@ -6,6 +6,7 @@ import type {
   HistoricalReviewStatus,
   HistoricalTransactionType,
   HistoricalTradeTransactionInput,
+  PaperBookImportProfile,
   PaperBookPaymentStatus,
   PaperBookTransactionType,
 } from '../../shared/ipc/onboardingDto';
@@ -53,6 +54,22 @@ export const PAPER_BOOK_HEADERS = [
   'Quantity',
   'Unit Price',
   'Line Total',
+  'Page No. (Optional)',
+] as const;
+
+export const PAPER_BOOK_V2_HEADERS = [
+  'Txn No. (Auto)',
+  'Date',
+  'Type',
+  'Paid',
+  'Party / Company (Optional)',
+  'Product Name (Optional)',
+  'Brand (Optional)',
+  'Custom Details (Optional)',
+  'Quantity',
+  'Unit Price',
+  'Line Total',
+  'Benefit (Sell Only)',
   'Page No. (Optional)',
 ] as const;
 
@@ -140,8 +157,16 @@ export interface PaperBookSummary {
   lineCount: number;
   salesCount: number;
   purchaseCount: number;
+  expenseCount: number;
   totalSalesDzd: number;
   totalPurchasesDzd: number;
+  totalExpensesDzd: number;
+  paidExpensesDzd: number;
+  unpaidExpensesDzd: number;
+  manualBenefitCount: number;
+  totalManualBenefitDzd: number;
+  salesWithManualBenefitCount: number;
+  salesWithoutManualBenefitCount: number;
   minDate: string | null;
   maxDate: string | null;
   unmatchedProductCount: number;
@@ -533,6 +558,27 @@ function parseOptionalInteger(value: CellValue, field: string): number | null {
   return parseInteger(value, field, true);
 }
 
+function parseSignedInteger(value: CellValue, field: string): number {
+  let parsed: number;
+  if (typeof value === 'number') {
+    parsed = value;
+  } else {
+    const normalized = normalizeString(value).replace(/[\s\u00a0,]/g, '');
+    if (!/^-?\d+$/.test(normalized)) throw new Error(`${field} must be a whole DZD amount.`);
+    parsed = Number(normalized);
+  }
+
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`${field} is outside the allowed whole-DZD range.`);
+  }
+  return parsed;
+}
+
+function parseOptionalSignedInteger(value: CellValue, field: string): number | null {
+  if (normalizeString(value) === '') return null;
+  return parseSignedInteger(value, field);
+}
+
 function parseIsoDate(value: CellValue, field: string): string {
   const normalized = normalizeString(value);
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized);
@@ -567,6 +613,31 @@ function assertHeaders(sheet: ParsedSheet, expected: readonly string[]): void {
   });
 }
 
+function assertPaperBookHeaders(sheet: ParsedSheet): PaperBookImportProfile {
+  const actual = sheet.rows.get(1) ?? [];
+  const actualValues = actual.map((c) => normalizeString(c?.value));
+
+  if (actualValues.length >= 13 || actualValues.some((v) => v.includes('Benefit'))) {
+    PAPER_BOOK_V2_HEADERS.forEach((header, index) => {
+      if (actualValues[index] !== header) {
+        throw new WorkbookParseError(
+          `${sheet.name} column ${index + 1} must be named ${header}. Use the official Stockiha template.`,
+        );
+      }
+    });
+    return 'PAPER_BOOK_V2';
+  }
+
+  PAPER_BOOK_HEADERS.forEach((header, index) => {
+    if (actualValues[index] !== header) {
+      throw new WorkbookParseError(
+        `${sheet.name} column ${index + 1} must be named ${header}. Use the official Stockiha template.`,
+      );
+    }
+  });
+  return 'PAPER_BOOK_V1';
+}
+
 function isEmptyDataRow(values: RawCellDetails[], columnCount: number): boolean {
   for (let index = 0; index < columnCount; index += 1) {
     if (normalizeString(values[index]?.value) !== '') return false;
@@ -582,6 +653,7 @@ export async function computeContentHash(transactions: HistoricalTradeTransactio
       t: t.transactionType,
       p: t.paymentStatus,
       c: t.partyCompany,
+      b: t.manualBenefitDzd,
       pg: t.pageNumber,
       l: t.lines.map((l) => ({
         pn: l.productName,
@@ -617,7 +689,8 @@ function normalizeType(value: string, rowNumber: number): PaperBookTransactionTy
   const upper = value.trim().toUpperCase();
   if (upper === 'SELL' || upper === 'SALE') return 'SALE';
   if (upper === 'BUY' || upper === 'PURCHASE') return 'PURCHASE';
-  throw new Error(`Row ${rowNumber}: Invalid transaction type '${value}'. Only Buy or Sell allowed.`);
+  if (upper === 'EXPENSE') return 'EXPENSE';
+  throw new Error(`Row ${rowNumber}: Invalid transaction type '${value}'. Only Sell, Buy, or Expense allowed.`);
 }
 
 function normalizePaid(value: string, rowNumber: number): PaperBookPaymentStatus {
@@ -631,6 +704,7 @@ export function parsePaperBookSheet(
   sheet: ParsedSheet,
   errors: HistoricalFinanceImportError[],
   warnings: HistoricalFinanceImportError[],
+  profile: PaperBookImportProfile = 'PAPER_BOOK_V2',
 ): HistoricalTradeTransactionInput[] {
   const transactions: HistoricalTradeTransactionInput[] = [];
   const sortedRows = [...sheet.rows.entries()].sort((a, b) => a[0] - b[0]);
@@ -638,36 +712,45 @@ export function parsePaperBookSheet(
   let activeTxn: HistoricalTradeTransactionInput | null = null;
   let txnSequence = 0;
 
+  const isV2 = profile === 'PAPER_BOOK_V2';
+  const headers = isV2 ? PAPER_BOOK_V2_HEADERS : PAPER_BOOK_HEADERS;
+  const colCount = headers.length;
+
   for (const [rowNumber, cells] of sortedRows) {
-    if (rowNumber === 1 || isEmptyDataRow(cells, PAPER_BOOK_HEADERS.length)) continue;
+    if (rowNumber === 1 || isEmptyDataRow(cells.slice(1), colCount - 1)) continue;
 
     // Check forbidden formulas on non-formula columns
-    // Allowed formulas ONLY on Col 0 (Txn No) and Col 10 (Line Total)
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 11].forEach((colIdx) => {
-      if (cells[colIdx]?.hasFormula) {
+    cells.forEach((cell, colIdx) => {
+      if (colIdx !== 0 && colIdx !== 10 && colIdx < colCount && cell?.hasFormula) {
         pushError(errors, {
           sheet: sheet.name,
           row: rowNumber,
-          column: PAPER_BOOK_HEADERS[colIdx],
-          message: `Formulas are not allowed in ${PAPER_BOOK_HEADERS[colIdx]}.`,
+          column: headers[colIdx],
+          message: `Formulas are not allowed in ${headers[colIdx]}.`,
         });
       }
     });
 
-    const dateCell = cells[1];
-    const dateStr = normalizeString(dateCell?.value);
+    const dateStr = normalizeString(cells[1]?.value);
     const typeStr = normalizeString(cells[2]?.value);
     const paidStr = normalizeString(cells[3]?.value);
     const partyStr = optionalString(cells[4]?.value);
-    const pageNoVal = parseOptionalInteger(cells[11]?.value, 'Page No');
 
-    if (dateStr !== '') {
+    const benefitVal = isV2 ? parseOptionalSignedInteger(cells[11]?.value, 'Benefit (Sell Only)') : null;
+    const pageNoVal = isV2
+      ? parseOptionalInteger(cells[12]?.value, 'Page No')
+      : parseOptionalInteger(cells[11]?.value, 'Page No');
+
+    if (typeStr !== '') {
       // NEW TRANSACTION
-      let isoDate: string;
       let normType: PaperBookTransactionType;
       let normPaid: PaperBookPaymentStatus;
+      let isoDate: string;
 
       try {
+        if (dateStr === '') {
+          throw new Error(`Row ${rowNumber}: Transaction header must have a valid Date.`);
+        }
         isoDate = parsePaperBookDate(dateStr, rowNumber);
         normType = normalizeType(typeStr, rowNumber);
         normPaid = normalizePaid(paidStr, rowNumber);
@@ -680,6 +763,15 @@ export function parsePaperBookSheet(
         continue;
       }
 
+      if (normType !== 'SALE' && benefitVal !== null) {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Benefit (Sell Only)',
+          message: `BENEFIT_NOT_ALLOWED_FOR_NON_SALE: Benefit is only allowed for SALE transactions (found in ${normType}).`,
+        });
+      }
+
       txnSequence += 1;
       activeTxn = {
         sourceTransactionSequence: txnSequence,
@@ -689,6 +781,7 @@ export function parsePaperBookSheet(
         transactionType: normType,
         paymentStatus: normPaid,
         partyCompany: partyStr,
+        manualBenefitDzd: normType === 'SALE' ? benefitVal : null,
         pageNumber: pageNoVal,
         lines: [],
       };
@@ -704,19 +797,18 @@ export function parsePaperBookSheet(
         continue;
       }
 
-      // Check conflicting fields
-      if (typeStr !== '') {
+      if (dateStr !== '') {
         try {
-          const normType = normalizeType(typeStr, rowNumber);
-          if (normType !== activeTxn.transactionType) {
+          const isoDate = parsePaperBookDate(dateStr, rowNumber);
+          if (isoDate !== activeTxn.transactionDate) {
             pushError(errors, {
               sheet: sheet.name,
               row: rowNumber,
-              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Type (${typeStr}) conflicts with header (${activeTxn.transactionType}).`,
+              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Date (${isoDate}) conflicts with header (${activeTxn.transactionDate}).`,
             });
           }
         } catch {
-          // Ignore type error if invalid
+          // Ignore
         }
       }
       if (paidStr !== '') {
@@ -747,6 +839,25 @@ export function parsePaperBookSheet(
           message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Page No (${pageNoVal}) conflicts with header (${activeTxn.pageNumber}).`,
         });
       }
+      if (benefitVal !== null) {
+        if (activeTxn.transactionType !== 'SALE') {
+          pushError(errors, {
+            sheet: sheet.name,
+            row: rowNumber,
+            column: 'Benefit (Sell Only)',
+            message: `BENEFIT_NOT_ALLOWED_FOR_NON_SALE: Benefit is only allowed for SALE transactions.`,
+          });
+        } else if (activeTxn.manualBenefitDzd !== null && benefitVal !== activeTxn.manualBenefitDzd) {
+          pushError(errors, {
+            sheet: sheet.name,
+            row: rowNumber,
+            column: 'Benefit (Sell Only)',
+            message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Benefit (${benefitVal}) conflicts with header (${activeTxn.manualBenefitDzd}).`,
+          });
+        } else if (activeTxn.manualBenefitDzd === null) {
+          activeTxn.manualBenefitDzd = benefitVal;
+        }
+      }
     }
 
     // Parse product line
@@ -755,7 +866,11 @@ export function parsePaperBookSheet(
     const brand = optionalString(cells[6]?.value);
     const customDetails = optionalString(cells[7]?.value);
     const qtyVal = parseOptionalInteger(cells[8]?.value, 'Quantity');
-    const unitPriceVal = parseInteger(cells[9]?.value, 'Unit Price', true);
+
+    const isExpense = activeTxn.transactionType === 'EXPENSE';
+    const unitPriceVal = isExpense
+      ? parseOptionalInteger(cells[9]?.value, 'Unit Price')
+      : parseInteger(cells[9]?.value, 'Unit Price', true);
 
     const lineTotalCell = cells[10];
     let manualLineTotalDzd: number | null = null;
@@ -767,29 +882,40 @@ export function parsePaperBookSheet(
       normalizeString(lineTotalCell.value) !== ''
     ) {
       manualLineTotalDzd = parseInteger(lineTotalCell.value, 'Line Total', true);
-      warnings.push({
-        sheet: sheet.name,
-        row: rowNumber,
-        column: 'Line Total',
-        message: 'MANUAL_LINE_TOTAL_OVERRIDE: Line Total is a literal override instead of calculated formula.',
-      });
+      if (!isExpense) {
+        warnings.push({
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Line Total',
+          message: 'MANUAL_LINE_TOTAL_OVERRIDE: Line Total is a literal override instead of calculated formula.',
+        });
+      }
     }
 
-    if (qtyVal === null && manualLineTotalDzd === null) {
-      pushError(errors, {
-        sheet: sheet.name,
-        row: rowNumber,
-        message: 'Quantity can only be blank if a valid manual Line Total is entered.',
-      });
-    }
-
-    if (!productName) {
-      warnings.push({
-        sheet: sheet.name,
-        row: rowNumber,
-        column: 'Product Name',
-        message: 'MISSING_PRODUCT_NAME: Product Name is blank.',
-      });
+    if (isExpense) {
+      if (qtyVal === null && unitPriceVal === null && manualLineTotalDzd === null) {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          message: 'Expense row requires Line Total when Quantity and Unit Price are blank.',
+        });
+      }
+    } else {
+      if (qtyVal === null && manualLineTotalDzd === null) {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          message: 'Quantity can only be blank if a valid manual Line Total is entered.',
+        });
+      }
+      if (!productName) {
+        warnings.push({
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Product Name',
+          message: 'MISSING_PRODUCT_NAME: Product Name is blank.',
+        });
+      }
     }
 
     activeTxn.lines.push({
@@ -855,7 +981,8 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
 
   const errors: HistoricalFinanceImportError[] = [];
   const warnings: HistoricalFinanceImportError[] = [];
-  const transactions = parsePaperBookSheet(transactionSheet, errors, warnings);
+  const profile = assertPaperBookHeaders(transactionSheet);
+  const transactions = parsePaperBookSheet(transactionSheet, errors, warnings, profile);
 
   const contentHash = await computeContentHash(transactions);
 
@@ -863,8 +990,16 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
   let lineCount = 0;
   let salesCount = 0;
   let purchaseCount = 0;
+  let expenseCount = 0;
   let totalSalesDzd = 0;
   let totalPurchasesDzd = 0;
+  let totalExpensesDzd = 0;
+  let paidExpensesDzd = 0;
+  let unpaidExpensesDzd = 0;
+  let manualBenefitCount = 0;
+  let totalManualBenefitDzd = 0;
+  let salesWithManualBenefitCount = 0;
+  let salesWithoutManualBenefitCount = 0;
   let minDate: string | null = null;
   let maxDate: string | null = null;
   let manualOverrideCount = 0;
@@ -874,18 +1009,35 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
     if (!minDate || t.transactionDate < minDate) minDate = t.transactionDate;
     if (!maxDate || t.transactionDate > maxDate) maxDate = t.transactionDate;
 
-    if (t.transactionType === 'SALE') salesCount += 1;
-    if (t.transactionType === 'PURCHASE') purchaseCount += 1;
+    if (t.transactionType === 'SALE') {
+      salesCount += 1;
+      if (t.manualBenefitDzd !== null) {
+        manualBenefitCount += 1;
+        totalManualBenefitDzd += t.manualBenefitDzd;
+        salesWithManualBenefitCount += 1;
+      } else {
+        salesWithoutManualBenefitCount += 1;
+      }
+    } else if (t.transactionType === 'PURCHASE') {
+      purchaseCount += 1;
+    } else if (t.transactionType === 'EXPENSE') {
+      expenseCount += 1;
+    }
 
     t.lines.forEach((l) => {
       lineCount += 1;
-      const calcTotal = l.quantity !== null ? l.quantity * l.unitPriceDzd : null;
+      const calcTotal = l.quantity !== null && l.unitPriceDzd !== null ? l.quantity * l.unitPriceDzd : null;
       const effTotal = l.manualLineTotalDzd !== null ? l.manualLineTotalDzd : calcTotal ?? 0;
 
       if (t.transactionType === 'SALE') totalSalesDzd += effTotal;
       if (t.transactionType === 'PURCHASE') totalPurchasesDzd += effTotal;
+      if (t.transactionType === 'EXPENSE') {
+        totalExpensesDzd += effTotal;
+        if (t.paymentStatus === 'PAID') paidExpensesDzd += effTotal;
+        else unpaidExpensesDzd += effTotal;
+      }
 
-      if (l.manualLineTotalDzd !== null) manualOverrideCount += 1;
+      if (t.transactionType !== 'EXPENSE' && l.manualLineTotalDzd !== null) manualOverrideCount += 1;
       if (l.quantity === null) missingQtyCount += 1;
     });
   });
@@ -895,8 +1047,16 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
     lineCount,
     salesCount,
     purchaseCount,
+    expenseCount,
     totalSalesDzd,
     totalPurchasesDzd,
+    totalExpensesDzd,
+    paidExpensesDzd,
+    unpaidExpensesDzd,
+    manualBenefitCount,
+    totalManualBenefitDzd,
+    salesWithManualBenefitCount,
+    salesWithoutManualBenefitCount,
     minDate,
     maxDate,
     unmatchedProductCount: 0,

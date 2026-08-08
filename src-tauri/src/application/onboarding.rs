@@ -210,13 +210,20 @@ pub(crate) async fn create_historical_trade_batch(
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty());
+    let import_profile = request
+        .import_profile
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("PAPER_BOOK_V2");
 
     let result: JsonValue =
-        query_scalar("SELECT onboarding.create_historical_trade_batch($1, $2, $3, $4)")
+        query_scalar("SELECT onboarding.create_historical_trade_batch($1, $2, $3, $4, $5)")
             .bind(session_token)
             .bind(request.request_id.trim())
             .bind(original_filename)
             .bind(content_hash)
+            .bind(import_profile)
             .fetch_one(pool)
             .await
             .map_err(AppError::from_posting_error)?;
@@ -260,6 +267,7 @@ pub(crate) async fn replace_historical_trade_batch_data(
                 "transaction_type": txn.transaction_type.trim().to_ascii_uppercase(),
                 "payment_status": txn.payment_status.trim().to_ascii_uppercase(),
                 "party_company": txn.party_company.as_deref().map(str::trim),
+                "manual_benefit_dzd": txn.manual_benefit_dzd,
                 "page_number": txn.page_number,
                 "lines": lines,
             })
