@@ -51,6 +51,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install PostgreSQL client
         run: |
@@ -136,16 +137,11 @@ jobs:
           ./scripts/r8-001-provision-acceptance-database.ps1 `
             -DatabaseName stockiha_r8_acceptance_ci_test
 
-      - name: Verify historical migration files were not rewritten
+      - name: Verify all released migration files were not rewritten
         run: |
-          git diff --exit-code origin/main -- \
-            src-tauri/migrations/20260725130000_procurement_landed_cost_and_invoices.sql \
-            src-tauri/migrations/20260725130100_inventory_allocate_landed_cost.sql \
-            src-tauri/migrations/20260725130200_procurement_confirm_supplier_invoice.sql \
-            src-tauri/migrations/20260725140000_procurement_supplier_returns_and_payments.sql \
-            src-tauri/migrations/20260725140100_inventory_confirm_supplier_return.sql \
-            src-tauri/migrations/20260725140200_procurement_post_supplier_payment.sql \
-            src-tauri/migrations/20260731125975_cash_session_function_owner_compat.sql \
-            src-tauri/migrations/20260731125990_cash_session_api_collision_compat.sql \
-            src-tauri/migrations/20260801100000_s4_003_function_owner_compat.sql \
-            src-tauri/migrations/20260803125900_r2_s3_owner_compat.sql
+          while IFS= read -r migration; do
+            if ! git diff --quiet origin/main -- "$migration"; then
+              echo "::error file=$migration::Released migration differs from origin/main."
+              exit 1
+            fi
+          done < <(git ls-tree -r --name-only origin/main -- src-tauri/migrations)
