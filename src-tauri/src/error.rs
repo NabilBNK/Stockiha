@@ -38,16 +38,36 @@ pub enum AppError {
         #[cfg_attr(not(test), allow(dead_code))]
         diagnostic: String,
     },
-    SessionInvalid { diagnostic: String },
-    PermissionDenied { diagnostic: String },
-    ValidationError { diagnostic: String },
-    PreconditionFailed { diagnostic: String },
-    BackupCreationFailed { diagnostic: String },
-    BackupValidationFailed { diagnostic: String },
-    IdempotencyConflict { diagnostic: String },
-    ImmutableRecord { diagnostic: String },
-    UnsafeZeroStockValuation { diagnostic: String },
-    CreditPolicyBlocked { diagnostic: String },
+    SessionInvalid {
+        diagnostic: String,
+    },
+    PermissionDenied {
+        diagnostic: String,
+    },
+    ValidationError {
+        diagnostic: String,
+    },
+    PreconditionFailed {
+        diagnostic: String,
+    },
+    BackupCreationFailed {
+        diagnostic: String,
+    },
+    BackupValidationFailed {
+        diagnostic: String,
+    },
+    IdempotencyConflict {
+        diagnostic: String,
+    },
+    ImmutableRecord {
+        diagnostic: String,
+    },
+    UnsafeZeroStockValuation {
+        diagnostic: String,
+    },
+    CreditPolicyBlocked {
+        diagnostic: String,
+    },
 }
 
 impl AppError {
@@ -76,14 +96,30 @@ impl AppError {
             return AppError::Internal(message);
         };
         match db_err.code().as_deref() {
-            Some("28000") => AppError::SessionInvalid { diagnostic: message },
-            Some("42501") => AppError::PermissionDenied { diagnostic: message },
-            Some("22023") => AppError::ValidationError { diagnostic: message },
-            Some("55000") => AppError::PreconditionFailed { diagnostic: message },
-            Some("23505") => AppError::IdempotencyConflict { diagnostic: message },
-            Some("0A000") => AppError::ImmutableRecord { diagnostic: message },
-            Some("P2002") => AppError::UnsafeZeroStockValuation { diagnostic: message },
-            Some("P4001") => AppError::CreditPolicyBlocked { diagnostic: message },
+            Some("28000") => AppError::SessionInvalid {
+                diagnostic: message,
+            },
+            Some("42501") => AppError::PermissionDenied {
+                diagnostic: message,
+            },
+            Some("22023") => AppError::ValidationError {
+                diagnostic: message,
+            },
+            Some("55000") => AppError::PreconditionFailed {
+                diagnostic: message,
+            },
+            Some("23505") => AppError::IdempotencyConflict {
+                diagnostic: message,
+            },
+            Some("0A000") => AppError::ImmutableRecord {
+                diagnostic: message,
+            },
+            Some("P2002") => AppError::UnsafeZeroStockValuation {
+                diagnostic: message,
+            },
+            Some("P4001") => AppError::CreditPolicyBlocked {
+                diagnostic: message,
+            },
             _ => AppError::Internal(message),
         }
     }
@@ -174,9 +210,7 @@ impl From<AppError> for IpcError {
             AppError::PermissionDenied { .. } => IpcError::new(ErrorCode::PermissionDenied),
             AppError::ValidationError { .. } => IpcError::new(ErrorCode::ValidationError),
             AppError::PreconditionFailed { .. } => IpcError::new(ErrorCode::PreconditionFailed),
-            AppError::BackupCreationFailed { .. } => {
-                IpcError::new(ErrorCode::BackupCreationFailed)
-            }
+            AppError::BackupCreationFailed { .. } => IpcError::new(ErrorCode::BackupCreationFailed),
             AppError::BackupValidationFailed { .. } => {
                 IpcError::new(ErrorCode::BackupValidationFailed)
             }

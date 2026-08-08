@@ -212,14 +212,12 @@ pub(crate) async fn get_customer_document_payload(
     session_token: &str,
     document_id: i64,
 ) -> Result<Value, AppError> {
-    sqlx::query_scalar::<_, Value>(
-        "SELECT receivables.get_customer_document_payload($1, $2)",
-    )
-    .bind(session_token)
-    .bind(document_id)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)
+    sqlx::query_scalar::<_, Value>("SELECT receivables.get_customer_document_payload($1, $2)")
+        .bind(session_token)
+        .bind(document_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
 }
 
 pub(crate) async fn generate_customer_document_pdf(
@@ -305,14 +303,12 @@ pub(crate) async fn generate_customer_document_pdf(
         return Err(AppError::internal(diagnostic));
     }
 
-    sqlx::query(
-        "SELECT documents.complete_generation_job($1, true, false, $2, NULL, NULL)",
-    )
-    .bind(job_id)
-    .bind(&relative_ref)
-    .execute(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    sqlx::query("SELECT documents.complete_generation_job($1, true, false, $2, NULL, NULL)")
+        .bind(job_id)
+        .bind(&relative_ref)
+        .execute(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     Ok(GeneratedCustomerDocument {
         document_id,
@@ -327,15 +323,13 @@ pub(crate) async fn enqueue_customer_reprint(
     document_id: i64,
     idempotency_key: &str,
 ) -> Result<i64, AppError> {
-    sqlx::query_scalar::<_, i64>(
-        "SELECT documents.enqueue_customer_reprint($1, $2, $3)",
-    )
-    .bind(session_token)
-    .bind(document_id)
-    .bind(idempotency_key)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)
+    sqlx::query_scalar::<_, i64>("SELECT documents.enqueue_customer_reprint($1, $2, $3)")
+        .bind(session_token)
+        .bind(document_id)
+        .bind(idempotency_key)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
 }
 
 async fn complete_generation_failure(
@@ -344,15 +338,13 @@ async fn complete_generation_failure(
     permanent: bool,
     code: &str,
 ) -> Result<(), AppError> {
-    sqlx::query(
-        "SELECT documents.complete_generation_job($1, false, $2, NULL, $3, NULL)",
-    )
-    .bind(job_id)
-    .bind(permanent)
-    .bind(code)
-    .execute(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    sqlx::query("SELECT documents.complete_generation_job($1, false, $2, NULL, $3, NULL)")
+        .bind(job_id)
+        .bind(permanent)
+        .bind(code)
+        .execute(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
     Ok(())
 }
 

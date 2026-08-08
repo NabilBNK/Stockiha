@@ -185,20 +185,13 @@ mod tests {
         // blind denomination lifecycle. This sale is exactly 200 DZD with a
         // zero opening float, so one 200 DZD denomination closes with zero
         // variance and no manager approval.
-        cash_session::begin_cash_session_close(
-            &pool,
-            "rust-integration-token",
-            cash_session_id,
-        )
-        .await
-        .expect("beginning blind close should succeed");
+        cash_session::begin_cash_session_close(&pool, "rust-integration-token", cash_session_id)
+            .await
+            .expect("beginning blind close should succeed");
 
-        let denominations = cash_session::list_cash_denominations(
-            &pool,
-            "rust-integration-token",
-        )
-        .await
-        .expect("denominations should load");
+        let denominations = cash_session::list_cash_denominations(&pool, "rust-integration-token")
+            .await
+            .expect("denominations should load");
         assert!(denominations.iter().any(|d| d.code == "DZD_200"));
 
         let counts: Vec<DenominationCountInput> = denominations

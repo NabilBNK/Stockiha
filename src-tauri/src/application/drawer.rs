@@ -27,16 +27,15 @@ pub(crate) async fn update_drawer_operation_policy(
         .validate()
         .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
 
-    let result: JsonValue = query_scalar(
-        "SELECT cash.update_drawer_operation_policy($1, $2, $3)",
-    )
-    .bind(session_token)
-    .bind(payload.operation_code.trim().to_ascii_uppercase())
-    .bind(payload.is_enabled)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let result: JsonValue = query_scalar("SELECT cash.update_drawer_operation_policy($1, $2, $3)")
+        .bind(session_token)
+        .bind(payload.operation_code.trim().to_ascii_uppercase())
+        .bind(payload.is_enabled)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
-    serde_json::from_value(result)
-        .map_err(|error| AppError::internal(format!("Failed to parse updated drawer policy: {error}")))
+    serde_json::from_value(result).map_err(|error| {
+        AppError::internal(format!("Failed to parse updated drawer policy: {error}"))
+    })
 }

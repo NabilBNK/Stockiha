@@ -44,6 +44,12 @@ export const COMMANDS = {
   VALIDATE_HISTORICAL_FINANCE_BATCH: 'validate_historical_finance_batch',
   APPROVE_HISTORICAL_FINANCE_BATCH: 'approve_historical_finance_batch',
   GET_HISTORICAL_FINANCE_SUMMARY: 'get_historical_finance_summary',
+  // R0-002 — paper-book historical trade onboarding & analytics
+  CREATE_HISTORICAL_TRADE_BATCH: 'create_historical_trade_batch',
+  REPLACE_HISTORICAL_TRADE_BATCH_DATA: 'replace_historical_trade_batch_data',
+  VALIDATE_HISTORICAL_TRADE_BATCH: 'validate_historical_trade_batch',
+  APPROVE_HISTORICAL_TRADE_BATCH: 'approve_historical_trade_batch',
+  GET_HISTORICAL_TRADE_ANALYTICS: 'get_historical_trade_analytics',
   // R5 — current opening-state reconciliation and one-time application
   GET_OPENING_STATE_SETTING: 'get_opening_state_setting',
   UPDATE_OPENING_STATE_SETTING: 'update_opening_state_setting',

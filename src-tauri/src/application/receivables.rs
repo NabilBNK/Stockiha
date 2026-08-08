@@ -28,8 +28,9 @@ pub(crate) async fn list_open_customer_invoices(
         .await
         .map_err(AppError::from_posting_error)?;
 
-    serde_json::from_value(result)
-        .map_err(|error| AppError::internal(format!("Failed to parse open customer invoices: {error}")))
+    serde_json::from_value(result).map_err(|error| {
+        AppError::internal(format!("Failed to parse open customer invoices: {error}"))
+    })
 }
 
 pub(crate) async fn post_customer_payment(
@@ -41,12 +42,16 @@ pub(crate) async fn post_customer_payment(
         .validate()
         .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
 
-    let amount: Decimal = payload.amount.parse().map_err(|_| AppError::ValidationError {
-        diagnostic: "payment amount is not a valid decimal".to_string(),
-    })?;
+    let amount: Decimal = payload
+        .amount
+        .parse()
+        .map_err(|_| AppError::ValidationError {
+            diagnostic: "payment amount is not a valid decimal".to_string(),
+        })?;
     let document_date = parse_iso_date(&payload.document_date)?;
-    let allocations = serde_json::to_value(&payload.allocations)
-        .map_err(|error| AppError::internal(format!("Failed to serialize payment allocations: {error}")))?;
+    let allocations = serde_json::to_value(&payload.allocations).map_err(|error| {
+        AppError::internal(format!("Failed to serialize payment allocations: {error}"))
+    })?;
 
     let result: JsonValue = query_scalar(
         "SELECT receivables.post_customer_payment(\
@@ -67,8 +72,9 @@ pub(crate) async fn post_customer_payment(
     .await
     .map_err(AppError::from_posting_error)?;
 
-    serde_json::from_value(result)
-        .map_err(|error| AppError::internal(format!("Failed to parse customer payment result: {error}")))
+    serde_json::from_value(result).map_err(|error| {
+        AppError::internal(format!("Failed to parse customer payment result: {error}"))
+    })
 }
 
 pub(crate) async fn list_refundable_customer_payments(
@@ -82,17 +88,18 @@ pub(crate) async fn list_refundable_customer_payments(
         });
     }
 
-    let result: JsonValue = query_scalar(
-        "SELECT receivables.list_refundable_customer_payments($1, $2)",
-    )
-    .bind(session_token)
-    .bind(customer_id)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let result: JsonValue =
+        query_scalar("SELECT receivables.list_refundable_customer_payments($1, $2)")
+            .bind(session_token)
+            .bind(customer_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     serde_json::from_value(result).map_err(|error| {
-        AppError::internal(format!("Failed to parse refundable customer payments: {error}"))
+        AppError::internal(format!(
+            "Failed to parse refundable customer payments: {error}"
+        ))
     })
 }
 
@@ -150,17 +157,19 @@ pub(crate) async fn post_customer_refund(
     let document_id = posting_result
         .get("document_id")
         .and_then(JsonValue::as_i64)
-        .ok_or_else(|| AppError::internal("Customer refund result omitted document_id.".to_string()))?;
+        .ok_or_else(|| {
+            AppError::internal("Customer refund result omitted document_id.".to_string())
+        })?;
 
-    let canonical_result: JsonValue = query_scalar(
-        "SELECT receivables.get_customer_refund_result($1, $2)",
-    )
-    .bind(session_token)
-    .bind(document_id)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let canonical_result: JsonValue =
+        query_scalar("SELECT receivables.get_customer_refund_result($1, $2)")
+            .bind(session_token)
+            .bind(document_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
-    serde_json::from_value(canonical_result)
-        .map_err(|error| AppError::internal(format!("Failed to parse customer refund result: {error}")))
+    serde_json::from_value(canonical_result).map_err(|error| {
+        AppError::internal(format!("Failed to parse customer refund result: {error}"))
+    })
 }

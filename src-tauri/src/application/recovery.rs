@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use sqlx::{query_scalar, Connection, PgConnection, PgPool};
 
 use crate::domain::recovery::{
@@ -59,15 +59,14 @@ pub(crate) async fn begin_operator_backup_validation(
 
     let (bundle_path, bundle_identifier) = selected_bundle_identity(&request.bundle_path)?;
 
-    let value: JsonValue = query_scalar(
-        "SELECT operations.begin_recovery_attempt($1, $2, 'VALIDATE_BACKUP', $3)",
-    )
-    .bind(session_token)
-    .bind(request.request_id.trim())
-    .bind(&bundle_identifier)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let value: JsonValue =
+        query_scalar("SELECT operations.begin_recovery_attempt($1, $2, 'VALIDATE_BACKUP', $3)")
+            .bind(session_token)
+            .bind(request.request_id.trim())
+            .bind(&bundle_identifier)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     let envelope = parse_attempt_envelope(value)?;
 
@@ -76,13 +75,12 @@ pub(crate) async fn begin_operator_backup_validation(
             let result = envelope.result.ok_or_else(|| {
                 AppError::internal("completed recovery attempt has no result metadata")
             })?;
-            let parsed: OperatorBackupValidationResult = serde_json::from_value(result).map_err(
-                |error| {
+            let parsed: OperatorBackupValidationResult =
+                serde_json::from_value(result).map_err(|error| {
                     AppError::internal(format!(
                         "failed to parse completed backup validation result: {error}"
                     ))
-                },
-            )?;
+                })?;
             if parsed.request_id != request.request_id.trim()
                 || parsed.bundle_identifier != bundle_identifier
             {
@@ -121,15 +119,14 @@ pub(crate) async fn begin_operator_restore_verification(
 
     let (bundle_path, bundle_identifier) = selected_bundle_identity(&request.bundle_path)?;
 
-    let value: JsonValue = query_scalar(
-        "SELECT operations.begin_restore_verification_attempt($1, $2, $3)",
-    )
-    .bind(session_token)
-    .bind(request.request_id.trim())
-    .bind(&bundle_identifier)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let value: JsonValue =
+        query_scalar("SELECT operations.begin_restore_verification_attempt($1, $2, $3)")
+            .bind(session_token)
+            .bind(request.request_id.trim())
+            .bind(&bundle_identifier)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     let envelope = parse_attempt_envelope(value)?;
 
@@ -173,7 +170,9 @@ pub(crate) async fn begin_operator_restore_verification(
 
 fn parse_attempt_envelope(value: JsonValue) -> Result<RecoveryAttemptEnvelope, AppError> {
     serde_json::from_value(value).map_err(|error| {
-        AppError::internal(format!("failed to parse recovery attempt envelope: {error}"))
+        AppError::internal(format!(
+            "failed to parse recovery attempt envelope: {error}"
+        ))
     })
 }
 
@@ -203,27 +202,26 @@ fn canonical_selected_bundle(
 ) -> Result<PathBuf, AppError> {
     let canonical_root = configured_backup_root()?;
 
-    let selected_metadata = fs::symlink_metadata(bundle_path).map_err(|_| {
-        AppError::BackupValidationFailed {
+    let selected_metadata =
+        fs::symlink_metadata(bundle_path).map_err(|_| AppError::BackupValidationFailed {
             diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
-        }
-    })?;
+        })?;
     if is_symlink_or_reparse(&selected_metadata) || !selected_metadata.is_dir() {
         return Err(AppError::BackupValidationFailed {
             diagnostic: "BACKUP_PROOF_REJECTED_SYMLINK_INPUT".to_string(),
         });
     }
 
-    let canonical_bundle = bundle_path.canonicalize().map_err(|_| {
-        AppError::BackupValidationFailed {
+    let canonical_bundle =
+        bundle_path
+            .canonicalize()
+            .map_err(|_| AppError::BackupValidationFailed {
+                diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
+            })?;
+    let canonical_metadata =
+        fs::symlink_metadata(&canonical_bundle).map_err(|_| AppError::BackupValidationFailed {
             diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
-        }
-    })?;
-    let canonical_metadata = fs::symlink_metadata(&canonical_bundle).map_err(|_| {
-        AppError::BackupValidationFailed {
-            diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
-        }
-    })?;
+        })?;
     if is_symlink_or_reparse(&canonical_metadata) || !canonical_metadata.is_dir() {
         return Err(AppError::BackupValidationFailed {
             diagnostic: "BACKUP_PROOF_REJECTED_SYMLINK_INPUT".to_string(),
@@ -286,7 +284,8 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
     current_schema_version: String,
 ) -> Result<OperatorRestoreVerificationResult, AppError> {
     let canonical_bundle = canonical_selected_bundle(&bundle_path, &bundle_identifier)?;
-    let validated = restore_proof::preflight_bundle(&canonical_bundle).map_err(map_restore_error)?;
+    let validated =
+        restore_proof::preflight_bundle(&canonical_bundle).map_err(map_restore_error)?;
 
     if validated.application_version != env!("CARGO_PKG_VERSION")
         || validated.schema_version != current_schema_version
@@ -310,9 +309,12 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
         .map_err(map_restore_error)?;
 
     let temporary_database = restore_proof::generate_temp_db_name("verify");
-    if let Err(original) = restore_proof::create_database(&mut maintenance, &temporary_database).await {
+    if let Err(original) =
+        restore_proof::create_database(&mut maintenance, &temporary_database).await
+    {
         let original = map_restore_error(original);
-        let _ = restore_proof::drop_database_with_force(&mut maintenance, &temporary_database).await;
+        let _ =
+            restore_proof::drop_database_with_force(&mut maintenance, &temporary_database).await;
         return Err(original);
     }
 
@@ -332,13 +334,7 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
                 port,
                 database: &database,
             };
-            restore_proof::run_pg_restore(
-                &executable,
-                &target,
-                &username,
-                &password,
-                &dump_path,
-            )
+            restore_proof::run_pg_restore(&executable, &target, &username, &password, &dump_path)
         })
         .await
         .map_err(|_| AppError::BackupValidationFailed {
@@ -346,15 +342,22 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
         })?;
         restore_result.map_err(map_restore_error)?;
 
-        let restored_options = restore_proof::admin_connect_options(&parsed).database(&temporary_database);
+        let restored_options =
+            restore_proof::admin_connect_options(&parsed).database(&temporary_database);
         let mut restored = PgConnection::connect_with(&restored_options)
             .await
-            .map_err(|_| AppError::database_unavailable("temporary restored database unavailable"))?;
+            .map_err(|_| {
+                AppError::database_unavailable("temporary restored database unavailable")
+            })?;
 
-        let (control_totals, journal_balanced) = collect_restore_control_totals(&mut restored).await?;
-        restored.close().await.map_err(|_| AppError::BackupValidationFailed {
-            diagnostic: "RESTORE_VERIFICATION_CONNECTION_CLOSE_FAILED".to_string(),
-        })?;
+        let (control_totals, journal_balanced) =
+            collect_restore_control_totals(&mut restored).await?;
+        restored
+            .close()
+            .await
+            .map_err(|_| AppError::BackupValidationFailed {
+                diagnostic: "RESTORE_VERIFICATION_CONNECTION_CLOSE_FAILED".to_string(),
+            })?;
 
         Ok::<_, AppError>((control_totals, journal_balanced))
     }
@@ -409,17 +412,33 @@ async fn collect_restore_control_totals(
     .await?;
     let user_count = count(connection, "SELECT count(*)::bigint FROM iam.users").await?;
     let product_count = count(connection, "SELECT count(*)::bigint FROM catalog.products").await?;
-    let customer_count =
-        count(connection, "SELECT count(*)::bigint FROM receivables.customers").await?;
-    let supplier_count =
-        count(connection, "SELECT count(*)::bigint FROM procurement.suppliers").await?;
-    let inventory_position_count =
-        count(connection, "SELECT count(*)::bigint FROM inventory.positions").await?;
-    let inventory_movement_count =
-        count(connection, "SELECT count(*)::bigint FROM inventory.movements").await?;
-    let cash_sale_count = count(connection, "SELECT count(*)::bigint FROM sales.cash_sales").await?;
-    let journal_count =
-        count(connection, "SELECT count(*)::bigint FROM finance.journal_entries").await?;
+    let customer_count = count(
+        connection,
+        "SELECT count(*)::bigint FROM receivables.customers",
+    )
+    .await?;
+    let supplier_count = count(
+        connection,
+        "SELECT count(*)::bigint FROM procurement.suppliers",
+    )
+    .await?;
+    let inventory_position_count = count(
+        connection,
+        "SELECT count(*)::bigint FROM inventory.positions",
+    )
+    .await?;
+    let inventory_movement_count = count(
+        connection,
+        "SELECT count(*)::bigint FROM inventory.movements",
+    )
+    .await?;
+    let cash_sale_count =
+        count(connection, "SELECT count(*)::bigint FROM sales.cash_sales").await?;
+    let journal_count = count(
+        connection,
+        "SELECT count(*)::bigint FROM finance.journal_entries",
+    )
+    .await?;
     let opening_state_application_count = count(
         connection,
         "SELECT count(*)::bigint FROM onboarding.opening_state_applications WHERE status = 'APPLIED'",
@@ -489,18 +508,19 @@ pub(crate) async fn complete_operator_backup_validation_success(
     result: &OperatorBackupValidationResult,
 ) -> Result<(), AppError> {
     let result_json = serde_json::to_value(result).map_err(|error| {
-        AppError::internal(format!("failed to serialize backup validation result: {error}"))
+        AppError::internal(format!(
+            "failed to serialize backup validation result: {error}"
+        ))
     })?;
 
-    let _: JsonValue = query_scalar(
-        "SELECT operations.complete_recovery_attempt($1, $2, true, NULL, $3)",
-    )
-    .bind(session_token)
-    .bind(attempt_id)
-    .bind(result_json)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let _: JsonValue =
+        query_scalar("SELECT operations.complete_recovery_attempt($1, $2, true, NULL, $3)")
+            .bind(session_token)
+            .bind(attempt_id)
+            .bind(result_json)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     Ok(())
 }
@@ -512,15 +532,14 @@ pub(crate) async fn complete_operator_backup_validation_failure(
     error: &AppError,
 ) -> Result<(), AppError> {
     let stable_code = stable_error_code(error);
-    let _: JsonValue = query_scalar(
-        "SELECT operations.complete_recovery_attempt($1, $2, false, $3, NULL)",
-    )
-    .bind(session_token)
-    .bind(attempt_id)
-    .bind(stable_code)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let _: JsonValue =
+        query_scalar("SELECT operations.complete_recovery_attempt($1, $2, false, $3, NULL)")
+            .bind(session_token)
+            .bind(attempt_id)
+            .bind(stable_code)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     Ok(())
 }
@@ -532,7 +551,9 @@ pub(crate) async fn complete_operator_restore_verification_success(
     result: &OperatorRestoreVerificationResult,
 ) -> Result<(), AppError> {
     let result_json = serde_json::to_value(result).map_err(|error| {
-        AppError::internal(format!("failed to serialize restore verification result: {error}"))
+        AppError::internal(format!(
+            "failed to serialize restore verification result: {error}"
+        ))
     })?;
 
     let _: JsonValue = query_scalar(
@@ -606,9 +627,9 @@ fn configured_backup_root() -> Result<PathBuf, AppError> {
         ));
     }
 
-    let canonical = configured.canonicalize().map_err(|_| {
-        AppError::database_configuration("configured backup root is unavailable")
-    })?;
+    let canonical = configured
+        .canonicalize()
+        .map_err(|_| AppError::database_configuration("configured backup root is unavailable"))?;
     let canonical_metadata = fs::symlink_metadata(&canonical).map_err(|_| {
         AppError::database_configuration("configured backup root cannot be inspected")
     })?;
@@ -658,10 +679,8 @@ fn canonical_bundle_stats(bundle_root: &Path) -> Result<(u64, u64), AppError> {
         backup_proof::COMPANY_ASSETS_DIR,
     ] {
         let directory_path = bundle_root.join(directory);
-        for entry in fs::read_dir(directory_path).map_err(|_| {
-            AppError::BackupValidationFailed {
-                diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
-            }
+        for entry in fs::read_dir(directory_path).map_err(|_| AppError::BackupValidationFailed {
+            diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
         })? {
             let path = entry
                 .map_err(|_| AppError::BackupValidationFailed {
@@ -680,10 +699,8 @@ fn add_regular_file_stats(
     file_count: &mut u64,
     total_bytes: &mut u64,
 ) -> Result<(), AppError> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| {
-        AppError::BackupValidationFailed {
-            diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
-        }
+    let metadata = fs::symlink_metadata(path).map_err(|_| AppError::BackupValidationFailed {
+        diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
     })?;
     if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
         return Err(AppError::BackupValidationFailed {
@@ -711,6 +728,7 @@ fn is_symlink_or_reparse(metadata: &fs::Metadata) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn accepts_only_canonical_stockiha_bundle_identifiers() {

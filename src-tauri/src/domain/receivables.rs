@@ -157,7 +157,9 @@ impl AuthorizeCustomerRefundPayload {
             return Err("Refund authorization reason is required.".to_string());
         }
         if !(1..=30).contains(&self.ttl_minutes) {
-            return Err("Refund authorization lifetime must be between 1 and 30 minutes.".to_string());
+            return Err(
+                "Refund authorization lifetime must be between 1 and 30 minutes.".to_string(),
+            );
         }
         Ok(())
     }

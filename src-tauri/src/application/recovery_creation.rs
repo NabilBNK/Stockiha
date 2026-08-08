@@ -77,15 +77,14 @@ pub(crate) async fn begin_operator_backup_creation(
         .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
 
     let candidate_identifier = backup_proof::bundle_directory_name(OffsetDateTime::now_utc());
-    let value: JsonValue = query_scalar(
-        "SELECT operations.begin_recovery_attempt($1, $2, 'CREATE_BACKUP', $3)",
-    )
-    .bind(session_token)
-    .bind(request.request_id.trim())
-    .bind(candidate_identifier)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let value: JsonValue =
+        query_scalar("SELECT operations.begin_recovery_attempt($1, $2, 'CREATE_BACKUP', $3)")
+            .bind(session_token)
+            .bind(request.request_id.trim())
+            .bind(candidate_identifier)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     let envelope: CreationAttemptEnvelope = serde_json::from_value(value).map_err(|error| {
         AppError::internal(format!("failed to parse backup creation attempt: {error}"))
@@ -96,13 +95,12 @@ pub(crate) async fn begin_operator_backup_creation(
             let result = envelope.result.ok_or_else(|| {
                 AppError::internal("completed backup creation attempt has no result metadata")
             })?;
-            let parsed: OperatorBackupCreationResult = serde_json::from_value(result).map_err(
-                |error| {
+            let parsed: OperatorBackupCreationResult =
+                serde_json::from_value(result).map_err(|error| {
                     AppError::internal(format!(
                         "failed to parse completed backup creation result: {error}"
                     ))
-                },
-            )?;
+                })?;
             if parsed.request_id != request.request_id.trim()
                 || parsed.bundle_identifier != envelope.bundle_identifier
             {
@@ -208,17 +206,15 @@ pub(crate) fn create_operator_backup_files(
         )
         .map_err(map_creation_proof_error)?;
 
-        if staged_bundle.file_name().and_then(OsStr::to_str)
-            != Some(bundle_identifier.as_str())
-        {
+        if staged_bundle.file_name().and_then(OsStr::to_str) != Some(bundle_identifier.as_str()) {
             return Err(AppError::BackupCreationFailed {
                 diagnostic: "BACKUP_CREATION_IDENTIFIER_MISMATCH".to_string(),
             });
         }
 
         rewrite_schema_metadata(&staged_bundle, &current_schema_version)?;
-        let staged_validated = backup_proof::validate_bundle(&staged_bundle)
-            .map_err(map_creation_proof_error)?;
+        let staged_validated =
+            backup_proof::validate_bundle(&staged_bundle).map_err(map_creation_proof_error)?;
         if staged_validated.schema_version != current_schema_version {
             return Err(AppError::BackupCreationFailed {
                 diagnostic: "BACKUP_CREATION_SCHEMA_METADATA_MISMATCH".to_string(),
@@ -230,10 +226,8 @@ pub(crate) fn create_operator_backup_files(
             });
         }
 
-        fs::rename(&staged_bundle, &final_path).map_err(|_| {
-            AppError::BackupCreationFailed {
-                diagnostic: "BACKUP_CREATION_PUBLISH_FAILED".to_string(),
-            }
+        fs::rename(&staged_bundle, &final_path).map_err(|_| AppError::BackupCreationFailed {
+            diagnostic: "BACKUP_CREATION_PUBLISH_FAILED".to_string(),
         })?;
 
         let validated =
@@ -255,17 +249,18 @@ pub(crate) async fn complete_operator_backup_creation_success(
     result: &OperatorBackupCreationResult,
 ) -> Result<(), AppError> {
     let result_json = serde_json::to_value(result).map_err(|error| {
-        AppError::internal(format!("failed to serialize backup creation result: {error}"))
+        AppError::internal(format!(
+            "failed to serialize backup creation result: {error}"
+        ))
     })?;
-    let _: JsonValue = query_scalar(
-        "SELECT operations.complete_recovery_attempt($1, $2, true, NULL, $3)",
-    )
-    .bind(session_token)
-    .bind(attempt_id)
-    .bind(result_json)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let _: JsonValue =
+        query_scalar("SELECT operations.complete_recovery_attempt($1, $2, true, NULL, $3)")
+            .bind(session_token)
+            .bind(attempt_id)
+            .bind(result_json)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
     Ok(())
 }
 
@@ -276,15 +271,14 @@ pub(crate) async fn complete_operator_backup_creation_failure(
     error: &AppError,
 ) -> Result<(), AppError> {
     let stable_code = creation_audit_error_code(error);
-    let _: JsonValue = query_scalar(
-        "SELECT operations.complete_recovery_attempt($1, $2, false, $3, NULL)",
-    )
-    .bind(session_token)
-    .bind(attempt_id)
-    .bind(stable_code)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let _: JsonValue =
+        query_scalar("SELECT operations.complete_recovery_attempt($1, $2, false, $3, NULL)")
+            .bind(session_token)
+            .bind(attempt_id)
+            .bind(stable_code)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
     Ok(())
 }
 
@@ -294,8 +288,7 @@ fn result_from_existing_bundle(
     bundle_identifier: String,
     current_schema_version: String,
 ) -> Result<OperatorBackupCreationResult, AppError> {
-    let validated =
-        backup_proof::validate_bundle(&final_path).map_err(map_creation_proof_error)?;
+    let validated = backup_proof::validate_bundle(&final_path).map_err(map_creation_proof_error)?;
     if validated.schema_version != current_schema_version {
         return Err(AppError::BackupCreationFailed {
             diagnostic: "BACKUP_CREATION_EXISTING_BUNDLE_SCHEMA_MISMATCH".to_string(),
@@ -358,9 +351,9 @@ fn configured_backup_root() -> Result<PathBuf, AppError> {
         ));
     }
 
-    let canonical = configured.canonicalize().map_err(|_| {
-        AppError::database_configuration("configured backup root is unavailable")
-    })?;
+    let canonical = configured
+        .canonicalize()
+        .map_err(|_| AppError::database_configuration("configured backup root is unavailable"))?;
     let canonical_metadata = fs::symlink_metadata(&canonical).map_err(|_| {
         AppError::database_configuration("configured backup root cannot be inspected")
     })?;
@@ -382,11 +375,7 @@ fn resolve_pg_dump_target() -> Result<(String, u16, String), AppError> {
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| AppError::database_configuration("database target has no database name"))?
         .to_string();
-    Ok((
-        options.get_host().to_string(),
-        options.get_port(),
-        database,
-    ))
+    Ok((options.get_host().to_string(), options.get_port(), database))
 }
 
 fn collect_backup_inputs(app_data_dir: &Path) -> Result<backup_proof::BackupInputs, AppError> {
@@ -403,10 +392,9 @@ fn collect_flat_files(directory: &Path) -> Result<Vec<PathBuf>, AppError> {
     if !directory.exists() {
         return Ok(Vec::new());
     }
-    let metadata =
-        fs::symlink_metadata(directory).map_err(|_| AppError::BackupCreationFailed {
-            diagnostic: "BACKUP_CREATION_ASSET_DIRECTORY_UNAVAILABLE".to_string(),
-        })?;
+    let metadata = fs::symlink_metadata(directory).map_err(|_| AppError::BackupCreationFailed {
+        diagnostic: "BACKUP_CREATION_ASSET_DIRECTORY_UNAVAILABLE".to_string(),
+    })?;
     if is_symlink_or_reparse(&metadata) || !metadata.is_dir() {
         return Err(AppError::BackupCreationFailed {
             diagnostic: "BACKUP_CREATION_ASSET_DIRECTORY_INVALID".to_string(),
@@ -422,10 +410,9 @@ fn collect_flat_files(directory: &Path) -> Result<Vec<PathBuf>, AppError> {
                 diagnostic: "BACKUP_CREATION_ASSET_DIRECTORY_UNAVAILABLE".to_string(),
             })?
             .path();
-        let metadata =
-            fs::symlink_metadata(&path).map_err(|_| AppError::BackupCreationFailed {
-                diagnostic: "BACKUP_CREATION_ASSET_INPUT_UNAVAILABLE".to_string(),
-            })?;
+        let metadata = fs::symlink_metadata(&path).map_err(|_| AppError::BackupCreationFailed {
+            diagnostic: "BACKUP_CREATION_ASSET_INPUT_UNAVAILABLE".to_string(),
+        })?;
         if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
             return Err(AppError::BackupCreationFailed {
                 diagnostic: "BACKUP_CREATION_ASSET_INPUT_INVALID".to_string(),
@@ -515,16 +502,13 @@ fn rewrite_schema_metadata(bundle_path: &Path, schema_version: &str) -> Result<(
     let (schema_hash, schema_size) = hash_file(&schema_path)?;
 
     let manifest_path = bundle_path.join(backup_proof::MANIFEST_FILENAME);
-    let manifest_bytes = fs::read(&manifest_path).map_err(|_| {
-        AppError::BackupCreationFailed {
-            diagnostic: "BACKUP_CREATION_MANIFEST_REWRITE_FAILED".to_string(),
-        }
+    let manifest_bytes = fs::read(&manifest_path).map_err(|_| AppError::BackupCreationFailed {
+        diagnostic: "BACKUP_CREATION_MANIFEST_REWRITE_FAILED".to_string(),
     })?;
-    let mut manifest: MutableManifest = serde_json::from_slice(&manifest_bytes).map_err(|_| {
-        AppError::BackupCreationFailed {
+    let mut manifest: MutableManifest =
+        serde_json::from_slice(&manifest_bytes).map_err(|_| AppError::BackupCreationFailed {
             diagnostic: "BACKUP_CREATION_MANIFEST_REWRITE_FAILED".to_string(),
-        }
-    })?;
+        })?;
     manifest.schema_version = schema_version.trim().to_string();
 
     let mut schema_entry_count = 0;
@@ -550,11 +534,10 @@ fn rewrite_schema_metadata(bundle_path: &Path, schema_version: &str) -> Result<(
         .files
         .sort_by(|left, right| left.path.cmp(&right.path));
 
-    let rewritten_manifest = serde_json::to_vec(&manifest).map_err(|_| {
-        AppError::BackupCreationFailed {
+    let rewritten_manifest =
+        serde_json::to_vec(&manifest).map_err(|_| AppError::BackupCreationFailed {
             diagnostic: "BACKUP_CREATION_MANIFEST_REWRITE_FAILED".to_string(),
-        }
-    })?;
+        })?;
     write_synced(&manifest_path, &rewritten_manifest)?;
     let manifest_hash = hash_bytes(&rewritten_manifest);
 
@@ -563,10 +546,7 @@ fn rewrite_schema_metadata(bundle_path: &Path, schema_version: &str) -> Result<(
         .iter()
         .map(|entry| (entry.path.clone(), entry.sha256.clone()))
         .collect();
-    checksum_lines.push((
-        backup_proof::MANIFEST_FILENAME.to_string(),
-        manifest_hash,
-    ));
+    checksum_lines.push((backup_proof::MANIFEST_FILENAME.to_string(), manifest_hash));
     checksum_lines.sort_by(|left, right| left.0.cmp(&right.0));
     let mut checksums = String::new();
     for (path, hash) in checksum_lines {
@@ -718,8 +698,7 @@ mod tests {
 
     #[test]
     fn parses_canonical_bundle_time_without_panicking_on_unicode() {
-        let parsed =
-            parse_bundle_identifier_time("GestStock-Backup-20260803-203015").unwrap();
+        let parsed = parse_bundle_identifier_time("GestStock-Backup-20260803-203015").unwrap();
         assert_eq!(
             backup_proof::bundle_directory_name(parsed),
             "GestStock-Backup-20260803-203015"
@@ -738,8 +717,7 @@ mod tests {
             "pg_dump (PostgreSQL) 18.0",
             &backup_proof::BackupInputs::empty(),
             |path| {
-                fs::write(path, b"fake-custom-dump")
-                    .map_err(|_| backup_proof::BackupProofError::Io)
+                fs::write(path, b"fake-custom-dump").map_err(|_| backup_proof::BackupProofError::Io)
             },
         )
         .unwrap();

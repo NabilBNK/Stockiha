@@ -6,7 +6,9 @@ use tauri::State;
 use time::OffsetDateTime;
 
 use crate::application::cash_session;
-use crate::domain::cash_session::{CashDenomination, CashSessionCloseResult, DenominationCountInput};
+use crate::domain::cash_session::{
+    CashDenomination, CashSessionCloseResult, DenominationCountInput,
+};
 use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
 

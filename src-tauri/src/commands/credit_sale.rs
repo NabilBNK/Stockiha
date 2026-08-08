@@ -2,11 +2,11 @@ use rust_decimal::Decimal;
 use serde::Deserialize;
 use tauri::State;
 
+use crate::application;
 use crate::application::credit_sale::{
     self, AuthorizeCreditOverrideRequest, ConfirmCreditSaleRequest, CreditSaleDraft,
     CreditSaleLineInput, CreditSaleResult,
 };
-use crate::application;
 use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
 

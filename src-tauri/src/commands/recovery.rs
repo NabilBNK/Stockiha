@@ -5,9 +5,9 @@ use tauri::{AppHandle, Manager, State};
 use crate::application::recovery::{self, RestoreVerificationAttempt, ValidationAttempt};
 use crate::application::recovery_creation::{self, CreationAttempt};
 use crate::domain::recovery::{
-    CreateOperatorBackupRequest, OperatorBackupCreationResult,
-    OperatorBackupValidationResult, OperatorRestoreVerificationResult,
-    ValidateOperatorBackupRequest, VerifyOperatorBackupRestoreRequest,
+    CreateOperatorBackupRequest, OperatorBackupCreationResult, OperatorBackupValidationResult,
+    OperatorRestoreVerificationResult, ValidateOperatorBackupRequest,
+    VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
@@ -50,33 +50,27 @@ pub(crate) async fn create_operator_backup(
     request: CreateOperatorBackupRequest,
 ) -> Result<OperatorBackupCreationResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    let attempt =
-        recovery_creation::begin_operator_backup_creation(pool, &session_token, request)
-            .await
-            .map_err(IpcError::from)?;
+    let attempt = recovery_creation::begin_operator_backup_creation(pool, &session_token, request)
+        .await
+        .map_err(IpcError::from)?;
 
-    let (
-        attempt_id,
-        request_id,
-        bundle_identifier,
-        current_schema_version,
-        resume_existing,
-    ) = match attempt {
-        CreationAttempt::Replay(result) => return Ok(result),
-        CreationAttempt::Run {
-            attempt_id,
-            request_id,
-            bundle_identifier,
-            current_schema_version,
-            resume_existing,
-        } => (
-            attempt_id,
-            request_id,
-            bundle_identifier,
-            current_schema_version,
-            resume_existing,
-        ),
-    };
+    let (attempt_id, request_id, bundle_identifier, current_schema_version, resume_existing) =
+        match attempt {
+            CreationAttempt::Replay(result) => return Ok(result),
+            CreationAttempt::Run {
+                attempt_id,
+                request_id,
+                bundle_identifier,
+                current_schema_version,
+                resume_existing,
+            } => (
+                attempt_id,
+                request_id,
+                bundle_identifier,
+                current_schema_version,
+                resume_existing,
+            ),
+        };
 
     let app_data_dir = match app.path().app_data_dir() {
         Ok(path) => path,
@@ -148,28 +142,23 @@ pub(crate) async fn validate_operator_backup(
         .await
         .map_err(IpcError::from)?;
 
-    let (
-        attempt_id,
-        request_id,
-        bundle_path,
-        bundle_identifier,
-        current_schema_version,
-    ) = match attempt {
-        ValidationAttempt::Replay(result) => return Ok(result),
-        ValidationAttempt::Run {
-            attempt_id,
-            request_id,
-            bundle_path,
-            bundle_identifier,
-            current_schema_version,
-        } => (
-            attempt_id,
-            request_id,
-            bundle_path,
-            bundle_identifier,
-            current_schema_version,
-        ),
-    };
+    let (attempt_id, request_id, bundle_path, bundle_identifier, current_schema_version) =
+        match attempt {
+            ValidationAttempt::Replay(result) => return Ok(result),
+            ValidationAttempt::Run {
+                attempt_id,
+                request_id,
+                bundle_path,
+                bundle_identifier,
+                current_schema_version,
+            } => (
+                attempt_id,
+                request_id,
+                bundle_path,
+                bundle_identifier,
+                current_schema_version,
+            ),
+        };
 
     let validation = tauri::async_runtime::spawn_blocking(move || {
         recovery::validate_operator_backup_files(
@@ -218,28 +207,23 @@ pub(crate) async fn verify_operator_backup_restore(
         .await
         .map_err(IpcError::from)?;
 
-    let (
-        attempt_id,
-        request_id,
-        bundle_path,
-        bundle_identifier,
-        current_schema_version,
-    ) = match attempt {
-        RestoreVerificationAttempt::Replay(result) => return Ok(result),
-        RestoreVerificationAttempt::Run {
-            attempt_id,
-            request_id,
-            bundle_path,
-            bundle_identifier,
-            current_schema_version,
-        } => (
-            attempt_id,
-            request_id,
-            bundle_path,
-            bundle_identifier,
-            current_schema_version,
-        ),
-    };
+    let (attempt_id, request_id, bundle_path, bundle_identifier, current_schema_version) =
+        match attempt {
+            RestoreVerificationAttempt::Replay(result) => return Ok(result),
+            RestoreVerificationAttempt::Run {
+                attempt_id,
+                request_id,
+                bundle_path,
+                bundle_identifier,
+                current_schema_version,
+            } => (
+                attempt_id,
+                request_id,
+                bundle_path,
+                bundle_identifier,
+                current_schema_version,
+            ),
+        };
 
     let verification = recovery::verify_operator_backup_restore_runtime(
         request_id,

@@ -7,8 +7,7 @@ use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
 
 use crate::domain::cash_session::{
-    validate_denomination_counts, CashDenomination, CashSessionCloseResult,
-    DenominationCountInput,
+    validate_denomination_counts, CashDenomination, CashSessionCloseResult, DenominationCountInput,
 };
 use crate::error::AppError;
 
@@ -127,9 +126,15 @@ pub(crate) async fn inspect_current_cash_session(
         opening_float: row.get::<Decimal, _>("opening_float").to_string(),
         opened_at: rfc3339(row.get("opened_at")),
         close_attempt_id: row.get("close_attempt_id"),
-        expected_amount: row.get::<Option<Decimal>, _>("expected_amount").map(|v| v.to_string()),
-        counted_amount: row.get::<Option<Decimal>, _>("counted_amount").map(|v| v.to_string()),
-        variance_amount: row.get::<Option<Decimal>, _>("variance_amount").map(|v| v.to_string()),
+        expected_amount: row
+            .get::<Option<Decimal>, _>("expected_amount")
+            .map(|v| v.to_string()),
+        counted_amount: row
+            .get::<Option<Decimal>, _>("counted_amount")
+            .map(|v| v.to_string()),
+        variance_amount: row
+            .get::<Option<Decimal>, _>("variance_amount")
+            .map(|v| v.to_string()),
         requires_manager_approval: row.get("requires_manager_approval"),
         suspension_reason: row.get("suspension_reason"),
     }))
@@ -194,16 +199,16 @@ pub(crate) async fn submit_cash_session_count(
         diagnostic: err.to_string(),
     })?;
 
-    let counts_json = serde_json::to_value(counts).map_err(|err| AppError::Internal(err.to_string()))?;
-    let result: serde_json::Value = sqlx::query_scalar(
-        "SELECT sales.submit_cash_session_count($1, $2, $3)",
-    )
-    .bind(session_token)
-    .bind(cash_session_id)
-    .bind(counts_json)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let counts_json =
+        serde_json::to_value(counts).map_err(|err| AppError::Internal(err.to_string()))?;
+    let result: serde_json::Value =
+        sqlx::query_scalar("SELECT sales.submit_cash_session_count($1, $2, $3)")
+            .bind(session_token)
+            .bind(cash_session_id)
+            .bind(counts_json)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     serde_json::from_value(result).map_err(|err| AppError::Internal(err.to_string()))
 }
@@ -221,16 +226,15 @@ pub(crate) async fn approve_cash_session_variance(
         });
     }
 
-    let result: serde_json::Value = sqlx::query_scalar(
-        "SELECT sales.approve_cash_session_variance($1, $2, $3, $4)",
-    )
-    .bind(session_token)
-    .bind(cash_session_id)
-    .bind(close_attempt_id)
-    .bind(reason.trim())
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let result: serde_json::Value =
+        sqlx::query_scalar("SELECT sales.approve_cash_session_variance($1, $2, $3, $4)")
+            .bind(session_token)
+            .bind(cash_session_id)
+            .bind(close_attempt_id)
+            .bind(reason.trim())
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     serde_json::from_value(result).map_err(|err| AppError::Internal(err.to_string()))
 }
@@ -278,7 +282,8 @@ pub(crate) async fn handover_cash_session(
 ) -> Result<i64, AppError> {
     if cash_session_id <= 0 || target_username.trim().is_empty() || reason.trim().is_empty() {
         return Err(AppError::ValidationError {
-            diagnostic: "cash session, target cashier, and handover reason are required".to_string(),
+            diagnostic: "cash session, target cashier, and handover reason are required"
+                .to_string(),
         });
     }
 

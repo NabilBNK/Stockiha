@@ -2,9 +2,8 @@ use tauri::State;
 
 use crate::application::opening_state_application;
 use crate::domain::opening_state_application::{
-    ApplyOpeningStateRequest, OpeningStateApplicationContextResult,
-    OpeningStateApplicationResult, OpeningStateApplicationSettingResult,
-    UpdateOpeningStateApplicationSettingRequest,
+    ApplyOpeningStateRequest, OpeningStateApplicationContextResult, OpeningStateApplicationResult,
+    OpeningStateApplicationSettingResult, UpdateOpeningStateApplicationSettingRequest,
 };
 use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
