@@ -5,6 +5,7 @@ import type {
   HistoricalPaymentStatus,
   HistoricalReviewStatus,
   HistoricalTransactionType,
+  HistoricalTradeLineInput,
   HistoricalTradeTransactionInput,
   PaperBookImportProfile,
   PaperBookPaymentStatus,
@@ -152,15 +153,24 @@ export interface HistoricalFinanceWorkbookData {
   errors: HistoricalFinanceImportError[];
 }
 
+export type PaperBookError = HistoricalFinanceImportError;
+export type PaperBookTransaction = HistoricalTradeTransactionInput;
+export type PaperBookLine = HistoricalTradeLineInput;
+
 export interface PaperBookSummary {
   transactionCount: number;
   lineCount: number;
+  totalLines: number;
   salesCount: number;
   purchaseCount: number;
   expenseCount: number;
   totalSalesDzd: number;
   totalPurchasesDzd: number;
   totalExpensesDzd: number;
+  paidSalesDzd: number;
+  unpaidSalesDzd: number;
+  paidPurchasesDzd: number;
+  unpaidPurchasesDzd: number;
   paidExpensesDzd: number;
   unpaidExpensesDzd: number;
   manualBenefitCount: number;
@@ -172,6 +182,10 @@ export interface PaperBookSummary {
   unmatchedProductCount: number;
   manualOverrideCount: number;
   missingQtyCount: number;
+  errorCount: number;
+  warningCount: number;
+  isPartial: boolean;
+  contentHash?: string;
 }
 
 export interface PaperBookWorkbookData {
@@ -334,7 +348,17 @@ async function inflateRaw(bytes: Uint8Array): Promise<Uint8Array> {
     throw new WorkbookParseError('This device cannot decompress .xlsx files.');
   }
 
-  const stream = new Blob([bytes]).stream().pipeThrough(
+  const blob = new Blob([bytes]);
+  const inputStream = typeof blob.stream === 'function'
+    ? blob.stream()
+    : new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      });
+
+  const stream = inputStream.pipeThrough(
     new DecompressionStream('deflate-raw' as CompressionFormat),
   );
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -659,6 +683,8 @@ export async function computeContentHash(transactions: HistoricalTradeTransactio
         pn: l.productName,
         b: l.brand,
         cd: l.customDetails,
+        pc: l.partyCompany,
+        mb: l.manualBenefitDzd,
         q: l.quantity,
         u: l.unitPriceDzd,
         m: l.manualLineTotalDzd,
@@ -672,17 +698,26 @@ export async function computeContentHash(transactions: HistoricalTradeTransactio
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Date parser supporting DD/MM/YYYY and YYYY-MM-DD
+// Date parser supporting DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, and safe Excel serial integer dates
 function parsePaperBookDate(value: string, rowNumber: number): string {
   const trimmed = value.trim();
-  const ddMmYyyy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
+  const ddMmYyyy = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(trimmed);
   if (ddMmYyyy) {
     const day = ddMmYyyy[1].padStart(2, '0');
     const month = ddMmYyyy[2].padStart(2, '0');
     const year = ddMmYyyy[3];
     return parseIsoDate(`${year}-${month}-${day}`, `Row ${rowNumber} Date`);
   }
-  return parseIsoDate(trimmed, `Row ${rowNumber} Date`);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return parseIsoDate(trimmed, `Row ${rowNumber} Date`);
+  }
+  if (/^\d{5}$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      return excelSerialToIsoDate(numeric);
+    }
+  }
+  throw new Error(`Row ${rowNumber} · Date: "${value}" is not a valid date. Expected DD/MM/YYYY, for example 23/11/2025.`);
 }
 
 function normalizeType(value: string, rowNumber: number): PaperBookTransactionType {
@@ -825,12 +860,8 @@ export function parsePaperBookSheet(
           // Ignore
         }
       }
-      if (partyStr !== null && activeTxn.partyCompany !== null && partyStr !== activeTxn.partyCompany) {
-        pushError(errors, {
-          sheet: sheet.name,
-          row: rowNumber,
-          message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Party (${partyStr}) conflicts with header (${activeTxn.partyCompany}).`,
-        });
+      if (partyStr !== null && activeTxn.partyCompany === null) {
+        activeTxn.partyCompany = partyStr;
       }
       if (pageNoVal !== null && activeTxn.pageNumber !== null && pageNoVal !== activeTxn.pageNumber) {
         pushError(errors, {
@@ -839,24 +870,13 @@ export function parsePaperBookSheet(
           message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Page No (${pageNoVal}) conflicts with header (${activeTxn.pageNumber}).`,
         });
       }
-      if (benefitVal !== null) {
-        if (activeTxn.transactionType !== 'SALE') {
-          pushError(errors, {
-            sheet: sheet.name,
-            row: rowNumber,
-            column: 'Benefit (Sell Only)',
-            message: `BENEFIT_NOT_ALLOWED_FOR_NON_SALE: Benefit is only allowed for SALE transactions.`,
-          });
-        } else if (activeTxn.manualBenefitDzd !== null && benefitVal !== activeTxn.manualBenefitDzd) {
-          pushError(errors, {
-            sheet: sheet.name,
-            row: rowNumber,
-            column: 'Benefit (Sell Only)',
-            message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Benefit (${benefitVal}) conflicts with header (${activeTxn.manualBenefitDzd}).`,
-          });
-        } else if (activeTxn.manualBenefitDzd === null) {
-          activeTxn.manualBenefitDzd = benefitVal;
-        }
+      if (benefitVal !== null && activeTxn.transactionType !== 'SALE') {
+        pushError(errors, {
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Benefit (Sell Only)',
+          message: `BENEFIT_NOT_ALLOWED_FOR_NON_SALE: Benefit is only allowed for SALE transactions.`,
+        });
       }
     }
 
@@ -865,6 +885,8 @@ export function parsePaperBookSheet(
     const productName = optionalString(cells[5]?.value);
     const brand = optionalString(cells[6]?.value);
     const customDetails = optionalString(cells[7]?.value);
+    const lineParty = partyStr !== null ? partyStr : activeTxn.partyCompany;
+    const lineBenefit = activeTxn.transactionType === 'SALE' ? benefitVal : null;
     const qtyVal = parseOptionalInteger(cells[8]?.value, 'Quantity');
 
     const isExpense = activeTxn.transactionType === 'EXPENSE';
@@ -924,10 +946,22 @@ export function parsePaperBookSheet(
       productName,
       brand,
       customDetails,
+      partyCompany: lineParty,
+      manualBenefitDzd: lineBenefit,
       quantity: qtyVal,
       unitPriceDzd: unitPriceVal,
       manualLineTotalDzd,
     });
+
+    // Re-aggregate transaction-level manual benefit for SALE transactions
+    if (activeTxn.transactionType === 'SALE') {
+      const nonNullBenefits = activeTxn.lines
+        .map((l) => l.manualBenefitDzd)
+        .filter((b): b is number => b !== null);
+      activeTxn.manualBenefitDzd = nonNullBenefits.length > 0
+        ? nonNullBenefits.reduce((sum, val) => sum + val, 0)
+        : null;
+    }
   }
 
   return transactions;
@@ -994,6 +1028,10 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
   let totalSalesDzd = 0;
   let totalPurchasesDzd = 0;
   let totalExpensesDzd = 0;
+  let paidSalesDzd = 0;
+  let unpaidSalesDzd = 0;
+  let paidPurchasesDzd = 0;
+  let unpaidPurchasesDzd = 0;
   let paidExpensesDzd = 0;
   let unpaidExpensesDzd = 0;
   let manualBenefitCount = 0;
@@ -1029,9 +1067,15 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
       const calcTotal = l.quantity !== null && l.unitPriceDzd !== null ? l.quantity * l.unitPriceDzd : null;
       const effTotal = l.manualLineTotalDzd !== null ? l.manualLineTotalDzd : calcTotal ?? 0;
 
-      if (t.transactionType === 'SALE') totalSalesDzd += effTotal;
-      if (t.transactionType === 'PURCHASE') totalPurchasesDzd += effTotal;
-      if (t.transactionType === 'EXPENSE') {
+      if (t.transactionType === 'SALE') {
+        totalSalesDzd += effTotal;
+        if (t.paymentStatus === 'PAID') paidSalesDzd += effTotal;
+        else unpaidSalesDzd += effTotal;
+      } else if (t.transactionType === 'PURCHASE') {
+        totalPurchasesDzd += effTotal;
+        if (t.paymentStatus === 'PAID') paidPurchasesDzd += effTotal;
+        else unpaidPurchasesDzd += effTotal;
+      } else if (t.transactionType === 'EXPENSE') {
         totalExpensesDzd += effTotal;
         if (t.paymentStatus === 'PAID') paidExpensesDzd += effTotal;
         else unpaidExpensesDzd += effTotal;
@@ -1045,12 +1089,17 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
   const summary: PaperBookSummary = {
     transactionCount: transactions.length,
     lineCount,
+    totalLines: lineCount,
     salesCount,
     purchaseCount,
     expenseCount,
     totalSalesDzd,
     totalPurchasesDzd,
     totalExpensesDzd,
+    paidSalesDzd,
+    unpaidSalesDzd,
+    paidPurchasesDzd,
+    unpaidPurchasesDzd,
     paidExpensesDzd,
     unpaidExpensesDzd,
     manualBenefitCount,
@@ -1062,6 +1111,10 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
     unmatchedProductCount: 0,
     manualOverrideCount,
     missingQtyCount,
+    errorCount: errors.length,
+    warningCount: warnings.length,
+    isPartial: errors.length > 0,
+    contentHash,
   };
 
   return {

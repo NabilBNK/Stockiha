@@ -252,6 +252,8 @@ pub(crate) async fn replace_historical_trade_batch_data(
                         "product_name": line.product_name.as_deref().map(str::trim),
                         "brand": line.brand.as_deref().map(str::trim),
                         "custom_details": line.custom_details.as_deref().map(str::trim),
+                        "party_company": line.party_company.as_deref().map(str::trim),
+                        "manual_benefit_dzd": line.manual_benefit_dzd,
                         "quantity": line.quantity,
                         "unit_price_dzd": line.unit_price_dzd,
                         "manual_line_total_dzd": line.manual_line_total_dzd,

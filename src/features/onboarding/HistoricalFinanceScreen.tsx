@@ -25,6 +25,12 @@ import {
   validateHistoricalFinanceBatch,
   validateHistoricalTradeBatch,
 } from '../../shared/ipc/onboardingGateway';
+import { HistoricalAnalyticsDashboard } from './HistoricalAnalyticsDashboard';
+import { HistoricalImportPanel } from './HistoricalImportPanel';
+import { HistoricalImportStepper, type ImportStep } from './HistoricalImportStepper';
+import { HistoricalIssueList } from './HistoricalIssueList';
+import { HistoricalKpiCard } from './HistoricalKpiCard';
+import { HistoricalRowPreview } from './HistoricalRowPreview';
 import {
   parseHistoricalFinanceWorkbook,
   parsePaperBookWorkbook,
@@ -45,16 +51,6 @@ type BusyAction =
   | 'summary'
   | 'analytics'
   | null;
-
-type AnalyticsSubTab =
-  | 'overview'
-  | 'sales'
-  | 'purchases'
-  | 'products'
-  | 'brands'
-  | 'parties'
-  | 'quality'
-  | 'overrides';
 
 interface ManualDraft {
   paperId: string;
@@ -110,25 +106,27 @@ const PAYMENT_STATUSES: HistoricalPaymentStatus[] = [
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
     title: 'Historical finance onboarding',
-    subtitle: 'Import the 1.5-year finance history from the official Excel template or enter a missing paper manually.',
+    subtitle: 'Import the 1.5-year finance history from the official Excel paper book or enter missing records manually.',
     safety: 'Historical data is staged for review and reporting only. It does not create live sales, purchases, stock, cash, receivables, payables, or journal entries.',
     enabled: 'Historical finance import enabled',
     enabledHelp: 'CEO/administrator control. It is ON by default and blocks new batches when disabled.',
-    paperBookTitle: 'Primary path — Paper-Book 1.5-Year XLSX Import (BUY / SELL)',
-    paperBookHelp: 'Use the official Stockiha paper-book template with Transactions sheet. Formula values in Line Total are recalculated independently.',
-    excelTitle: 'Secondary path — Generic Excel import (R0-001)',
+    paperBookTitle: 'Primary Path — Paper-Book 1.5-Year XLSX Import (BUY / SELL / EXPENSE)',
+    paperBookHelp: 'Use the official Stockiha paper-book template with Transactions sheet. Continuation rows, line-level party, and line-level manual benefit are supported.',
+    excelTitle: 'Secondary Path — Generic Excel Import (R0-001)',
     excelHelp: 'Use the generic Stockiha workbook with Historical_Transactions and Balances sheets.',
     chooseFile: 'Choose .xlsx workbook',
     fileReady: 'Workbook parsed successfully.',
     transactions: 'Transaction rows',
     balances: 'Balance rows',
     errors: 'Workbook errors',
+    importValidatePaperBook: 'Stage and validate paper book',
     importValidate: 'Stage and validate workbook',
     validated: 'The batch is clean and ready for approval.',
     needsReview: 'The batch contains validation issues and cannot be approved yet.',
+    approvePaperBook: 'Approve paper book for reporting',
     approve: 'Approve for historical reporting',
     approved: 'Historical batch approved for reporting.',
-    manualTitle: 'Secondary path — manual entry',
+    manualTitle: 'Secondary Path — Manual Entry',
     manualHelp: 'Use this for a missing paper or a correction batch. Product details are not required.',
     paperId: 'Paper ID',
     date: 'Transaction date',
@@ -143,7 +141,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     notes: 'Notes (optional)',
     saveManual: 'Stage and validate manual row',
     manualSaved: 'Manual row staged and validated.',
-    summaryTitle: 'Historical finance summary',
+    summaryTitle: 'Historical Finance Summary',
     summaryHelp: 'Only approved historical batches are included.',
     dateFrom: 'From date',
     dateTo: 'To date',
@@ -162,33 +160,31 @@ const COPY: Record<Locale, Record<string, string>> = {
     parseFailed: 'The workbook could not be read. Use the official Stockiha template and correct the reported problem.',
     analyticsTitle: '1.5-Year Trade Analytics Dashboard',
     analyticsHelp: 'Comprehensive multi-dimensional analytics for approved paper-book trade records.',
-    profitWarning: 'Recorded trade difference — not accounting profit',
-    profitWarningDetail: 'Purchases can remain in inventory. True accounting profit requires opening/closing inventory valuation.',
     loadAnalytics: 'Compute Trade Analytics',
-    tradeDifference: 'Recorded Trade Difference (Sales - Purchases)',
   },
   fr: {
     title: 'Intégration financière historique',
-    subtitle: 'Importer 1,5 an d’historique financier depuis le modèle Excel officiel ou saisir manuellement un document manquant.',
+    subtitle: 'Importer 1,5 an d’historique financier depuis le registre papier Excel officiel ou saisir manuellement un document manquant.',
     safety: 'Les données historiques sont préparées uniquement pour contrôle et reporting. Elles ne créent aucune vente, achat, stock, caisse, créance, dette ou écriture comptable active.',
     enabled: 'Import financier historique activé',
     enabledHelp: 'Contrôle du PDG/administrateur. Activé par défaut et bloque les nouveaux lots lorsqu’il est désactivé.',
-    paperBookTitle: 'Chemin principal — Import Registre Papier 1,5 An (ACHAT / VENTE)',
-    paperBookHelp: 'Utilisez le modèle officiel avec la feuille Transactions. Les formules dans Total Ligne sont recalculées.',
-    excelTitle: 'Chemin secondaire — Import Excel générique (R0-001)',
+    paperBookTitle: 'Chemin Principal — Import Registre Papier 1,5 An (ACHAT / VENTE / DÉPENSE)',
+    paperBookHelp: 'Utilisez le modèle officiel avec la feuille Transactions.',
+    excelTitle: 'Chemin Secondaire — Import Excel Générique (R0-001)',
     excelHelp: 'Utilisez le classeur générique avec les feuilles Historical_Transactions et Balances.',
     chooseFile: 'Choisir le classeur .xlsx',
     fileReady: 'Classeur analysé avec succès.',
     transactions: 'Lignes de transactions',
     balances: 'Lignes de soldes',
     errors: 'Erreurs du classeur',
+    importValidatePaperBook: 'Préparer et valider le registre',
     importValidate: 'Préparer et valider le classeur',
     validated: 'Le lot est valide et prêt pour approbation.',
     needsReview: 'Le lot contient des erreurs et ne peut pas être approuvé.',
     approve: 'Approuver pour le reporting historique',
     approved: 'Lot historique approuvé pour le reporting.',
-    manualTitle: 'Chemin secondaire — saisie manuelle',
-    manualHelp: 'À utiliser pour un document manquant ou un lot de correction. Les détails produits ne sont pas requis.',
+    manualTitle: 'Chemin Secondaire — Saisie Manuelle',
+    manualHelp: 'À utiliser pour un document manquant ou un lot de correction.',
     paperId: 'Identifiant du papier',
     date: 'Date de transaction',
     type: 'Type de transaction',
@@ -202,7 +198,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     notes: 'Notes (facultatif)',
     saveManual: 'Préparer et valider la ligne',
     manualSaved: 'Ligne manuelle préparée et validée.',
-    summaryTitle: 'Résumé financier historique',
+    summaryTitle: 'Résumé Financier Historique',
     summaryHelp: 'Seuls les lots historiques approuvés sont inclus.',
     dateFrom: 'Date de début',
     dateTo: 'Date de fin',
@@ -213,16 +209,13 @@ const COPY: Record<Locale, Record<string, string>> = {
     otherIncome: 'Autres revenus',
     preliminary: 'Résultat préliminaire avant stock',
     inventoryAdjusted: 'Bénéfice / perte estimé',
-    inventoryMissing: 'Les valeurs de stock initial et final manquent. Le résultat préliminaire n’est pas un bénéfice comptable exact.',
-    inventoryComplete: 'Les valeurs de stock initial et final ont été appliquées. Le résultat reste une estimation historique.',
+    inventoryMissing: 'Les valeurs de stock initial et final manquent.',
+    inventoryComplete: 'Les valeurs de stock initial et final ont été appliquées.',
     invalidManual: 'Complétez les champs obligatoires avec un montant entier DZD positif.',
-    parseFailed: 'Le classeur ne peut pas être lu. Utilisez le modèle Stockiha officiel et corrigez le problème signalé.',
+    parseFailed: 'Le classeur ne peut pas être lu.',
     analyticsTitle: 'Tableau de Bord Analytique Historique',
     analyticsHelp: 'Analytique multidimensionnelle pour les enregistrements du registre papier approuvés.',
-    profitWarning: 'Écart d’opérations enregistrées — pas un bénéfice comptable',
-    profitWarningDetail: 'Les achats peuvent rester en stock. Le bénéfice réel exige l’évaluation du stock initial et final.',
     loadAnalytics: 'Calculer l’analytique',
-    tradeDifference: 'Écart Ventes - Achats enregistrés',
   },
   ar: {
     title: 'إدخال البيانات المالية التاريخية',
@@ -230,7 +223,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     safety: 'تُحفظ البيانات التاريخية للمراجعة والتقارير فقط. لا تنشئ مبيعات أو مشتريات أو مخزوناً أو حركة صندوق أو ديوناً أو قيوداً محاسبية مباشرة.',
     enabled: 'تفعيل استيراد البيانات المالية التاريخية',
     enabledHelp: 'إعداد المدير/المسؤول. مفعّل افتراضياً ويمنع إنشاء دفعات جديدة عند تعطيله.',
-    paperBookTitle: 'المسار الرئيسي — استيراد سجل الورق (شراء / بيع)',
+    paperBookTitle: 'المسار الرئيسي — استيراد سجل الورق (شراء / بيع / مصاريف)',
     paperBookHelp: 'استعمل ملف سجل الورق الرسمي مع ورقة Transactions.',
     excelTitle: 'المسار الثانوي — استيراد Excel العام (R0-001)',
     excelHelp: 'استعمل ملف Stockiha العام الذي يحتوي على Historical_Transactions وBalances.',
@@ -239,6 +232,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     transactions: 'أسطر المعاملات',
     balances: 'أسطر الأرصدة',
     errors: 'أخطاء الملف',
+    importValidatePaperBook: 'حفظ السجل الورقي مؤقتاً والتحقق منه',
     importValidate: 'حفظ الملف مؤقتاً والتحقق منه',
     validated: 'الدفعة سليمة وجاهزة للموافقة.',
     needsReview: 'تحتوي الدفعة على أخطاء ولا يمكن الموافقة عليها بعد.',
@@ -270,16 +264,13 @@ const COPY: Record<Locale, Record<string, string>> = {
     otherIncome: 'مداخيل أخرى',
     preliminary: 'النتيجة الأولية قبل المخزون',
     inventoryAdjusted: 'الربح / الخسارة التقديرية',
-    inventoryMissing: 'قيمة مخزون البداية والنهاية غير متوفرة. النتيجة الأولية ليست ربحاً محاسبياً دقيقاً.',
-    inventoryComplete: 'تم احتساب مخزون البداية والنهاية. تبقى النتيجة تقديراً تاريخياً وليست حسابات مصادقاً عليها.',
+    inventoryMissing: 'قيمة مخزون البداية والنهاية غير متوفرة.',
+    inventoryComplete: 'تم احتساب مخزون البداية والنهاية.',
     invalidManual: 'أكمل الحقول الإجبارية بمبلغ صحيح وموجب بالدينار.',
-    parseFailed: 'تعذر قراءة الملف. استعمل قالب Stockiha الرسمي وصحح الخطأ المعروض.',
+    parseFailed: 'تعذر قراءة الملف.',
     analyticsTitle: 'لوحة تحليلات المعاملات التاريخية',
     analyticsHelp: 'تحليل المعاملات التاريخية المعتمدة خلال الفترة المحددة.',
-    profitWarning: 'فارق المعاملات المسجلة — ليس ربحاً محاسبياً',
-    profitWarningDetail: 'المشتريات قد تبقى في المخزون. الربح المحاسبي الدقيق يتطلب تقييم مخزون البداية والنهاية.',
     loadAnalytics: 'حساب التحليلات التاريخية',
-    tradeDifference: 'فارق المبيعات - المشتريات المسجلة',
   },
 };
 
@@ -321,7 +312,6 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [workbook, setWorkbook] = useState<HistoricalFinanceWorkbookData | null>(null);
   const [validation, setValidation] = useState<HistoricalFinanceValidationResult | null>(null);
-  const [activeBatchId, setActiveBatchId] = useState<number | null>(null);
 
   // Paper Book R0-002 State
   const [pbFile, setPbFile] = useState<File | null>(null);
@@ -334,9 +324,10 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
   // Analytics & Summary State
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [analyticsDateFrom, setAnalyticsDateFrom] = useState('2024-01-01');
+  const [analyticsDateTo, setAnalyticsDateTo] = useState('2026-12-31');
   const [summary, setSummary] = useState<HistoricalFinanceSummaryResult | null>(null);
   const [analytics, setAnalytics] = useState<HistoricalTradeAnalyticsResult | null>(null);
-  const [analyticsSubTab, setAnalyticsSubTab] = useState<AnalyticsSubTab>('overview');
 
   // Manual Draft State
   const [manual, setManual] = useState<ManualDraft>(EMPTY_MANUAL);
@@ -375,6 +366,14 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     [enabled, pbData, busy],
   );
 
+  // Workflow step determination
+  const currentStep: ImportStep = useMemo(() => {
+    if (pbValidation?.status === 'APPROVED_FOR_REPORTING') return 'approved';
+    if (pbValidation?.status === 'VALIDATED') return 'validated';
+    if (pbData !== null) return 'parsed';
+    return 'select';
+  }, [pbValidation, pbData]);
+
   async function toggleEnabled(nextEnabled: boolean) {
     if (busy) return;
     setBusy('setting');
@@ -387,29 +386,6 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
       setEnabled(result.enabled);
     } catch (settingError) {
       setError(errorText(settingError));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function selectWorkbook(file: File | null) {
-    setSelectedFile(file);
-    setWorkbook(null);
-    setValidation(null);
-    setActiveBatchId(null);
-    setError(null);
-    setFeedback(null);
-    if (!file) return;
-
-    setBusy('parse');
-    try {
-      const parsed = await parseHistoricalFinanceWorkbook(file);
-      setWorkbook(parsed);
-      if (parsed.errors.length === 0) setFeedback(text.fileReady);
-    } catch (parseError) {
-      setError(
-        `${text.parseFailed} ${parseError instanceof Error ? parseError.message : ''}`.trim(),
-      );
     } finally {
       setBusy(null);
     }
@@ -436,6 +412,145 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     }
   }
 
+  async function stageAndValidatePaperBook() {
+    if (!canImportPaperBook || !pbFile || !pbData) return;
+    setBusy('import');
+    setError(null);
+    setFeedback(null);
+    setPbValidation(null);
+    try {
+      const batch = await createHistoricalTradeBatch(sessionToken, {
+        requestId: nextRequestId('paperbook'),
+        originalFilename: pbFile.name,
+        contentHash: pbData.summary.contentHash ?? pbData.contentHash,
+        importProfile: 'PAPER_BOOK_V2',
+      });
+      setPbActiveBatchId(batch.batchId);
+
+      const replaced = await replaceHistoricalTradeBatchData(sessionToken, {
+        batchId: batch.batchId,
+        transactions: pbData.transactions.map((txn) => ({
+          sourceTransactionSequence: txn.sourceTransactionSequence,
+          sourceFirstExcelRow: txn.sourceFirstExcelRow,
+          sourceExcelTxnRef: txn.sourceExcelTxnRef,
+          transactionDate: txn.transactionDate,
+          transactionType: txn.transactionType,
+          paymentStatus: txn.paymentStatus,
+          partyCompany: txn.partyCompany,
+          manualBenefitDzd: txn.manualBenefitDzd,
+          pageNumber: txn.pageNumber,
+          lines: txn.lines.map((line) => ({
+            sourceRowNumber: line.sourceRowNumber,
+            lineSequence: line.lineSequence,
+            productName: line.productName,
+            brand: line.brand,
+            customDetails: line.customDetails,
+            partyCompany: line.partyCompany,
+            manualBenefitDzd: line.manualBenefitDzd,
+            quantity: line.quantity,
+            unitPriceDzd: line.unitPriceDzd,
+            manualLineTotalDzd: line.manualLineTotalDzd,
+          })),
+        })),
+      });
+
+      const validated = await validateHistoricalTradeBatch(sessionToken, {
+        batchId: replaced.batchId,
+      });
+      setPbValidation(validated);
+
+      if (validated.status === 'VALIDATED') {
+        setFeedback(text.validated);
+      } else {
+        setError(text.needsReview);
+      }
+    } catch (importError) {
+      setError(errorText(importError));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function approvePaperBook() {
+    if (!pbActiveBatchId) return;
+    setBusy('approve');
+    setError(null);
+    setFeedback(null);
+    try {
+      const approved = await approveHistoricalTradeBatch(sessionToken, {
+        batchId: pbActiveBatchId,
+      });
+      setPbValidation({
+        batchId: approved.batchId,
+        status: approved.status as 'APPROVED_FOR_REPORTING',
+        transactionCount: pbValidation?.transactionCount ?? pbValidation?.rowCount ?? 0,
+        rowCount: pbValidation?.rowCount ?? pbValidation?.transactionCount ?? 0,
+        lineCount: pbValidation?.lineCount ?? pbValidation?.totalLines ?? 0,
+        totalLines: pbValidation?.totalLines ?? pbValidation?.lineCount ?? 0,
+        invalidRowCount: 0,
+        unmatchedProductCount: pbValidation?.unmatchedProductCount ?? 0,
+        overrideCount: pbValidation?.overrideCount ?? 0,
+        missingQtyCount: pbValidation?.missingQtyCount ?? 0,
+        totalSalesDzd: pbValidation?.totalSalesDzd ?? 0,
+        totalPurchasesDzd: pbValidation?.totalPurchasesDzd ?? 0,
+        totalExpensesDzd: pbValidation?.totalExpensesDzd ?? 0,
+        paidSalesDzd: pbValidation?.paidSalesDzd ?? 0,
+        unpaidSalesDzd: pbValidation?.unpaidSalesDzd ?? 0,
+        paidPurchasesDzd: pbValidation?.paidPurchasesDzd ?? 0,
+        unpaidPurchasesDzd: pbValidation?.unpaidPurchasesDzd ?? 0,
+        paidExpensesDzd: pbValidation?.paidExpensesDzd ?? 0,
+        unpaidExpensesDzd: pbValidation?.unpaidExpensesDzd ?? 0,
+        manualBenefitCount: pbValidation?.manualBenefitCount ?? 0,
+        totalManualBenefitDzd: pbValidation?.totalManualBenefitDzd ?? 0,
+      });
+      setFeedback(text.approved);
+
+      // Auto-refresh analytics after approval
+      void loadAnalytics();
+    } catch (approveError) {
+      setError(errorText(approveError));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function loadAnalytics() {
+    if (!analyticsDateFrom || !analyticsDateTo) return;
+    setBusy('analytics');
+    setError(null);
+    try {
+      const res = await getHistoricalTradeAnalytics(sessionToken, {
+        dateFrom: analyticsDateFrom,
+        dateTo: analyticsDateTo,
+      });
+      setAnalytics(res);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function selectWorkbook(file: File | null) {
+    setSelectedFile(file);
+    setWorkbook(null);
+    setValidation(null);
+    setError(null);
+    setFeedback(null);
+    if (!file) return;
+
+    setBusy('parse');
+    try {
+      const parsed = await parseHistoricalFinanceWorkbook(file);
+      setWorkbook(parsed);
+      if (parsed.errors.length === 0) setFeedback(text.fileReady);
+    } catch (parseError) {
+      setError(`${text.parseFailed} ${parseError instanceof Error ? parseError.message : ''}`.trim());
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function stageAndValidateExcel() {
     if (!canImportGeneric || !selectedFile || !workbook) return;
     setBusy('import');
@@ -448,17 +563,20 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
         sourceType: 'EXCEL',
         originalFilename: selectedFile.name,
       });
-      setActiveBatchId(batch.batchId);
-      await replaceHistoricalFinanceBatchData(sessionToken, {
+
+      const replaced = await replaceHistoricalFinanceBatchData(sessionToken, {
         batchId: batch.batchId,
         rows: workbook.rows,
         balances: workbook.balances,
       });
-      const checked = await validateHistoricalFinanceBatch(sessionToken, {
-        batchId: batch.batchId,
+
+      const validated = await validateHistoricalFinanceBatch(sessionToken, {
+        batchId: replaced.batchId,
       });
-      setValidation(checked);
-      setFeedback(checked.status === 'VALIDATED' ? text.validated : text.needsReview);
+      setValidation(validated);
+
+      if (validated.status === 'VALIDATED') setFeedback(text.validated);
+      else setError(text.needsReview);
     } catch (importError) {
       setError(errorText(importError));
     } finally {
@@ -466,81 +584,29 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     }
   }
 
-  async function stageAndValidatePaperBook() {
-    if (!canImportPaperBook || !pbFile || !pbData) return;
-    setBusy('import');
-    setError(null);
-    setFeedback(null);
-    setPbValidation(null);
-
-    try {
-      const batch = await createHistoricalTradeBatch(sessionToken, {
-        requestId: nextRequestId('paperbook'),
-        originalFilename: pbFile.name,
-        contentHash: pbData.contentHash,
-      });
-      setPbActiveBatchId(batch.batchId);
-
-      await replaceHistoricalTradeBatchData(sessionToken, {
-        batchId: batch.batchId,
-        transactions: pbData.transactions,
-      });
-
-      const checked = await validateHistoricalTradeBatch(sessionToken, {
-        batchId: batch.batchId,
-      });
-
-      setPbValidation(checked);
-      setFeedback(checked.status === 'VALIDATED' ? text.validated : text.needsReview);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function approveGeneric() {
-    if (!activeBatchId || validation?.status !== 'VALIDATED' || busy) return;
+    if (!validation?.batchId) return;
     setBusy('approve');
     setError(null);
     setFeedback(null);
     try {
-      await approveHistoricalFinanceBatch(sessionToken, { batchId: activeBatchId });
+      const approved = await approveHistoricalFinanceBatch(sessionToken, {
+        batchId: validation.batchId,
+      });
+      setValidation({ ...validation, status: approved.status as 'VALIDATED' });
       setFeedback(text.approved);
-    } catch (approvalError) {
-      setError(errorText(approvalError));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function approvePaperBook() {
-    if (!pbActiveBatchId || pbValidation?.status !== 'VALIDATED' || busy) return;
-    setBusy('approve');
-    setError(null);
-    setFeedback(null);
-    try {
-      await approveHistoricalTradeBatch(sessionToken, { batchId: pbActiveBatchId });
-      setFeedback(text.approved);
-    } catch (err) {
-      setError(errorText(err));
+    } catch (approveError) {
+      setError(errorText(approveError));
     } finally {
       setBusy(null);
     }
   }
 
   async function stageManual() {
-    if (busy || !enabled) return;
-    const netAmount = parseWholeAmount(manual.netAmountDzd);
-    const amountPaid = parseWholeAmount(manual.amountPaidDzd, true);
-    if (
-      !manual.paperId.trim() ||
-      !manual.transactionDate ||
-      !manual.descriptionOrCategory.trim() ||
-      netAmount === null ||
-      netAmount <= 0 ||
-      (manual.amountPaidDzd.trim() !== '' && amountPaid === null)
-    ) {
+    if (!enabled || busy) return;
+    const amountDzd = parseWholeAmount(manual.netAmountDzd);
+    const amountPaidDzd = parseWholeAmount(manual.amountPaidDzd, true);
+    if (!manual.paperId.trim() || !manual.transactionDate || amountDzd === null || amountDzd <= 0) {
       setError(text.invalidManual);
       return;
     }
@@ -548,15 +614,14 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     setBusy('manual');
     setError(null);
     setFeedback(null);
-    setValidation(null);
     try {
       const batch = await createHistoricalFinanceBatch(sessionToken, {
         requestId: nextRequestId('manual'),
         sourceType: 'MANUAL',
         originalFilename: null,
       });
-      setActiveBatchId(batch.batchId);
-      await replaceHistoricalFinanceBatchData(sessionToken, {
+
+      const replaced = await replaceHistoricalFinanceBatchData(sessionToken, {
         batchId: batch.batchId,
         rows: [
           {
@@ -565,9 +630,9 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             transactionDate: manual.transactionDate,
             transactionType: manual.transactionType,
             descriptionOrCategory: manual.descriptionOrCategory.trim(),
-            netAmountDzd: netAmount,
+            netAmountDzd: amountDzd,
             paymentStatus: manual.paymentStatus,
-            amountPaidDzd: amountPaid,
+            amountPaidDzd: amountPaidDzd ?? amountDzd,
             expenseCategory: optional(manual.expenseCategory),
             supplierFournisseur: optional(manual.supplierFournisseur),
             customerClient: optional(manual.customerClient),
@@ -577,12 +642,15 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
         ],
         balances: [],
       });
-      const checked = await validateHistoricalFinanceBatch(sessionToken, {
-        batchId: batch.batchId,
+
+      const validated = await validateHistoricalFinanceBatch(sessionToken, {
+        batchId: replaced.batchId,
       });
-      setValidation(checked);
-      setFeedback(checked.status === 'VALIDATED' ? text.manualSaved : text.needsReview);
-      if (checked.status === 'VALIDATED') setManual(EMPTY_MANUAL);
+      setValidation(validated);
+      setManual(EMPTY_MANUAL);
+
+      if (validated.status === 'VALIDATED') setFeedback(text.manualSaved);
+      else setError(text.needsReview);
     } catch (manualError) {
       setError(errorText(manualError));
     } finally {
@@ -591,17 +659,12 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
   }
 
   async function loadSummary() {
-    if (!dateFrom || !dateTo || busy) return;
+    if (!dateFrom || !dateTo) return;
     setBusy('summary');
     setError(null);
-    setSummary(null);
     try {
-      setSummary(
-        await getHistoricalFinanceSummary(sessionToken, {
-          dateFrom,
-          dateTo,
-        }),
-      );
+      const res = await getHistoricalFinanceSummary(sessionToken, { dateFrom, dateTo });
+      setSummary(res);
     } catch (summaryError) {
       setError(errorText(summaryError));
     } finally {
@@ -609,95 +672,114 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     }
   }
 
-  async function loadAnalytics() {
-    if (!dateFrom || !dateTo || busy) return;
-    setBusy('analytics');
-    setError(null);
-    setAnalytics(null);
-    try {
-      const res = await getHistoricalTradeAnalytics(sessionToken, { dateFrom, dateTo });
-      setAnalytics(res as unknown as HistoricalTradeAnalyticsResult);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(null);
-    }
-  }
-
   return (
-    <section className="sk-page" aria-labelledby="historical-finance-heading">
-      <div className="sk-card">
-        <h1 id="historical-finance-heading">{text.title}</h1>
-        <p>{text.subtitle}</p>
-        <Banner tone="warning">{text.safety}</Banner>
-        {error ? <Banner tone="error">{error}</Banner> : null}
-        {feedback ? <Banner tone="success">{feedback}</Banner> : null}
-
-        <div className="sk-field" style={{ marginTop: '1rem' }}>
-          <label className="sk-field__label" htmlFor="toggle-import-enabled">
-            <input
-              id="toggle-import-enabled"
-              type="checkbox"
-              checked={enabled}
-              disabled={busy !== null}
-              onChange={(event) => void toggleEnabled(event.target.checked)}
-            />{' '}
-            {text.enabled}
-          </label>
-          <small className="sk-field-help">{text.enabledHelp}</small>
+    <section className="sk-space-y">
+      <header className="sk-page-header">
+        <div>
+          <h1>{text.title}</h1>
+          <p>{text.subtitle}</p>
         </div>
-      </div>
+        <label className="sk-toggle">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={busy !== null}
+            onChange={(e) => void toggleEnabled(e.target.checked)}
+          />
+          <span>{text.enabled}</span>
+        </label>
+      </header>
 
-      {/* R0-002 PAPER-BOOK 1.5-YEAR XLSX IMPORT CARD */}
+      <Banner tone="info">{text.safety}</Banner>
+      {feedback && <Banner tone="success">{feedback}</Banner>}
+      {error && <Banner tone="warning">{error}</Banner>}
+
+      {/* R0-002 PRIMARY PAPER BOOK IMPORT CARD */}
       <div className="sk-card">
         <h2>{text.paperBookTitle}</h2>
         <p>{text.paperBookHelp}</p>
 
-        <div className="sk-field">
-          <label className="sk-field__label" htmlFor="paperbook-xlsx-file">
-            Select Paper-Book Workbook (.xlsx)
-          </label>
-          <input
-            id="paperbook-xlsx-file"
-            className="sk-field__input"
-            type="file"
-            accept=".xlsx"
-            disabled={!enabled || busy !== null}
-            onChange={(e) => void selectPaperBookFile(e.target.files?.[0] ?? null)}
-          />
-        </div>
+        {/* Workflow Stepper Progress Indicator */}
+        <HistoricalImportStepper
+          currentStep={currentStep}
+          hasErrors={pbData?.errors.length ? pbData.errors.length > 0 : false}
+          locale={locale}
+        />
 
-        {pbData ? (
-          <dl className="sk-details-grid" data-testid="paperbook-preview">
-            <div><dt>{text.transactions}</dt><dd>{pbData.summary.transactionCount}</dd></div>
-            <div><dt>Product Lines</dt><dd>{pbData.summary.lineCount}</dd></div>
-            <div><dt>{text.sales}</dt><dd>{formatMoney(pbData.summary.totalSalesDzd, locale)}</dd></div>
-            <div><dt>{text.purchases}</dt><dd>{formatMoney(pbData.summary.totalPurchasesDzd, locale)}</dd></div>
-            <div><dt>Coverage</dt><dd>{pbData.summary.minDate ?? '—'} → {pbData.summary.maxDate ?? '—'}</dd></div>
-          </dl>
-        ) : null}
+        {/* Drag & Drop File Select Panel */}
+        <HistoricalImportPanel
+          file={pbFile}
+          enabled={enabled}
+          busy={busy !== null}
+          locale={locale}
+          onFileSelect={(f) => void selectPaperBookFile(f)}
+        />
 
-        {pbData?.errors.length ? (
-          <div className="sk-banner sk-banner--error" role="alert">
-            <strong>{text.errors}</strong>
-            <ul>
-              {pbData.errors.map((item, index) => (
-                <li key={index}>
-                  Row {item.row} · {item.message}
-                </li>
-              ))}
-            </ul>
+        {/* Parsed Summary KPI Cards */}
+        {pbData && (
+          <div className="mt-4">
+            <div className="sk-kpi-grid">
+              <HistoricalKpiCard
+                title={locale === 'ar' ? 'المبيعات المحسوبة' : 'Parsed Sales'}
+                value={pbData.summary.totalSalesDzd}
+                locale={locale}
+                tone="success"
+                badgeText={pbData.summary.paidSalesDzd > 0 ? 'Paid: ' + formatMoney(pbData.summary.paidSalesDzd, locale) : undefined}
+              />
+              <HistoricalKpiCard
+                title={locale === 'ar' ? 'المشتريات المحسوبة' : 'Parsed Purchases'}
+                value={pbData.summary.totalPurchasesDzd}
+                locale={locale}
+                tone="info"
+              />
+              <HistoricalKpiCard
+                title={locale === 'ar' ? 'المصاريف المحسوبة' : 'Parsed Expenses'}
+                value={pbData.summary.totalExpensesDzd}
+                locale={locale}
+                tone="warning"
+              />
+              <HistoricalKpiCard
+                title={locale === 'ar' ? 'الفائدة المسجلة' : 'Recorded Benefit (Sell Only)'}
+                value={pbData.summary.totalManualBenefitDzd}
+                locale={locale}
+                tone="primary"
+              />
+            </div>
           </div>
-        ) : null}
+        )}
 
-        <div className="sk-stack" style={{ marginTop: '1rem' }}>
+        {/* Errors and Warnings List */}
+        {pbData?.errors && pbData.errors.length > 0 && (
+          <HistoricalIssueList
+            errors={pbData.errors}
+            locale={locale}
+            isPartial={pbData.summary.isPartial}
+          />
+        )}
+
+        {/* Interactive Row Preview Table */}
+        {pbData && pbData.transactions.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold mb-2">
+              {locale === 'ar' ? 'معاينة المعاملات والأسطر' : 'Transaction & Line Row Preview'} ({pbData.transactions.length} Txns, {pbData.summary.totalLines} Lines)
+            </h3>
+            <HistoricalRowPreview
+              transactions={pbData.transactions}
+              locale={locale}
+              isPartial={pbData.summary.isPartial}
+            />
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="sk-stack mt-4">
           <Button
             type="button"
             loading={busy === 'import'}
             disabled={!canImportPaperBook}
             onClick={() => void stageAndValidatePaperBook()}
           >
-            Stage and validate paper-book batch
+            {text.importValidatePaperBook}
           </Button>
           <Button
             type="button"
@@ -706,17 +788,17 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             disabled={pbValidation?.status !== 'VALIDATED' || busy !== null}
             onClick={() => setShowConfirmApprovePaperBook(true)}
           >
-            Approve paper-book batch
+            {text.approvePaperBook}
           </Button>
         </div>
 
         {showConfirmApprovePaperBook ? (
           <ConfirmDialog
-            title={locale === 'ar' ? 'تأكيد الموافقة على الدفعة' : 'Confirm Batch Approval'}
+            title={locale === 'ar' ? 'تأكيد الموافقة على دفتر الورق' : 'Confirm Paper-Book Approval'}
             body={
               locale === 'ar'
-                ? 'هل أنت تأكد من الموافقة على هذه الدفعة التاريخية؟ بعد الموافقة، سيتم اعتماد المعاملات للتقارير التاريخية ولن يمكن تعديلها.'
-                : 'Are you sure you want to approve this historical paper-book batch? Once approved, the staged transactions will be finalized for reporting and cannot be modified.'
+                ? 'هل أنت تأكد من الموافقة على هذا السجل الورقي؟ بعد الموافقة، سيتم اعتماد البيانات للتقارير التاريخية ولن يمكن تعديلها.'
+                : 'Are you sure you want to approve this 1.5-year paper book import? Once approved, transactions will be finalized for reporting and cannot be modified.'
             }
             confirmLabel={locale === 'ar' ? 'موافقة' : 'Approve'}
             cancelLabel={locale === 'ar' ? 'إلغاء' : 'Cancel'}
@@ -729,22 +811,9 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             onCancel={() => setShowConfirmApprovePaperBook(false)}
           />
         ) : null}
-
-        {pbValidation ? (
-          <dl className="sk-details-grid" style={{ marginTop: '1rem' }} data-testid="paperbook-validation-result">
-            <div><dt>Batch Status</dt><dd><strong>{pbValidation.status}</strong></dd></div>
-            <div><dt>Transactions</dt><dd>{pbValidation.transactionCount}</dd></div>
-            <div><dt>Paid Sales</dt><dd>{formatMoney(pbValidation.paidSalesDzd, locale)}</dd></div>
-            <div><dt>Unpaid Sales</dt><dd>{formatMoney(pbValidation.unpaidSalesDzd, locale)}</dd></div>
-            <div><dt>Paid Purchases</dt><dd>{formatMoney(pbValidation.paidPurchasesDzd, locale)}</dd></div>
-            <div><dt>Unpaid Purchases</dt><dd>{formatMoney(pbValidation.unpaidPurchasesDzd, locale)}</dd></div>
-            <div><dt>Total Expenses</dt><dd>{formatMoney(pbValidation.totalExpensesDzd ?? 0, locale)}</dd></div>
-            <div><dt>Recorded Manual Benefit</dt><dd><strong>{formatMoney(pbValidation.totalManualBenefitDzd ?? 0, locale)}</strong></dd></div>
-          </dl>
-        ) : null}
       </div>
 
-      {/* R0-002 TRADE ANALYTICS DASHBOARD CARD */}
+      {/* ANALYTICS DASHBOARD CARD */}
       <div className="sk-card">
         <h2>{text.analyticsTitle}</h2>
         <p>{text.analyticsHelp}</p>
@@ -753,170 +822,29 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
           <TextField
             label={text.analyticsDateFrom}
             type="date"
-            value={dateFrom}
+            value={analyticsDateFrom}
             disabled={busy !== null}
-            onChange={(event) => setDateFrom(event.target.value)}
+            onChange={(e) => setAnalyticsDateFrom(e.target.value)}
           />
           <TextField
             label={text.analyticsDateTo}
             type="date"
-            value={dateTo}
+            value={analyticsDateTo}
             disabled={busy !== null}
-            onChange={(event) => setDateTo(event.target.value)}
+            onChange={(e) => setAnalyticsDateTo(e.target.value)}
           />
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-          <Button
-            type="button"
-            variant="secondary"
-            loading={busy === 'analytics'}
-            disabled={!dateFrom || !dateTo || busy !== null}
-            onClick={() => void loadAnalytics()}
-          >
-            {text.loadAnalytics}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          loading={busy === 'analytics'}
+          disabled={!analyticsDateFrom || !analyticsDateTo || busy !== null}
+          onClick={() => void loadAnalytics()}
+        >
+          {text.loadAnalytics}
+        </Button>
 
-        {analytics ? (
-          <div style={{ marginTop: '1.5rem' }}>
-            <Banner tone="info">
-              <strong>⚠️ {text.profitWarning}: </strong>
-              {text.profitWarningDetail}
-            </Banner>
-
-            {/* Sub-tabs */}
-            <div style={{ display: 'flex', gap: '0.25rem', margin: '1rem 0', overflowX: 'auto' }}>
-              {(['overview', 'sales', 'purchases', 'expenses', 'benefits', 'products', 'brands', 'parties', 'quality', 'overrides'] as AnalyticsSubTab[]).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  style={{ textTransform: 'capitalize', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
-                  className={`sk-button ${analyticsSubTab === tab ? 'sk-button--primary' : 'sk-button--secondary'}`}
-                  onClick={() => setAnalyticsSubTab(tab)}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-
-            {analyticsSubTab === 'overview' && (
-              <dl className="sk-details-grid">
-                <div><dt>Transactions</dt><dd>{analytics.overview.transactionCount}</dd></div>
-                <div><dt>Product Lines</dt><dd>{analytics.overview.lineCount}</dd></div>
-                <div><dt>Total Sales</dt><dd>{formatMoney(analytics.overview.totalSalesDzd, locale)}</dd></div>
-                <div><dt>Total Purchases</dt><dd>{formatMoney(analytics.overview.totalPurchasesDzd, locale)}</dd></div>
-                <div><dt>Total Expenses</dt><dd>{formatMoney(analytics.overview.totalExpensesDzd ?? 0, locale)}</dd></div>
-                <div><dt>Recorded Manual Benefit</dt><dd><strong>{formatMoney(analytics.overview.totalManualBenefitDzd ?? 0, locale)}</strong></dd></div>
-                <div><dt>{text.tradeDifference}</dt><dd><strong>{formatMoney(analytics.overview.tradeDifferenceDzd, locale)}</strong></dd></div>
-              </dl>
-            )}
-
-            {analyticsSubTab === 'sales' && (
-              <div>
-                <dl className="sk-details-grid">
-                  <div><dt>Total Sales</dt><dd>{formatMoney(analytics.payment.sales.total, locale)}</dd></div>
-                  <div><dt>Paid Sales</dt><dd>{formatMoney(analytics.payment.sales.paid, locale)}</dd></div>
-                  <div><dt>Unpaid Sales</dt><dd>{formatMoney(analytics.payment.sales.unpaid, locale)}</dd></div>
-                </dl>
-              </div>
-            )}
-
-            {analyticsSubTab === 'purchases' && (
-              <div>
-                <dl className="sk-details-grid">
-                  <div><dt>Total Purchases</dt><dd>{formatMoney(analytics.payment.purchases.total, locale)}</dd></div>
-                  <div><dt>Paid Purchases</dt><dd>{formatMoney(analytics.payment.purchases.paid, locale)}</dd></div>
-                  <div><dt>Unpaid Purchases</dt><dd>{formatMoney(analytics.payment.purchases.unpaid, locale)}</dd></div>
-                </dl>
-              </div>
-            )}
-
-            {analyticsSubTab === 'products' && (
-              <table style={{ width: '100%', marginTop: '0.5rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--sk-color-border)', textAlign: 'left' }}>
-                    <th>Product Name</th><th>Matched</th><th>Qty Sold</th><th>Sales DZD</th><th>Qty Purchased</th><th>Purchases DZD</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.products.map((p, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid var(--sk-color-border)' }}>
-                      <td>{p.productName}</td>
-                      <td>{p.matchedProductId ? 'Yes' : 'No'}</td>
-                      <td>{p.qtySold}</td>
-                      <td>{formatMoney(p.salesDzd, locale)}</td>
-                      <td>{p.qtyPurchased}</td>
-                      <td>{formatMoney(p.purchasesDzd, locale)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            {analyticsSubTab === 'brands' && (
-              <table style={{ width: '100%', marginTop: '0.5rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--sk-color-border)', textAlign: 'left' }}>
-                    <th>Brand</th><th>Sales DZD</th><th>Purchases DZD</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.brands.map((b, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid var(--sk-color-border)' }}>
-                      <td>{b.brand}</td>
-                      <td>{formatMoney(b.salesDzd, locale)}</td>
-                      <td>{formatMoney(b.purchasesDzd, locale)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            {analyticsSubTab === 'parties' && (
-              <table style={{ width: '100%', marginTop: '0.5rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--sk-color-border)', textAlign: 'left' }}>
-                    <th>Party / Company</th><th>Sales DZD</th><th>Purchases DZD</th><th>Total Volume</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.parties.map((pty, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid var(--sk-color-border)' }}>
-                      <td>{pty.partyCompany}</td>
-                      <td>{formatMoney(pty.salesDzd, locale)}</td>
-                      <td>{formatMoney(pty.purchasesDzd, locale)}</td>
-                      <td>{formatMoney(pty.totalVolumeDzd, locale)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            {analyticsSubTab === 'quality' && (
-              <dl className="sk-details-grid">
-                <div><dt>Total Lines</dt><dd>{analytics.dataQuality.totalLines}</dd></div>
-                <div><dt>Product Name Coverage</dt><dd>{analytics.dataQuality.productNameCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Brand Coverage</dt><dd>{analytics.dataQuality.brandCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Party Coverage</dt><dd>{analytics.dataQuality.partyCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Page No Coverage</dt><dd>{analytics.dataQuality.pageNumberCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Quantity Coverage</dt><dd>{analytics.dataQuality.quantityCoveragePct.toFixed(1)}%</dd></div>
-                <div><dt>Unmatched Products</dt><dd>{analytics.dataQuality.unmatchedProductCount}</dd></div>
-                <div><dt>Manual Total Overrides</dt><dd>{analytics.dataQuality.manualOverrideCount}</dd></div>
-              </dl>
-            )}
-
-            {analyticsSubTab === 'overrides' && (
-              <dl className="sk-details-grid">
-                <div><dt>Calculated Formula Lines</dt><dd>{analytics.manualOverrides.calculatedLineCount}</dd></div>
-                <div><dt>Manual Override Lines</dt><dd>{analytics.manualOverrides.manualOverrideCount}</dd></div>
-                <div><dt>Calculated Mathematical Total</dt><dd>{formatMoney(analytics.manualOverrides.calculatedMathematicalTotalDzd, locale)}</dd></div>
-                <div><dt>Final Effective Total</dt><dd>{formatMoney(analytics.manualOverrides.finalEffectiveTotalDzd, locale)}</dd></div>
-                <div><dt>Total Override Difference</dt><dd><strong>{formatMoney(analytics.manualOverrides.totalOverrideDifferenceDzd, locale)}</strong></dd></div>
-              </dl>
-            )}
-          </div>
-        ) : null}
+        {analytics && <HistoricalAnalyticsDashboard analytics={analytics} locale={locale} />}
       </div>
 
       {/* R0-001 GENERIC EXCEL IMPORT CARD */}
@@ -996,10 +924,6 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             }}
             onCancel={() => setShowConfirmApproveGeneric(false)}
           />
-        ) : null}
-
-        {validation ? (
-          <ValidationSummary result={validation} locale={locale} text={text} />
         ) : null}
       </div>
 
@@ -1143,27 +1067,6 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
         {summary ? <FinanceSummary result={summary} locale={locale} text={text} /> : null}
       </div>
     </section>
-  );
-}
-
-function ValidationSummary({
-  result,
-  locale,
-  text,
-}: {
-  result: HistoricalFinanceValidationResult;
-  locale: Locale;
-  text: Record<string, string>;
-}) {
-  return (
-    <dl className="sk-details-grid" data-testid="historical-validation-result">
-      <div><dt>{text.transactions}</dt><dd>{result.rowCount}</dd></div>
-      <div><dt>{text.errors}</dt><dd>{result.invalidRowCount}</dd></div>
-      <div><dt>{text.sales}</dt><dd>{formatMoney(result.totalSalesDzd, locale)}</dd></div>
-      <div><dt>{text.purchases}</dt><dd>{formatMoney(result.totalPurchasesDzd, locale)}</dd></div>
-      <div><dt>{text.expenses}</dt><dd>{formatMoney(result.totalExpensesDzd, locale)}</dd></div>
-      <div><dt>{text.preliminary}</dt><dd>{formatMoney(result.preliminaryResultBeforeInventoryDzd, locale)}</dd></div>
-    </dl>
   );
 }
 

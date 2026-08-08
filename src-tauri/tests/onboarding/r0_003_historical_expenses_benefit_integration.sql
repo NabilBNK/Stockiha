@@ -42,7 +42,7 @@ DECLARE
 BEGIN
     v_batch_v1 := onboarding.create_historical_trade_batch(
         'token_r0_003',
-        'req-r0-003-v1-compat',
+        'req-r0-003-v1-' || floor(extract(epoch from clock_timestamp()) * 1000)::text,
         'paperbook_v1_legacy.xlsx',
         'c1c2c3c4c5c6c7c8c9c0c1c2c3c4c5c6c7c8c9c0c1c2c3c4c5c6c7c8c9c0c1c2'
     );
@@ -68,10 +68,13 @@ DECLARE
     v_validate_res jsonb;
     v_approve_res jsonb;
     v_audit_count integer;
+    v_req_id text;
 BEGIN
+    v_req_id := 'req-r0-003-v2-' || floor(extract(epoch from clock_timestamp()) * 1000)::text;
+
     v_batch_res := onboarding.create_historical_trade_batch(
         'token_r0_003',
-        'req-r0-003-test-001',
+        v_req_id,
         'paperbook_v3_benefit_expenses.xlsx',
         'b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1',
         'PAPER_BOOK_V2'

@@ -23,6 +23,7 @@ suites=(
   src-tauri/tests/onboarding/r0_001_onboarding_backup_acl_integration.sql
   src-tauri/tests/onboarding/r0_002_historical_trade_staging_integration.sql
   src-tauri/tests/onboarding/r0_003_historical_expenses_benefit_integration.sql
+  src-tauri/tests/onboarding/r0_004_historical_line_party_benefit_integration.sql
   src-tauri/tests/onboarding/r5_002_opening_state_reconciliation_integration.sql
   src-tauri/tests/onboarding/r5_003_opening_state_setup_lifecycle_integration.sql
   src-tauri/tests/onboarding/r5_003_opening_state_application_integration.sql

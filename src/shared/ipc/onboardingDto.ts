@@ -154,6 +154,8 @@ export interface HistoricalTradeLineInput {
   productName: string | null;
   brand: string | null;
   customDetails: string | null;
+  partyCompany?: string | null;
+  manualBenefitDzd?: number | null;
   quantity: number | null;
   unitPriceDzd: number | null;
   manualLineTotalDzd: number | null;
@@ -205,9 +207,11 @@ export interface HistoricalTradeBatchDataResult {
 
 export interface HistoricalTradeValidationResult {
   batchId: number;
-  status: 'VALIDATED' | 'NEEDS_REVIEW';
-  transactionCount: number;
-  lineCount: number;
+  status: 'VALIDATED' | 'NEEDS_REVIEW' | 'APPROVED_FOR_REPORTING';
+  transactionCount?: number;
+  rowCount?: number;
+  lineCount?: number;
+  totalLines?: number;
   invalidRowCount: number;
   totalSalesDzd: number;
   totalPurchasesDzd: number;
@@ -223,6 +227,36 @@ export interface HistoricalTradeValidationResult {
   unmatchedProductCount: number;
   overrideCount: number;
   missingQtyCount: number;
+  contentHash?: string | null;
+}
+
+export interface PaperBookSummary {
+  transactionCount: number;
+  lineCount: number;
+  salesCount: number;
+  purchaseCount: number;
+  expenseCount: number;
+  totalSalesDzd: number;
+  totalPurchasesDzd: number;
+  totalExpensesDzd: number;
+  paidSalesDzd: number;
+  unpaidSalesDzd: number;
+  paidPurchasesDzd: number;
+  unpaidPurchasesDzd: number;
+  paidExpensesDzd: number;
+  unpaidExpensesDzd: number;
+  manualBenefitCount: number;
+  totalManualBenefitDzd: number;
+  salesWithManualBenefitCount: number;
+  salesWithoutManualBenefitCount: number;
+  minDate: string | null;
+  maxDate: string | null;
+  unmatchedProductCount: number;
+  manualOverrideCount: number;
+  missingQtyCount: number;
+  errorCount: number;
+  warningCount: number;
+  isPartial: boolean;
 }
 
 export interface HistoricalTradeAnalyticsRequest {
@@ -260,14 +294,17 @@ export interface HistoricalTradeAnalyticsPayment {
 
 export interface HistoricalTradeAnalyticsTimelineMonth {
   month: string;
+  yearMonth?: string;
   salesDzd: number;
   purchasesDzd: number;
   expensesDzd: number;
-  saleCount: number;
-  purchaseCount: number;
-  expenseCount: number;
-  paidSalesDzd: number;
-  unpaidSalesDzd: number;
+  manualBenefitDzd?: number;
+  netTradeDifferenceDzd?: number;
+  saleCount?: number;
+  purchaseCount?: number;
+  expenseCount?: number;
+  paidSalesDzd?: number;
+  unpaidSalesDzd?: number;
 }
 
 export interface HistoricalTradeAnalyticsProduct {
@@ -277,9 +314,10 @@ export interface HistoricalTradeAnalyticsProduct {
   salesDzd: number;
   qtyPurchased: number;
   purchasesDzd: number;
-  avgSaleUnitPriceDzd: number;
-  avgPurchaseUnitPriceDzd: number;
-  transactionCount: number;
+  recordedBenefitDzd?: number;
+  avgSaleUnitPriceDzd?: number;
+  avgPurchaseUnitPriceDzd?: number;
+  transactionCount?: number;
 }
 
 export interface HistoricalTradeAnalyticsBrand {
@@ -287,8 +325,11 @@ export interface HistoricalTradeAnalyticsBrand {
   salesDzd: number;
   purchasesDzd: number;
   qtySold: number;
-  qtyPurchased: number;
-  transactionCount: number;
+  qtyPurchased?: number;
+  qtyBought?: number;
+  recordedBenefitDzd?: number;
+  lineCount?: number;
+  transactionCount?: number;
 }
 
 export interface HistoricalTradeAnalyticsParty {
@@ -297,15 +338,16 @@ export interface HistoricalTradeAnalyticsParty {
   purchasesDzd: number;
   expensesDzd: number;
   totalVolumeDzd: number;
-  paidSalesDzd: number;
-  unpaidSalesDzd: number;
-  paidPurchasesDzd: number;
-  unpaidPurchasesDzd: number;
-  transactionCount: number;
+  recordedBenefitDzd?: number;
+  paidSalesDzd?: number;
+  unpaidSalesDzd?: number;
+  paidPurchasesDzd?: number;
+  unpaidPurchasesDzd?: number;
+  transactionCount?: number;
 }
 
 export interface HistoricalTradeAnalyticsExpenseItem {
-  sourceRowNumber: number;
+  sourceRowNumber?: number;
   transactionDate: string;
   partyCompany: string | null;
   customDetails: string | null;
@@ -318,8 +360,8 @@ export interface HistoricalTradeAnalyticsExpenses {
   totalExpensesDzd: number;
   paidExpensesDzd: number;
   unpaidExpensesDzd: number;
-  expensesByMonth: Array<{ month: string; expensesDzd: number; count: number }>;
-  expensesByParty: Array<{ partyCompany: string; expensesDzd: number; count: number }>;
+  expensesByMonth?: Array<{ month: string; expensesDzd: number; count: number }>;
+  expensesByParty?: Array<{ partyCompany: string; expensesDzd: number; count: number }>;
   expenseItems: HistoricalTradeAnalyticsExpenseItem[];
 }
 
@@ -329,7 +371,14 @@ export interface HistoricalTradeAnalyticsBenefits {
   salesWithoutManualBenefitCount: number;
   totalManualBenefitDzd: number;
   averageManualBenefitDzd: number | null;
-  manualBenefitToSalesRatioPct: number | null;
+  manualBenefitToSalesRatioPct?: number | null;
+  benefitCoveragePct?: number | null;
+  recordedBenefitToSalesPct?: number | null;
+  recordedBenefitAfterExpensesDzd?: number | null;
+  positiveBenefitLineCount?: number;
+  zeroBenefitLineCount?: number;
+  negativeBenefitLineCount?: number;
+  missingBenefitLineCount?: number;
 }
 
 export interface HistoricalTradeDataQuality {
@@ -339,8 +388,9 @@ export interface HistoricalTradeDataQuality {
   partyCoveragePct: number;
   pageNumberCoveragePct: number;
   quantityCoveragePct: number;
+  benefitCoveragePct?: number;
   unmatchedProductCount: number;
-  matchedProductCount: number;
+  matchedProductCount?: number;
   manualOverrideCount: number;
   missingQtyCount: number;
 }

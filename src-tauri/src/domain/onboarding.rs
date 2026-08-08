@@ -482,6 +482,8 @@ pub(crate) struct HistoricalTradeLineInput {
     pub(crate) product_name: Option<String>,
     pub(crate) brand: Option<String>,
     pub(crate) custom_details: Option<String>,
+    pub(crate) party_company: Option<String>,
+    pub(crate) manual_benefit_dzd: Option<i64>,
     pub(crate) quantity: Option<i64>,
     pub(crate) unit_price_dzd: Option<i64>,
     pub(crate) manual_line_total_dzd: Option<i64>,
@@ -519,6 +521,7 @@ impl HistoricalTradeLineInput {
         validate_optional_text(&self.product_name, "productName", OPTIONAL_TEXT_MAX_LEN)?;
         validate_optional_text(&self.brand, "brand", OPTIONAL_TEXT_MAX_LEN)?;
         validate_optional_text(&self.custom_details, "customDetails", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(&self.party_company, "partyCompany", OPTIONAL_TEXT_MAX_LEN)?;
         Ok(())
     }
 }

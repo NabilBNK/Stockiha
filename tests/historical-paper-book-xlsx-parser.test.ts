@@ -393,4 +393,59 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
     const recomputed = await computeContentHash(parsed.transactions);
     expect(recomputed).toBe(parsed.contentHash);
   });
+
+  it('asserts exact Section 13 sample totals when Row 6 date is corrected to 23/11/2025', async () => {
+    const file = createPaperBookV2File([
+      // TX-000001 (BUY) - Row 2 to 5
+      { 0: { val: 'TX-000001' }, 1: { val: '22/10/2025' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 4: { val: 'AK home' }, 5: { val: 'kowat' }, 6: { val: 'AK' }, 7: { val: '2 pers' }, 8: { val: 10 }, 9: { val: 2000 }, 12: { val: 2 } },
+      { 4: { val: 'Rozana' }, 5: { val: 'kowat' }, 6: { val: 'rozana' }, 7: { val: '1 person' }, 8: { val: 5 }, 9: { val: 1500 } },
+      { 4: { val: 'Dolz' }, 5: { val: 'ouess' }, 6: { val: 'Dolz' }, 8: { val: 4 }, 9: { val: 500 } },
+      { 4: { val: 'Dolz' }, 5: { val: 'pillow' }, 6: { val: 'Dolz' }, 8: { val: 8 }, 9: { val: 1750 } },
+      // TX-000002 (SELL) - Row 6 (Corrected Date: 23/11/2025)
+      { 0: { val: 'TX-000002' }, 1: { val: '23/11/2025' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 4: { val: 'anis' }, 5: { val: 'kowat' }, 6: { val: 'rozana' }, 8: { val: 15 }, 9: { val: 2000 }, 11: { val: 7000 } },
+      // TX-000003 (SELL) - Row 7 to 8
+      { 0: { val: 'TX-000003' }, 1: { val: '26/12/2025' }, 2: { val: 'Sell' }, 3: { val: 'Not Paid' }, 4: { val: 'zakou' }, 5: { val: 'ouess' }, 6: { val: 'Dolz' }, 8: { val: 2 }, 9: { val: 800 }, 11: { val: 500 } },
+      { 5: { val: 'kowat' }, 6: { val: 'rozana' }, 8: { val: 5 }, 9: { val: 2000 }, 11: { val: 2500 } },
+      // TX-000004 (EXPENSE) - Row 9
+      { 0: { val: 'TX-000004' }, 1: { val: '29/12/2025' }, 2: { val: 'Expense' }, 3: { val: 'Paid' }, 7: { val: 'food' }, 10: { val: 500 } },
+    ]);
+
+    const parsed = await parsePaperBookWorkbook(file);
+
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.summary.isPartial).toBe(false);
+    expect(parsed.summary.transactionCount).toBe(4);
+    expect(parsed.summary.lineCount).toBe(8);
+    expect(parsed.summary.purchaseCount).toBe(1);
+    expect(parsed.summary.salesCount).toBe(2);
+    expect(parsed.summary.expenseCount).toBe(1);
+
+    expect(parsed.summary.totalPurchasesDzd).toBe(43500);
+    expect(parsed.summary.totalSalesDzd).toBe(41600);
+    expect(parsed.summary.totalExpensesDzd).toBe(500);
+    expect(parsed.summary.totalManualBenefitDzd).toBe(10000);
+
+    expect(parsed.summary.paidSalesDzd).toBe(30000);
+    expect(parsed.summary.unpaidSalesDzd).toBe(11600);
+    expect(parsed.summary.paidPurchasesDzd).toBe(43500);
+    expect(parsed.summary.unpaidPurchasesDzd).toBe(0);
+    expect(parsed.summary.paidExpensesDzd).toBe(500);
+    expect(parsed.summary.unpaidExpensesDzd).toBe(0);
+
+    expect(parsed.summary.minDate).toBe('2025-10-22');
+    expect(parsed.summary.maxDate).toBe('2025-12-29');
+
+    // Line-level party assertions on TX-000001
+    const t1 = parsed.transactions[0];
+    expect(t1.lines[0].partyCompany).toBe('AK home');
+    expect(t1.lines[1].partyCompany).toBe('Rozana');
+    expect(t1.lines[2].partyCompany).toBe('Dolz');
+    expect(t1.lines[3].partyCompany).toBe('Dolz');
+
+    // Line-level benefit assertions on TX-000003
+    const t3 = parsed.transactions[2];
+    expect(t3.lines[0].manualBenefitDzd).toBe(500);
+    expect(t3.lines[1].manualBenefitDzd).toBe(2500);
+    expect(t3.manualBenefitDzd).toBe(3000);
+  });
 });
