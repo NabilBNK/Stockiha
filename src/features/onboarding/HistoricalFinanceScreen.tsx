@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Banner, Button, TextField } from '../../shared/components';
+import { Banner, Button, ConfirmDialog, TextField } from '../../shared/components';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useI18n, type Locale } from '../../shared/i18n';
 import type {
@@ -335,6 +335,7 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
   const [summary, setSummary] = useState<HistoricalFinanceSummaryResult | null>(null);
   const [analytics, setAnalytics] = useState<HistoricalTradeAnalyticsResult | null>(null);
   const [analyticsSubTab, setAnalyticsSubTab] = useState<AnalyticsSubTab>('overview');
+  const [showApproveConfirmModal, setShowApproveConfirmModal] = useState(false);
 
   // Manual Draft State
   const [manual, setManual] = useState<ManualDraft>(EMPTY_MANUAL);
@@ -772,11 +773,27 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             variant="secondary"
             loading={busy === 'approve'}
             disabled={pbValidation?.status !== 'VALIDATED' || busy !== null}
-            onClick={() => void approvePaperBook()}
+            onClick={() => setShowApproveConfirmModal(true)}
           >
             Approve paper-book batch
           </Button>
         </div>
+
+        {showApproveConfirmModal ? (
+          <ConfirmDialog
+            title="Approve Paper-Book Batch for Reporting"
+            body={`Are you sure you want to approve batch #${pbActiveBatchId}? Approved trade records will be permanently available in 1.5-year trade reporting.`}
+            confirmLabel="Confirm Approval"
+            cancelLabel="Cancel"
+            confirmVariant="primary"
+            busy={busy === 'approve'}
+            onConfirm={async () => {
+              setShowApproveConfirmModal(false);
+              await approvePaperBook();
+            }}
+            onCancel={() => setShowApproveConfirmModal(false)}
+          />
+        ) : null}
 
         {pbValidation ? (
           <div style={{ marginTop: '20px', padding: '16px', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)', border: '1px solid var(--sk-border)' }} data-testid="paperbook-validation-result">
@@ -1094,13 +1111,136 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             )}
 
             {analyticsSubTab === 'overrides' && (
-              <dl className="sk-details-grid" style={{ padding: '20px', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)', border: '1px solid var(--sk-border)' }}>
-                <div><dt>Calculated Formula Lines</dt><dd>{analytics.manualOverrides.calculatedLineCount}</dd></div>
-                <div><dt>Manual Override Lines</dt><dd>{analytics.manualOverrides.manualOverrideCount}</dd></div>
-                <div><dt>Calculated Mathematical Total</dt><dd>{formatMoney(analytics.manualOverrides.calculatedMathematicalTotalDzd, locale)}</dd></div>
-                <div><dt>Final Effective Total</dt><dd>{formatMoney(analytics.manualOverrides.finalEffectiveTotalDzd, locale)}</dd></div>
-                <div><dt>Total Override Difference</dt><dd><strong>{formatMoney(analytics.manualOverrides.totalOverrideDifferenceDzd, locale)}</strong></dd></div>
-              </dl>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* System Audit Status Banner */}
+                <div
+                  style={{
+                    padding: '16px 20px',
+                    borderRadius: 'var(--sk-radius)',
+                    background:
+                      analytics.manualOverrides.manualOverrideCount === 0
+                        ? 'color-mix(in srgb, #10B981 10%, var(--sk-surface-soft))'
+                        : 'color-mix(in srgb, #F59E0B 10%, var(--sk-surface-soft))',
+                    border: `1px solid ${
+                      analytics.manualOverrides.manualOverrideCount === 0 ? '#10B981' : '#F59E0B'
+                    }`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '14px',
+                  }}
+                >
+                  <span style={{ fontSize: '1.6rem' }}>
+                    {analytics.manualOverrides.manualOverrideCount === 0 ? '🟢' : '⚠️'}
+                  </span>
+                  <div>
+                    <h4 style={{ margin: '0 0 2px 0', fontSize: '1rem', fontWeight: 800 }}>
+                      {analytics.manualOverrides.manualOverrideCount === 0
+                        ? 'Pure Mathematical Integrity'
+                        : 'Manual Line Overrides Detected'}
+                    </h4>
+                    <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--sk-muted)' }}>
+                      {analytics.manualOverrides.manualOverrideCount === 0
+                        ? `All ${analytics.manualOverrides.calculatedLineCount} product lines follow exact Line Total = Qty × Unit Price mathematical formulas with 0 DZD variance.`
+                        : `${analytics.manualOverrides.manualOverrideCount} line(s) use handwritten total overrides with a net difference of ${formatMoney(analytics.manualOverrides.totalOverrideDifferenceDzd, locale)}.`}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 4 Metric Cards Grid */}
+                <div className="sk-cards">
+                  <div className="sk-metric" style={{ background: 'color-mix(in srgb, #10B981 6%, var(--sk-surface-soft))' }}>
+                    <span className="sk-metric__icon" style={{ background: 'color-mix(in srgb, #10B981 15%, transparent)', color: '#10B981' }}>🧮</span>
+                    <span className="sk-metric__label">Calculated Formula Lines</span>
+                    <span className="sk-metric__value" style={{ fontSize: '1.75rem', color: '#10B981' }}>
+                      {analytics.manualOverrides.calculatedLineCount}
+                    </span>
+                    <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--sk-muted)', marginTop: '4px' }}>
+                      Qty × Unit Price formulas
+                    </div>
+                  </div>
+
+                  <div className="sk-metric" style={{ background: 'color-mix(in srgb, #F59E0B 6%, var(--sk-surface-soft))' }}>
+                    <span className="sk-metric__icon" style={{ background: 'color-mix(in srgb, #F59E0B 15%, transparent)', color: '#F59E0B' }}>✍️</span>
+                    <span className="sk-metric__label">Manual Override Lines</span>
+                    <span className="sk-metric__value" style={{ fontSize: '1.75rem', color: analytics.manualOverrides.manualOverrideCount > 0 ? '#F59E0B' : 'var(--sk-muted)' }}>
+                      {analytics.manualOverrides.manualOverrideCount}
+                    </span>
+                    <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--sk-muted)', marginTop: '4px' }}>
+                      Paper-book handwritten totals
+                    </div>
+                  </div>
+
+                  <div className="sk-metric" style={{ background: 'color-mix(in srgb, #3B82F6 6%, var(--sk-surface-soft))' }}>
+                    <span className="sk-metric__icon" style={{ background: 'color-mix(in srgb, #3B82F6 15%, transparent)', color: '#3B82F6' }}>📐</span>
+                    <span className="sk-metric__label">Calculated Mathematical Total</span>
+                    <span className="sk-metric__value" style={{ fontSize: '1.45rem', color: '#3B82F6' }}>
+                      {formatMoney(analytics.manualOverrides.calculatedMathematicalTotalDzd, locale)}
+                    </span>
+                    <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--sk-muted)', marginTop: '4px' }}>
+                      Sum of calculated formulas
+                    </div>
+                  </div>
+
+                  <div className="sk-metric" style={{ background: 'color-mix(in srgb, var(--sk-primary) 6%, var(--sk-surface-soft))' }}>
+                    <span className="sk-metric__icon">💰</span>
+                    <span className="sk-metric__label">Final Effective Total</span>
+                    <span className="sk-metric__value" style={{ fontSize: '1.45rem', fontWeight: 800 }}>
+                      {formatMoney(analytics.manualOverrides.finalEffectiveTotalDzd, locale)}
+                    </span>
+                    <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--sk-muted)', marginTop: '4px' }}>
+                      Authoritative reporting sum
+                    </div>
+                  </div>
+                </div>
+
+                {/* Financial Reconciliation & Formula Share */}
+                <div style={{ padding: '20px', background: 'var(--sk-surface-soft)', borderRadius: 'var(--sk-radius)', border: '1px solid var(--sk-border)' }}>
+                  <h4 style={{ margin: '0 0 16px 0', fontSize: '0.95rem', fontWeight: 800 }}>
+                    Formula vs Manual Override Breakdown
+                  </h4>
+
+                  {/* Visual Progress Bar */}
+                  {(() => {
+                    const totalL = analytics.manualOverrides.calculatedLineCount + analytics.manualOverrides.manualOverrideCount;
+                    const calcPct = totalL > 0 ? Math.round((analytics.manualOverrides.calculatedLineCount / totalL) * 100) : 100;
+                    const overPct = 100 - calcPct;
+                    return (
+                      <div style={{ marginBottom: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 700, marginBottom: '6px' }}>
+                          <span style={{ color: '#10B981' }}>Calculated Lines: {calcPct}%</span>
+                          <span style={{ color: overPct > 0 ? '#F59E0B' : 'var(--sk-muted)' }}>Manual Overrides: {overPct}%</span>
+                        </div>
+                        <div style={{ display: 'flex', height: '12px', borderRadius: '6px', overflow: 'hidden', background: 'var(--sk-border)' }}>
+                          <div style={{ width: `${calcPct}%`, background: '#10B981', transition: 'width 0.3s ease' }} />
+                          <div style={{ width: `${overPct}%`, background: '#F59E0B', transition: 'width 0.3s ease' }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--sk-border)' }}>
+                    <div>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--sk-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Calculated Subtotal</span>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--sk-text)' }}>
+                        {formatMoney(analytics.manualOverrides.calculatedMathematicalTotalDzd, locale)}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--sk-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Override Variance</span>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: analytics.manualOverrides.totalOverrideDifferenceDzd === 0 ? '#10B981' : '#F59E0B' }}>
+                        {analytics.manualOverrides.totalOverrideDifferenceDzd > 0 ? '+' : ''}
+                        {formatMoney(analytics.manualOverrides.totalOverrideDifferenceDzd, locale)}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--sk-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Effective Final Total</span>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--sk-primary)' }}>
+                        {formatMoney(analytics.manualOverrides.finalEffectiveTotalDzd, locale)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         ) : null}
