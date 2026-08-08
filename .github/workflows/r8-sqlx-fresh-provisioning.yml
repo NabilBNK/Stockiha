@@ -5,14 +5,14 @@ on:
     branches:
       - main
     paths:
-      - 'scripts/r8-001-provision-acceptance-database-v2.ps1'
+      - 'scripts/r8-001-provision-acceptance-database-v3.ps1'
       - 'src-tauri/migrations/**'
       - '.github/workflows/r8-sqlx-fresh-provisioning.yml'
   push:
     branches:
       - 'task/r8-001-reproducible-sqlx-provisioning'
     paths:
-      - 'scripts/r8-001-provision-acceptance-database-v2.ps1'
+      - 'scripts/r8-001-provision-acceptance-database-v3.ps1'
       - 'src-tauri/migrations/**'
       - '.github/workflows/r8-sqlx-fresh-provisioning.yml'
 
@@ -44,6 +44,7 @@ jobs:
       PGPASSWORD: postgres
       PGDATABASE: stockiha_r8_control
       DATABASE_URL: postgres://stockiha_migrator:migrator_ci_password@127.0.0.1:5432/stockiha_r8_acceptance_ci_test
+      STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_r8_acceptance_ci_test
 
     steps:
       - name: Checkout
@@ -72,7 +73,7 @@ jobs:
       - name: Run exact cross-platform R8 provisioning helper
         shell: pwsh
         run: |
-          ./scripts/r8-001-provision-acceptance-database-v2.ps1 `
+          ./scripts/r8-001-provision-acceptance-database-v3.ps1 `
             -DatabaseName stockiha_r8_acceptance_ci_test
 
       - name: Verify historical migration files were not rewritten
@@ -83,4 +84,8 @@ jobs:
             src-tauri/migrations/20260725130200_procurement_confirm_supplier_invoice.sql \
             src-tauri/migrations/20260725140000_procurement_supplier_returns_and_payments.sql \
             src-tauri/migrations/20260725140100_inventory_confirm_supplier_return.sql \
-            src-tauri/migrations/20260725140200_procurement_post_supplier_payment.sql
+            src-tauri/migrations/20260725140200_procurement_post_supplier_payment.sql \
+            src-tauri/migrations/20260731125975_cash_session_function_owner_compat.sql \
+            src-tauri/migrations/20260731125990_cash_session_api_collision_compat.sql \
+            src-tauri/migrations/20260801100000_s4_003_function_owner_compat.sql \
+            src-tauri/migrations/20260803125900_r2_s3_owner_compat.sql
