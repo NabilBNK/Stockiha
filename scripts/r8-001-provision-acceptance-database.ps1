@@ -193,7 +193,6 @@ THEN 'OK' ELSE 'BAD' END;
     Write-Host "SQLx CLI: $sqlxVersion"
     Write-Host 'SQLx metadata owner: stockiha_migrator'
     Write-Host "Schema version: $ExpectedSchemaVersion"
-    Write-Host 'Historical migration bytes changed: NO'
     Write-Host 'S3 owner bridge: BOUNDED'
     Write-Host 'Administrative compatibility shims: 4'
     Write-Host 'Persistent role override: NO'
