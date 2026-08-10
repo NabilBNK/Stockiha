@@ -37,6 +37,15 @@ export function HistoricalImportPanel({ file, enabled, busy, locale, onFileSelec
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onClick={() => enabled && !busy && inputRef.current?.click()}
+      onKeyDown={(event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && enabled && !busy) {
+          event.preventDefault();
+          inputRef.current?.click();
+        }
+      }}
+      role="button"
+      tabIndex={enabled && !busy ? 0 : -1}
+      aria-disabled={!enabled || busy}
       data-testid="paperbook-dropzone"
     >
       <input
@@ -60,7 +69,7 @@ export function HistoricalImportPanel({ file, enabled, busy, locale, onFileSelec
 
         {file ? (
           <div className="sk-dropzone__file-info">
-            <span className="sk-badge sk-badge--success mb-1">
+            <span className="sk-badge sk-badge--success">
               {locale === 'ar' ? 'تم اختيار الملف' : 'File Selected'}
             </span>
             <strong className="sk-dropzone__filename">{file.name}</strong>

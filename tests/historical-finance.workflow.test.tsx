@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const invokeMock = vi.fn();
-const parseWorkbookMock = vi.fn();
+const parsePaperBookMock = vi.fn();
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 vi.mock('../src/features/onboarding/xlsxParser', async () => {
@@ -11,7 +11,7 @@ vi.mock('../src/features/onboarding/xlsxParser', async () => {
   );
   return {
     ...actual,
-    parseHistoricalFinanceWorkbook: (...args: unknown[]) => parseWorkbookMock(...args),
+    parsePaperBookWorkbook: (...args: unknown[]) => parsePaperBookMock(...args),
   };
 });
 
@@ -35,52 +35,32 @@ const VALIDATION_RESULT = {
 beforeEach(() => {
   cleanup();
   invokeMock.mockReset();
-  parseWorkbookMock.mockReset();
+  parsePaperBookMock.mockReset();
   document.documentElement.setAttribute('dir', 'ltr');
   document.documentElement.setAttribute('lang', 'en');
 });
 
 function renderScreen(locale: 'en' | 'fr' | 'ar' = 'en') {
-  render(
+  return render(
     <I18nProvider initialLocale={locale}>
       <HistoricalFinanceScreen sessionToken="session-token" />
     </I18nProvider>,
   );
 }
 
-describe('R0-001 historical finance onboarding', () => {
-  it('parses the official workbook, stages typed rows, validates, and approves', async () => {
-    parseWorkbookMock.mockResolvedValue({
-      rows: [
-        {
-          sourceRowNumber: 2,
-          paperId: 'PAPER-000001',
-          transactionDate: '2025-01-10',
-          transactionType: 'SALE',
-          descriptionOrCategory: 'Historical sale',
-          netAmountDzd: 100000,
-          paymentStatus: 'PAID',
-          amountPaidDzd: 100000,
-          expenseCategory: null,
-          supplierFournisseur: null,
-          customerClient: 'Customer A',
-          notes: null,
-          reviewStatus: 'READY',
-        },
-      ],
-      balances: [
-        {
-          sourceRowNumber: 2,
-          balanceDate: '2025-01-01',
-          balanceType: 'OPENING_INVENTORY_VALUE',
-          amountDzd: 25000,
-          supplierFournisseur: null,
-          customerClient: null,
-          notes: null,
-          reviewStatus: 'READY',
-        },
-      ],
+describe('historical finance onboarding', () => {
+  it('parses the primary paper book, stages typed rows, validates, and approves', async () => {
+    parsePaperBookMock.mockResolvedValue({
+      transactions: [{
+        sourceTransactionSequence: 1, sourceFirstExcelRow: 2, sourceExcelTxnRef: 'TX-1',
+        transactionDate: '2025-01-10', transactionType: 'SALE', paymentStatus: 'PAID',
+        partyCompany: 'Customer A', manualBenefitDzd: null, pageNumber: 1,
+        lines: [{ sourceRowNumber: 2, lineSequence: 1, productName: 'Desk', brand: 'Stockiha', customDetails: null, partyCompany: null, manualBenefitDzd: 20000, quantity: 1, unitPriceDzd: 100000, manualLineTotalDzd: 100000 }],
+      }],
       errors: [],
+      warnings: [],
+      contentHash: 'hash',
+      summary: { transactionCount: 1, totalLines: 1, lineCount: 1, totalSalesDzd: 100000, totalPurchasesDzd: 0, totalExpensesDzd: 0, paidSalesDzd: 100000, unpaidSalesDzd: 0, paidPurchasesDzd: 0, unpaidPurchasesDzd: 0, paidExpensesDzd: 0, unpaidExpensesDzd: 0, totalManualBenefitDzd: 20000, isPartial: false, contentHash: 'hash' },
     });
 
     const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
@@ -89,31 +69,22 @@ describe('R0-001 historical finance onboarding', () => {
       switch (command) {
         case 'get_historical_finance_setting':
           return Promise.resolve({ enabled: true });
-        case 'create_historical_finance_batch':
-          return Promise.resolve({
-            batchId: 7,
-            status: 'DRAFT',
-            isReplay: false,
-            sourceType: 'EXCEL',
-            originalFilename: 'history.xlsx',
-          });
-        case 'replace_historical_finance_batch_data':
-          return Promise.resolve({
-            batchId: 7,
-            status: 'DRAFT',
-            transactionRowCount: 1,
-            balanceRowCount: 1,
-          });
-        case 'validate_historical_finance_batch':
-          return Promise.resolve(VALIDATION_RESULT);
-        case 'approve_historical_finance_batch':
+        case 'create_historical_trade_batch':
+          return Promise.resolve({ batchId: 7, status: 'DRAFT', isReplay: false, importProfile: 'PAPER_BOOK_V2', originalFilename: 'history.xlsx' });
+        case 'replace_historical_trade_batch_data':
+          return Promise.resolve({ batchId: 7, status: 'DRAFT', transactionCount: 1, lineCount: 1, unmatchedProductCount: 0, overrideCount: 0, missingQtyCount: 0 });
+        case 'validate_historical_trade_batch':
+          return Promise.resolve({ ...VALIDATION_RESULT, transactionCount: 1, lineCount: 1, paidSalesDzd: 100000, unpaidSalesDzd: 0, paidPurchasesDzd: 0, unpaidPurchasesDzd: 0, paidExpensesDzd: 0, unpaidExpensesDzd: 0, manualBenefitCount: 1, totalManualBenefitDzd: 20000, unmatchedProductCount: 0, overrideCount: 0, missingQtyCount: 0 });
+        case 'approve_historical_trade_batch':
           return Promise.resolve({ batchId: 7, status: 'APPROVED_FOR_REPORTING', isReplay: false });
+        case 'get_historical_trade_analytics':
+          return Promise.resolve({ overview: { dateFrom: '2024-01-01', dateTo: '2026-12-31', transactionCount: 0 }, payment: { sales: {}, purchases: {}, expenses: {} }, timeline: [], products: [], brands: [], parties: [], expenses: {}, benefits: {}, dataQuality: {}, manualOverrides: {} });
         default:
           throw new Error(`Unexpected command: ${command}`);
       }
     });
 
-    renderScreen();
+    const { container } = renderScreen();
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith(
       'get_historical_finance_setting',
       { sessionToken: 'session-token' },
@@ -122,41 +93,40 @@ describe('R0-001 historical finance onboarding', () => {
     const file = new File(['safe-workbook'], 'history.xlsx', {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
-    fireEvent.change(screen.getByLabelText('Choose .xlsx workbook'), {
+    fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, {
       target: { files: [file] },
     });
 
-    expect(await screen.findByText('Workbook parsed successfully.')).toBeInTheDocument();
-    expect(screen.getByTestId('workbook-preview')).toHaveTextContent('1');
+    expect(await screen.findByText('Paper-book workbook parsed successfully.')).toBeInTheDocument();
+    expect(screen.getByTestId('paperbook-preview')).toHaveTextContent('Desk');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Stage and validate workbook' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stage and validate paper book' }));
     expect(await screen.findByText('The batch is clean and ready for approval.')).toBeInTheDocument();
 
-    const createCall = calls.find((call) => call.command === 'create_historical_finance_batch');
+    const createCall = calls.find((call) => call.command === 'create_historical_trade_batch');
     expect(createCall?.args).toMatchObject({
       sessionToken: 'session-token',
       request: {
-        sourceType: 'EXCEL',
         originalFilename: 'history.xlsx',
+        importProfile: 'PAPER_BOOK_V2',
       },
     });
     expect(createCall?.args).not.toHaveProperty('filePath');
     expect(createCall?.args).not.toHaveProperty('fileBytes');
 
-    const replaceCall = calls.find((call) => call.command === 'replace_historical_finance_batch_data');
+    const replaceCall = calls.find((call) => call.command === 'replace_historical_trade_batch_data');
     expect(replaceCall?.args).toMatchObject({
       sessionToken: 'session-token',
       request: {
         batchId: 7,
-        rows: [{ paperId: 'PAPER-000001', netAmountDzd: 100000 }],
-        balances: [{ balanceType: 'OPENING_INVENTORY_VALUE', amountDzd: 25000 }],
+        transactions: [{ sourceExcelTxnRef: 'TX-1', lines: [{ productName: 'Desk', manualBenefitDzd: 20000 }] }],
       },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve for historical reporting' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve paper book for reporting' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     expect(await screen.findByText('Historical batch approved for reporting.')).toBeInTheDocument();
-    expect(calls.some((call) => call.command === 'approve_historical_finance_batch')).toBe(true);
+    expect(calls.some((call) => call.command === 'approve_historical_trade_batch')).toBe(true);
   });
 
   it('uses the same typed staging path for direct manual entry including supplier', async () => {

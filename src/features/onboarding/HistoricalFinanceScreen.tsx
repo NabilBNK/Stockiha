@@ -5,14 +5,12 @@ import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useI18n, type Locale } from '../../shared/i18n';
 import type {
   HistoricalFinanceSummaryResult,
-  HistoricalFinanceValidationResult,
   HistoricalPaymentStatus,
   HistoricalTransactionType,
   HistoricalTradeAnalyticsResult,
   HistoricalTradeValidationResult,
 } from '../../shared/ipc/onboardingDto';
 import {
-  approveHistoricalFinanceBatch,
   approveHistoricalTradeBatch,
   createHistoricalFinanceBatch,
   createHistoricalTradeBatch,
@@ -31,10 +29,10 @@ import { HistoricalImportStepper, type ImportStep } from './HistoricalImportStep
 import { HistoricalIssueList } from './HistoricalIssueList';
 import { HistoricalKpiCard } from './HistoricalKpiCard';
 import { HistoricalRowPreview } from './HistoricalRowPreview';
+import type { HistoricalTableRow } from './historicalTableModel';
+import { exportHistoricalAnalytics, exportHistoricalTable } from './historicalExports';
 import {
-  parseHistoricalFinanceWorkbook,
   parsePaperBookWorkbook,
-  type HistoricalFinanceWorkbookData,
   type PaperBookWorkbookData,
 } from './xlsxParser';
 
@@ -50,6 +48,8 @@ type BusyAction =
   | 'manual'
   | 'summary'
   | 'analytics'
+  | 'exportPdf'
+  | 'exportExcel'
   | null;
 
 interface ManualDraft {
@@ -112,15 +112,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     enabledHelp: 'CEO/administrator control. It is ON by default and blocks new batches when disabled.',
     paperBookTitle: 'Primary Path — Paper-Book 1.5-Year XLSX Import (BUY / SELL / EXPENSE)',
     paperBookHelp: 'Use the official Stockiha paper-book template with Transactions sheet. Continuation rows, line-level party, and line-level manual benefit are supported.',
-    excelTitle: 'Secondary Path — Generic Excel Import (R0-001)',
-    excelHelp: 'Use the generic Stockiha workbook with Historical_Transactions and Balances sheets.',
-    chooseFile: 'Choose .xlsx workbook',
-    fileReady: 'Workbook parsed successfully.',
-    transactions: 'Transaction rows',
-    balances: 'Balance rows',
+    fileReady: 'Paper-book workbook parsed successfully.',
     errors: 'Workbook errors',
     importValidatePaperBook: 'Stage and validate paper book',
-    importValidate: 'Stage and validate workbook',
     validated: 'The batch is clean and ready for approval.',
     needsReview: 'The batch contains validation issues and cannot be approved yet.',
     approvePaperBook: 'Approve paper book for reporting',
@@ -161,6 +155,13 @@ const COPY: Record<Locale, Record<string, string>> = {
     analyticsTitle: '1.5-Year Trade Analytics Dashboard',
     analyticsHelp: 'Comprehensive multi-dimensional analytics for approved paper-book trade records.',
     loadAnalytics: 'Compute Trade Analytics',
+    exportPdf: 'Export analytics PDF',
+    exportExcel: 'Export table Excel',
+    pdfReady: 'Analytics PDF exported successfully.',
+    excelReady: 'Filtered table exported successfully.',
+    exportFailed: 'The export could not be generated.',
+    importEyebrow: 'Historical paper book',
+    analyticsEyebrow: 'Approved reporting data',
   },
   fr: {
     title: 'Intégration financière historique',
@@ -170,15 +171,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     enabledHelp: 'Contrôle du PDG/administrateur. Activé par défaut et bloque les nouveaux lots lorsqu’il est désactivé.',
     paperBookTitle: 'Chemin Principal — Import Registre Papier 1,5 An (ACHAT / VENTE / DÉPENSE)',
     paperBookHelp: 'Utilisez le modèle officiel avec la feuille Transactions.',
-    excelTitle: 'Chemin Secondaire — Import Excel Générique (R0-001)',
-    excelHelp: 'Utilisez le classeur générique avec les feuilles Historical_Transactions et Balances.',
-    chooseFile: 'Choisir le classeur .xlsx',
-    fileReady: 'Classeur analysé avec succès.',
-    transactions: 'Lignes de transactions',
-    balances: 'Lignes de soldes',
+    fileReady: 'Registre papier analysé avec succès.',
     errors: 'Erreurs du classeur',
     importValidatePaperBook: 'Préparer et valider le registre',
-    importValidate: 'Préparer et valider le classeur',
     validated: 'Le lot est valide et prêt pour approbation.',
     needsReview: 'Le lot contient des erreurs et ne peut pas être approuvé.',
     approve: 'Approuver pour le reporting historique',
@@ -216,6 +211,13 @@ const COPY: Record<Locale, Record<string, string>> = {
     analyticsTitle: 'Tableau de Bord Analytique Historique',
     analyticsHelp: 'Analytique multidimensionnelle pour les enregistrements du registre papier approuvés.',
     loadAnalytics: 'Calculer l’analytique',
+    exportPdf: 'Exporter l’analyse en PDF',
+    exportExcel: 'Exporter le tableau Excel',
+    pdfReady: 'Le PDF analytique a été exporté.',
+    excelReady: 'Le tableau filtré a été exporté.',
+    exportFailed: 'Impossible de générer l’export.',
+    importEyebrow: 'Registre papier historique',
+    analyticsEyebrow: 'Données approuvées de reporting',
   },
   ar: {
     title: 'إدخال البيانات المالية التاريخية',
@@ -225,15 +227,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     enabledHelp: 'إعداد المدير/المسؤول. مفعّل افتراضياً ويمنع إنشاء دفعات جديدة عند تعطيله.',
     paperBookTitle: 'المسار الرئيسي — استيراد سجل الورق (شراء / بيع / مصاريف)',
     paperBookHelp: 'استعمل ملف سجل الورق الرسمي مع ورقة Transactions.',
-    excelTitle: 'المسار الثانوي — استيراد Excel العام (R0-001)',
-    excelHelp: 'استعمل ملف Stockiha العام الذي يحتوي على Historical_Transactions وBalances.',
-    chooseFile: 'اختيار ملف .xlsx',
-    fileReady: 'تمت قراءة الملف بنجاح.',
-    transactions: 'أسطر المعاملات',
-    balances: 'أسطر الأرصدة',
+    fileReady: 'تمت قراءة ملف السجل الورقي بنجاح.',
     errors: 'أخطاء الملف',
     importValidatePaperBook: 'حفظ السجل الورقي مؤقتاً والتحقق منه',
-    importValidate: 'حفظ الملف مؤقتاً والتحقق منه',
     validated: 'الدفعة سليمة وجاهزة للموافقة.',
     needsReview: 'تحتوي الدفعة على أخطاء ولا يمكن الموافقة عليها بعد.',
     approve: 'الموافقة للتقارير التاريخية',
@@ -271,6 +267,13 @@ const COPY: Record<Locale, Record<string, string>> = {
     analyticsTitle: 'لوحة تحليلات المعاملات التاريخية',
     analyticsHelp: 'تحليل المعاملات التاريخية المعتمدة خلال الفترة المحددة.',
     loadAnalytics: 'حساب التحليلات التاريخية',
+    exportPdf: 'تصدير التحليلات PDF',
+    exportExcel: 'تصدير الجدول Excel',
+    pdfReady: 'تم تصدير تقرير PDF بنجاح.',
+    excelReady: 'تم تصدير الجدول المصفّى بنجاح.',
+    exportFailed: 'تعذر إنشاء ملف التصدير.',
+    importEyebrow: 'السجل الورقي التاريخي',
+    analyticsEyebrow: 'بيانات التقارير المعتمدة',
   },
 };
 
@@ -308,18 +311,13 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Generic R0-001 Excel State
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [workbook, setWorkbook] = useState<HistoricalFinanceWorkbookData | null>(null);
-  const [validation, setValidation] = useState<HistoricalFinanceValidationResult | null>(null);
-
   // Paper Book R0-002 State
   const [pbFile, setPbFile] = useState<File | null>(null);
   const [pbData, setPbData] = useState<PaperBookWorkbookData | null>(null);
   const [pbValidation, setPbValidation] = useState<HistoricalTradeValidationResult | null>(null);
   const [pbActiveBatchId, setPbActiveBatchId] = useState<number | null>(null);
   const [showConfirmApprovePaperBook, setShowConfirmApprovePaperBook] = useState(false);
-  const [showConfirmApproveGeneric, setShowConfirmApproveGeneric] = useState(false);
+  const [exportRows, setExportRows] = useState<HistoricalTableRow[]>([]);
 
   // Analytics & Summary State
   const [dateFrom, setDateFrom] = useState('');
@@ -345,16 +343,6 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
       cancelled = true;
     };
   }, [sessionToken, errorText]);
-
-  const canImportGeneric = useMemo(
-    () =>
-      enabled &&
-      workbook !== null &&
-      workbook.errors.length === 0 &&
-      workbook.rows.length > 0 &&
-      busy === null,
-    [enabled, workbook, busy],
-  );
 
   const canImportPaperBook = useMemo(
     () =>
@@ -531,72 +519,31 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     }
   }
 
-  async function selectWorkbook(file: File | null) {
-    setSelectedFile(file);
-    setWorkbook(null);
-    setValidation(null);
+  async function exportPdf() {
+    if (!analytics || busy !== null) return;
+    setBusy('exportPdf');
     setError(null);
     setFeedback(null);
-    if (!file) return;
-
-    setBusy('parse');
     try {
-      const parsed = await parseHistoricalFinanceWorkbook(file);
-      setWorkbook(parsed);
-      if (parsed.errors.length === 0) setFeedback(text.fileReady);
-    } catch (parseError) {
-      setError(`${text.parseFailed} ${parseError instanceof Error ? parseError.message : ''}`.trim());
+      await exportHistoricalAnalytics(analytics, locale);
+      setFeedback(text.pdfReady);
+    } catch (exportError) {
+      setError(`${text.exportFailed} ${exportError instanceof Error ? exportError.message : ''}`.trim());
     } finally {
       setBusy(null);
     }
   }
 
-  async function stageAndValidateExcel() {
-    if (!canImportGeneric || !selectedFile || !workbook) return;
-    setBusy('import');
-    setError(null);
-    setFeedback(null);
-    setValidation(null);
-    try {
-      const batch = await createHistoricalFinanceBatch(sessionToken, {
-        requestId: nextRequestId('excel'),
-        sourceType: 'EXCEL',
-        originalFilename: selectedFile.name,
-      });
-
-      const replaced = await replaceHistoricalFinanceBatchData(sessionToken, {
-        batchId: batch.batchId,
-        rows: workbook.rows,
-        balances: workbook.balances,
-      });
-
-      const validated = await validateHistoricalFinanceBatch(sessionToken, {
-        batchId: replaced.batchId,
-      });
-      setValidation(validated);
-
-      if (validated.status === 'VALIDATED') setFeedback(text.validated);
-      else setError(text.needsReview);
-    } catch (importError) {
-      setError(errorText(importError));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function approveGeneric() {
-    if (!validation?.batchId) return;
-    setBusy('approve');
+  function exportExcel() {
+    if (exportRows.length === 0 || busy !== null) return;
+    setBusy('exportExcel');
     setError(null);
     setFeedback(null);
     try {
-      const approved = await approveHistoricalFinanceBatch(sessionToken, {
-        batchId: validation.batchId,
-      });
-      setValidation({ ...validation, status: approved.status as 'VALIDATED' });
-      setFeedback(text.approved);
-    } catch (approveError) {
-      setError(errorText(approveError));
+      exportHistoricalTable(exportRows);
+      setFeedback(text.excelReady);
+    } catch (exportError) {
+      setError(`${text.exportFailed} ${exportError instanceof Error ? exportError.message : ''}`.trim());
     } finally {
       setBusy(null);
     }
@@ -646,7 +593,6 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
       const validated = await validateHistoricalFinanceBatch(sessionToken, {
         batchId: replaced.batchId,
       });
-      setValidation(validated);
       setManual(EMPTY_MANUAL);
 
       if (validated.status === 'VALIDATED') setFeedback(text.manualSaved);
@@ -673,21 +619,41 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
   }
 
   return (
-    <section className="sk-space-y">
+    <section className="sk-space-y sk-historical-page">
       <header className="sk-page-header">
         <div>
           <h1>{text.title}</h1>
           <p>{text.subtitle}</p>
         </div>
-        <label className="sk-toggle">
-          <input
-            type="checkbox"
-            checked={enabled}
-            disabled={busy !== null}
-            onChange={(e) => void toggleEnabled(e.target.checked)}
-          />
-          <span>{text.enabled}</span>
-        </label>
+        <div className="sk-page-header__actions">
+          <Button
+            type="button"
+            variant="secondary"
+            loading={busy === 'exportPdf'}
+            disabled={!analytics || busy !== null}
+            onClick={() => void exportPdf()}
+          >
+            {text.exportPdf}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            loading={busy === 'exportExcel'}
+            disabled={exportRows.length === 0 || busy !== null}
+            onClick={exportExcel}
+          >
+            {text.exportExcel}
+          </Button>
+          <label className="sk-toggle">
+            <input
+              type="checkbox"
+              checked={enabled}
+              disabled={busy !== null}
+              onChange={(e) => void toggleEnabled(e.target.checked)}
+            />
+            <span>{text.enabled}</span>
+          </label>
+        </div>
       </header>
 
       <Banner tone="info">{text.safety}</Banner>
@@ -696,8 +662,13 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
 
       {/* R0-002 PRIMARY PAPER BOOK IMPORT CARD */}
       <div className="sk-card">
-        <h2>{text.paperBookTitle}</h2>
-        <p>{text.paperBookHelp}</p>
+        <div className="sk-section-heading">
+          <div>
+            <span className="sk-section-heading__eyebrow">{text.importEyebrow}</span>
+            <h2>{text.paperBookTitle}</h2>
+            <p>{text.paperBookHelp}</p>
+          </div>
+        </div>
 
         {/* Workflow Stepper Progress Indicator */}
         <HistoricalImportStepper
@@ -717,7 +688,7 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
 
         {/* Parsed Summary KPI Cards */}
         {pbData && (
-          <div className="mt-4">
+          <div className="sk-section-block">
             <div className="sk-kpi-grid">
               <HistoricalKpiCard
                 title={locale === 'ar' ? 'المبيعات المحسوبة' : 'Parsed Sales'}
@@ -759,20 +730,21 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
 
         {/* Interactive Row Preview Table */}
         {pbData && pbData.transactions.length > 0 && (
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold mb-2">
+          <div className="sk-section-block">
+            <h3 className="sk-subsection-title">
               {locale === 'ar' ? 'معاينة المعاملات والأسطر' : 'Transaction & Line Row Preview'} ({pbData.transactions.length} Txns, {pbData.summary.totalLines} Lines)
             </h3>
             <HistoricalRowPreview
               transactions={pbData.transactions}
               locale={locale}
               isPartial={pbData.summary.isPartial}
+              onRowsChange={setExportRows}
             />
           </div>
         )}
 
         {/* Action Buttons */}
-        <div className="sk-stack mt-4">
+        <div className="sk-stack sk-section-actions">
           <Button
             type="button"
             loading={busy === 'import'}
@@ -815,8 +787,13 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
 
       {/* ANALYTICS DASHBOARD CARD */}
       <div className="sk-card">
-        <h2>{text.analyticsTitle}</h2>
-        <p>{text.analyticsHelp}</p>
+        <div className="sk-section-heading">
+          <div>
+            <span className="sk-section-heading__eyebrow">{text.analyticsEyebrow}</span>
+            <h2>{text.analyticsTitle}</h2>
+            <p>{text.analyticsHelp}</p>
+          </div>
+        </div>
 
         <div className="sk-form-grid">
           <TextField
@@ -845,86 +822,6 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
         </Button>
 
         {analytics && <HistoricalAnalyticsDashboard analytics={analytics} locale={locale} />}
-      </div>
-
-      {/* R0-001 GENERIC EXCEL IMPORT CARD */}
-      <div className="sk-card">
-        <h2>{text.excelTitle}</h2>
-        <p>{text.excelHelp}</p>
-        <div className="sk-field">
-          <label className="sk-field__label" htmlFor="historical-xlsx-file">
-            {text.chooseFile}
-          </label>
-          <input
-            id="historical-xlsx-file"
-            className="sk-field__input"
-            type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            disabled={!enabled || busy !== null}
-            onChange={(event) => void selectWorkbook(event.target.files?.[0] ?? null)}
-          />
-        </div>
-
-        {workbook ? (
-          <dl className="sk-details-grid" data-testid="workbook-preview">
-            <div><dt>{text.transactions}</dt><dd>{workbook.rows.length}</dd></div>
-            <div><dt>{text.balances}</dt><dd>{workbook.balances.length}</dd></div>
-            <div><dt>{text.errors}</dt><dd>{workbook.errors.length}</dd></div>
-          </dl>
-        ) : null}
-
-        {workbook?.errors.length ? (
-          <div className="sk-banner sk-banner--error" role="alert" data-testid="workbook-errors">
-            <strong>{text.errors}</strong>
-            <ul>
-              {workbook.errors.map((item, index) => (
-                <li key={`${item.sheet}-${item.row}-${index}`}>
-                  {item.sheet} · {item.row > 0 ? `row ${item.row}` : ''} · {item.message}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        <div className="sk-stack">
-          <Button
-            type="button"
-            loading={busy === 'import'}
-            disabled={!canImportGeneric}
-            onClick={() => void stageAndValidateExcel()}
-          >
-            {text.importValidate}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            loading={busy === 'approve'}
-            disabled={validation?.status !== 'VALIDATED' || busy !== null}
-            onClick={() => setShowConfirmApproveGeneric(true)}
-          >
-            {text.approve}
-          </Button>
-        </div>
-
-        {showConfirmApproveGeneric ? (
-          <ConfirmDialog
-            title={locale === 'ar' ? 'تأكيد الموافقة على الدفعة' : 'Confirm Batch Approval'}
-            body={
-              locale === 'ar'
-                ? 'هل أنت تأكد من الموافقة على هذه الدفعة المالية التاريخية؟ بعد الموافقة، سيتم اعتماد البيانات للتقارير التاريخية ولن يمكن تعديلها.'
-                : 'Are you sure you want to approve this historical finance batch? Once approved, the staged transactions will be finalized for reporting and cannot be modified.'
-            }
-            confirmLabel={locale === 'ar' ? 'موافقة' : 'Approve'}
-            cancelLabel={locale === 'ar' ? 'إلغاء' : 'Cancel'}
-            confirmVariant="primary"
-            busy={busy === 'approve'}
-            onConfirm={() => {
-              setShowConfirmApproveGeneric(false);
-              void approveGeneric();
-            }}
-            onCancel={() => setShowConfirmApproveGeneric(false)}
-          />
-        ) : null}
       </div>
 
       {/* R0-001 MANUAL ENTRY CARD */}

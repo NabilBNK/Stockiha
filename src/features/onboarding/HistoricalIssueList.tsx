@@ -30,7 +30,7 @@ export function HistoricalIssueList({ errors, locale, isPartial = false }: Props
 
   return (
     <div className="sk-issue-list sk-issue-list--error" data-testid="paperbook-errors">
-      <div className="sk-issue-list__header" onClick={() => setCollapsed(!collapsed)}>
+      <div className="sk-issue-list__header">
         <div className="sk-issue-list__header-title">
           <svg className="sk-icon--md text-rose-500" viewBox="0 0 20 20" fill="currentColor">
             <path
@@ -47,7 +47,15 @@ export function HistoricalIssueList({ errors, locale, isPartial = false }: Props
         <button
           type="button"
           className="sk-issue-list__toggle"
-          aria-label={collapsed ? 'Expand' : 'Collapse'}
+          aria-expanded={!collapsed}
+          aria-label={
+            locale === 'ar'
+              ? collapsed ? 'إظهار الأخطاء' : 'إخفاء الأخطاء'
+              : locale === 'fr'
+                ? collapsed ? 'Afficher les erreurs' : 'Masquer les erreurs'
+                : collapsed ? 'Show errors' : 'Hide errors'
+          }
+          onClick={() => setCollapsed(!collapsed)}
         >
           {collapsed ? '▼' : '▲'}
         </button>

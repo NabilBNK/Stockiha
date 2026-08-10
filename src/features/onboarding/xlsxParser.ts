@@ -701,7 +701,7 @@ export async function computeContentHash(transactions: HistoricalTradeTransactio
 // Date parser supporting DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, and safe Excel serial integer dates
 function parsePaperBookDate(value: string, rowNumber: number): string {
   const trimmed = value.trim();
-  const ddMmYyyy = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(trimmed);
+  const ddMmYyyy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(trimmed);
   if (ddMmYyyy) {
     const day = ddMmYyyy[1].padStart(2, '0');
     const month = ddMmYyyy[2].padStart(2, '0');

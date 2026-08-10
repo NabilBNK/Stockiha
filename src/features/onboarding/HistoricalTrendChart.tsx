@@ -65,7 +65,13 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
       </div>
 
       <div className="sk-chart-container">
-        <svg viewBox={`0 0 ${svgWidth} ${chartHeight + paddingBottom}`} className="sk-chart-svg">
+        <svg
+          viewBox={`0 0 ${svgWidth} ${chartHeight + paddingBottom}`}
+          className="sk-chart-svg"
+          role="img"
+          aria-label={locale === 'ar' ? 'رسم المعاملات الشهرية' : locale === 'fr' ? 'Graphique mensuel des transactions' : 'Monthly trade chart'}
+        >
+          <title>{locale === 'ar' ? 'تطور المبيعات والمشتريات والمصاريف والفائدة' : locale === 'fr' ? 'Évolution des ventes, achats, dépenses et bénéfices' : 'Sales, purchases, expenses and benefit over time'}</title>
           {/* Y Axis Grid lines */}
           {[0.25, 0.5, 0.75, 1].map((ratio) => {
             const y = chartHeight - ratio * chartHeight;
@@ -77,7 +83,7 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
                   y1={y}
                   x2={svgWidth - 10}
                   y2={y}
-                  stroke="var(--sk-color-border-subtle, #e2e8f0)"
+                  stroke="var(--sk-border)"
                   strokeDasharray="4 4"
                 />
                 <text
@@ -85,7 +91,7 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
                   y={y + 4}
                   textAnchor="end"
                   fontSize="10"
-                  fill="var(--sk-color-text-muted, #64748b)"
+                  fill="var(--sk-muted)"
                 >
                   {val >= 1000 ? `${Math.round(val / 1000)}k` : val}
                 </text>
@@ -106,7 +112,7 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
 
             return (
               <g
-                key={item.yearMonth}
+                key={item.yearMonth ?? item.month}
                 onMouseEnter={() => setHoverIndex(idx)}
                 onMouseLeave={() => setHoverIndex(null)}
                 className="sk-chart-group"
@@ -129,7 +135,7 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
                   y={chartHeight - salesH}
                   width={barWidth}
                   height={salesH}
-                  fill="#10b981"
+                  fill="var(--sk-chart-sales)"
                   rx="2"
                 />
 
@@ -139,7 +145,7 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
                   y={chartHeight - purchH}
                   width={barWidth}
                   height={purchH}
-                  fill="#3b82f6"
+                  fill="var(--sk-chart-purchases)"
                   rx="2"
                 />
 
@@ -149,7 +155,7 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
                   y={chartHeight - expH}
                   width={barWidth}
                   height={expH}
-                  fill="#f59e0b"
+                  fill="var(--sk-chart-expenses)"
                   rx="2"
                 />
 
@@ -159,7 +165,7 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
                   y={chartHeight - benH}
                   width={barWidth}
                   height={benH}
-                  fill="#8b5cf6"
+                  fill="var(--sk-chart-benefit)"
                   rx="2"
                 />
 
@@ -170,9 +176,9 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
                   textAnchor="middle"
                   fontSize="11"
                   fontWeight={isHovered ? 'bold' : 'normal'}
-                  fill="var(--sk-color-text-main, #0f172a)"
+                  fill="var(--sk-text)"
                 >
-                  {item.yearMonth}
+                  {item.yearMonth ?? item.month}
                 </text>
               </g>
             );
@@ -183,15 +189,15 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
       {/* Interactive Tooltip Card */}
       {hoverIndex !== null && timeline[hoverIndex] && (
         <div className="sk-chart-tooltip" data-testid="chart-tooltip">
-          <strong>{timeline[hoverIndex].yearMonth}</strong>
+          <strong>{timeline[hoverIndex].yearMonth ?? timeline[hoverIndex].month}</strong>
           <div className="sk-chart-tooltip__grid">
-            <span>Sales:</span>
+            <span>{locale === 'ar' ? 'المبيعات:' : locale === 'fr' ? 'Ventes :' : 'Sales:'}</span>
             <strong>{formatMoney(timeline[hoverIndex].salesDzd)}</strong>
-            <span>Purchases:</span>
+            <span>{locale === 'ar' ? 'المشتريات:' : locale === 'fr' ? 'Achats :' : 'Purchases:'}</span>
             <strong>{formatMoney(timeline[hoverIndex].purchasesDzd)}</strong>
-            <span>Expenses:</span>
+            <span>{locale === 'ar' ? 'المصاريف:' : locale === 'fr' ? 'Dépenses :' : 'Expenses:'}</span>
             <strong>{formatMoney(timeline[hoverIndex].expensesDzd)}</strong>
-            <span>Recorded Benefit:</span>
+            <span>{locale === 'ar' ? 'الفائدة المسجلة:' : locale === 'fr' ? 'Bénéfice enregistré :' : 'Recorded Benefit:'}</span>
             <strong className="text-emerald-600">
               {formatMoney(timeline[hoverIndex].manualBenefitDzd ?? 0)}
             </strong>
