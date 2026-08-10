@@ -1,6 +1,9 @@
 @echo off
 title Stockiha Development Runner
 
+echo Ensuring workspace is on branch task/r0-004-historical-line-party-benefit...
+git checkout task/r0-004-historical-line-party-benefit 2>nul || git checkout r0-004-historical-line-party-benefit 2>nul
+
 echo Terminating any existing running Stockiha instance and freeing port 1420...
 taskkill /F /IM stockiha.exe /IM stockiha-backend.exe /IM tauri.exe /IM cargo.exe 2>nul
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :1420') do taskkill /F /PID %%a 2>nul
