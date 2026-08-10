@@ -14,6 +14,16 @@ set "PATH=C:\Program Files\PostgreSQL\18\bin;C:\BuildTools\VC\Tools\MSVC\14.44.3
 set "INCLUDE=C:\BuildTools\VC\Tools\MSVC\14.44.35207\include;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\ucrt;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\um;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\winrt;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\cppwinrt"
 set "LIB=C:\BuildTools\VC\Tools\MSVC\14.44.35207\lib\x64;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt\x64;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\um\x64;%LIB%"
 
+if exist "%LOCALAPPDATA%\Stockiha\r8-acceptance\runtime.key" (
+    set /p STOCKIHA_RUNTIME_PW=<"%LOCALAPPDATA%\Stockiha\r8-acceptance\runtime.key"
+)
+
+if defined STOCKIHA_RUNTIME_PW (
+    echo Ensuring PostgreSQL service is active on port 55433...
+    powershell -NoProfile -Command "$ready = & 'C:\Program Files\PostgreSQL\18\bin\pg_isready.exe' -h 127.0.0.1 -p 55433 2>&1; if ($ready -notlike '*accepting connections*') { & 'C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe' start -D '$env:LOCALAPPDATA\Stockiha\r8-acceptance\data-55433' -l '$env:LOCALAPPDATA\Stockiha\r8-acceptance\postgres-55433.log' -w }" >nul 2>&1
+    set "STOCKIHA_DEV_DATABASE_URL=postgres://stockiha_runtime:%STOCKIHA_RUNTIME_PW%@127.0.0.1:55433/stockiha_r8_acceptance_20260808165143_test?sslmode=disable"
+)
+
 if not defined STOCKIHA_DEV_DATABASE_URL (
     echo ERROR: STOCKIHA_DEV_DATABASE_URL is not configured.
     echo Configure it in the Windows user environment or an untracked local shell before running this script.
