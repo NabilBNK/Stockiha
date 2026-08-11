@@ -34,13 +34,13 @@ describe('historical exports', () => {
 
   it('builds the PDF report payload from the active analytics period and authoritative KPIs', () => {
     const analytics = {
-      overview: { dateFrom: '2024-01-01', dateTo: '2025-12-31', totalSalesDzd: 1000, totalPurchasesDzd: 400, totalExpensesDzd: 100, totalManualBenefitDzd: 300 },
+      overview: { dateFrom: '2024-01-01', dateTo: '2025-12-31', totalSalesDzd: 1000, totalPurchasesDzd: 400, totalExpensesDzd: 100, totalManualBenefitDzd: 300, tradeDifferenceDzd: 500 },
       timeline: [{ month: '2025-01', yearMonth: '2025-01', salesDzd: 1000, purchasesDzd: 400, expensesDzd: 100 }],
       products: [{ productName: 'Desk', matchedProductId: null, qtySold: 1, salesDzd: 1000, qtyPurchased: 0, purchasesDzd: 0 }],
     } as HistoricalTradeAnalyticsResult;
     const model = buildHistoricalReportModel(analytics, 'en', new Date('2026-08-10T12:00:00Z'));
     expect(model.period).toContain('2024-01-01 — 2025-12-31');
-    expect(model.kpis.map((kpi) => kpi.value)).toEqual([1000, 400, 100, 300]);
+    expect(model.kpis.map((kpi) => kpi.value)).toEqual([1000, 400, 100, 300, 600, 500, -200]);
     expect(model.timeline).toHaveLength(1);
     expect(model.topProducts[0].productName).toBe('Desk');
   });

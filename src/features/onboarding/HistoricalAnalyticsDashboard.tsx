@@ -18,6 +18,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     topProducts: 'Top products by sales & benefit', topParties: 'Top parties & suppliers by volume', paidSales: 'Paid sales', unpaidSales: 'Unpaid sales (receivables)', paidPurchases: 'Paid purchases', unpaidPurchases: 'Unpaid purchases (payables)',
     product: 'Product', qtySold: 'Qty sold', sales: 'Sales (DZD)', qtyBought: 'Qty bought', purchases: 'Purchases (DZD)', benefit: 'Recorded benefit', catalogMatched: 'Catalog matched', brand: 'Brand', lines: 'Lines', party: 'Party / company', expenses: 'Expenses (DZD)', volume: 'Total volume',
     coverage: 'Data coverage & field completeness', productCoverage: 'Product-name coverage', brandCoverage: 'Brand coverage', partyCoverage: 'Party / supplier coverage', pageCoverage: 'Page-number coverage', calculatedLines: 'Calculated formula lines', overrideLines: 'Manual line-total overrides', calculatedTotal: 'Calculated mathematical total', finalTotal: 'Final effective total', difference: 'Total override difference', empty: 'No approved data for this view.',
+    benefitAnalysis: 'Calculated Benefits vs. Manual Entered Benefits Analysis', manualBenefitTotal: 'Manual Entered Benefit (Paper Book)', calculatedTradeBenefit: 'Calculated Product Profit (COGS Margin)', calculatedTradeMargin: 'Calculated Product Benefit (COGS)', benefitVariance: 'Benefit Variance (Manual − Calculated)', calculatedMarginCol: 'Calculated Benefit', varianceCol: 'Variance (Δ)', netCashDifference: 'Net Trade Cash Flow (Sales − Purchases − Expenses)',
   },
   fr: {
     overview: 'Vue d’ensemble', salesTab: 'Ventes et paiements', purchasesTab: 'Achats', productsTab: 'Produits', brandsTab: 'Marques', partiesTab: 'Partenaires et fournisseurs', qualityTab: 'Qualité des données', overridesTab: 'Ajustements manuels',
@@ -26,6 +27,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     topProducts: 'Produits principaux par ventes et bénéfice', topParties: 'Partenaires et fournisseurs par volume', paidSales: 'Ventes payées', unpaidSales: 'Ventes impayées (créances)', paidPurchases: 'Achats payés', unpaidPurchases: 'Achats impayés (dettes)',
     product: 'Produit', qtySold: 'Qté vendue', sales: 'Ventes (DZD)', qtyBought: 'Qté achetée', purchases: 'Achats (DZD)', benefit: 'Bénéfice enregistré', catalogMatched: 'Lié au catalogue', brand: 'Marque', lines: 'Lignes', party: 'Partenaire / société', expenses: 'Dépenses (DZD)', volume: 'Volume total',
     coverage: 'Couverture et complétude des données', productCoverage: 'Couverture des produits', brandCoverage: 'Couverture des marques', partyCoverage: 'Couverture partenaires / fournisseurs', pageCoverage: 'Couverture des numéros de page', calculatedLines: 'Lignes calculées', overrideLines: 'Totaux de ligne remplacés', calculatedTotal: 'Total mathématique calculé', finalTotal: 'Total final effectif', difference: 'Écart total des ajustements', empty: 'Aucune donnée approuvée pour cette vue.',
+    benefitAnalysis: 'Analyse des bénéfices calculés vs. manuels enregistrés', manualBenefitTotal: 'Bénéfice manuel (Livre papier)', calculatedTradeBenefit: 'Bénéfice produit calculé (Marge COGS)', calculatedTradeMargin: 'Bénéfice produit calculé (COGS)', benefitVariance: 'Écart des bénéfices (Manuel − Calculé)', calculatedMarginCol: 'Bénéfice calculé', varianceCol: 'Écart (Δ)', netCashDifference: 'Flux de trésorerie net (Ventes − Achats − Dépenses)',
   },
   ar: {
     overview: 'نظرة عامة', salesTab: 'المبيعات والمدفوعات', purchasesTab: 'المشتريات', productsTab: 'المنتجات', brandsTab: 'العلامات', partiesTab: 'الأطراف والموردون', qualityTab: 'جودة البيانات', overridesTab: 'التعديلات اليدوية',
@@ -34,6 +36,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     topProducts: 'أعلى المنتجات حسب المبيعات والفائدة', topParties: 'أعلى الأطراف والموردين حسب الحجم', paidSales: 'المبيعات المدفوعة', unpaidSales: 'المبيعات غير المدفوعة (ديون الزبائن)', paidPurchases: 'المشتريات المدفوعة', unpaidPurchases: 'المشتريات غير المدفوعة (ديون الموردين)',
     product: 'المنتج', qtySold: 'الكمية المباعة', sales: 'المبيعات (دج)', qtyBought: 'الكمية المشتراة', purchases: 'المشتريات (دج)', benefit: 'الفائدة المسجلة', catalogMatched: 'مرتبط بالفهرس', brand: 'العلامة', lines: 'الأسطر', party: 'الطرف / الشركة', expenses: 'المصاريف (دج)', volume: 'الحجم الإجمالي',
     coverage: 'تغطية البيانات واكتمال الحقول', productCoverage: 'تغطية أسماء المنتجات', brandCoverage: 'تغطية العلامات', partyCoverage: 'تغطية الأطراف والموردين', pageCoverage: 'تغطية أرقام الصفحات', calculatedLines: 'أسطر محسوبة بالصيغة', overrideLines: 'تعديلات إجمالي السطر', calculatedTotal: 'المجموع الحسابي', finalTotal: 'المجموع النهائي الفعلي', difference: 'فارق التعديلات الإجمالي', empty: 'لا توجد بيانات معتمدة لهذا العرض.',
+    benefitAnalysis: 'تحليل مقارنة الفائدة المحسوبة مقابل الفائدة اليدوية المسجلة', manualBenefitTotal: 'الفائدة اليدوية المسجلة (الدفتر الورقي)', calculatedTradeBenefit: 'الفائدة المحسوبة للمنتجات (هامش التكلفة)', calculatedTradeMargin: 'الفائدة المحسوبة للمنتجات (التكلفة)', benefitVariance: 'فارق الفائدة (اليدوي − المحسوب)', calculatedMarginCol: 'الفائدة المحسوبة', varianceCol: 'الفارق (Δ)', netCashDifference: 'الصافي التجاري النقدي (المبيعات − المشتريات − المصاريف)',
   },
 };
 
@@ -68,8 +71,45 @@ export function HistoricalAnalyticsDashboard({ analytics, locale }: Props) {
   const text = COPY[locale];
   const money = (value: number | null | undefined) => value == null ? '—' : `${new Intl.NumberFormat(locale).format(value)} DZD`;
   const changeSort = (key: string) => setSort((current) => ({ key, direction: current.key === key && current.direction === 'ascending' ? 'descending' : 'ascending' }));
-  const products = useMemo(() => sortRows(analytics.products, sort, locale), [analytics.products, sort, locale]);
-  const brands = useMemo(() => sortRows(analytics.brands, sort, locale), [analytics.brands, sort, locale]);
+
+  const productsWithMargin = useMemo(() => {
+    const list = analytics.products.map((p) => {
+      const unitCost = p.qtyPurchased > 0 && p.purchasesDzd > 0 ? p.purchasesDzd / p.qtyPurchased : null;
+      const cogs = unitCost !== null && p.qtySold > 0 ? p.qtySold * unitCost : null;
+      const calculatedMarginDzd = cogs !== null ? p.salesDzd - cogs : (p.qtySold > 0 && (p.recordedBenefitDzd ?? 0) > 0 ? p.recordedBenefitDzd! : p.salesDzd - p.purchasesDzd);
+      const benefitVarianceDzd = (p.recordedBenefitDzd ?? 0) - calculatedMarginDzd;
+      return {
+        ...p,
+        unitCost,
+        cogs,
+        calculatedMarginDzd,
+        benefitVarianceDzd,
+      };
+    });
+    return sortRows(list, sort, locale);
+  }, [analytics.products, sort, locale]);
+
+  const totalCalculatedProductBenefitDzd = useMemo(() => {
+    return productsWithMargin.reduce((sum, item) => sum + item.calculatedMarginDzd, 0);
+  }, [productsWithMargin]);
+
+  const overallBenefitVarianceDzd = analytics.overview.totalManualBenefitDzd - totalCalculatedProductBenefitDzd;
+
+  const brandsWithMargin = useMemo(() => {
+    const list = analytics.brands.map((b) => {
+      const unitCost = b.qtyBought && b.qtyBought > 0 && b.purchasesDzd > 0 ? b.purchasesDzd / b.qtyBought : null;
+      const cogs = unitCost !== null && (b.qtySold ?? 0) > 0 ? (b.qtySold ?? 0) * unitCost : null;
+      const calculatedMarginDzd = cogs !== null ? b.salesDzd - cogs : ((b.qtySold ?? 0) > 0 && (b.recordedBenefitDzd ?? 0) > 0 ? b.recordedBenefitDzd! : b.salesDzd - b.purchasesDzd);
+      const benefitVarianceDzd = (b.recordedBenefitDzd ?? 0) - calculatedMarginDzd;
+      return {
+        ...b,
+        calculatedMarginDzd,
+        benefitVarianceDzd,
+      };
+    });
+    return sortRows(list, sort, locale);
+  }, [analytics.brands, sort, locale]);
+
   const parties = useMemo(() => sortRows(analytics.parties, sort, locale), [analytics.parties, sort, locale]);
   const topProducts: RankingItem[] = analytics.products.map((item) => ({ label: item.productName, value: item.salesDzd, secondaryValue: item.purchasesDzd, sublabel: item.qtySold > 0 ? `${item.qtySold}` : undefined, benefit: item.recordedBenefitDzd }));
   const topParties: RankingItem[] = analytics.parties.map((item) => ({ label: item.partyCompany, value: item.totalVolumeDzd, benefit: item.recordedBenefitDzd }));
@@ -91,6 +131,38 @@ export function HistoricalAnalyticsDashboard({ analytics, locale }: Props) {
           <HistoricalKpiCard title={text.totalExpenses} value={analytics.overview.totalExpensesDzd} locale={locale} tone="warning" subtitle={`${text.paid}: ${money(analytics.overview.paidExpensesDzd)}`} />
           <HistoricalKpiCard title={text.recordedBenefit} value={analytics.overview.totalManualBenefitDzd} locale={locale} tone="primary" badgeText={text.lineAggregate} />
         </div>
+
+        {/* CALCULATED BENEFITS VS MANUAL ENTERED BENEFITS ANALYSIS CARD */}
+        <div className="sk-card sk-card--featured" data-testid="benefit-comparison-card">
+          <h3 className="sk-subsection-title">{text.benefitAnalysis}</h3>
+          <dl className="sk-details-grid">
+            <div>
+              <dt>{text.manualBenefitTotal}</dt>
+              <dd className="sk-num" style={{ color: 'var(--sk-color-primary-600, #2563eb)', fontWeight: 700 }}>
+                {money(analytics.overview.totalManualBenefitDzd)}
+              </dd>
+            </div>
+            <div>
+              <dt>{text.calculatedTradeBenefit}</dt>
+              <dd className="sk-num" style={{ color: 'var(--sk-color-emerald-600, #059669)', fontWeight: 700 }}>
+                {money(totalCalculatedProductBenefitDzd)}
+              </dd>
+            </div>
+            <div>
+              <dt>{text.benefitVariance}</dt>
+              <dd className="sk-num" style={{ color: overallBenefitVarianceDzd >= 0 ? 'var(--sk-color-emerald-600, #059669)' : 'var(--sk-color-rose-600, #e11d48)', fontWeight: 700 }}>
+                {money(overallBenefitVarianceDzd)}
+              </dd>
+            </div>
+            <div>
+              <dt>{text.netCashDifference}</dt>
+              <dd className="sk-num" style={{ color: 'var(--sk-color-slate-700, #334155)', fontWeight: 700 }}>
+                {money(analytics.overview.tradeDifferenceDzd)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
         <div className="sk-card sk-card--featured"><div className="sk-featured-summary"><div><span className="sk-featured-summary__label">{text.netDifference}</span><div className="sk-featured-summary__value">{money(analytics.overview.tradeDifferenceDzd)}</div></div><div className="sk-banner sk-banner--warning"><strong>{text.notice}</strong></div></div></div>
         <HistoricalTrendChart timeline={analytics.timeline} locale={locale} />
         <div className="sk-analytics-grid"><HistoricalRankingChart title={text.topProducts} items={topProducts} locale={locale} tone="emerald" /><HistoricalRankingChart title={text.topParties} items={topParties} locale={locale} tone="purple" /></div>
@@ -99,9 +171,9 @@ export function HistoricalAnalyticsDashboard({ analytics, locale }: Props) {
       {subTab === 'sales' && <div className="sk-analytics-content"><div className="sk-kpi-grid"><HistoricalKpiCard title={text.totalSales} value={analytics.payment.sales.total} locale={locale} tone="success" /><HistoricalKpiCard title={text.paidSales} value={analytics.payment.sales.paid} locale={locale} tone="success" /><HistoricalKpiCard title={text.unpaidSales} value={analytics.payment.sales.unpaid} locale={locale} tone="warning" /><HistoricalKpiCard title={text.recordedBenefit} value={analytics.benefits.totalManualBenefitDzd} locale={locale} tone="primary" /></div><HistoricalRankingChart title={text.topProducts} items={topProducts} locale={locale} tone="emerald" /></div>}
       {subTab === 'purchases' && <div className="sk-analytics-content"><div className="sk-kpi-grid"><HistoricalKpiCard title={text.totalPurchases} value={analytics.payment.purchases.total} locale={locale} tone="info" /><HistoricalKpiCard title={text.paidPurchases} value={analytics.payment.purchases.paid} locale={locale} tone="info" /><HistoricalKpiCard title={text.unpaidPurchases} value={analytics.payment.purchases.unpaid} locale={locale} tone="danger" /></div><HistoricalRankingChart title={text.topParties} items={topParties} locale={locale} tone="blue" /></div>}
 
-      {subTab === 'products' && <div className="sk-table-container" tabIndex={0}><table className="sk-table"><thead><tr><SortHeader label={text.product} field="productName" sort={sort} onSort={changeSort} /><SortHeader label={text.qtySold} field="qtySold" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.sales} field="salesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.qtyBought} field="qtyPurchased" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.purchases} field="purchasesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.benefit} field="recordedBenefitDzd" sort={sort} onSort={changeSort} numeric /></tr></thead><tbody>{products.map((item, index) => <tr key={`${item.productName}-${index}`}><td><strong>{item.productName}</strong>{item.matchedProductId ? <span className="sk-badge sk-badge--success">{text.catalogMatched}</span> : null}</td><td className="sk-num">{item.qtySold}</td><td className="sk-num">{money(item.salesDzd)}</td><td className="sk-num">{item.qtyPurchased}</td><td className="sk-num">{money(item.purchasesDzd)}</td><td className="sk-num">{money(item.recordedBenefitDzd)}</td></tr>)}{products.length === 0 && <tr><td colSpan={6} className="sk-table-empty">{text.empty}</td></tr>}</tbody></table></div>}
+      {subTab === 'products' && <div className="sk-table-container" tabIndex={0}><table className="sk-table"><thead><tr><SortHeader label={text.product} field="productName" sort={sort} onSort={changeSort} /><SortHeader label={text.qtySold} field="qtySold" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.sales} field="salesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.qtyBought} field="qtyPurchased" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.purchases} field="purchasesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.benefit} field="recordedBenefitDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.calculatedMarginCol} field="calculatedMarginDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.varianceCol} field="benefitVarianceDzd" sort={sort} onSort={changeSort} numeric /></tr></thead><tbody>{productsWithMargin.map((item, index) => <tr key={`${item.productName}-${index}`}><td><strong>{item.productName}</strong>{item.matchedProductId ? <span className="sk-badge sk-badge--success">{text.catalogMatched}</span> : null}</td><td className="sk-num">{item.qtySold}</td><td className="sk-num">{money(item.salesDzd)}</td><td className="sk-num">{item.qtyPurchased}</td><td className="sk-num">{money(item.purchasesDzd)}</td><td className="sk-num">{money(item.recordedBenefitDzd)}</td><td className="sk-num">{money(item.calculatedMarginDzd)}</td><td className="sk-num" style={{ color: item.benefitVarianceDzd >= 0 ? 'inherit' : 'var(--sk-color-rose-600, #e11d48)' }}>{money(item.benefitVarianceDzd)}</td></tr>)}{productsWithMargin.length === 0 && <tr><td colSpan={8} className="sk-table-empty">{text.empty}</td></tr>}</tbody></table></div>}
 
-      {subTab === 'brands' && <div className="sk-analytics-content"><HistoricalRankingChart title={text.brandsTab} items={topBrands} locale={locale} tone="blue" /><div className="sk-table-container" tabIndex={0}><table className="sk-table"><thead><tr><SortHeader label={text.brand} field="brand" sort={sort} onSort={changeSort} /><SortHeader label={text.lines} field="lineCount" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.sales} field="salesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.purchases} field="purchasesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.benefit} field="recordedBenefitDzd" sort={sort} onSort={changeSort} numeric /></tr></thead><tbody>{brands.map((item, index) => <tr key={`${item.brand}-${index}`}><td><strong>{item.brand}</strong></td><td className="sk-num">{item.lineCount ?? '—'}</td><td className="sk-num">{money(item.salesDzd)}</td><td className="sk-num">{money(item.purchasesDzd)}</td><td className="sk-num">{money(item.recordedBenefitDzd)}</td></tr>)}</tbody></table></div></div>}
+      {subTab === 'brands' && <div className="sk-analytics-content"><HistoricalRankingChart title={text.brandsTab} items={topBrands} locale={locale} tone="blue" /><div className="sk-table-container" tabIndex={0}><table className="sk-table"><thead><tr><SortHeader label={text.brand} field="brand" sort={sort} onSort={changeSort} /><SortHeader label={text.lines} field="lineCount" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.sales} field="salesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.purchases} field="purchasesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.benefit} field="recordedBenefitDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.calculatedMarginCol} field="calculatedMarginDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.varianceCol} field="benefitVarianceDzd" sort={sort} onSort={changeSort} numeric /></tr></thead><tbody>{brandsWithMargin.map((item, index) => <tr key={`${item.brand}-${index}`}><td><strong>{item.brand}</strong></td><td className="sk-num">{item.lineCount ?? '—'}</td><td className="sk-num">{money(item.salesDzd)}</td><td className="sk-num">{money(item.purchasesDzd)}</td><td className="sk-num">{money(item.recordedBenefitDzd)}</td><td className="sk-num">{money(item.calculatedMarginDzd)}</td><td className="sk-num" style={{ color: item.benefitVarianceDzd >= 0 ? 'inherit' : 'var(--sk-color-rose-600, #e11d48)' }}>{money(item.benefitVarianceDzd)}</td></tr>)}</tbody></table></div></div>}
 
       {subTab === 'parties' && <div className="sk-table-container" tabIndex={0}><table className="sk-table"><thead><tr><SortHeader label={text.party} field="partyCompany" sort={sort} onSort={changeSort} /><SortHeader label={text.sales} field="salesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.purchases} field="purchasesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.expenses} field="expensesDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.volume} field="totalVolumeDzd" sort={sort} onSort={changeSort} numeric /><SortHeader label={text.benefit} field="recordedBenefitDzd" sort={sort} onSort={changeSort} numeric /></tr></thead><tbody>{parties.map((item, index) => <tr key={`${item.partyCompany}-${index}`}><td><strong>{item.partyCompany}</strong></td><td className="sk-num">{money(item.salesDzd)}</td><td className="sk-num">{money(item.purchasesDzd)}</td><td className="sk-num">{money(item.expensesDzd)}</td><td className="sk-num">{money(item.totalVolumeDzd)}</td><td className="sk-num">{money(item.recordedBenefitDzd)}</td></tr>)}</tbody></table></div>}
 

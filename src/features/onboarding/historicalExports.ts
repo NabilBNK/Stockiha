@@ -10,16 +10,19 @@ const EXPORT_COPY: Record<Locale, Record<string, string>> = {
   en: {
     report: 'Historical Trade Analytics Report', period: 'Reporting period', generated: 'Generated',
     sales: 'Total sales', purchases: 'Total purchases', expenses: 'Total expenses', benefit: 'Recorded benefit',
+    calcMargin: 'Calculated trade margin (Sales − Purchases)', calcNet: 'Calculated net trade benefit', benefitVariance: 'Benefit variance (Manual − Net)',
     trend: 'Monthly trade trend', products: 'Top products by sales', filtered: 'Approved reporting data for the selected period',
   },
   fr: {
     report: 'Rapport analytique des transactions historiques', period: 'Période du rapport', generated: 'Généré',
     sales: 'Ventes totales', purchases: 'Achats totaux', expenses: 'Dépenses totales', benefit: 'Bénéfice enregistré',
+    calcMargin: 'Marge commerciale calculée (Ventes − Achats)', calcNet: 'Bénéfice net commercial calculé', benefitVariance: 'Écart de bénéfice (Manuel − Net)',
     trend: 'Évolution mensuelle', products: 'Produits principaux par ventes', filtered: 'Données approuvées pour la période sélectionnée',
   },
   ar: {
     report: 'تقرير تحليلات المعاملات التاريخية', period: 'فترة التقرير', generated: 'تاريخ الإنشاء',
     sales: 'إجمالي المبيعات', purchases: 'إجمالي المشتريات', expenses: 'إجمالي المصاريف', benefit: 'الفائدة المسجلة',
+    calcMargin: 'الهامش التجاري المحسوب (المبيعات − المشتريات)', calcNet: 'الفائدة التجاري الصافية المحسوبة', benefitVariance: 'فارق الفائدة (اليدوي − الصافي)',
     trend: 'التطور الشهري للمعاملات', products: 'أعلى المنتجات حسب المبيعات', filtered: 'البيانات المعتمدة للفترة المحددة',
   },
 };
@@ -106,6 +109,9 @@ export function buildHistoricalReportModel(
   generatedAt = new Date(),
 ): HistoricalReportModel {
   const copy = EXPORT_COPY[locale];
+  const calculatedMargin = analytics.overview.totalSalesDzd - analytics.overview.totalPurchasesDzd;
+  const calcNet = analytics.overview.tradeDifferenceDzd ?? (analytics.overview.totalSalesDzd - analytics.overview.totalPurchasesDzd - analytics.overview.totalExpensesDzd);
+  const variance = (analytics.overview.totalManualBenefitDzd ?? 0) - calcNet;
   return {
     title: copy.report,
     period: `${copy.period}: ${analytics.overview.dateFrom} — ${analytics.overview.dateTo}`,
@@ -116,6 +122,9 @@ export function buildHistoricalReportModel(
       { label: copy.purchases, value: analytics.overview.totalPurchasesDzd },
       { label: copy.expenses, value: analytics.overview.totalExpensesDzd },
       { label: copy.benefit, value: analytics.overview.totalManualBenefitDzd },
+      { label: copy.calcMargin, value: calculatedMargin },
+      { label: copy.calcNet, value: calcNet },
+      { label: copy.benefitVariance, value: variance },
     ],
     timeline: analytics.timeline,
     topProducts: analytics.products.slice().sort((a, b) => b.salesDzd - a.salesDzd).slice(0, 8),

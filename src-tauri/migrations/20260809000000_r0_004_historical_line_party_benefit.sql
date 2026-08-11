@@ -767,11 +767,23 @@ BEGIN
 END;
 $$;
 
+GRANT EXECUTE ON FUNCTION onboarding.create_historical_trade_batch(text, text, text, text, text) TO stockiha_runtime;
+GRANT EXECUTE ON FUNCTION onboarding.create_historical_trade_batch(text, text, text, text) TO stockiha_runtime;
+GRANT EXECUTE ON FUNCTION onboarding.replace_historical_trade_batch_data(text, bigint, jsonb) TO stockiha_runtime;
+GRANT EXECUTE ON FUNCTION onboarding.validate_historical_trade_batch(text, bigint) TO stockiha_runtime;
+GRANT EXECUTE ON FUNCTION onboarding.approve_historical_trade_batch(text, bigint) TO stockiha_runtime;
+GRANT EXECUTE ON FUNCTION onboarding.get_historical_trade_analytics(text, date, date) TO stockiha_runtime;
+
 GRANT EXECUTE ON FUNCTION onboarding.create_historical_trade_batch(text, text, text, text, text) TO stockiha_admin;
 GRANT EXECUTE ON FUNCTION onboarding.create_historical_trade_batch(text, text, text, text) TO stockiha_admin;
 GRANT EXECUTE ON FUNCTION onboarding.replace_historical_trade_batch_data(text, bigint, jsonb) TO stockiha_admin;
+GRANT EXECUTE ON FUNCTION onboarding.validate_historical_trade_batch(text, bigint) TO stockiha_admin;
+GRANT EXECUTE ON FUNCTION onboarding.approve_historical_trade_batch(text, bigint) TO stockiha_admin;
 GRANT EXECUTE ON FUNCTION onboarding.get_historical_trade_analytics(text, date, date) TO stockiha_admin;
+
 REVOKE EXECUTE ON FUNCTION onboarding.create_historical_trade_batch(text, text, text, text, text) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION onboarding.create_historical_trade_batch(text, text, text, text) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION onboarding.replace_historical_trade_batch_data(text, bigint, jsonb) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION onboarding.validate_historical_trade_batch(text, bigint) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION onboarding.approve_historical_trade_batch(text, bigint) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION onboarding.get_historical_trade_analytics(text, date, date) FROM PUBLIC;

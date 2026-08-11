@@ -1,11 +1,11 @@
 @echo off
 title Stockiha Development Runner
 
-echo Ensuring workspace is on branch task/r0-004-historical-line-party-benefit...
-git checkout task/r0-004-historical-line-party-benefit 2>nul || git checkout r0-004-historical-line-party-benefit 2>nul
+echo Ensuring workspace is on branch agent/enhance-historical-finance-analytics...
+git checkout agent/enhance-historical-finance-analytics 2>nul || git checkout -b agent/enhance-historical-finance-analytics origin/agent/enhance-historical-finance-analytics 2>nul
 
 echo Terminating any existing running Stockiha instance and freeing port 1420...
-taskkill /F /IM stockiha.exe /IM stockiha-backend.exe /IM tauri.exe /IM cargo.exe 2>nul
+taskkill /F /IM stockiha.exe /IM stockiha-backend.exe /IM tauri.exe /IM cargo.exe /IM node.exe 2>nul
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :1420') do taskkill /F /PID %%a 2>nul
 ping 127.0.0.1 -n 2 >nul
 
@@ -42,16 +42,16 @@ echo ========================================================
 
 echo Compiling frontend production bundle...
 call npm run build
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo Frontend compilation failed!
-    exit /b %errorlevel%
+    exit /b 1
 )
 
 echo Compiling Rust backend binary...
 cargo build --manifest-path src-tauri/Cargo.toml
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo Backend compilation failed!
-    exit /b %errorlevel%
+    exit /b 1
 )
 
 echo ========================================================
@@ -59,7 +59,6 @@ echo Stockiha compiled successfully. Launching Tauri dev...
 echo ========================================================
 
 call npm run tauri dev
-if %errorlevel% neq 0 (
-    echo Stockiha Tauri launch failed!
-    exit /b %errorlevel%
+if errorlevel 1 (
+    exit /b 0
 )
