@@ -456,7 +456,10 @@ impl CreateSupplierInvoicePayload {
                 || line.receipt_line_id.unwrap_or_default() <= 0
                 || line.variant_id <= 0
             {
-                return Err(format!("Invoice line {} has invalid references.", index + 1));
+                return Err(format!(
+                    "Invoice line {} has invalid references.",
+                    index + 1
+                ));
             }
             positive_decimal(&line.quantity, "invoice quantity")?;
             non_negative_decimal(&line.unit_cost, "invoice unit cost")?;

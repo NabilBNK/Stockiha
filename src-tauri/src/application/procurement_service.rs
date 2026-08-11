@@ -332,13 +332,12 @@ pub(crate) async fn list_purchase_receipt_lines(
     session_token: &str,
     purchase_order_id: Option<i64>,
 ) -> Result<Vec<PurchaseReceiptLineDto>, AppError> {
-    let result: JsonValue =
-        query_scalar("SELECT procurement.list_purchase_receipt_lines($1, $2)")
-            .bind(session_token)
-            .bind(purchase_order_id)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
+    let result: JsonValue = query_scalar("SELECT procurement.list_purchase_receipt_lines($1, $2)")
+        .bind(session_token)
+        .bind(purchase_order_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     serde_json::from_value(result).map_err(|error| {
         AppError::internal(format!("Failed to parse purchase receipt lines: {error}"))
@@ -388,11 +387,7 @@ pub(crate) async fn allocate_landed_cost(
 
     stringify_json_numbers(
         &mut res,
-        &[
-            "landed_cost_amount",
-            "inventory_debit",
-            "variance_debit",
-        ],
+        &["landed_cost_amount", "inventory_debit", "variance_debit"],
     );
 
     serde_json::from_value(res)
@@ -434,7 +429,9 @@ pub(crate) async fn create_supplier_invoice_draft(
     stringify_json_numbers(&mut res, &["subtotal", "total_amount"]);
 
     serde_json::from_value(res).map_err(|error| {
-        AppError::internal(format!("Failed to parse supplier invoice draft result: {error}"))
+        AppError::internal(format!(
+            "Failed to parse supplier invoice draft result: {error}"
+        ))
     })
 }
 
@@ -538,7 +535,9 @@ pub(crate) async fn create_supplier_return_draft(
             .map_err(AppError::from_posting_error)?;
 
     serde_json::from_value(res).map_err(|error| {
-        AppError::internal(format!("Failed to parse supplier return draft result: {error}"))
+        AppError::internal(format!(
+            "Failed to parse supplier return draft result: {error}"
+        ))
     })
 }
 
