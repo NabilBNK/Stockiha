@@ -3,9 +3,10 @@
 ## Status
 
 Implementation candidate on `task/r8-e-procurement`, based on accepted R8-D
-`main` at `f554f3983792c4fe4c7576987f6fdb48aabc9ecf`. R8-E is not accepted
-until automated verification and the focused Windows/Tauri journey below pass
-on the exact published candidate.
+`main` at `f554f3983792c4fe4c7576987f6fdb48aabc9ecf`. The published code
+candidate passed the automated frontend, Rust, PostgreSQL 18, race, and
+historical/existing-database upgrade gates. R8-E is not accepted until the
+focused Windows/Tauri journey below passes on the exact final candidate.
 
 ## Implemented boundary
 
@@ -90,7 +91,11 @@ through `src-tauri/tests/run_current_sql_suites.sh`.
 - `bash -n src-tauri/tests/run_current_sql_suites.sh` — passed.
 - `git diff --check` — passed.
 - Rust and PostgreSQL executables are unavailable in this Linux workspace;
-  their mandatory checks remain delegated to CI and Windows acceptance.
+  their mandatory executable checks passed in GitHub CI on published code head
+  `de0e5df64b919bdc019ab91163e4f42bde8f3bd0`.
+- GitHub CI — frontend, Rust format/check/Clippy/tests, complete PostgreSQL 18
+  migration/SQL/race gate, and all four historical/existing-database upgrade
+  workflows passed.
 
 ## Required Windows/Antigravity checks
 

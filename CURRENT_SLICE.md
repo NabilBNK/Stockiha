@@ -33,9 +33,9 @@
 - **Purpose:** close the pilot procurement journey from supplier and purchase order
   through receipt, landed cost, exact receipt-line invoice matching, supplier
   return, allocated payment, open-payable filtering, and auditable official results.
-- **Status:** implementation candidate. Linux frontend checks are green; the exact
-  published candidate still requires PostgreSQL 18/Rust CI and one focused
-  Windows/Tauri Antigravity acceptance pass.
+- **Status:** automated candidate. The published code candidate passed frontend,
+  Rust, PostgreSQL 18, race, and historical/existing-database upgrade gates.
+  One focused Windows/Tauri Antigravity acceptance pass remains.
 
 ## R8 entry evidence
 
