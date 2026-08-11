@@ -52,3 +52,8 @@
 - [x] R6 Implement and prove an operator-facing pilot backup/restore workflow
 
 > The legacy S4-004 label is superseded by the integrated pilot release gate in the authoritative roadmap.
+
+# Stockiha — R8 Pilot Acceptance Tasks
+
+- [x] R8-B/R8-C entry dependencies (user-confirmed complete before R8-D)
+- [ ] R8-D Catalog & Inventory acceptance — implementation candidate complete; Rust, PostgreSQL 18, and Windows/Tauri exact-candidate verification pending

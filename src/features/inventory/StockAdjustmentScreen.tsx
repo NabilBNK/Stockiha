@@ -9,9 +9,11 @@ import * as ipc from '../../shared/ipc/gateway';
 import { ZeroQuantityWarning } from './ZeroQuantityWarning';
 import type {
   ProductListItem,
+  StockAdjustmentResult,
   StockAdjustmentReasonCode,
   StockAdjustmentUnit,
 } from '../../shared/ipc/dto';
+import { formatExactDecimal } from './exactDecimal';
 
 type Direction = 'increase' | 'decrease';
 
@@ -51,6 +53,7 @@ export function StockAdjustmentScreen() {
   const [note, setNote] = useState('');
   const [requestId, setRequestId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<StockAdjustmentResult | null>(null);
   const [banner, setBanner] = useState<{
     tone: 'success' | 'error' | 'warning';
     text: string;
@@ -141,8 +144,9 @@ export function StockAdjustmentScreen() {
     setRequestId(rid);
     setSubmitting(true);
     setBanner(null);
+    setResult(null);
     try {
-      const result = await ipc.confirmStockAdjustment(token, {
+      const posted = await ipc.confirmStockAdjustment(token, {
         requestId: rid,
         warehouseId: selectedWarehouseId,
         variantId,
@@ -153,15 +157,21 @@ export function StockAdjustmentScreen() {
         fiscalPeriodId: openFiscalPeriod.id,
         documentDate: openFiscalPeriod.starts_on,
       });
+      setResult(posted);
       setBanner({
         tone: 'success',
-        text: t('adjustment.posted', { number: result.document_number }),
+        text: t('adjustment.posted', { number: posted.document_number }),
       });
       setRequestId(null);
       setQuantity('');
       setNote('');
-      const items = await ipc.listProducts(token, selectedWarehouseId);
-      setVariants(items.filter((item) => item.is_active));
+      try {
+        const items = await ipc.listProducts(token, selectedWarehouseId);
+        setVariants(items.filter((item) => item.is_active));
+      } catch {
+        // The adjustment is already confirmed. Keep its official result even
+        // when refreshing the convenience product list fails afterward.
+      }
     } catch (error) {
       if (codeForError(error) === 'UNKNOWN_ERROR') {
         setBanner({ tone: 'warning', text: t('adjustment.retryPrompt') });
@@ -350,6 +360,36 @@ export function StockAdjustmentScreen() {
           {t('adjustment.submit')}
         </Button>
       </form>
+
+      {result ? (
+        <section className="sk-card sk-feedback-pop" aria-labelledby="adjustment-result-title" data-testid="adjustment-result">
+          <h2 id="adjustment-result-title">{t('adjustment.resultTitle')}</h2>
+          <div className="sk-table-wrap sk-table-wrap--flat">
+            <table className="sk-table">
+              <tbody>
+                <tr>
+                  <th>{t('adjustment.documentNumber')}</th>
+                  <td>{result.document_number}</td>
+                  <th>{t('adjustment.journalNumber')}</th>
+                  <td>{result.journal_document_number ?? t('common.none')}</td>
+                </tr>
+                <tr>
+                  <th>{t('adjustment.quantityDelta')}</th>
+                  <td className="sk-num">{formatExactDecimal(result.quantity_delta)}</td>
+                  <th>{t('adjustment.valueDelta')}</th>
+                  <td className="sk-num">{formatExactDecimal(result.inventory_value_delta)} DZD</td>
+                </tr>
+                <tr>
+                  <th>{t('adjustment.resultingQuantity')}</th>
+                  <td className="sk-num">{formatExactDecimal(result.resulting_quantity_on_hand)}</td>
+                  <th>{t('adjustment.resultingValue')}</th>
+                  <td className="sk-num">{formatExactDecimal(result.resulting_total_value)} DZD</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

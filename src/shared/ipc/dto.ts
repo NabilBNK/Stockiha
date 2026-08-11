@@ -31,6 +31,38 @@ export interface ProductListItem {
   last_known_wac: string;
 }
 
+export interface InventoryCapabilities {
+  can_manage_catalog: boolean;
+  can_post_stock_receipt: boolean;
+  can_view_inventory: boolean;
+  can_manage_inventory: boolean;
+}
+
+export interface InventorySnapshotItem {
+  product_id: number;
+  variant_id: number;
+  product_name: string;
+  sku: string;
+  base_unit_code: string;
+  product_is_active: boolean;
+  variant_is_active: boolean;
+  quantity_on_hand: string;
+  last_known_wac: string;
+  total_value: string;
+}
+
+export interface StockReceiptResult {
+  document_id: number;
+  document_number: string;
+  warehouse_id: number;
+  variant_id: number;
+  received_quantity: string;
+  received_value: string;
+  resulting_quantity_on_hand: string;
+  resulting_total_value: string;
+  resulting_wac: string;
+}
+
 export interface Warehouse {
   id: number;
   code: string;

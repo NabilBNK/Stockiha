@@ -5,7 +5,7 @@
 ## Released baseline
 
 - **Branch:** `main`
-- **Code baseline:** `460dcebfd68a20b7fb21dd31fbca34e3308f1e28`
+- **Code baseline:** `02469cb928af48d9bd07754bf159952a45a32ed0`
 - **Verified boundary:** UI foundation, S0 through S4-003, R2 supplier-accounting repair, R6-001 operator backup creation/validation, R6-002 temporary database restore verification, R0-001 finance-only historical onboarding, R5-002/R5-003 opening-state application, and R0-002 historical XLSX trade staging/analytics.
 - **Most recent integrations:** PR #18 removed the committed development-runner database credential and restored the real Tauri launch; PR #19 made the R0-002 SQL regression mandatory, corrected its suite transaction ownership, and synchronized the R6 restore regression with schema `20260807230000`.
 
@@ -18,14 +18,17 @@
 - **R0-002 stabilization:** the historical-trade SQL integration test is now part of the mandatory PostgreSQL CI runner; cross-slice recovery schema-version expectations track the new migration.
 - **Development runner hardening:** `run-app.bat` no longer contains a tracked database connection secret and again launches `npm run tauri dev` after successful build preflight.
 - **MVP financial boundary:** TVA and discounts remain deferred; unsupported non-zero values are rejected rather than guessed.
+- **R8-B/R8-C:** user-confirmed complete before entry into R8-D; running behavior and exact-candidate verification remain stronger evidence than this tracker.
 
 ## Current implementation slice
 
 - **Roadmap path:** R8 — Consolidated Pilot Release Acceptance Gate
-- **Slice:** R8-001 — Consolidated Pilot Release Verification
-- **Base:** hardened `main` after PR #18 and PR #19
-- **Current schema version:** `20260807230000`
-- **Purpose:** verify end-to-end user workflows across the complete pilot boundary on the real Windows/Tauri application: setup/opening cutover -> historical onboarding -> catalog/stock -> procurement -> POS cash/credit -> customer payments/refunds -> cashier-session lifecycle -> restart -> backup/validation/temporary restore.
+- **Slice:** R8-D — Catalog and Inventory Acceptance
+- **Branch:** `task/r8-d-catalog-inventory`
+- **Base:** hardened `main` at `02469cb928af48d9bd07754bf159952a45a32ed0`
+- **Candidate schema version:** `20260811120000`
+- **Purpose:** close the pilot catalog/inventory acceptance path with permission-aware UI, exact warehouse stock/WAC/value visibility, official posting results, deterministic idempotency and negative-stock evidence, and Windows/Tauri verification.
+- **Status:** implementation candidate; frontend verification passed in Linux, while Rust, PostgreSQL 18, and Windows/Tauri verification remain pending.
 
 ## R8 entry evidence
 
@@ -42,23 +45,23 @@ The exact PR #19 candidate passed the mandatory automated gate after the R0-002 
 - S4 cash-session and credit-limit races;
 - all four historical/existing-database S4 upgrade workflows.
 
-## R8 Windows/Tauri gate
+## R8-D Windows/Tauri gate
 
-Automated verification is no longer the blocking evidence. The remaining release decision must come from one exact-candidate Windows/Tauri journey using the real application UI and a controlled test database.
+The R8-D decision must come from one exact-candidate Windows/Tauri journey using the real application UI and a controlled test database. See [`docs/slices/R8-D-catalog-inventory.md`](./docs/slices/R8-D-catalog-inventory.md) for the deterministic fixtures, exact totals, and command gate.
 
 Required proof:
 
 1. pull the hardened `main` and configure the database URL outside tracked source;
 2. rotate/remove the PostgreSQL credential that was previously committed in the public repository before using the environment again;
 3. start the app through the fixed `run-app.bat` / `npm run tauri dev` path;
-4. verify setup/login/permissions and default-ON CEO/admin toggles;
-5. exercise representative R0-002 XLSX historical paper-book import, validation, approval, analytics, and prove no live operational ledger mutation;
-6. verify opening-state reconciliation/application behavior where applicable;
-7. run catalog, stock, procurement, cash sale, credit sale, customer payment/refund, and cashier-session workflows;
-8. restart the app and verify persisted state and idempotency-sensitive operations;
-9. create and validate a real backup, run temporary restore verification, reconcile control totals, and prove the live database is unchanged and no temporary restore database remains;
-10. smoke EN/FR/AR, RTL, narrow-window, and core touch workflows;
-11. record exact SHA, database identity, test results, defects, and control totals. Any unexplained money/stock/AR/AP/journal/import variance blocks release.
+4. run the Rust gate and the complete PostgreSQL 18 migration/SQL suite gate;
+5. verify manager and cashier catalog/inventory capability boundaries;
+6. create the two-variant `R8-D Notebook` fixture with `PC`, Size, barcodes, and exact carton conversion;
+7. post the deterministic two-receipt WAC journey and safely retry the second request;
+8. post the `-1 PC` damage adjustment and reject the `-20 PC` negative-stock attempt without mutation;
+9. verify exact inventory quantity/WAC/value, inactive filtering, and official receipt/adjustment results;
+10. restart the app and smoke EN/FR/AR, RTL, narrow-window, and persistence;
+11. record exact SHA, database identity, test results, defects, and control totals. Any unexplained stock/value/journal variance blocks R8-D.
 
 ## Safety boundary
 

@@ -9,6 +9,7 @@
 //! typed [`AppError`].
 
 use rust_decimal::Decimal;
+use serde::Serialize;
 use serde_json::json;
 use sqlx::PgPool;
 use time::Date;
@@ -27,6 +28,19 @@ pub(crate) struct StockReceiptRequest {
     pub unit_cost: Decimal,
     pub fiscal_period_id: i64,
     pub document_date: Date,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub(crate) struct StockReceiptResult {
+    pub document_id: i64,
+    pub document_number: String,
+    pub warehouse_id: i64,
+    pub variant_id: i64,
+    pub received_quantity: String,
+    pub received_value: String,
+    pub resulting_quantity_on_hand: String,
+    pub resulting_total_value: String,
+    pub resulting_wac: String,
 }
 
 /// Returns the posted `core.business_documents.id`.
@@ -64,6 +78,51 @@ pub(crate) async fn confirm_stock_receipt(
     .map_err(AppError::from_posting_error)?;
 
     Ok(document_id)
+}
+
+pub(crate) async fn get_stock_receipt_result(
+    pool: &PgPool,
+    session_token: &str,
+    document_id: i64,
+) -> Result<StockReceiptResult, AppError> {
+    let row = sqlx::query_as::<
+        _,
+        (i64, String, i64, i64, Decimal, Decimal, Decimal, Decimal, Decimal),
+    >(
+        "SELECT document_id, document_number, warehouse_id, variant_id, \
+         received_quantity, received_value, resulting_quantity_on_hand, \
+         resulting_total_value, resulting_wac \
+         FROM inventory.get_stock_receipt_result($1, $2)",
+    )
+    .bind(session_token)
+    .bind(document_id)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(StockReceiptResult {
+        document_id: row.0,
+        document_number: row.1,
+        warehouse_id: row.2,
+        variant_id: row.3,
+        received_quantity: row.4.to_string(),
+        received_value: row.5.to_string(),
+        resulting_quantity_on_hand: row.6.to_string(),
+        resulting_total_value: row.7.to_string(),
+        resulting_wac: row.8.to_string(),
+    })
+}
+
+/// Post (or idempotently replay) a receipt and return its immutable movement
+/// result. A response lost after commit can be retried with the same request
+/// id and will resolve to the same document and control totals.
+pub(crate) async fn confirm_stock_receipt_with_result(
+    pool: &PgPool,
+    session_token: &str,
+    request: StockReceiptRequest,
+) -> Result<StockReceiptResult, AppError> {
+    let document_id = confirm_stock_receipt(pool, session_token, request).await?;
+    get_stock_receipt_result(pool, session_token, document_id).await
 }
 
 #[cfg(test)]

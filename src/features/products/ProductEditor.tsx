@@ -44,9 +44,16 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
   // For editing: selected variant
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [savingVariant, setSavingVariant] = useState(false);
-  const [variantError, setVariantError] = useState<string | null>(null);
-  const [variantOk, setVariantOk] = useState(false);
-  const [variantForm, setVariantForm] = useState<VariantFormValues>({ ...EMPTY_VARIANT });
+  const [editVariantError, setEditVariantError] = useState<string | null>(null);
+  const [editVariantOk, setEditVariantOk] = useState(false);
+  const [editVariantForm, setEditVariantForm] = useState<VariantFormValues>({ ...EMPTY_VARIANT });
+
+  // The add draft is intentionally independent from the selected variant's
+  // edit form. Sharing this state overwrote live edit fields while a new SKU
+  // was being drafted.
+  const [addVariantDraft, setAddVariantDraft] = useState<VariantFormValues>({ ...EMPTY_VARIANT });
+  const [addVariantError, setAddVariantError] = useState<string | null>(null);
+  const [addVariantOk, setAddVariantOk] = useState(false);
 
   // Attribute selection (per-variant for create flow)
   const [attrSelections, setAttrSelections] = useState<Record<number, Record<number, number>>>({});
@@ -75,7 +82,7 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
       if (catalog.detail.variants.length > 0) {
         const v = catalog.detail.variants[0];
         setSelectedVariantId(v.variant_id);
-        setVariantForm({ sku: v.sku, salePrice: v.sale_price, isActive: v.is_active });
+        setEditVariantForm({ sku: v.sku, salePrice: v.sale_price, isActive: v.is_active });
       }
     }
   }, [catalog.detail]);
@@ -83,9 +90,9 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
   // When selected variant changes, populate variant form
   useEffect(() => {
     if (selectedVariant) {
-      setVariantForm({ sku: selectedVariant.sku, salePrice: selectedVariant.sale_price, isActive: selectedVariant.is_active });
-      setVariantError(null);
-      setVariantOk(false);
+      setEditVariantForm({ sku: selectedVariant.sku, salePrice: selectedVariant.sale_price, isActive: selectedVariant.is_active });
+      setEditVariantError(null);
+      setEditVariantOk(false);
     }
   }, [selectedVariant]);
 
@@ -150,19 +157,19 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
 
   async function handleSaveVariant(e: FormEvent) {
     e.preventDefault();
-    if (savingVariant || !selectedVariantId || !isVariantFormValid(variantForm)) {
-      setVariantError(t('errors.validation'));
+    if (savingVariant || !selectedVariantId || !isVariantFormValid(editVariantForm)) {
+      setEditVariantError(t('errors.validation'));
       return;
     }
     setSavingVariant(true);
-    setVariantError(null);
-    setVariantOk(false);
+    setEditVariantError(null);
+    setEditVariantOk(false);
     try {
-      await catalog.updateVariant(selectedVariantId, variantForm.sku.trim(), variantForm.salePrice, variantForm.isActive);
-      setVariantOk(true);
+      await catalog.updateVariant(selectedVariantId, editVariantForm.sku.trim(), editVariantForm.salePrice, editVariantForm.isActive);
+      setEditVariantOk(true);
       await catalog.loadDetail(productId!);
     } catch (err) {
-      setVariantError(errorText(err));
+      setEditVariantError(errorText(err));
     } finally {
       setSavingVariant(false);
     }
@@ -173,32 +180,32 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
       await catalog.setVariantActive(v.variant_id, !v.is_active);
       await catalog.loadDetail(productId!);
     } catch (err) {
-      setVariantError(errorText(err));
+      setEditVariantError(errorText(err));
     }
   }
 
   async function handleAddVariant(e: FormEvent) {
     e.preventDefault();
-    if (creating || !productId || !isVariantFormValid(variantForm)) {
-      setVariantError(t('errors.validation'));
+    if (creating || !productId || !isVariantFormValid(addVariantDraft)) {
+      setAddVariantError(t('errors.validation'));
       return;
     }
     setCreating(true);
-    setVariantError(null);
-    setVariantOk(false);
+    setAddVariantError(null);
+    setAddVariantOk(false);
     try {
       const variantInput: VariantInput = {
-        sku: variantForm.sku.trim(),
-        sale_price: variantForm.salePrice,
-        is_active: variantForm.isActive,
+        sku: addVariantDraft.sku.trim(),
+        sale_price: addVariantDraft.salePrice,
+        is_active: addVariantDraft.isActive,
       };
       const newId = await catalog.addVariant(productId, variantInput);
       setSelectedVariantId(newId);
-      setVariantForm({ ...EMPTY_VARIANT });
-      setVariantOk(true);
+      setAddVariantDraft({ ...EMPTY_VARIANT });
+      setAddVariantOk(true);
       await catalog.loadDetail(productId);
     } catch (err) {
-      setVariantError(errorText(err));
+      setAddVariantError(errorText(err));
     } finally {
       setCreating(false);
     }
@@ -397,9 +404,15 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
       <details className="sk-card" style={{ marginBlockStart: '1rem' }}>
         <summary style={{ cursor: 'pointer', padding: '0.5rem' }}>{t('variants.add')}</summary>
         <form className="sk-form" onSubmit={handleAddVariant} aria-label={t('variants.add')}>
-          {variantError && !selectedVariantId ? <Banner tone="error">{variantError}</Banner> : null}
-          <VariantForm values={variantForm} onChange={setVariantForm} disabled={creating} />
-          <Button type="submit" loading={creating} disabled={!isVariantFormValid(variantForm)}>
+          {addVariantError ? <Banner tone="error" testId="add-variant-error">{addVariantError}</Banner> : null}
+          {addVariantOk ? <Banner tone="success">{t('variants.added')}</Banner> : null}
+          <VariantForm
+            values={addVariantDraft}
+            onChange={setAddVariantDraft}
+            disabled={creating}
+            idPrefix="add"
+          />
+          <Button type="submit" loading={creating} disabled={!isVariantFormValid(addVariantDraft)}>
             {t('variants.add')}
           </Button>
         </form>
@@ -412,10 +425,15 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
 
           {/* Edit core fields */}
           <form className="sk-form" onSubmit={handleSaveVariant} aria-label={`${t('variants.title')} ${selectedVariant.sku}`}>
-            {variantError ? <Banner tone="error" testId="variant-error">{variantError}</Banner> : null}
-            {variantOk ? <Banner tone="success">{t('variants.saved')}</Banner> : null}
-            <VariantForm values={variantForm} onChange={setVariantForm} disabled={savingVariant} />
-            <Button type="submit" loading={savingVariant} disabled={!isVariantFormValid(variantForm)}>
+            {editVariantError ? <Banner tone="error" testId="variant-error">{editVariantError}</Banner> : null}
+            {editVariantOk ? <Banner tone="success">{t('variants.saved')}</Banner> : null}
+            <VariantForm
+              values={editVariantForm}
+              onChange={setEditVariantForm}
+              disabled={savingVariant}
+              idPrefix={`edit-${selectedVariant.variant_id}`}
+            />
+            <Button type="submit" loading={savingVariant} disabled={!isVariantFormValid(editVariantForm)}>
               {t('catalog.save')}
             </Button>
           </form>
@@ -516,4 +534,3 @@ function AttributeManagerForVariant({
     </div>
   );
 }
-

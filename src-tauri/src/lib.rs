@@ -24,6 +24,8 @@ pub fn run() {
             commands::stock_receipt::post_stock_receipt,
             commands::stock_adjustment::confirm_stock_adjustment,
             commands::stock_adjustment::list_stock_adjustment_units,
+            commands::inventory::get_inventory_capabilities,
+            commands::inventory::list_inventory_snapshot,
             commands::cash_sale::confirm_cash_sale,
             commands::credit_sale::confirm_credit_sale,
             commands::credit_sale::authorize_credit_override,
