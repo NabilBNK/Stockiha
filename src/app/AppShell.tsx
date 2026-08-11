@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../shared/components';
 import { LOCALES, useI18n, type Locale, type MessageKey } from '../shared/i18n';
 import { useSession } from '../shared/session/SessionContext';
+import type { InventoryCapabilities } from '../shared/ipc/dto';
 
 export type AppView =
   | 'dashboard'
@@ -16,6 +17,7 @@ export type AppView =
   | 'opening_state'
   | 'opening_state_application'
   | 'products'
+  | 'inventory'
   | 'stock'
   | 'adjustment'
   | 'pos'
@@ -42,6 +44,7 @@ const NAV: NavItem[] = [
   { view: 'historical_finance', labels: { fr: 'Finance historique', ar: 'المالية التاريخية', en: 'Historical finance' }, group: 'main', icon: '▥' },
   { view: 'settings', labels: { fr: 'Paramètres', ar: 'الإعدادات', en: 'Settings' }, group: 'main', icon: '⚙' },
   { view: 'products', labelKey: 'nav.products', group: 'stock', icon: '□' },
+  { view: 'inventory', labelKey: 'nav.inventory', group: 'stock', icon: '▤' },
   { view: 'stock', labelKey: 'nav.stockReceipt', group: 'stock', icon: '↓' },
   { view: 'adjustment', labelKey: 'nav.stockAdjustment', group: 'stock', icon: '±' },
   { view: 'suppliers', labelKey: 'nav.suppliers', group: 'buy', icon: '◎' },
@@ -80,10 +83,12 @@ const GROUP_LABELS: Record<Locale, Record<NavGroup, string>> = {
 export function AppShell({
   currentView,
   onNavigate,
+  inventoryCapabilities,
   children,
 }: {
   currentView: AppView;
   onNavigate: (view: AppView) => void;
+  inventoryCapabilities: InventoryCapabilities | null;
   children: ReactNode;
 }) {
   const { t, locale, setLocale } = useI18n();
@@ -141,6 +146,21 @@ export function AppShell({
     if (item.labels) return item.labels[locale];
     if (item.labelKey) return t(item.labelKey);
     return item.view;
+  }
+
+  function canShow(item: NavItem): boolean {
+    switch (item.view) {
+      case 'products':
+        return inventoryCapabilities?.can_manage_catalog ?? false;
+      case 'inventory':
+        return inventoryCapabilities?.can_view_inventory ?? false;
+      case 'stock':
+        return inventoryCapabilities?.can_post_stock_receipt ?? false;
+      case 'adjustment':
+        return inventoryCapabilities?.can_manage_inventory ?? false;
+      default:
+        return true;
+    }
   }
 
   return (
@@ -214,24 +234,28 @@ export function AppShell({
 
       <div className="sk-shell__body">
         <nav className="sk-nav" aria-label={t('nav.dashboard')}>
-          {(['main', 'stock', 'buy', 'sales'] as const).map((group) => (
-            <div className="sk-nav__group" key={group}>
-              <div className="sk-nav__group-label">{GROUP_LABELS[locale][group]}</div>
-              {NAV.filter((item) => item.group === group).map((item) => (
-                <button
-                  key={item.view}
-                  type="button"
-                  className={`sk-nav__item ${currentView === item.view ? 'sk-nav__item--active' : ''}`}
-                  aria-current={currentView === item.view ? 'page' : undefined}
-                  title={sidebarCollapsed && !isNarrow ? navLabel(item) : undefined}
-                  onClick={() => navigate(item.view)}
-                >
-                  <span className="sk-nav__icon" aria-hidden>{item.icon}</span>
-                  <span className="sk-nav__label">{navLabel(item)}</span>
-                </button>
-              ))}
-            </div>
-          ))}
+          {(['main', 'stock', 'buy', 'sales'] as const).map((group) => {
+            const items = NAV.filter((item) => item.group === group && canShow(item));
+            if (items.length === 0) return null;
+            return (
+              <div className="sk-nav__group" key={group}>
+                <div className="sk-nav__group-label">{GROUP_LABELS[locale][group]}</div>
+                {items.map((item) => (
+                  <button
+                    key={item.view}
+                    type="button"
+                    className={`sk-nav__item ${currentView === item.view ? 'sk-nav__item--active' : ''}`}
+                    aria-current={currentView === item.view ? 'page' : undefined}
+                    title={sidebarCollapsed && !isNarrow ? navLabel(item) : undefined}
+                    onClick={() => navigate(item.view)}
+                  >
+                    <span className="sk-nav__icon" aria-hidden>{item.icon}</span>
+                    <span className="sk-nav__label">{navLabel(item)}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </nav>
         {mobileNavigationOpen ? (
           <button

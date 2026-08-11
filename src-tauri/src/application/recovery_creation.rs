@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+#[cfg(windows)]
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Write as _;
@@ -175,9 +176,9 @@ pub(crate) fn create_operator_backup_files(
             current_schema_version,
             resume_existing,
         );
-        return Err(AppError::BackupCreationFailed {
+        Err(AppError::BackupCreationFailed {
             diagnostic: "BACKUP_CREATION_REQUIRES_WINDOWS".to_string(),
-        });
+        })
     }
 
     #[cfg(windows)]

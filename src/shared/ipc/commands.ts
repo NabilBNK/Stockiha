@@ -16,6 +16,8 @@ export const COMMANDS = {
   GET_OPEN_FISCAL_PERIOD: 'get_open_fiscal_period',
   GET_DASHBOARD_SUMMARY: 'get_dashboard_summary',
   POST_STOCK_RECEIPT: 'post_stock_receipt',
+  GET_INVENTORY_CAPABILITIES: 'get_inventory_capabilities',
+  LIST_INVENTORY_SNAPSHOT: 'list_inventory_snapshot',
   CONFIRM_STOCK_ADJUSTMENT: 'confirm_stock_adjustment',
   LIST_STOCK_ADJUSTMENT_UNITS: 'list_stock_adjustment_units',
   OPEN_CASH_SESSION: 'open_cash_session',

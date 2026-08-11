@@ -2,7 +2,7 @@
  * Slice 2 — catalog workflow integration tests.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
@@ -38,6 +38,12 @@ function makeHandlers(extra: Handlers = {}): Handlers {
       product_count: 0, variant_count: 0, active_cash_session_id: null,
       latest_document_id: null, latest_document_number: null,
       pending_generation_jobs: 0, pending_print_jobs: 0,
+    }),
+    get_inventory_capabilities: () => ({
+      can_manage_catalog: true,
+      can_post_stock_receipt: true,
+      can_view_inventory: true,
+      can_manage_inventory: true,
     }),
     list_catalog_products: () => [],
     list_attributes: () => [],
@@ -244,6 +250,52 @@ describe('variant attribute configuration', () => {
 });
 
 describe('add SKU and barcode', () => {
+  it('keeps the add-variant draft separate from the selected variant editor', async () => {
+    let addCall: Record<string, unknown> | null = null;
+    const detail = {
+      product_id: 1, name: 'Widget', is_active: true,
+      variants: [{
+        variant_id: 10, sku: 'WID-1', sale_price: '5.00', is_active: true,
+        base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
+        attributes: [], alternate_units: [], barcodes: [],
+      }],
+    };
+    wireInvoke(makeHandlers({
+      list_catalog_products: () => [
+        { product_id: 1, name: 'Widget', is_active: true, variant_count: 1, active_variant_count: 1 },
+      ],
+      get_product_detail: () => detail,
+      list_attributes: () => [],
+      list_units: () => [],
+      add_variant: (args) => {
+        addCall = args;
+        detail.variants.push({
+          variant_id: 11, sku: 'WID-2', sale_price: '7.00', is_active: true,
+          base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
+          attributes: [], alternate_units: [], barcodes: [],
+        });
+        return 11;
+      },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+    fireEvent.click(await screen.findByTestId('edit-product-1'));
+    await screen.findByTestId('variant-row-10');
+
+    const addForm = screen.getByRole('form', { name: 'Add variant' });
+    const editForm = await screen.findByRole('form', { name: 'Variants WID-1' });
+    fireEvent.change(within(addForm).getByLabelText('SKU'), { target: { value: 'WID-2' } });
+    fireEvent.change(within(addForm).getByLabelText('Sale price'), { target: { value: '7.00' } });
+
+    expect(within(editForm).getByLabelText('SKU')).toHaveValue('WID-1');
+    expect(within(editForm).getByLabelText('Sale price')).toHaveValue('5.00');
+
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Add variant' }));
+    await waitFor(() => expect(addCall).not.toBeNull());
+    expect(addCall!.productId).toBe(1);
+    expect(addCall!.variant).toMatchObject({ sku: 'WID-2', sale_price: '7.00' });
+  });
+
   it('calls addVariantBarcode with the barcode string', async () => {
     let barcodeCall: Record<string, unknown> | null = null;
     const detail = {

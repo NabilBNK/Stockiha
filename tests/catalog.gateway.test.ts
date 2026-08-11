@@ -130,6 +130,69 @@ describe('listCatalogProducts', () => {
   });
 });
 
+describe('R8-D inventory gateway', () => {
+  it('loads capability projection and inventory filters through typed commands', async () => {
+    invokeMock
+      .mockResolvedValueOnce({
+        can_manage_catalog: true,
+        can_post_stock_receipt: true,
+        can_view_inventory: true,
+        can_manage_inventory: true,
+      })
+      .mockResolvedValueOnce([]);
+
+    await ipc.getInventoryCapabilities('tok');
+    expect(invokeMock).toHaveBeenNthCalledWith(1, COMMANDS.GET_INVENTORY_CAPABILITIES, {
+      sessionToken: 'tok',
+    });
+
+    await ipc.listInventorySnapshot('tok', 9, '  notebook  ', true);
+    expect(invokeMock).toHaveBeenNthCalledWith(2, COMMANDS.LIST_INVENTORY_SNAPSHOT, {
+      sessionToken: 'tok',
+      warehouseId: 9,
+      search: 'notebook',
+      includeInactive: true,
+    });
+  });
+
+  it('returns a cohesive stock receipt result while preserving string decimals', async () => {
+    invokeMock.mockResolvedValue({
+      document_id: 4,
+      document_number: 'SR-2026-000004',
+      warehouse_id: 1,
+      variant_id: 7,
+      received_quantity: '10.000',
+      received_value: '1200.0000',
+      resulting_quantity_on_hand: '20.000',
+      resulting_total_value: '2200.0000',
+      resulting_wac: '110.000000',
+    });
+
+    const result = await ipc.postStockReceipt('tok', {
+      requestId: 'rid',
+      warehouseId: 1,
+      variantId: 7,
+      quantity: '10.000',
+      unitCost: '120.00',
+      fiscalPeriodId: 9,
+      documentDate: '2026-08-11',
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(COMMANDS.POST_STOCK_RECEIPT, {
+      sessionToken: 'tok',
+      requestId: 'rid',
+      warehouseId: 1,
+      variantId: 7,
+      quantity: '10.000',
+      unitCost: '120.00',
+      fiscalPeriodId: 9,
+      documentDate: '2026-08-11',
+    });
+    expect(result.document_number).toBe('SR-2026-000004');
+    expect(typeof result.resulting_wac).toBe('string');
+  });
+});
+
 describe('resolveBarcode', () => {
   it('returns the resolved barcode object when backend returns one', async () => {
     const resolved = {

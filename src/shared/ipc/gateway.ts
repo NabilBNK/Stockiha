@@ -17,6 +17,8 @@ import type {
   DashboardSummary,
   DocumentJob,
   FiscalPeriod,
+  InventoryCapabilities,
+  InventorySnapshotItem,
   LoginResult,
   OpenFiscalPeriod,
   ProductDetail,
@@ -28,6 +30,7 @@ import type {
   StockAdjustmentReasonCode,
   StockAdjustmentResult,
   StockAdjustmentUnit,
+  StockReceiptResult,
   ConfirmPurchaseReceiptPayload,
   ConfirmPurchaseReceiptResult,
   CreatePurchaseOrderPayload,
@@ -110,6 +113,24 @@ export function listProducts(sessionToken: string, warehouseId: number, search?:
   return call<ProductListItem[]>(COMMANDS.LIST_PRODUCTS, { sessionToken, warehouseId, search: search ?? null });
 }
 
+export function getInventoryCapabilities(sessionToken: string): Promise<InventoryCapabilities> {
+  return call<InventoryCapabilities>(COMMANDS.GET_INVENTORY_CAPABILITIES, { sessionToken });
+}
+
+export function listInventorySnapshot(
+  sessionToken: string,
+  warehouseId: number,
+  search?: string,
+  includeInactive = false,
+): Promise<InventorySnapshotItem[]> {
+  return call<InventorySnapshotItem[]>(COMMANDS.LIST_INVENTORY_SNAPSHOT, {
+    sessionToken,
+    warehouseId,
+    search: search?.trim() || null,
+    includeInactive,
+  });
+}
+
 export function createWarehouse(sessionToken: string, code: string, name: string): Promise<number> {
   return call<number>(COMMANDS.CREATE_WAREHOUSE, { sessionToken, code, name });
 }
@@ -140,8 +161,8 @@ export interface StockReceiptInput {
   documentDate: string;
 }
 
-export function postStockReceipt(sessionToken: string, input: StockReceiptInput): Promise<number> {
-  return call<number>(COMMANDS.POST_STOCK_RECEIPT, {
+export function postStockReceipt(sessionToken: string, input: StockReceiptInput): Promise<StockReceiptResult> {
+  return call<StockReceiptResult>(COMMANDS.POST_STOCK_RECEIPT, {
     sessionToken,
     requestId: input.requestId,
     warehouseId: input.warehouseId,

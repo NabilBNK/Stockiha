@@ -51,6 +51,12 @@ function handlers(extra: Handlers = {}): Handlers {
       pending_generation_jobs: 0,
       pending_print_jobs: 0,
     }),
+    get_inventory_capabilities: () => ({
+      can_manage_catalog: true,
+      can_post_stock_receipt: true,
+      can_view_inventory: true,
+      can_manage_inventory: true,
+    }),
     list_products: () => [
       {
         product_id: 1,
@@ -142,6 +148,12 @@ describe('stock adjustment workflow', () => {
     expect(call!.reasonCode).toBe('DAMAGE');
     expect(call!.note).toBeNull();
     expect(await screen.findByTestId('adjustment-banner')).toHaveTextContent('SA-2026-000001');
+    const result = await screen.findByTestId('adjustment-result');
+    expect(result).toHaveTextContent('JE-2026-000001');
+    expect(result).toHaveTextContent('-15');
+    expect(result).toHaveTextContent('-75 DZD');
+    expect(result).toHaveTextContent('5');
+    expect(result).toHaveTextContent('25 DZD');
   });
 
   it('requires a note for OTHER and suppresses duplicate submits', async () => {

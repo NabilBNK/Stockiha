@@ -15,7 +15,8 @@ import { codeForError, useErrorText } from '../../shared/hooks/useErrorText';
 import { useSession } from '../../shared/session/SessionContext';
 import { useAppData } from '../../app/AppDataContext';
 import * as ipc from '../../shared/ipc/gateway';
-import type { ProductListItem } from '../../shared/ipc/dto';
+import type { ProductListItem, StockReceiptResult } from '../../shared/ipc/dto';
+import { formatExactDecimal } from './exactDecimal';
 
 const QTY_RE = /^\d+(\.\d{1,3})?$/;
 const COST_RE = /^\d+(\.\d{1,2})?$/;
@@ -33,6 +34,7 @@ export function StockReceiptScreen() {
   const [unitCost, setUnitCost] = useState('');
   const [requestId, setRequestId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<StockReceiptResult | null>(null);
   const [banner, setBanner] = useState<{ tone: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
   useEffect(() => {
@@ -74,8 +76,9 @@ export function StockReceiptScreen() {
     setRequestId(rid);
     setSubmitting(true);
     setBanner(null);
+    setResult(null);
     try {
-      const documentId = await ipc.postStockReceipt(token, {
+      const posted = await ipc.postStockReceipt(token, {
         requestId: rid,
         warehouseId: selectedWarehouseId,
         variantId: variantId!,
@@ -84,13 +87,19 @@ export function StockReceiptScreen() {
         fiscalPeriodId: openFiscalPeriod.id,
         documentDate: openFiscalPeriod.starts_on,
       });
-      setBanner({ tone: 'success', text: t('stock.posted', { number: documentId }) });
+      setResult(posted);
+      setBanner({ tone: 'success', text: t('stock.posted', { number: posted.document_number }) });
       // Success: next submission is a new operation, and refresh stock/WAC.
       setRequestId(null);
       setQuantity('');
       setUnitCost('');
-      const items = await ipc.listProducts(token, selectedWarehouseId);
-      setVariants(items);
+      try {
+        const items = await ipc.listProducts(token, selectedWarehouseId);
+        setVariants(items);
+      } catch {
+        // The receipt is already confirmed. A read-side refresh failure must
+        // never turn it into an uncertain posting or invite a new request ID.
+      }
     } catch (err) {
       const code = codeForError(err);
       if (code === 'UNKNOWN_ERROR') {
@@ -184,6 +193,44 @@ export function StockReceiptScreen() {
           {t('stock.submit')}
         </Button>
       </form>
+
+      {result ? (
+        <section className="sk-card sk-feedback-pop" aria-labelledby="stock-receipt-result-title" data-testid="stock-result">
+          <h2 id="stock-receipt-result-title">{t('stock.resultTitle')}</h2>
+          <div className="sk-cards">
+            <div className="sk-metric">
+              <span className="sk-metric__icon" aria-hidden>#</span>
+              <span className="sk-metric__label">{t('stock.documentNumber')}</span>
+              <strong className="sk-metric__value">{result.document_number}</strong>
+            </div>
+            <div className="sk-metric">
+              <span className="sk-metric__icon" aria-hidden>+</span>
+              <span className="sk-metric__label">{t('stock.receivedQuantity')}</span>
+              <strong className="sk-metric__value">{formatExactDecimal(result.received_quantity)}</strong>
+            </div>
+            <div className="sk-metric">
+              <span className="sk-metric__icon" aria-hidden>₫</span>
+              <span className="sk-metric__label">{t('stock.receivedValue')}</span>
+              <strong className="sk-metric__value">{formatExactDecimal(result.received_value)} DZD</strong>
+            </div>
+            <div className="sk-metric">
+              <span className="sk-metric__icon" aria-hidden>Σ</span>
+              <span className="sk-metric__label">{t('stock.resultingQuantity')}</span>
+              <strong className="sk-metric__value">{formatExactDecimal(result.resulting_quantity_on_hand)}</strong>
+            </div>
+            <div className="sk-metric">
+              <span className="sk-metric__icon" aria-hidden>₫</span>
+              <span className="sk-metric__label">{t('stock.resultingValue')}</span>
+              <strong className="sk-metric__value">{formatExactDecimal(result.resulting_total_value)} DZD</strong>
+            </div>
+            <div className="sk-metric">
+              <span className="sk-metric__icon" aria-hidden>W</span>
+              <span className="sk-metric__label">{t('stock.resultingWac')}</span>
+              <strong className="sk-metric__value">{formatExactDecimal(result.resulting_wac)} DZD</strong>
+            </div>
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

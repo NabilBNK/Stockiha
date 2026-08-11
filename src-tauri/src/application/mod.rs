@@ -25,6 +25,7 @@ pub(crate) mod dashboard;
 pub(crate) mod documents;
 pub(crate) mod drawer;
 pub(crate) mod fiscal;
+pub(crate) mod inventory;
 pub(crate) mod onboarding;
 pub(crate) mod opening_state;
 pub(crate) mod opening_state_application;

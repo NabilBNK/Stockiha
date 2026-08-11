@@ -21,6 +21,7 @@ import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { ProductsScreen } from '../features/products/ProductsScreen';
 import { StockAdjustmentScreen } from '../features/inventory/StockAdjustmentScreen';
 import { StockReceiptScreen } from '../features/inventory/StockReceiptScreen';
+import { InventoryScreen } from '../features/inventory/InventoryScreen';
 import { PosScreen } from '../features/pos/PosScreen';
 import { CashSessionScreen } from '../features/cash-session/CashSessionScreen';
 import { DocumentsScreen } from '../features/documents/DocumentsScreen';
@@ -35,6 +36,7 @@ import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
 import { SupplierInvoicesScreen } from '../features/procurement/SupplierInvoicesScreen';
 import { SupplierLiabilitiesScreen } from '../features/procurement/SupplierLiabilitiesScreen';
 import { SupplierReturnsScreen } from '../features/procurement/SupplierReturnsScreen';
+import type { InventoryCapabilities } from '../shared/ipc/dto';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
 
@@ -136,6 +138,8 @@ function AuthenticatedApp() {
   const [view, setView] = useState<AppView>('dashboard');
   const [openingStateStatus, setOpeningStateStatus] =
     useState<OpeningStateOnboardingStatusResult | null>(null);
+  const [inventoryCapabilities, setInventoryCapabilities] =
+    useState<InventoryCapabilities | null>(null);
 
   const refreshOpeningStateStatus = useCallback(async () => {
     const token = user?.token;
@@ -161,6 +165,33 @@ function AuthenticatedApp() {
   }, [refreshOpeningStateStatus]);
 
   useEffect(() => {
+    const token = user?.token;
+    if (!token) {
+      setInventoryCapabilities(null);
+      return;
+    }
+    let active = true;
+    void ipc.getInventoryCapabilities(token)
+      .then((capabilities) => {
+        if (active) setInventoryCapabilities(capabilities);
+      })
+      .catch(() => {
+        if (active) {
+          // Safe-deny the UI projection. Database checks remain authoritative.
+          setInventoryCapabilities({
+            can_manage_catalog: false,
+            can_post_stock_receipt: false,
+            can_view_inventory: false,
+            can_manage_inventory: false,
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.token]);
+
+  useEffect(() => {
     if (view === 'settings') void refreshOpeningStateStatus();
   }, [view, refreshOpeningStateStatus]);
 
@@ -182,13 +213,27 @@ function AuthenticatedApp() {
     }
   }, [openingStateStatus, view]);
 
+  useEffect(() => {
+    if (!inventoryCapabilities) return;
+    const allowed =
+      (view !== 'products' || inventoryCapabilities.can_manage_catalog)
+      && (view !== 'inventory' || inventoryCapabilities.can_view_inventory)
+      && (view !== 'stock' || inventoryCapabilities.can_post_stock_receipt)
+      && (view !== 'adjustment' || inventoryCapabilities.can_manage_inventory);
+    if (!allowed) setView('dashboard');
+  }, [inventoryCapabilities, view]);
+
   async function finishOpeningStateApplication() {
     await refreshOpeningStateStatus();
     setView('settings');
   }
 
   return (
-    <AppShell currentView={view} onNavigate={setView}>
+    <AppShell
+      currentView={view}
+      onNavigate={setView}
+      inventoryCapabilities={inventoryCapabilities}
+    >
       {view === 'dashboard' && <DashboardScreen />}
       {view === 'historical_finance' && (
         <HistoricalFinanceScreen sessionToken={user?.token ?? ''} />
@@ -233,6 +278,7 @@ function AuthenticatedApp() {
         </>
       )}
       {view === 'products' && <ProductsScreen />}
+      {view === 'inventory' && <InventoryScreen />}
       {view === 'stock' && <StockReceiptScreen />}
       {view === 'adjustment' && <StockAdjustmentScreen />}
       {view === 'pos' && <PosScreen />}
