@@ -274,6 +274,18 @@ BEGIN
         RAISE EXCEPTION 'Expected totalManualBenefitDzd=12000 count=2, got benefit=% count=%',
             v_benefit_dzd, v_benefit_count;
     END IF;
+
+    IF (v_analytics->'benefits'->>'totalManualBenefitDzd')::bigint <> 12000
+       OR (v_analytics->'benefits'->>'salesWithManualBenefitCount')::integer <> 2
+       OR (v_analytics->'benefits'->>'salesWithoutManualBenefitCount')::integer <> 0 THEN
+        RAISE EXCEPTION 'Historical benefit aggregate contract is inconsistent: %',
+            v_analytics->'benefits';
+    END IF;
+
+    IF (v_analytics->'timeline'->0->>'manualBenefitDzd')::bigint <> 12000 THEN
+        RAISE EXCEPTION 'Expected timeline manualBenefitDzd=12000, got %',
+            (v_analytics->'timeline'->0->>'manualBenefitDzd');
+    END IF;
 END;
 $$;
 

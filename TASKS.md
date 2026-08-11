@@ -56,4 +56,4 @@
 # Stockiha — R8 Pilot Acceptance Tasks
 
 - [x] R8-B/R8-C entry dependencies (user-confirmed complete before R8-D)
-- [ ] R8-D Catalog & Inventory acceptance — implementation candidate complete; Rust, PostgreSQL 18, and Windows/Tauri exact-candidate verification pending
+- [ ] R8-D Catalog & Inventory acceptance — deterministic Windows journey passed on `c2573d0`; formatting, historical-benefit analytics compatibility, and CI role-bootstrap repairs require exact-head re-verification

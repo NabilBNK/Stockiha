@@ -67,6 +67,16 @@ jobs:
         run: |
           rustup update stable
           rustup default stable
+          rustup component add rustfmt clippy
+
+      - name: Rust format
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Rust check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust Clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
       - name: Rust tests
         run: |
@@ -119,6 +129,7 @@ jobs:
           psql "$ADMIN_URL" -v ON_ERROR_STOP=1 <<'SQL'
           CREATE ROLE stockiha_owner NOLOGIN;
           CREATE ROLE stockiha_migrator NOLOGIN;
+          CREATE ROLE stockiha_admin NOLOGIN;
           CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
           CREATE ROLE stockiha_backup LOGIN PASSWORD 'backup_ci_password';
           GRANT CREATE ON DATABASE stockiha_ci_test TO stockiha_owner;

@@ -87,7 +87,17 @@ pub(crate) async fn get_stock_receipt_result(
 ) -> Result<StockReceiptResult, AppError> {
     let row = sqlx::query_as::<
         _,
-        (i64, String, i64, i64, Decimal, Decimal, Decimal, Decimal, Decimal),
+        (
+            i64,
+            String,
+            i64,
+            i64,
+            Decimal,
+            Decimal,
+            Decimal,
+            Decimal,
+            Decimal,
+        ),
     >(
         "SELECT document_id, document_number, warehouse_id, variant_id, \
          received_quantity, received_value, resulting_quantity_on_hand, \

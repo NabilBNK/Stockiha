@@ -26,9 +26,9 @@
 - **Slice:** R8-D — Catalog and Inventory Acceptance
 - **Branch:** `task/r8-d-catalog-inventory`
 - **Base:** hardened `main` at `02469cb928af48d9bd07754bf159952a45a32ed0`
-- **Candidate schema version:** `20260811120000`
+- **Candidate schema version:** `20260811130000`
 - **Purpose:** close the pilot catalog/inventory acceptance path with permission-aware UI, exact warehouse stock/WAC/value visibility, official posting results, deterministic idempotency and negative-stock evidence, and Windows/Tauri verification.
-- **Status:** implementation candidate; frontend verification passed in Linux, while Rust, PostgreSQL 18, and Windows/Tauri verification remain pending.
+- **Status:** remediation candidate. The exact `c2573d0` Windows journey passed the R8-D business, permission, presentation, and persistence checks, but acceptance was blocked by one Rust formatting defect, one historical-benefit compatibility regression, and incomplete CI role bootstrapping. Those defects are repaired on this branch and require exact-head re-verification.
 
 ## R8 entry evidence
 

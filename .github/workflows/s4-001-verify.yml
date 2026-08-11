@@ -67,6 +67,7 @@ jobs:
           psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
           CREATE ROLE stockiha_owner NOLOGIN;
           CREATE ROLE stockiha_migrator NOLOGIN;
+          CREATE ROLE stockiha_admin NOLOGIN;
           CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
           CREATE ROLE stockiha_backup NOLOGIN;
           GRANT CREATE ON DATABASE stockiha_s4_test TO stockiha_owner;
