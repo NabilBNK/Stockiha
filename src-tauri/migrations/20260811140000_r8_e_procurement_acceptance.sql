@@ -4,6 +4,45 @@
 -- variance, idempotency, numbering, fiscal-period validation, and journals.
 -- This migration closes read-side permission gaps and exposes the exact
 -- receipt-line data required by the desktop invoice/return workflows.
+DO $$
+DECLARE
+    v_signature text;
+    v_function_oid oid;
+    v_owner text;
+BEGIN
+    FOREACH v_signature IN ARRAY ARRAY[
+        'procurement.list_purchase_receipts(text,bigint,bigint)',
+        'procurement.create_supplier_return_draft(text,bigint,bigint,bigint,text,text,jsonb)',
+        'procurement.list_supplier_invoices(text,bigint)',
+        'procurement.list_supplier_liabilities(text,bigint)',
+        'procurement.list_supplier_returns(text,bigint)',
+        'procurement.list_supplier_payments(text,bigint)'
+    ]
+    LOOP
+        v_function_oid := to_regprocedure(v_signature);
+        IF v_function_oid IS NULL THEN
+            RAISE EXCEPTION 'expected R8-E replace-target function is missing: %', v_signature;
+        END IF;
+
+        SELECT pg_get_userbyid(p.proowner)
+        INTO v_owner
+        FROM pg_proc p
+        WHERE p.oid = v_function_oid;
+
+        IF v_owner = 'stockiha_owner' THEN
+            CONTINUE;
+        ELSIF v_owner = 'postgres' THEN
+            EXECUTE format(
+                'ALTER FUNCTION %s OWNER TO stockiha_owner',
+                v_function_oid::regprocedure
+            );
+        ELSE
+            RAISE EXCEPTION 'unexpected owner % for R8-E function %', v_owner, v_signature;
+        END IF;
+    END LOOP;
+END;
+$$;
+
 SET ROLE stockiha_owner;
 
 CREATE FUNCTION procurement.get_capabilities(p_session_token text)
