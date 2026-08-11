@@ -1,130 +1,115 @@
-import React, { useState } from 'react';
-import { allocateLandedCost } from '../../shared/ipc/gateway';
-import type { PurchaseReceiptSummary } from '../../shared/ipc/dto';
+import { useRef, useState } from 'react';
 
-interface LandedCostModalProps {
+import { useI18n } from '../../shared/i18n';
+import { allocateLandedCost } from '../../shared/ipc/gateway';
+import type { AllocateLandedCostResult, PurchaseReceiptSummary } from '../../shared/ipc/dto';
+import { isPositiveDecimal } from './procurementDecimal';
+import { PROCUREMENT_COPY } from './procurementCopy';
+
+interface Props {
   receipt: PurchaseReceiptSummary;
   sessionToken: string;
   fiscalPeriodId: number;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (result: AllocateLandedCostResult) => void;
 }
 
-export const LandedCostModal: React.FC<LandedCostModalProps> = ({
+export function LandedCostModal({
   receipt,
   sessionToken,
   fiscalPeriodId,
   onClose,
   onSuccess,
-}) => {
+}: Props) {
+  const { locale } = useI18n();
+  const text = PROCUREMENT_COPY[locale];
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'BY_QTY' | 'BY_VALUE' | 'EQUAL_PER_LINE'>('BY_QTY');
   const [documentDate, setDocumentDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(crypto.randomUUID());
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || parseFloat(amount) <= 0) {
-      setError('Please enter a valid positive landed cost amount.');
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!isPositiveDecimal(amount)) {
+      setError(text.amount);
       return;
     }
 
     try {
-      setLoading(true);
+      setSubmitting(true);
       setError(null);
-      await allocateLandedCost(sessionToken, {
-        request_id: crypto.randomUUID(),
+      const result = await allocateLandedCost(sessionToken, {
+        request_id: requestId.current,
         receipt_id: receipt.document_id,
         landed_cost_amount: amount,
         allocation_method: method,
         fiscal_period_id: fiscalPeriodId,
         document_date: documentDate,
-        note: note || undefined,
+        note: note.trim() || null,
       });
-      onSuccess();
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to allocate landed cost.');
+      onSuccess(result);
+    } catch (caught: unknown) {
+      setError((caught as Error)?.message || text.requestUncertain);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
-  };
+  }
 
   return (
-    <div className="sk-modal-overlay">
-      <div className="sk-modal">
-        <h3>
-          Allocate Landed Cost — {receipt.document_number}
-        </h3>
-        {error && (
-          <div className="sk-banner sk-banner--error">
-            {error}
+    <div className="sk-modal-overlay" data-testid="landed-cost-modal">
+      <div className="sk-modal-content">
+        <header className="sk-modal-header">
+          <div>
+            <h2>{text.allocateLandedCost}</h2>
+            <p className="sk-muted">
+              {receipt.document_number} · {receipt.supplier_name} · {receipt.total_amount} DZD
+            </p>
           </div>
-        )}
+          <button type="button" className="sk-modal-close" onClick={onClose} aria-label={text.close}>×</button>
+        </header>
+
+        {error ? <div className="sk-banner sk-banner--error">{error}</div> : null}
+
         <form className="sk-form" onSubmit={handleSubmit}>
           <label>
-            Landed Cost Amount (DZD)
+            {text.amount} (DZD)
             <input
-              type="number"
-              step="0.01"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="e.g. 500.00 (Freight/Customs)"
+              inputMode="decimal"
+              onChange={(event) => setAmount(event.target.value)}
               required
+              data-testid="landed-cost-amount"
             />
           </label>
-
           <label>
-            Allocation Method
-            <select
-              value={method}
-              onChange={(e) => setMethod(e.target.value as 'BY_QTY' | 'BY_VALUE' | 'EQUAL_PER_LINE')}
-            >
-              <option value="BY_QTY">Proportional by Received Quantity</option>
-              <option value="BY_VALUE">Proportional by Line Value</option>
-              <option value="EQUAL_PER_LINE">Equal Split per Line</option>
+            {text.allocationMethod}
+            <select value={method} onChange={(event) => setMethod(event.target.value as typeof method)}>
+              <option value="BY_QTY">{text.byQuantity}</option>
+              <option value="BY_VALUE">{text.byValue}</option>
+              <option value="EQUAL_PER_LINE">{text.equalPerLine}</option>
             </select>
           </label>
-
           <label>
-            Document Date
-            <input
-              type="date"
-              value={documentDate}
-              onChange={(e) => setDocumentDate(e.target.value)}
-              required
-            />
+            {text.date}
+            <input type="date" value={documentDate} onChange={(event) => setDocumentDate(event.target.value)} required />
           </label>
-
           <label>
-            Note / Reference
-            <input
-              type="text"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Customs invoice #9823"
-            />
+            {text.note}
+            <input value={note} onChange={(event) => setNote(event.target.value)} />
           </label>
-
           <div className="sk-form-actions">
-            <button
-              type="button"
-              className="sk-button sk-button--secondary"
-              onClick={onClose}
-            >
-              Cancel
+            <button type="button" className="sk-button sk-button--secondary" onClick={onClose} disabled={submitting}>
+              {text.cancel}
             </button>
-            <button
-              type="submit"
-              className="sk-button sk-button--primary"
-              disabled={loading}
-            >
-              {loading ? 'Allocating…' : 'Allocate Cost'}
+            <button type="submit" className="sk-button sk-button--primary" disabled={submitting} data-testid="post-landed-cost">
+              {submitting ? text.processing : text.allocateLandedCost}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
-};
+}

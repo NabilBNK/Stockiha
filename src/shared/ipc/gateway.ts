@@ -405,25 +405,43 @@ export function listPurchaseReceipts(
   });
 }
 
+export function listPurchaseReceiptLines(
+  sessionToken: string,
+  purchaseOrderId?: number | null
+): Promise<import('./dto').PurchaseReceiptLineDto[]> {
+  return call<import('./dto').PurchaseReceiptLineDto[]>(COMMANDS.LIST_PURCHASE_RECEIPT_LINES, {
+    sessionToken,
+    purchaseOrderId: purchaseOrderId ?? null,
+  });
+}
+
+export function getProcurementCapabilities(
+  sessionToken: string
+): Promise<import('./dto').ProcurementCapabilities> {
+  return call<import('./dto').ProcurementCapabilities>(COMMANDS.GET_PROCUREMENT_CAPABILITIES, {
+    sessionToken,
+  });
+}
+
 export function allocateLandedCost(
   sessionToken: string,
   payload: import('./dto').AllocateLandedCostPayload
-): Promise<unknown> {
-  return call(COMMANDS.ALLOCATE_LANDED_COST, { sessionToken, payload });
+): Promise<import('./dto').AllocateLandedCostResult> {
+  return call<import('./dto').AllocateLandedCostResult>(COMMANDS.ALLOCATE_LANDED_COST, { sessionToken, payload });
 }
 
 export function createSupplierInvoiceDraft(
   sessionToken: string,
   payload: import('./dto').CreateSupplierInvoicePayload
-): Promise<unknown> {
-  return call(COMMANDS.CREATE_SUPPLIER_INVOICE_DRAFT, { sessionToken, payload });
+): Promise<import('./dto').CreateSupplierInvoiceResult> {
+  return call<import('./dto').CreateSupplierInvoiceResult>(COMMANDS.CREATE_SUPPLIER_INVOICE_DRAFT, { sessionToken, payload });
 }
 
 export function confirmSupplierInvoice(
   sessionToken: string,
   payload: import('./dto').ConfirmSupplierInvoicePayload
-): Promise<unknown> {
-  return call(COMMANDS.CONFIRM_SUPPLIER_INVOICE, { sessionToken, payload });
+): Promise<import('./dto').ConfirmSupplierInvoiceResult> {
+  return call<import('./dto').ConfirmSupplierInvoiceResult>(COMMANDS.CONFIRM_SUPPLIER_INVOICE, { sessionToken, payload });
 }
 
 export function listSupplierInvoices(
@@ -449,22 +467,22 @@ export function listSupplierLiabilities(
 export function createSupplierReturnDraft(
   sessionToken: string,
   payload: import('./dto').CreateSupplierReturnPayload
-): Promise<unknown> {
-  return call(COMMANDS.CREATE_SUPPLIER_RETURN_DRAFT, { sessionToken, payload });
+): Promise<import('./dto').CreateSupplierReturnResult> {
+  return call<import('./dto').CreateSupplierReturnResult>(COMMANDS.CREATE_SUPPLIER_RETURN_DRAFT, { sessionToken, payload });
 }
 
 export function confirmSupplierReturn(
   sessionToken: string,
   payload: import('./dto').ConfirmSupplierReturnPayload
-): Promise<unknown> {
-  return call(COMMANDS.CONFIRM_SUPPLIER_RETURN, { sessionToken, payload });
+): Promise<import('./dto').ConfirmSupplierReturnResult> {
+  return call<import('./dto').ConfirmSupplierReturnResult>(COMMANDS.CONFIRM_SUPPLIER_RETURN, { sessionToken, payload });
 }
 
 export function postSupplierPayment(
   sessionToken: string,
   payload: import('./dto').PostSupplierPaymentPayload
-): Promise<unknown> {
-  return call(COMMANDS.POST_SUPPLIER_PAYMENT, { sessionToken, payload });
+): Promise<import('./dto').PostSupplierPaymentResult> {
+  return call<import('./dto').PostSupplierPaymentResult>(COMMANDS.POST_SUPPLIER_PAYMENT, { sessionToken, payload });
 }
 
 export function listSupplierReturns(

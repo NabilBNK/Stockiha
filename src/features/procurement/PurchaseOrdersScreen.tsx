@@ -6,30 +6,40 @@ import {
   getPurchaseOrderDetail,
   listProducts,
   listPurchaseOrders,
+  listPurchaseReceipts,
   listSuppliers,
   listUnits,
   listWarehouses,
 } from '../../shared/ipc/gateway';
 import type {
   ConfirmPurchaseReceiptResult,
+  AllocateLandedCostResult,
   CreatePoLinePayload,
   ProductListItem,
   PurchaseOrderDetailDto,
   PurchaseOrderSummary,
+  PurchaseReceiptSummary,
+  ProcurementCapabilities,
   Supplier,
   Unit,
   Warehouse,
 } from '../../shared/ipc/dto';
 import { useI18n } from '../../shared/i18n';
 import PurchaseReceiptModal from './PurchaseReceiptModal';
+import { LandedCostModal } from './LandedCostModal';
+import { PROCUREMENT_COPY } from './procurementCopy';
 
 interface Props {
   sessionToken: string;
+  capabilities: ProcurementCapabilities;
+  openFiscalPeriodId: number | null;
 }
 
-export default function PurchaseOrdersScreen({ sessionToken }: Props) {
-  const { t } = useI18n();
+export default function PurchaseOrdersScreen({ sessionToken, capabilities, openFiscalPeriodId }: Props) {
+  const { t, locale } = useI18n();
+  const text = PROCUREMENT_COPY[locale];
   const [orders, setOrders] = useState<PurchaseOrderSummary[]>([]);
+  const [receipts, setReceipts] = useState<PurchaseReceiptSummary[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<ProductListItem[]>([]);
@@ -41,6 +51,8 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<PurchaseOrderDetailDto | null>(null);
   const [receiptPoDetail, setReceiptPoDetail] = useState<PurchaseOrderDetailDto | null>(null);
+  const [landedCostReceipt, setLandedCostReceipt] = useState<PurchaseReceiptSummary | null>(null);
+  const [landedCostResult, setLandedCostResult] = useState<AllocateLandedCostResult | null>(null);
 
   // Form state
   const [supplierId, setSupplierId] = useState<number>(0);
@@ -52,14 +64,16 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
     try {
       setLoading(true);
       setError(null);
-      const [posData, suppsData, whsData, prodsData, unitsData] = await Promise.all([
+      const [posData, receiptData, suppsData, whsData, prodsData, unitsData] = await Promise.all([
         listPurchaseOrders(sessionToken),
+        listPurchaseReceipts(sessionToken),
         listSuppliers(sessionToken),
         listWarehouses(sessionToken),
         listProducts(sessionToken, warehouseId || 1),
         listUnits(sessionToken),
       ]);
       setOrders(posData);
+      setReceipts(receiptData);
       setSuppliers(suppsData);
       setWarehouses(whsData);
       setProducts(prodsData);
@@ -200,6 +214,18 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
     }
   };
 
+  const handleLandedCostSuccess = async (result: AllocateLandedCostResult) => {
+    setLandedCostResult(result);
+    setLandedCostReceipt(null);
+    setSuccessBanner(text.landedCostPosted);
+    try {
+      await loadData();
+    } catch {
+      // The posting result is already confirmed. A refresh failure must not
+      // make the operator repeat the financial operation with a new request.
+    }
+  };
+
   return (
     <div className="sk-screen">
       <header className="sk-screen__header">
@@ -213,7 +239,7 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
           }}
           data-testid="create-po-btn"
         >
-          New Purchase Order
+          {text.newPurchaseOrder}
         </button>
       </header>
 
@@ -231,10 +257,10 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
 
       {showCreateForm && (
         <form className="sk-card sk-form" onSubmit={handleCreateOrder} data-testid="create-po-form">
-          <h2>Create Purchase Order (Draft)</h2>
+          <h2>{text.createPurchaseOrderDraft}</h2>
           <div className="sk-form-grid">
             <label>
-              Supplier *
+              {text.supplier} *
               <select
                 value={supplierId}
                 onChange={(e) => setSupplierId(parseInt(e.target.value, 10))}
@@ -250,7 +276,7 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
             </label>
 
             <label>
-              Destination Warehouse *
+              {text.destinationWarehouse} *
               <select
                 value={warehouseId}
                 onChange={(e) => setWarehouseId(parseInt(e.target.value, 10))}
@@ -266,26 +292,26 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
             </label>
 
             <label className="sk-grid-full">
-              Note
+              {text.note}
               <input
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Optional PO notes"
+                placeholder={text.optionalNote}
               />
             </label>
           </div>
 
-          <h3>Order Lines</h3>
+          <h3>{text.orderLines}</h3>
           <table className="sk-table" data-testid="po-lines-input-table">
             <thead>
               <tr>
-                <th>Product / Variant</th>
-                <th>Unit</th>
-                <th>Quantity</th>
-                <th>Unit Cost (DZD)</th>
-                <th>Total</th>
-                <th>Action</th>
+                <th>{text.product}</th>
+                <th>{text.unit}</th>
+                <th>{text.quantity}</th>
+                <th>{text.unitCost} (DZD)</th>
+                <th>{text.total}</th>
+                <th>{text.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -345,7 +371,7 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
                       className="sk-button sk-button--small sk-button--danger"
                       onClick={() => removeLine(idx)}
                     >
-                      Remove
+                      {text.remove}
                     </button>
                   </td>
                 </tr>
@@ -360,10 +386,10 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
               onClick={addLine}
               data-testid="add-po-line-btn"
             >
-              + Add Line
+              + {text.addLine}
             </button>
             <span style={{ marginLeft: '1rem', fontWeight: 'bold' }}>
-              Subtotal Preview: {calculateSubtotal()} DZD
+              {text.subtotalPreview}: {calculateSubtotal()} DZD
             </span>
           </div>
 
@@ -376,7 +402,7 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
               {t('common.cancel')}
             </button>
             <button type="submit" className="sk-button sk-button--primary" data-testid="save-po-draft-btn">
-              Save Draft PO
+              {text.saveDraft}
             </button>
           </div>
         </form>
@@ -389,13 +415,13 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
           <table className="sk-table" data-testid="po-table">
             <thead>
               <tr>
-                <th>PO Number</th>
-                <th>Supplier</th>
-                <th>Warehouse</th>
-                <th>Status</th>
-                <th>Total Amount</th>
-                <th>Created</th>
-                <th>Actions</th>
+                <th>{text.poNumber}</th>
+                <th>{text.supplier}</th>
+                <th>{text.warehouse}</th>
+                <th>{text.status}</th>
+                <th>{text.total}</th>
+                <th>{text.created}</th>
+                <th>{text.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -435,7 +461,7 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
                         onClick={() => viewDetail(po.document_id)}
                         data-testid={`view-po-${po.document_id}`}
                       >
-                        View
+                        {text.view}
                       </button>{' '}
                       {po.status === 'DRAFT' && (
                         <button
@@ -444,17 +470,18 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
                           onClick={() => handleConfirmOrder(po.document_id)}
                           data-testid={`confirm-po-${po.document_id}`}
                         >
-                          Confirm
+                          {text.confirmOrder}
                         </button>
                       )}{' '}
-                      {(po.status === 'CONFIRMED' || po.status === 'PARTIALLY_RECEIVED') && (
+                      {capabilities.can_post_purchase_receipt
+                        && (po.status === 'CONFIRMED' || po.status === 'PARTIALLY_RECEIVED') && (
                         <button
                           type="button"
                           className="sk-button sk-button--small sk-button--success"
                           onClick={() => openReceiptModal(po.document_id)}
                           data-testid={`receive-po-${po.document_id}`}
                         >
-                          Receive Goods
+                          {text.receiveGoods}
                         </button>
                       )}{' '}
                       {po.status !== 'RECEIVED' && po.status !== 'CANCELLED' && (
@@ -464,7 +491,7 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
                           onClick={() => handleCancelOrder(po.document_id)}
                           data-testid={`cancel-po-${po.document_id}`}
                         >
-                          Cancel
+                          {text.cancelOrder}
                         </button>
                       )}
                     </td>
@@ -476,12 +503,74 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
         </div>
       )}
 
+      {landedCostResult ? (
+        <section className="sk-card" data-testid="landed-cost-result">
+          <h2>{text.landedCostPosted}</h2>
+          <div className="sk-cards">
+            <div className="sk-metric"><span className="sk-metric__label">{text.receipt}</span><strong className="sk-metric__value">{landedCostResult.receipt_id}</strong></div>
+            <div className="sk-metric"><span className="sk-metric__label">{text.amount}</span><strong className="sk-metric__value">{landedCostResult.landed_cost_amount} DZD</strong></div>
+            <div className="sk-metric"><span className="sk-metric__label">{text.journal}</span><strong className="sk-metric__value">{landedCostResult.journal_document_id}</strong></div>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="sk-card">
+        <h2>{text.receiptsTitle}</h2>
+        {receipts.length === 0 ? (
+          <p className="sk-muted">{text.noReceipts}</p>
+        ) : (
+          <div className="sk-table-wrap">
+            <table className="sk-table" data-testid="purchase-receipts-table">
+              <thead>
+                <tr>
+                  <th>{text.receipt}</th>
+                  <th>{text.purchaseOrder}</th>
+                  <th>{text.supplier}</th>
+                  <th>{text.total}</th>
+                  <th>{text.receiptJournal}</th>
+                  <th>{text.landedCost}</th>
+                  <th>{text.actions}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {receipts.map((receipt) => (
+                  <tr key={receipt.document_id}>
+                    <td><strong>{receipt.document_number}</strong></td>
+                    <td>{receipt.purchase_order_number}</td>
+                    <td>{receipt.supplier_name}</td>
+                    <td className="sk-num">{receipt.total_amount} DZD</td>
+                    <td>{receipt.journal_document_number ?? receipt.journal_document_id ?? '—'}</td>
+                    <td className="sk-num">
+                      {receipt.landed_cost_amount ? `${receipt.landed_cost_amount} DZD` : '—'}
+                    </td>
+                    <td>
+                      {capabilities.can_post_supplier_invoice && openFiscalPeriodId && !receipt.landed_cost_amount ? (
+                        <button
+                          type="button"
+                          className="sk-button sk-button--small sk-button--secondary"
+                          onClick={() => setLandedCostReceipt(receipt)}
+                          data-testid={`allocate-landed-cost-${receipt.document_id}`}
+                        >
+                          {text.allocateLandedCost}
+                        </button>
+                      ) : (
+                        <span className="sk-muted">{receipt.landed_cost_amount ? text.alreadyAllocated : '—'}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       {selectedDetail && (
         <div className="sk-modal-overlay" data-testid="po-detail-modal">
           <div className="sk-modal-content sk-modal-content--large">
             <header className="sk-modal-header">
               <h2>
-                Purchase Order Detail: {selectedDetail.document_number ?? `Draft #${selectedDetail.document_id}`}
+                {text.orderDetail}: {selectedDetail.document_number ?? `#${selectedDetail.document_id}`}
               </h2>
               <button type="button" className="sk-modal-close" onClick={() => setSelectedDetail(null)}>
                 ×
@@ -490,20 +579,20 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
 
             <div className="sk-form-grid" style={{ marginBottom: '1rem' }}>
               <div>
-                <strong>Supplier:</strong> {selectedDetail.supplier_name} ({selectedDetail.supplier_code})
+                <strong>{text.supplier}:</strong> {selectedDetail.supplier_name} ({selectedDetail.supplier_code})
               </div>
               <div>
-                <strong>Warehouse:</strong> {selectedDetail.warehouse_name}
+                <strong>{text.warehouse}:</strong> {selectedDetail.warehouse_name}
               </div>
               <div>
-                <strong>Status:</strong> {selectedDetail.status}
+                <strong>{text.status}:</strong> {selectedDetail.status}
               </div>
               <div>
-                <strong>Total:</strong> {selectedDetail.total_amount} DZD
+                <strong>{text.total}:</strong> {selectedDetail.total_amount} DZD
               </div>
               {selectedDetail.note && (
                 <div className="sk-grid-full">
-                  <strong>Note:</strong> {selectedDetail.note}
+                  <strong>{text.note}:</strong> {selectedDetail.note}
                 </div>
               )}
             </div>
@@ -513,13 +602,13 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Variant SKU</th>
-                  <th>Variant Name</th>
-                  <th>Ordered</th>
-                  <th>Received</th>
-                  <th>Remaining</th>
-                  <th>Unit Cost</th>
-                  <th>Total</th>
+                  <th>{text.code}</th>
+                  <th>{text.product}</th>
+                  <th>{text.ordered}</th>
+                  <th>{text.received}</th>
+                  <th>{text.remaining}</th>
+                  <th>{text.unitCost}</th>
+                  <th>{text.total}</th>
                 </tr>
               </thead>
               <tbody>
@@ -561,6 +650,16 @@ export default function PurchaseOrdersScreen({ sessionToken }: Props) {
           poDetail={receiptPoDetail}
           onClose={() => setReceiptPoDetail(null)}
           onSuccess={handleReceiptSuccess}
+        />
+      )}
+
+      {landedCostReceipt && (
+        <LandedCostModal
+          receipt={landedCostReceipt}
+          sessionToken={sessionToken}
+          fiscalPeriodId={openFiscalPeriodId ?? 0}
+          onClose={() => setLandedCostReceipt(null)}
+          onSuccess={handleLandedCostSuccess}
         />
       )}
     </div>

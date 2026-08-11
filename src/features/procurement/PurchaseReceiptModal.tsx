@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { confirmPurchaseReceipt, getOpenFiscalPeriod } from '../../shared/ipc/gateway';
 import type { ConfirmPurchaseReceiptResult, OpenFiscalPeriod, PurchaseOrderDetailDto } from '../../shared/ipc/dto';
 import { useI18n } from '../../shared/i18n';
 import { useAppData } from '../../app/AppDataContext';
+import { PROCUREMENT_COPY } from './procurementCopy';
 
 interface Props {
   sessionToken: string;
@@ -17,13 +18,15 @@ export default function PurchaseReceiptModal({
   onClose,
   onSuccess,
 }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const text = PROCUREMENT_COPY[locale];
   const { openFiscalPeriod: appOpenPeriod } = useAppData();
   const [fiscalPeriod, setFiscalPeriod] = useState<OpenFiscalPeriod | null>(appOpenPeriod);
   const [documentDate, setDocumentDate] = useState(new Date().toISOString().substring(0, 10));
   const [lineQtys, setLineQtys] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(crypto.randomUUID());
 
   useEffect(() => {
     const init = async () => {
@@ -102,9 +105,8 @@ export default function PurchaseReceiptModal({
     try {
       setSubmitting(true);
       setError(null);
-      const reqId = crypto.randomUUID();
       const res = await confirmPurchaseReceipt(sessionToken, {
-        request_id: reqId,
+        request_id: requestId.current,
         purchase_order_id: poDetail.document_id,
         fiscal_period_id: fiscalPeriod.id,
         document_date: documentDate,
@@ -122,7 +124,7 @@ export default function PurchaseReceiptModal({
     <div className="sk-modal-overlay" data-testid="purchase-receipt-modal">
       <div className="sk-modal-content sk-modal-content--large">
         <header className="sk-modal-header">
-          <h2>Receive Goods — {poDetail.document_number ?? `PO #${poDetail.document_id}`}</h2>
+          <h2>{text.receiveGoods} — {poDetail.document_number ?? `#${poDetail.document_id}`}</h2>
           <button type="button" className="sk-modal-close" onClick={onClose}>
             ×
           </button>
@@ -137,13 +139,13 @@ export default function PurchaseReceiptModal({
         <form onSubmit={handleConfirmReceipt}>
           <div className="sk-form-grid" style={{ marginBottom: '1rem' }}>
             <div>
-              <strong>Supplier:</strong> {poDetail.supplier_name} ({poDetail.supplier_code})
+              <strong>{text.supplier}:</strong> {poDetail.supplier_name} ({poDetail.supplier_code})
             </div>
             <div>
-              <strong>Warehouse:</strong> {poDetail.warehouse_name}
+              <strong>{text.warehouse}:</strong> {poDetail.warehouse_name}
             </div>
             <label>
-              Receipt Date *
+              {text.receiptDate} *
               <input
                 type="date"
                 value={documentDate}
@@ -157,13 +159,13 @@ export default function PurchaseReceiptModal({
           <table className="sk-table" data-testid="receipt-lines-table">
             <thead>
               <tr>
-                <th>Variant</th>
-                <th>Unit</th>
-                <th>Ordered</th>
-                <th>Prev. Received</th>
-                <th>Remaining</th>
-                <th>Receive Now *</th>
-                <th>Unit Cost</th>
+                <th>{text.product}</th>
+                <th>{text.unit}</th>
+                <th>{text.ordered}</th>
+                <th>{text.previouslyReceived}</th>
+                <th>{text.remaining}</th>
+                <th>{text.receiveNow} *</th>
+                <th>{text.unitCost}</th>
               </tr>
             </thead>
             <tbody>
@@ -209,7 +211,7 @@ export default function PurchaseReceiptModal({
               disabled={submitting}
               data-testid="confirm-receipt-submit-btn"
             >
-              {submitting ? 'Confirming...' : 'Confirm Goods Receipt'}
+              {submitting ? text.confirming : text.confirmGoodsReceipt}
             </button>
           </div>
         </form>

@@ -1,298 +1,200 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { listSupplierReturns, createSupplierReturnDraft, confirmSupplierReturn } from '../../shared/ipc/gateway';
-import type { SupplierReturnSummary } from '../../shared/ipc/dto';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-interface SupplierReturnsScreenProps {
+import { useI18n } from '../../shared/i18n';
+import {
+  confirmSupplierReturn,
+  createSupplierReturnDraft,
+  listPurchaseOrders,
+  listPurchaseReceiptLines,
+  listSupplierReturns,
+} from '../../shared/ipc/gateway';
+import type {
+  ConfirmSupplierReturnResult,
+  ProcurementCapabilities,
+  PurchaseOrderSummary,
+  PurchaseReceiptLineDto,
+  SupplierReturnSummary,
+} from '../../shared/ipc/dto';
+import { isDecimalLessThanOrEqual, isPositiveDecimal } from './procurementDecimal';
+import { PROCUREMENT_COPY } from './procurementCopy';
+
+interface Props {
   sessionToken: string;
+  openFiscalPeriodId: number | null;
+  capabilities: ProcurementCapabilities | null;
 }
 
-export const SupplierReturnsScreen: React.FC<SupplierReturnsScreenProps> = ({ sessionToken }) => {
+export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabilities }: Props) {
+  const { locale } = useI18n();
+  const text = PROCUREMENT_COPY[locale];
   const [returns, setReturns] = useState<SupplierReturnSummary[]>([]);
+  const [orders, setOrders] = useState<PurchaseOrderSummary[]>([]);
+  const [receiptLines, setReceiptLines] = useState<PurchaseReceiptLineDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Form State
-  const [supplierId, setSupplierId] = useState(1);
-  const [warehouseId, setWarehouseId] = useState(1);
-  const [purchaseOrderId, setPurchaseOrderId] = useState<number | ''>('');
+  const [success, setSuccess] = useState<string | null>(null);
+  const [result, setResult] = useState<ConfirmSupplierReturnResult | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [purchaseOrderId, setPurchaseOrderId] = useState(0);
+  const [receiptLineId, setReceiptLineId] = useState(0);
   const [reasonCode, setReasonCode] = useState('DEFECTIVE_GOODS');
+  const [quantity, setQuantity] = useState('1.000');
   const [note, setNote] = useState('');
-  const [variantId, setVariantId] = useState(1);
-  const [quantity, setQuantity] = useState('1.00');
-  const [unitCost, setUnitCost] = useState('100.00');
+  const [submitting, setSubmitting] = useState(false);
+  const confirmRequestIds = useRef<Record<number, string>>({});
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await listSupplierReturns(sessionToken);
-      setReturns(res);
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to load supplier returns.');
+      const [returnData, orderData, receiptLineData] = await Promise.all([
+        listSupplierReturns(sessionToken),
+        listPurchaseOrders(sessionToken),
+        listPurchaseReceiptLines(sessionToken),
+      ]);
+      setReturns(returnData);
+      setOrders(orderData.filter((order) => ['PARTIALLY_RECEIVED', 'RECEIVED'].includes(order.status)));
+      setReceiptLines(receiptLineData);
+    } catch (caught: unknown) {
+      setError((caught as Error)?.message || text.returnEmpty);
     } finally {
       setLoading(false);
     }
-  }, [sessionToken]);
+  }, [sessionToken, text.returnEmpty]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { void loadData(); }, [loadData]);
 
-  const handleCreateDraft = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
+  const selectedOrder = orders.find((order) => order.document_id === purchaseOrderId) ?? null;
+  const returnableLines = useMemo(() => {
+    const seen = new Set<number>();
+    return receiptLines.filter((line) => {
+      if (line.purchase_order_id !== purchaseOrderId
+          || !isPositiveDecimal(line.quantity_returnable_for_variant)
+          || seen.has(line.variant_id)) return false;
+      seen.add(line.variant_id);
+      return true;
+    });
+  }, [purchaseOrderId, receiptLines]);
+  const selectedLine = returnableLines.find((line) => line.receipt_line_id === receiptLineId) ?? null;
 
+  function selectOrder(nextId: number) {
+    setPurchaseOrderId(nextId);
+    const first = receiptLines.find(
+      (line) => line.purchase_order_id === nextId && isPositiveDecimal(line.quantity_returnable_for_variant),
+    );
+    setReceiptLineId(first?.receipt_line_id ?? 0);
+    setQuantity(first ? '1.000' : '');
+  }
+
+  function openCreateForm() {
+    setShowCreate(true);
+    if (orders[0]) selectOrder(orders[0].document_id);
+  }
+
+  async function createDraft(event: React.FormEvent) {
+    event.preventDefault();
+    if (!selectedOrder || !selectedLine || !isPositiveDecimal(quantity)) {
+      setError(text.returnable);
+      return;
+    }
+    if (!isDecimalLessThanOrEqual(quantity, selectedLine.quantity_returnable_for_variant)) {
+      setError(text.quantityExceedsReturnable);
+      return;
+    }
     try {
-      await createSupplierReturnDraft(sessionToken, {
-        supplier_id: supplierId,
-        warehouse_id: warehouseId,
-        purchase_order_id: purchaseOrderId !== '' ? Number(purchaseOrderId) : null,
+      setSubmitting(true);
+      setError(null);
+      const draft = await createSupplierReturnDraft(sessionToken, {
+        supplier_id: selectedOrder.supplier_id,
+        warehouse_id: selectedOrder.warehouse_id,
+        purchase_order_id: selectedOrder.document_id,
         reason_code: reasonCode,
         note: note.trim() || null,
-        lines: [
-          {
-            variant_id: variantId,
-            quantity,
-            unit_cost: unitCost,
-          },
-        ],
+        lines: [{
+          variant_id: selectedLine.variant_id,
+          quantity,
+          unit_cost: selectedLine.unit_cost,
+        }],
       });
-      setShowCreateModal(false);
-      loadData();
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to create return draft.');
+      setSuccess(`${text.returnDraftCreated} #${draft.document_id}`);
+      setShowCreate(false);
+      setNote('');
+      await loadData();
+    } catch (caught: unknown) {
+      setError((caught as Error)?.message || text.returnEmpty);
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
-  const handleConfirmReturn = async (returnDocId: number) => {
-    setError(null);
-    setSubmitting(true);
+  async function confirmReturn(documentId: number) {
+    if (!openFiscalPeriodId) {
+      setError(text.openPeriodRequired);
+      return;
+    }
+    confirmRequestIds.current[documentId] ??= crypto.randomUUID();
     try {
-      await confirmSupplierReturn(sessionToken, {
-        request_id: crypto.randomUUID(),
-        return_document_id: returnDocId,
-        fiscal_period_id: 1,
-        document_date: new Date().toISOString().split('T')[0],
+      setSubmitting(true);
+      setError(null);
+      const posting = await confirmSupplierReturn(sessionToken, {
+        request_id: confirmRequestIds.current[documentId],
+        return_document_id: documentId,
+        fiscal_period_id: openFiscalPeriodId,
+        document_date: new Date().toISOString().slice(0, 10),
       });
-      loadData();
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to confirm supplier return.');
+      setResult(posting);
+      setSuccess(`${text.returnConfirmed} ${posting.document_number}`);
+      await loadData();
+    } catch (caught: unknown) {
+      setError((caught as Error)?.message || text.requestUncertain);
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
   return (
-    <div style={{ padding: '24px', color: '#f8fafc' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <div>
-          <h2 style={{ margin: 0 }}>Supplier Returns & Debit Notes</h2>
-          <div style={{ fontSize: '14px', color: '#94a3b8', marginTop: '4px' }}>
-            Goods returns to suppliers and debit note issuance
-          </div>
+    <section className="sk-screen">
+      <header className="sk-screen__header">
+        <div><h1>{text.returnTitle}</h1><p className="sk-muted">{text.returnSubtitle}</p></div>
+        <div className="sk-form-actions">
+          <button type="button" className="sk-button sk-button--secondary" onClick={() => void loadData()}>{text.refresh}</button>
+          {capabilities?.can_manage_procurement ? <button type="button" className="sk-button sk-button--primary" onClick={openCreateForm} data-testid="create-supplier-return">{text.newReturn}</button> : null}
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={loadData}
-            style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#1e293b', color: '#fff', cursor: 'pointer' }}
-          >
-            Refresh
-          </button>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            style={{ padding: '8px 16px', borderRadius: '4px', border: 'none', backgroundColor: '#2563eb', color: '#fff', fontWeight: 500, cursor: 'pointer' }}
-          >
-            + New Return Draft
-          </button>
-        </div>
-      </div>
+      </header>
+      {success ? <div className="sk-banner sk-banner--success">{success}</div> : null}
+      {error ? <div className="sk-banner sk-banner--error">{error}</div> : null}
 
-      {error && (
-        <div style={{ backgroundColor: '#7f1d1d', color: '#fecaca', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
-          {error}
+      {result ? <section className="sk-card" data-testid="supplier-return-result">
+        <h2>{text.returnConfirmed}</h2><div className="sk-cards">
+          <div className="sk-metric"><span className="sk-metric__label">{text.document}</span><strong className="sk-metric__value">{result.document_number}</strong></div>
+          <div className="sk-metric"><span className="sk-metric__label">{text.inventoryValue}</span><strong className="sk-metric__value">{result.inventory_value ?? '—'} DZD</strong></div>
+          <div className="sk-metric"><span className="sk-metric__label">{text.clearing}</span><strong className="sk-metric__value">{result.clearing_amount ?? '—'} DZD</strong></div>
+          <div className="sk-metric"><span className="sk-metric__label">{text.journal}</span><strong className="sk-metric__value">{result.journal_document_id}</strong></div>
         </div>
+      </section> : null}
+
+      {loading ? <div>{text.loading}</div> : returns.length === 0 ? <div className="sk-card sk-muted">{text.returnEmpty}</div> : (
+        <div className="sk-table-wrap"><table className="sk-table" data-testid="supplier-returns-table"><thead><tr>
+          <th>{text.document}</th><th>{text.supplier}</th><th>{text.purchaseOrder}</th><th>{text.warehouse}</th><th>{text.reason}</th><th>{text.status}</th><th>{text.journal}</th><th>{text.actions}</th>
+        </tr></thead><tbody>{returns.map((item) => <tr key={item.document_id}>
+          <td><strong>{item.document_number ?? `#${item.document_id}`}</strong></td><td>{item.supplier_name}</td><td>{item.purchase_order_number ?? '—'}</td><td>{item.warehouse_name}</td><td>{item.reason_code}</td>
+          <td><span className={`sk-badge ${item.status === 'POSTED' ? 'sk-badge--success' : 'sk-badge--warning'}`}>{item.status}</span></td><td>{item.journal_document_number ?? item.journal_document_id ?? '—'}</td>
+          <td>{item.status === 'DRAFT' && capabilities?.can_post_supplier_return ? <button type="button" className="sk-button sk-button--small sk-button--success" disabled={submitting} onClick={() => void confirmReturn(item.document_id)} data-testid={`confirm-return-${item.document_id}`}>{text.confirmReturn}</button> : '—'}</td>
+        </tr>)}</tbody></table></div>
       )}
 
-      {loading ? (
-        <div>Loading supplier returns…</div>
-      ) : returns.length === 0 ? (
-        <div style={{ padding: '32px', textAlign: 'center', backgroundColor: '#1e293b', borderRadius: '8px' }}>
-          No supplier return records found.
-        </div>
-      ) : (
-        <div style={{ overflowX: 'auto', backgroundColor: '#1e293b', borderRadius: '8px', border: '1px solid #334155' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #334155', backgroundColor: '#0f172a' }}>
-                <th style={{ padding: '12px' }}>Document #</th>
-                <th style={{ padding: '12px' }}>Supplier</th>
-                <th style={{ padding: '12px' }}>Reason</th>
-                <th style={{ padding: '12px' }}>Status</th>
-                <th style={{ padding: '12px' }}>Created At</th>
-                <th style={{ padding: '12px' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {returns.map((r) => (
-                <tr key={r.document_id} style={{ borderBottom: '1px solid #334155' }}>
-                  <td style={{ padding: '12px', fontWeight: 600 }}>{r.document_number || `Draft #${r.document_id}`}</td>
-                  <td style={{ padding: '12px' }}>{r.supplier_name}</td>
-                  <td style={{ padding: '12px' }}>{r.reason_code}</td>
-                  <td style={{ padding: '12px' }}>
-                    <span style={{
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      backgroundColor: r.status === 'POSTED' ? '#065f46' : '#9a3412',
-                      color: r.status === 'POSTED' ? '#34d399' : '#fdba74'
-                    }}>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px' }}>{new Date(r.created_at).toLocaleString()}</td>
-                  <td style={{ padding: '12px' }}>
-                    {r.status === 'DRAFT' && (
-                      <button
-                        onClick={() => handleConfirmReturn(r.document_id)}
-                        disabled={submitting}
-                        style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', backgroundColor: '#059669', color: '#fff', fontSize: '0.85rem', cursor: 'pointer' }}
-                      >
-                        Confirm Return
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {showCreateModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: '#1e293b', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '100%', border: '1px solid #334155' }}>
-            <h3 style={{ marginTop: 0 }}>Create Supplier Return Draft</h3>
-            <form onSubmit={handleCreateDraft} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Supplier ID</label>
-                <input
-                  type="number"
-                  required
-                  value={supplierId}
-                  onChange={(e) => setSupplierId(Number(e.target.value))}
-                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Warehouse ID</label>
-                <input
-                  type="number"
-                  required
-                  value={warehouseId}
-                  onChange={(e) => setWarehouseId(Number(e.target.value))}
-                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Purchase Order ID (Optional)</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 1"
-                  value={purchaseOrderId}
-                  onChange={(e) => setPurchaseOrderId(e.target.value !== '' ? Number(e.target.value) : '')}
-                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Reason Code</label>
-                <select
-                  value={reasonCode}
-                  onChange={(e) => setReasonCode(e.target.value)}
-                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff' }}
-                >
-                  <option value="DEFECTIVE_GOODS">Defective / Damaged Goods</option>
-                  <option value="EXCESS_DELIVERY">Excess Delivery</option>
-                  <option value="WRONG_ITEM">Wrong Item Shipped</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Note / Reference</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Defective batch return"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Variant ID</label>
-                <input
-                  type="number"
-                  required
-                  value={variantId}
-                  onChange={(e) => setVariantId(Number(e.target.value))}
-                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff' }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Quantity</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Unit Cost (DZD)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={unitCost}
-                    onChange={(e) => setUnitCost(e.target.value)}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={submitting}
-                  style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #475569', backgroundColor: 'transparent', color: '#fff', cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  style={{ padding: '8px 16px', borderRadius: '4px', border: 'none', backgroundColor: '#2563eb', color: '#fff', cursor: 'pointer' }}
-                >
-                  Save Draft
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+      {showCreate ? <div className="sk-modal-overlay" data-testid="supplier-return-modal"><div className="sk-modal-content">
+        <header className="sk-modal-header"><h2>{text.newReturn}</h2><button type="button" className="sk-modal-close" onClick={() => setShowCreate(false)} aria-label={text.close}>×</button></header>
+        <form className="sk-form" onSubmit={createDraft}>
+          <label>{text.purchaseOrder}<select value={purchaseOrderId} onChange={(event) => selectOrder(Number(event.target.value))} required data-testid="return-po-select">{orders.map((order) => <option key={order.document_id} value={order.document_id}>{order.document_number} · {order.supplier_name}</option>)}</select></label>
+          <label>{text.product}<select value={receiptLineId} onChange={(event) => setReceiptLineId(Number(event.target.value))} required data-testid="return-receipt-line">{returnableLines.map((line) => <option key={line.receipt_line_id} value={line.receipt_line_id}>{line.variant_sku} · {line.variant_name} ({line.quantity_returnable_for_variant} {line.unit_code})</option>)}</select></label>
+          {selectedLine ? <p className="sk-muted">{text.returnable}: {selectedLine.quantity_returnable_for_variant} {selectedLine.unit_code}</p> : null}
+          <label>{text.quantity}<input value={quantity} inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} required data-testid="return-quantity" /></label>
+          <label>{text.reason}<select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}><option value="DEFECTIVE_GOODS">{text.defective}</option><option value="EXCESS_DELIVERY">{text.excess}</option><option value="WRONG_ITEM">{text.wrongItem}</option></select></label>
+          <label>{text.note}<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
+          <div className="sk-form-actions"><button type="button" className="sk-button sk-button--secondary" onClick={() => setShowCreate(false)}>{text.cancel}</button><button type="submit" className="sk-button sk-button--primary" disabled={submitting || !selectedLine} data-testid="save-return-draft">{submitting ? text.processing : text.newReturn}</button></div>
+        </form>
+      </div></div> : null}
+    </section>
   );
-};
+}

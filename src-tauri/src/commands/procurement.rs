@@ -1,8 +1,10 @@
 use crate::application::procurement_service;
 use crate::domain::procurement::{
-    ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult, CreatePurchaseOrderPayload,
-    PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseReceiptSummary,
-    UpdatePurchaseOrderPayload,
+    AllocateLandedCostResult, ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult,
+    ConfirmSupplierInvoiceResult, ConfirmSupplierReturnResult, CreatePurchaseOrderPayload,
+    CreateSupplierInvoiceResult, CreateSupplierReturnResult, PostSupplierPaymentResult,
+    ProcurementCapabilities, PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseReceiptLineDto,
+    PurchaseReceiptSummary, UpdatePurchaseOrderPayload,
 };
 use crate::domain::supplier::{CreateSupplierPayload, Supplier, UpdateSupplierPayload};
 use crate::error::IpcError;
@@ -150,11 +152,34 @@ pub(crate) async fn list_purchase_receipts(
 }
 
 #[tauri::command]
+pub(crate) async fn get_procurement_capabilities(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<ProcurementCapabilities, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::get_procurement_capabilities(pool, &session_token)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn list_purchase_receipt_lines(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    purchase_order_id: Option<i64>,
+) -> Result<Vec<PurchaseReceiptLineDto>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::list_purchase_receipt_lines(pool, &session_token, purchase_order_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
 pub(crate) async fn allocate_landed_cost(
     state: State<'_, DatabaseState>,
     session_token: String,
     payload: crate::domain::procurement::AllocateLandedCostPayload,
-) -> Result<JsonValue, IpcError> {
+) -> Result<AllocateLandedCostResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     procurement_service::allocate_landed_cost(pool, &session_token, payload)
         .await
@@ -166,7 +191,7 @@ pub(crate) async fn create_supplier_invoice_draft(
     state: State<'_, DatabaseState>,
     session_token: String,
     payload: crate::domain::procurement::CreateSupplierInvoicePayload,
-) -> Result<JsonValue, IpcError> {
+) -> Result<CreateSupplierInvoiceResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     procurement_service::create_supplier_invoice_draft(pool, &session_token, payload)
         .await
@@ -178,7 +203,7 @@ pub(crate) async fn confirm_supplier_invoice(
     state: State<'_, DatabaseState>,
     session_token: String,
     payload: crate::domain::procurement::ConfirmSupplierInvoicePayload,
-) -> Result<JsonValue, IpcError> {
+) -> Result<ConfirmSupplierInvoiceResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     procurement_service::confirm_supplier_invoice(pool, &session_token, payload)
         .await
@@ -214,7 +239,7 @@ pub(crate) async fn create_supplier_return_draft(
     state: State<'_, DatabaseState>,
     session_token: String,
     payload: crate::domain::procurement::CreateSupplierReturnPayload,
-) -> Result<JsonValue, IpcError> {
+) -> Result<CreateSupplierReturnResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     procurement_service::create_supplier_return_draft(pool, &session_token, payload)
         .await
@@ -226,7 +251,7 @@ pub(crate) async fn confirm_supplier_return(
     state: State<'_, DatabaseState>,
     session_token: String,
     payload: crate::domain::procurement::ConfirmSupplierReturnPayload,
-) -> Result<JsonValue, IpcError> {
+) -> Result<ConfirmSupplierReturnResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     procurement_service::confirm_supplier_return(pool, &session_token, payload)
         .await
@@ -238,7 +263,7 @@ pub(crate) async fn post_supplier_payment(
     state: State<'_, DatabaseState>,
     session_token: String,
     payload: crate::domain::procurement::PostSupplierPaymentPayload,
-) -> Result<JsonValue, IpcError> {
+) -> Result<PostSupplierPaymentResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     procurement_service::post_supplier_payment(pool, &session_token, payload)
         .await

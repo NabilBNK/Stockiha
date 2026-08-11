@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 import { createSupplier, listSuppliers, updateSupplier } from '../../shared/ipc/gateway';
 import type { Supplier } from '../../shared/ipc/dto';
 import { useI18n } from '../../shared/i18n';
+import { PROCUREMENT_COPY } from './procurementCopy';
 
 interface Props {
   sessionToken: string;
 }
 
 export default function SuppliersScreen({ sessionToken }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const text = PROCUREMENT_COPY[locale];
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,10 +143,10 @@ export default function SuppliersScreen({ sessionToken }: Props) {
 
       {showForm && (
         <form className="sk-card sk-form" onSubmit={handleSave} data-testid="supplier-form">
-          <h2>{editingSupplier ? 'Edit Supplier' : 'New Supplier'}</h2>
+          <h2>{editingSupplier ? text.editSupplier : text.newSupplier}</h2>
           <div className="sk-form-grid">
             <label>
-              Code *
+              {text.code} *
               <input
                 type="text"
                 value={code}
@@ -155,7 +157,7 @@ export default function SuppliersScreen({ sessionToken }: Props) {
             </label>
 
             <label>
-              Name *
+              {text.name} *
               <input
                 type="text"
                 value={name}
@@ -166,27 +168,27 @@ export default function SuppliersScreen({ sessionToken }: Props) {
             </label>
 
             <label>
-              Contact Person
+              {text.contact}
               <input type="text" value={contactName} onChange={(e) => setContactName(e.target.value)} />
             </label>
 
             <label>
-              Phone
+              {text.phone}
               <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </label>
 
             <label>
-              Email
+              {text.email}
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
 
             <label>
-              Tax ID (NIF / NIS)
+              {text.taxId}
               <input type="text" value={taxId} onChange={(e) => setTaxId(e.target.value)} />
             </label>
 
             <label className="sk-grid-full">
-              Address
+              {text.address}
               <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} />
             </label>
           </div>
@@ -213,13 +215,13 @@ export default function SuppliersScreen({ sessionToken }: Props) {
           <table className="sk-table" data-testid="suppliers-table">
             <thead>
               <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Contact</th>
-                <th>Phone</th>
-                <th>Tax ID</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>{text.code}</th>
+                <th>{text.name}</th>
+                <th>{text.contact}</th>
+                <th>{text.phone}</th>
+                <th>{text.taxId}</th>
+                <th>{text.status}</th>
+                <th>{text.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -239,7 +241,7 @@ export default function SuppliersScreen({ sessionToken }: Props) {
                     <td>{s.tax_id || '—'}</td>
                     <td>
                       <span className={`sk-badge ${s.is_active ? 'sk-badge--success' : 'sk-badge--secondary'}`}>
-                        {s.is_active ? 'Active' : 'Inactive'}
+                        {s.is_active ? text.active : text.inactive}
                       </span>
                     </td>
                     <td>
@@ -249,7 +251,7 @@ export default function SuppliersScreen({ sessionToken }: Props) {
                         onClick={() => openEditForm(s)}
                         data-testid={`edit-supplier-${s.id}`}
                       >
-                        Edit
+                        {text.edit}
                       </button>{' '}
                       <button
                         type="button"
@@ -259,7 +261,7 @@ export default function SuppliersScreen({ sessionToken }: Props) {
                         onClick={() => toggleActive(s)}
                         data-testid={`toggle-supplier-${s.id}`}
                       >
-                        {s.is_active ? 'Deactivate' : 'Activate'}
+                        {s.is_active ? text.deactivate : text.activate}
                       </button>
                     </td>
                   </tr>

@@ -1,15 +1,32 @@
 use crate::application::parse_iso_date;
 use crate::domain::canonical_json::payload_hash;
 use crate::domain::procurement::{
-    ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult, CreatePurchaseOrderPayload,
-    PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseReceiptSummary,
-    UpdatePurchaseOrderPayload,
+    AllocateLandedCostResult, ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult,
+    ConfirmSupplierInvoiceResult, ConfirmSupplierReturnResult, CreatePurchaseOrderPayload,
+    CreateSupplierInvoiceResult, CreateSupplierReturnResult, PostSupplierPaymentResult,
+    ProcurementCapabilities, PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseReceiptLineDto,
+    PurchaseReceiptSummary, UpdatePurchaseOrderPayload,
 };
 use crate::domain::supplier::{CreateSupplierPayload, Supplier, UpdateSupplierPayload};
 use crate::error::AppError;
 use rust_decimal::Decimal;
 use serde_json::{json, Value as JsonValue};
 use sqlx::{query_scalar, PgPool};
+
+fn stringify_json_numbers(value: &mut JsonValue, keys: &[&str]) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    for key in keys {
+        let number = object.get(*key).and_then(|item| match item {
+            JsonValue::Number(number) => Some(number.to_string()),
+            _ => None,
+        });
+        if let Some(number) = number {
+            object.insert((*key).to_string(), JsonValue::String(number));
+        }
+    }
+}
 
 pub(crate) async fn create_supplier(
     pool: &PgPool,
@@ -295,11 +312,47 @@ pub(crate) async fn list_purchase_receipts(
     Ok(receipts)
 }
 
+pub(crate) async fn get_procurement_capabilities(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<ProcurementCapabilities, AppError> {
+    let result: JsonValue = query_scalar("SELECT procurement.get_capabilities($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(result).map_err(|error| {
+        AppError::internal(format!("Failed to parse procurement capabilities: {error}"))
+    })
+}
+
+pub(crate) async fn list_purchase_receipt_lines(
+    pool: &PgPool,
+    session_token: &str,
+    purchase_order_id: Option<i64>,
+) -> Result<Vec<PurchaseReceiptLineDto>, AppError> {
+    let result: JsonValue =
+        query_scalar("SELECT procurement.list_purchase_receipt_lines($1, $2)")
+            .bind(session_token)
+            .bind(purchase_order_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(result).map_err(|error| {
+        AppError::internal(format!("Failed to parse purchase receipt lines: {error}"))
+    })
+}
+
 pub(crate) async fn allocate_landed_cost(
     pool: &PgPool,
     session_token: &str,
     payload: crate::domain::procurement::AllocateLandedCostPayload,
-) -> Result<JsonValue, AppError> {
+) -> Result<AllocateLandedCostResult, AppError> {
+    payload
+        .validate()
+        .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
     let canonical = json!({
         "receipt_id": payload.receipt_id,
         "landed_cost_amount": payload.landed_cost_amount,
@@ -317,7 +370,7 @@ pub(crate) async fn allocate_landed_cost(
                 diagnostic: "Invalid landed cost amount".to_string(),
             })?;
 
-    let res: JsonValue = query_scalar(
+    let mut res: JsonValue = query_scalar(
         "SELECT inventory.allocate_landed_cost($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(session_token)
@@ -333,14 +386,27 @@ pub(crate) async fn allocate_landed_cost(
     .await
     .map_err(AppError::from_posting_error)?;
 
-    Ok(res)
+    stringify_json_numbers(
+        &mut res,
+        &[
+            "landed_cost_amount",
+            "inventory_debit",
+            "variance_debit",
+        ],
+    );
+
+    serde_json::from_value(res)
+        .map_err(|error| AppError::internal(format!("Failed to parse landed cost result: {error}")))
 }
 
 pub(crate) async fn create_supplier_invoice_draft(
     pool: &PgPool,
     session_token: &str,
     payload: crate::domain::procurement::CreateSupplierInvoicePayload,
-) -> Result<JsonValue, AppError> {
+) -> Result<CreateSupplierInvoiceResult, AppError> {
+    payload
+        .validate()
+        .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
     let lines_json = serde_json::to_value(&payload.lines)
         .map_err(|e| AppError::internal(format!("Invalid lines JSON: {e}")))?;
 
@@ -351,7 +417,7 @@ pub(crate) async fn create_supplier_invoice_draft(
         None => None,
     };
 
-    let res: JsonValue = query_scalar(
+    let mut res: JsonValue = query_scalar(
         "SELECT procurement.create_supplier_invoice_draft($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(session_token)
@@ -365,14 +431,21 @@ pub(crate) async fn create_supplier_invoice_draft(
     .await
     .map_err(AppError::from_posting_error)?;
 
-    Ok(res)
+    stringify_json_numbers(&mut res, &["subtotal", "total_amount"]);
+
+    serde_json::from_value(res).map_err(|error| {
+        AppError::internal(format!("Failed to parse supplier invoice draft result: {error}"))
+    })
 }
 
 pub(crate) async fn confirm_supplier_invoice(
     pool: &PgPool,
     session_token: &str,
     payload: crate::domain::procurement::ConfirmSupplierInvoicePayload,
-) -> Result<JsonValue, AppError> {
+) -> Result<ConfirmSupplierInvoiceResult, AppError> {
+    payload
+        .validate()
+        .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
     let canonical = json!({
         "invoice_doc_id": payload.invoice_doc_id,
         "fiscal_period_id": payload.fiscal_period_id,
@@ -393,7 +466,14 @@ pub(crate) async fn confirm_supplier_invoice(
             .await
             .map_err(AppError::from_posting_error)?;
 
-    Ok(res)
+    stringify_json_numbers(
+        &mut res,
+        &["total_amount", "grni_amount", "variance_amount"],
+    );
+
+    serde_json::from_value(res).map_err(|error| {
+        AppError::internal(format!("Failed to parse supplier invoice result: {error}"))
+    })
 }
 
 pub(crate) async fn list_supplier_invoices(
@@ -437,7 +517,10 @@ pub(crate) async fn create_supplier_return_draft(
     pool: &PgPool,
     session_token: &str,
     payload: crate::domain::procurement::CreateSupplierReturnPayload,
-) -> Result<JsonValue, AppError> {
+) -> Result<CreateSupplierReturnResult, AppError> {
+    payload
+        .validate()
+        .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
     let lines_json = serde_json::to_value(&payload.lines)
         .map_err(|e| AppError::internal(format!("Invalid lines JSON: {e}")))?;
 
@@ -454,14 +537,19 @@ pub(crate) async fn create_supplier_return_draft(
             .await
             .map_err(AppError::from_posting_error)?;
 
-    Ok(res)
+    serde_json::from_value(res).map_err(|error| {
+        AppError::internal(format!("Failed to parse supplier return draft result: {error}"))
+    })
 }
 
 pub(crate) async fn confirm_supplier_return(
     pool: &PgPool,
     session_token: &str,
     payload: crate::domain::procurement::ConfirmSupplierReturnPayload,
-) -> Result<JsonValue, AppError> {
+) -> Result<ConfirmSupplierReturnResult, AppError> {
+    payload
+        .validate()
+        .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
     let canonical = json!({
         "return_document_id": payload.return_document_id,
         "fiscal_period_id": payload.fiscal_period_id,
@@ -470,7 +558,7 @@ pub(crate) async fn confirm_supplier_return(
     let hash = payload_hash(&canonical);
     let doc_date = parse_iso_date(&payload.document_date)?;
 
-    let res: JsonValue =
+    let mut res: JsonValue =
         query_scalar("SELECT inventory.confirm_supplier_return($1, $2::uuid, $3, $4, $5, $6)")
             .bind(session_token)
             .bind(&payload.request_id)
@@ -482,14 +570,24 @@ pub(crate) async fn confirm_supplier_return(
             .await
             .map_err(AppError::from_posting_error)?;
 
-    Ok(res)
+    stringify_json_numbers(
+        &mut res,
+        &["clearing_amount", "inventory_value", "variance_amount"],
+    );
+
+    serde_json::from_value(res).map_err(|error| {
+        AppError::internal(format!("Failed to parse supplier return result: {error}"))
+    })
 }
 
 pub(crate) async fn post_supplier_payment(
     pool: &PgPool,
     session_token: &str,
     payload: crate::domain::procurement::PostSupplierPaymentPayload,
-) -> Result<JsonValue, AppError> {
+) -> Result<PostSupplierPaymentResult, AppError> {
+    payload
+        .validate()
+        .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
     let amount: Decimal = payload
         .amount
         .parse()
@@ -508,7 +606,7 @@ pub(crate) async fn post_supplier_payment(
     let hash = payload_hash(&canonical);
     let doc_date = parse_iso_date(&payload.document_date)?;
 
-    let res: JsonValue = query_scalar(
+    let mut res: JsonValue = query_scalar(
         "SELECT procurement.post_supplier_payment($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(session_token)
@@ -525,7 +623,11 @@ pub(crate) async fn post_supplier_payment(
     .await
     .map_err(AppError::from_posting_error)?;
 
-    Ok(res)
+    stringify_json_numbers(&mut res, &["amount"]);
+
+    serde_json::from_value(res).map_err(|error| {
+        AppError::internal(format!("Failed to parse supplier payment result: {error}"))
+    })
 }
 
 pub(crate) async fn list_supplier_returns(

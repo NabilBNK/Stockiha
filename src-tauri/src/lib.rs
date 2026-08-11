@@ -118,6 +118,8 @@ pub fn run() {
             commands::procurement::get_purchase_order_detail,
             commands::procurement::confirm_purchase_receipt,
             commands::procurement::list_purchase_receipts,
+            commands::procurement::list_purchase_receipt_lines,
+            commands::procurement::get_procurement_capabilities,
             commands::procurement::allocate_landed_cost,
             commands::procurement::create_supplier_invoice_draft,
             commands::procurement::confirm_supplier_invoice,

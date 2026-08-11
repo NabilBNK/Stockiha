@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../shared/components';
 import { LOCALES, useI18n, type Locale, type MessageKey } from '../shared/i18n';
 import { useSession } from '../shared/session/SessionContext';
-import type { InventoryCapabilities } from '../shared/ipc/dto';
+import type { InventoryCapabilities, ProcurementCapabilities } from '../shared/ipc/dto';
 
 export type AppView =
   | 'dashboard'
@@ -84,11 +84,13 @@ export function AppShell({
   currentView,
   onNavigate,
   inventoryCapabilities,
+  procurementCapabilities,
   children,
 }: {
   currentView: AppView;
   onNavigate: (view: AppView) => void;
   inventoryCapabilities: InventoryCapabilities | null;
+  procurementCapabilities: ProcurementCapabilities | null;
   children: ReactNode;
 }) {
   const { t, locale, setLocale } = useI18n();
@@ -158,6 +160,12 @@ export function AppShell({
         return inventoryCapabilities?.can_post_stock_receipt ?? false;
       case 'adjustment':
         return inventoryCapabilities?.can_manage_inventory ?? false;
+      case 'suppliers':
+      case 'purchase_orders':
+      case 'supplier_invoices':
+      case 'supplier_liabilities':
+      case 'supplier_returns':
+        return procurementCapabilities?.can_manage_procurement ?? false;
       default:
         return true;
     }

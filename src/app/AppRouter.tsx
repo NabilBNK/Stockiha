@@ -36,7 +36,7 @@ import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
 import { SupplierInvoicesScreen } from '../features/procurement/SupplierInvoicesScreen';
 import { SupplierLiabilitiesScreen } from '../features/procurement/SupplierLiabilitiesScreen';
 import { SupplierReturnsScreen } from '../features/procurement/SupplierReturnsScreen';
-import type { InventoryCapabilities } from '../shared/ipc/dto';
+import type { InventoryCapabilities, ProcurementCapabilities } from '../shared/ipc/dto';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
 
@@ -140,6 +140,8 @@ function AuthenticatedApp() {
     useState<OpeningStateOnboardingStatusResult | null>(null);
   const [inventoryCapabilities, setInventoryCapabilities] =
     useState<InventoryCapabilities | null>(null);
+  const [procurementCapabilities, setProcurementCapabilities] =
+    useState<ProcurementCapabilities | null>(null);
 
   const refreshOpeningStateStatus = useCallback(async () => {
     const token = user?.token;
@@ -154,6 +156,33 @@ function AuthenticatedApp() {
       // either restricted setup stage or its existence to them.
       setOpeningStateStatus(null);
     }
+  }, [user?.token]);
+
+  useEffect(() => {
+    const token = user?.token;
+    if (!token) {
+      setProcurementCapabilities(null);
+      return;
+    }
+    let active = true;
+    void ipc.getProcurementCapabilities(token)
+      .then((capabilities) => {
+        if (active) setProcurementCapabilities(capabilities);
+      })
+      .catch(() => {
+        if (active) {
+          setProcurementCapabilities({
+            can_manage_procurement: false,
+            can_post_purchase_receipt: false,
+            can_post_supplier_invoice: false,
+            can_post_supplier_return: false,
+            can_post_supplier_payment: false,
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [user?.token]);
 
   useEffect(() => {
@@ -223,6 +252,20 @@ function AuthenticatedApp() {
     if (!allowed) setView('dashboard');
   }, [inventoryCapabilities, view]);
 
+  useEffect(() => {
+    if (!procurementCapabilities) return;
+    const procurementView = [
+      'suppliers',
+      'purchase_orders',
+      'supplier_invoices',
+      'supplier_liabilities',
+      'supplier_returns',
+    ].includes(view);
+    if (procurementView && !procurementCapabilities.can_manage_procurement) {
+      setView('dashboard');
+    }
+  }, [procurementCapabilities, view]);
+
   async function finishOpeningStateApplication() {
     await refreshOpeningStateStatus();
     setView('settings');
@@ -233,6 +276,7 @@ function AuthenticatedApp() {
       currentView={view}
       onNavigate={setView}
       inventoryCapabilities={inventoryCapabilities}
+      procurementCapabilities={procurementCapabilities}
     >
       {view === 'dashboard' && <DashboardScreen />}
       {view === 'historical_finance' && (
@@ -286,18 +330,33 @@ function AuthenticatedApp() {
       {view === 'documents' && <DocumentsScreen />}
       {view === 'customers' && <CustomersScreen sessionToken={user?.token ?? ''} />}
       {view === 'suppliers' && <SuppliersScreen sessionToken={user?.token ?? ''} />}
-      {view === 'purchase_orders' && <PurchaseOrdersScreen sessionToken={user?.token ?? ''} />}
+      {view === 'purchase_orders' && procurementCapabilities && (
+        <PurchaseOrdersScreen
+          sessionToken={user?.token ?? ''}
+          capabilities={procurementCapabilities}
+          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
+        />
+      )}
       {view === 'supplier_invoices' && (
         <SupplierInvoicesScreen
           sessionToken={user?.token ?? ''}
           openFiscalPeriodId={openFiscalPeriod?.id ?? null}
+          capabilities={procurementCapabilities}
         />
       )}
       {view === 'supplier_liabilities' && (
-        <SupplierLiabilitiesScreen sessionToken={user?.token ?? ''} />
+        <SupplierLiabilitiesScreen
+          sessionToken={user?.token ?? ''}
+          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
+          capabilities={procurementCapabilities}
+        />
       )}
       {view === 'supplier_returns' && (
-        <SupplierReturnsScreen sessionToken={user?.token ?? ''} />
+        <SupplierReturnsScreen
+          sessionToken={user?.token ?? ''}
+          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
+          capabilities={procurementCapabilities}
+        />
       )}
     </AppShell>
   );

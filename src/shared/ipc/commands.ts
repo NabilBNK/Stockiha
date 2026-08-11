@@ -111,6 +111,8 @@ export const COMMANDS = {
   GET_PURCHASE_ORDER_DETAIL: 'get_purchase_order_detail',
   CONFIRM_PURCHASE_RECEIPT: 'confirm_purchase_receipt',
   LIST_PURCHASE_RECEIPTS: 'list_purchase_receipts',
+  LIST_PURCHASE_RECEIPT_LINES: 'list_purchase_receipt_lines',
+  GET_PROCUREMENT_CAPABILITIES: 'get_procurement_capabilities',
   ALLOCATE_LANDED_COST: 'allocate_landed_cost',
   CREATE_SUPPLIER_INVOICE_DRAFT: 'create_supplier_invoice_draft',
   CONFIRM_SUPPLIER_INVOICE: 'confirm_supplier_invoice',

@@ -38,6 +38,14 @@ export interface InventoryCapabilities {
   can_manage_inventory: boolean;
 }
 
+export interface ProcurementCapabilities {
+  can_manage_procurement: boolean;
+  can_post_purchase_receipt: boolean;
+  can_post_supplier_invoice: boolean;
+  can_post_supplier_return: boolean;
+  can_post_supplier_payment: boolean;
+}
+
 export interface InventorySnapshotItem {
   product_id: number;
   variant_id: number;
@@ -315,7 +323,37 @@ export interface PurchaseReceiptSummary {
   warehouse_id: number;
   warehouse_name: string;
   total_amount: string;
+  journal_document_id: number | null;
+  journal_document_number: string | null;
+  landed_cost_amount: string | null;
+  landed_cost_journal_id: number | null;
+  landed_cost_journal_number: string | null;
   posted_at: string;
+}
+
+export interface PurchaseReceiptLineDto {
+  receipt_line_id: number;
+  receipt_document_id: number;
+  receipt_document_number: string;
+  purchase_order_id: number;
+  purchase_order_number: string;
+  po_line_id: number;
+  supplier_id: number;
+  supplier_name: string;
+  warehouse_id: number;
+  warehouse_name: string;
+  variant_id: number;
+  variant_sku: string;
+  variant_name: string;
+  unit_id: number;
+  unit_code: string;
+  quantity_received: string;
+  quantity_invoiced: string;
+  quantity_available_to_invoice: string;
+  quantity_returned_for_variant: string;
+  quantity_returnable_for_variant: string;
+  unit_cost: string;
+  line_total: string;
 }
 
 export interface ConfirmPurchaseReceiptResult {
@@ -357,6 +395,15 @@ export interface AllocateLandedCostPayload {
   note?: string | null;
 }
 
+export interface AllocateLandedCostResult {
+  receipt_id: number;
+  landed_cost_amount: string;
+  inventory_debit?: string | null;
+  variance_debit?: string | null;
+  journal_document_id: number;
+  status: 'POSTED';
+}
+
 export interface CreateSupplierInvoiceLinePayload {
   line_number: number;
   po_line_id?: number | null;
@@ -375,6 +422,15 @@ export interface CreateSupplierInvoicePayload {
   lines: CreateSupplierInvoiceLinePayload[];
 }
 
+export interface CreateSupplierInvoiceResult {
+  document_id: number;
+  supplier_id: number;
+  purchase_order_id: number;
+  status: 'DRAFT';
+  subtotal: string;
+  total_amount: string;
+}
+
 export interface ConfirmSupplierInvoicePayload {
   request_id: string;
   invoice_doc_id: number;
@@ -382,15 +438,32 @@ export interface ConfirmSupplierInvoicePayload {
   document_date: string;
 }
 
+export interface ConfirmSupplierInvoiceResult {
+  document_id: number;
+  document_number: string;
+  supplier_id?: number | null;
+  total_amount?: string | null;
+  grni_amount?: string | null;
+  variance_amount?: string | null;
+  journal_document_id: number;
+  status: 'POSTED';
+}
+
 export interface SupplierInvoiceSummary {
   document_id: number;
   document_number: string | null;
   supplier_id: number;
   supplier_name: string;
+  purchase_order_id: number | null;
+  purchase_order_number: string | null;
   status: string;
   currency_code: string;
   foreign_total_amount: string;
   base_total_amount: string;
+  journal_document_id: number | null;
+  journal_document_number: string | null;
+  liability_id: number | null;
+  outstanding_amount: string | null;
   created_at: string;
 }
 
@@ -400,8 +473,13 @@ export interface SupplierLiabilityDto {
   supplier_code: string;
   supplier_name: string;
   document_id: number | null;
+  document_number: string | null;
+  source_type: 'SUPPLIER_INVOICE' | 'LANDED_COST';
+  journal_document_id: number;
+  journal_document_number: string | null;
   original_amount: string;
   remaining_amount: string;
+  status: string;
   due_date: string | null;
   created_at: string;
 }
@@ -421,11 +499,29 @@ export interface CreateSupplierReturnPayload {
   lines: CreateSupplierReturnLinePayload[];
 }
 
+export interface CreateSupplierReturnResult {
+  document_id: number;
+  supplier_id: number;
+  purchase_order_id: number;
+  status: 'DRAFT';
+}
+
 export interface ConfirmSupplierReturnPayload {
   request_id: string;
   return_document_id: number;
   fiscal_period_id: number;
   document_date: string;
+}
+
+export interface ConfirmSupplierReturnResult {
+  document_id: number;
+  document_number: string;
+  status: 'POSTED';
+  clearing_role?: 'GRNI' | 'ACCOUNTS_PAYABLE' | null;
+  clearing_amount?: string | null;
+  inventory_value?: string | null;
+  variance_amount?: string | null;
+  journal_document_id: number;
 }
 
 export interface PostSupplierPaymentPayload {
@@ -439,14 +535,28 @@ export interface PostSupplierPaymentPayload {
   note?: string | null;
 }
 
+export interface PostSupplierPaymentResult {
+  document_id: number;
+  document_number: string;
+  status: 'POSTED';
+  journal_document_id: number;
+  amount?: string | null;
+  funding_role?: 'CASH' | 'BANK' | null;
+}
+
 export interface SupplierReturnSummary {
   document_id: number;
   document_number: string | null;
   supplier_id: number;
   supplier_name: string;
   warehouse_id: number;
+  warehouse_name: string;
+  purchase_order_id: number | null;
+  purchase_order_number: string | null;
   status: string;
   reason_code: string;
+  journal_document_id: number | null;
+  journal_document_number: string | null;
   created_at: string;
 }
 
@@ -455,7 +565,10 @@ export interface SupplierPaymentDto {
   document_number: string | null;
   supplier_id: number;
   supplier_name: string;
+  liability_id: number;
   payment_method: string;
   amount: string;
+  journal_document_id: number | null;
+  journal_document_number: string | null;
   created_at: string;
 }

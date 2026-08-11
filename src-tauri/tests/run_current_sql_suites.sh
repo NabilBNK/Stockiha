@@ -13,6 +13,7 @@ suites=(
   src-tauri/tests/procurement/s3_002_landed_cost_and_invoices_integration.sql
   src-tauri/tests/procurement/s3_003_supplier_returns_and_payments_integration.sql
   src-tauri/tests/procurement/r2_financial_semantics_integration.sql
+  src-tauri/tests/procurement/r8_e_procurement_integration.sql
   src-tauri/tests/receivables/s4_001_credit_sale_integration.sql
   src-tauri/tests/receivables/s4_001_customer_payment_integration.sql
   src-tauri/tests/cash/s4_002_cash_session_lifecycle.sql
