@@ -1,0 +1,147 @@
+name: R8 Fresh SQLx Provisioning Proof
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/r8-001-provision-acceptance-database.ps1'
+      - 'src-tauri/migrations/**'
+      - '.github/workflows/r8-sqlx-fresh-provisioning.yml'
+  push:
+    branches:
+      - 'task/r8-001-reproducible-sqlx-provisioning'
+    paths:
+      - 'scripts/r8-001-provision-acceptance-database.ps1'
+      - 'src-tauri/migrations/**'
+      - '.github/workflows/r8-sqlx-fresh-provisioning.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-sqlx:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: stockiha_r8_control
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d stockiha_r8_control"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: stockiha_r8_control
+      DATABASE_URL: postgres://stockiha_migrator:migrator_ci_password@127.0.0.1:5432/stockiha_r8_acceptance_ci_test
+      STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_r8_acceptance_ci_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Install SQLx CLI 0.8.6
+        run: cargo install sqlx-cli --version 0.8.6 --no-default-features --features postgres --locked
+
+      - name: Bootstrap exact Stockiha role posture
+        run: |
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE stockiha_owner NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+          CREATE ROLE stockiha_migrator LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'migrator_ci_password';
+          CREATE ROLE stockiha_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'runtime_ci_password';
+          CREATE ROLE stockiha_backup LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'backup_ci_password';
+          GRANT stockiha_owner TO stockiha_migrator WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
+          SQL
+
+      - name: Reject connection URL session overrides
+        shell: pwsh
+        run: |
+          $urls = @{
+            DATABASE_URL = $env:DATABASE_URL
+            STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL = $env:STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL
+          }
+          foreach ($name in $urls.Keys) {
+            try {
+              [Environment]::SetEnvironmentVariable(
+                $name,
+                "$($urls[$name])?options=-c%20role%3Dstockiha_owner",
+                'Process'
+              )
+              $failure = $null
+              try {
+                ./scripts/r8-001-provision-acceptance-database.ps1 `
+                  -DatabaseName stockiha_r8_acceptance_ci_test
+              } catch {
+                $failure = $_.Exception.Message
+              }
+              if ($failure -notlike '*must not contain query parameters or fragments*') {
+                throw "$name did not reject a connection-URL session override before provisioning."
+              }
+            } finally {
+              [Environment]::SetEnvironmentVariable($name, $urls[$name], 'Process')
+            }
+          }
+
+      - name: Reject persistent owner-role defaults
+        shell: pwsh
+        run: |
+          $testDatabase = 'stockiha_r8_acceptance_role_test'
+          $safeMigratorUrl = $env:DATABASE_URL
+          $safeAdminUrl = $env:STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL
+          $env:DATABASE_URL = $safeMigratorUrl.Replace('stockiha_r8_acceptance_ci_test', $testDatabase)
+          $env:STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL = $safeAdminUrl.Replace('stockiha_r8_acceptance_ci_test', $testDatabase)
+          psql -X -v ON_ERROR_STOP=1 -c "ALTER ROLE stockiha_migrator SET role = stockiha_owner;"
+          $failure = $null
+          try {
+            try {
+              ./scripts/r8-001-provision-acceptance-database.ps1 `
+                -DatabaseName $testDatabase
+            } catch {
+              $failure = $_.Exception.Message
+            }
+          } finally {
+            $env:DATABASE_URL = $safeMigratorUrl
+            $env:STOCKIHA_R8_ADMIN_MIGRATION_DATABASE_URL = $safeAdminUrl
+            psql -X -v ON_ERROR_STOP=1 -c "ALTER ROLE stockiha_migrator RESET role;"
+          }
+          $databaseCount = psql -X -v ON_ERROR_STOP=1 -At -c "SELECT count(*) FROM pg_database WHERE datname='$testDatabase';"
+          if ($databaseCount -ne '0') {
+            psql -X -v ON_ERROR_STOP=1 -c "DROP DATABASE $testDatabase;"
+            throw 'Persistent role-default rejection created an acceptance database before it failed.'
+          }
+          if ($failure -notlike '*role posture does not match*') {
+            throw 'The helper did not reject a persistent owner-role default before provisioning.'
+          }
+
+      - name: Run exact cross-platform R8 provisioning helper
+        shell: pwsh
+        run: |
+          ./scripts/r8-001-provision-acceptance-database.ps1 `
+            -DatabaseName stockiha_r8_acceptance_ci_test
+
+      - name: Verify all released migration files were not rewritten
+        run: |
+          while IFS= read -r migration; do
+            if ! git diff --quiet origin/main -- "$migration"; then
+              echo "::error file=$migration::Released migration differs from origin/main."
+              exit 1
+            fi
+          done < <(git ls-tree -r --name-only origin/main -- src-tauri/migrations)
