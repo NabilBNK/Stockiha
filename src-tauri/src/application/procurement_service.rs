@@ -451,7 +451,7 @@ pub(crate) async fn confirm_supplier_invoice(
     let hash = payload_hash(&canonical);
     let doc_date = parse_iso_date(&payload.document_date)?;
 
-    let res: JsonValue =
+    let mut res: JsonValue =
         query_scalar("SELECT procurement.confirm_supplier_invoice($1, $2::uuid, $3, $4, $5, $6)")
             .bind(session_token)
             .bind(&payload.request_id)
