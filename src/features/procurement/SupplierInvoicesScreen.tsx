@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useI18n } from '../../shared/i18n';
+import { useErrorText } from '../../shared/hooks/useErrorText';
+import { currentBusinessDate } from '../../shared/utils/businessDate';
 import {
   confirmSupplierInvoice,
   createSupplierInvoiceDraft,
@@ -27,6 +29,7 @@ interface Props {
 export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capabilities }: Props) {
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
+  const errorText = useErrorText();
   const [invoices, setInvoices] = useState<SupplierInvoiceSummary[]>([]);
   const [orders, setOrders] = useState<PurchaseOrderSummary[]>([]);
   const [receiptLines, setReceiptLines] = useState<PurchaseReceiptLineDto[]>([]);
@@ -36,8 +39,9 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
   const [postingResult, setPostingResult] = useState<ConfirmSupplierInvoiceResult | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [purchaseOrderId, setPurchaseOrderId] = useState(0);
-  const [quantities, setQuantities] = useState<Record<number, string>>({});
-  const [costs, setCosts] = useState<Record<number, string>>({});
+  const [receiptLineId, setReceiptLineId] = useState(0);
+  const [quantity, setQuantity] = useState('1.000');
+  const [unitCost, setUnitCost] = useState('0.00');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const confirmRequestIds = useRef<Record<number, string>>({});
@@ -55,89 +59,80 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
       setOrders(orderData.filter((order) => ['PARTIALLY_RECEIVED', 'RECEIVED'].includes(order.status)));
       setReceiptLines(receiptLineData);
     } catch (caught: unknown) {
-      setError((caught as Error)?.message || text.invoiceEmpty);
+      setError(errorText(caught));
     } finally {
       setLoading(false);
     }
-  }, [sessionToken, text.invoiceEmpty]);
+  }, [sessionToken, errorText]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
   const selectedOrder = orders.find((order) => order.document_id === purchaseOrderId) ?? null;
-  const availableLines = useMemo(
-    () => receiptLines.filter(
-      (line) => line.purchase_order_id === purchaseOrderId
-        && isPositiveDecimal(line.quantity_available_to_invoice),
-    ),
-    [purchaseOrderId, receiptLines],
-  );
+  const invoiceableLines = useMemo(() => {
+    return receiptLines.filter(
+      (line) => line.purchase_order_id === purchaseOrderId && isPositiveDecimal(line.quantity_available_to_invoice),
+    );
+  }, [purchaseOrderId, receiptLines]);
+  const selectedLine = invoiceableLines.find((line) => line.receipt_line_id === receiptLineId) ?? null;
 
   function selectOrder(nextId: number) {
     setPurchaseOrderId(nextId);
-    const nextQuantities: Record<number, string> = {};
-    const nextCosts: Record<number, string> = {};
-    receiptLines.filter((line) => line.purchase_order_id === nextId).forEach((line) => {
-      nextQuantities[line.receipt_line_id] = line.quantity_available_to_invoice;
-      nextCosts[line.receipt_line_id] = line.unit_cost;
-    });
-    setQuantities(nextQuantities);
-    setCosts(nextCosts);
+    const first = receiptLines.find(
+      (line) => line.purchase_order_id === nextId && isPositiveDecimal(line.quantity_available_to_invoice),
+    );
+    setReceiptLineId(first?.receipt_line_id ?? 0);
+    setQuantity(first?.quantity_available_to_invoice ?? '1.000');
+    setUnitCost(first?.unit_cost ?? '0.00');
+  }
+
+  function selectLine(nextId: number) {
+    setReceiptLineId(nextId);
+    const line = invoiceableLines.find((item) => item.receipt_line_id === nextId);
+    setQuantity(line?.quantity_available_to_invoice ?? '1.000');
+    setUnitCost(line?.unit_cost ?? '0.00');
   }
 
   function openCreateForm() {
     setShowCreate(true);
-    const firstOrder = orders[0];
-    if (firstOrder) selectOrder(firstOrder.document_id);
+    if (orders[0]) selectOrder(orders[0].document_id);
   }
 
   async function createDraft(event: React.FormEvent) {
     event.preventDefault();
-    if (!selectedOrder) {
-      setError(text.purchaseOrder);
-      return;
-    }
-    const lines = availableLines
-      .map((line, index) => ({
-        line_number: index + 1,
-        po_line_id: line.po_line_id,
-        receipt_line_id: line.receipt_line_id,
-        variant_id: line.variant_id,
-        quantity: quantities[line.receipt_line_id] ?? '0',
-        unit_cost: costs[line.receipt_line_id] ?? line.unit_cost,
-      }))
-      .filter((line) => isPositiveDecimal(line.quantity));
-    if (lines.length === 0) {
+    if (!selectedOrder || !selectedLine || !isPositiveDecimal(quantity) || !isPositiveDecimal(unitCost)) {
       setError(text.noInvoiceLines);
       return;
     }
-    if (availableLines.some((line) => {
-      const requested = quantities[line.receipt_line_id] ?? '0';
-      return isPositiveDecimal(requested)
-        && !isDecimalLessThanOrEqual(requested, line.quantity_available_to_invoice);
-    })) {
+    if (!isDecimalLessThanOrEqual(quantity, selectedLine.quantity_available_to_invoice)) {
       setError(text.quantityExceedsAvailable);
       return;
     }
-
     try {
       setSubmitting(true);
       setError(null);
-      const result = await createSupplierInvoiceDraft(sessionToken, {
+      const draft = await createSupplierInvoiceDraft(sessionToken, {
         supplier_id: selectedOrder.supplier_id,
         purchase_order_id: selectedOrder.document_id,
         currency_code: 'DZD',
         exchange_rate_to_dzd: '1.000000',
         note: note.trim() || null,
-        lines,
+        lines: [{
+          line_number: 1,
+          po_line_id: selectedLine.po_line_id,
+          receipt_line_id: selectedLine.receipt_line_id,
+          variant_id: selectedLine.variant_id,
+          quantity,
+          unit_cost: unitCost,
+        }],
       });
-      setSuccess(`${text.invoiceDraftCreated} #${result.document_id}`);
+      setSuccess(`${text.invoiceDraftCreated} #${draft.document_id}`);
       setShowCreate(false);
       setNote('');
       await loadData();
     } catch (caught: unknown) {
-      setError((caught as Error)?.message || text.invoiceEmpty);
+      setError(errorText(caught));
     } finally {
       setSubmitting(false);
     }
@@ -156,13 +151,13 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
         request_id: confirmRequestIds.current[documentId],
         invoice_doc_id: documentId,
         fiscal_period_id: openFiscalPeriodId,
-        document_date: new Date().toISOString().slice(0, 10),
+        document_date: currentBusinessDate(),
       });
       setPostingResult(result);
       setSuccess(`${text.invoiceConfirmed} ${result.document_number}`);
       await loadData();
     } catch (caught: unknown) {
-      setError((caught as Error)?.message || text.requestUncertain);
+      setError(errorText(caught));
     } finally {
       setSubmitting(false);
     }
@@ -235,16 +230,20 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
                   {orders.map((order) => <option key={order.document_id} value={order.document_id}>{order.document_number} · {order.supplier_name}</option>)}
                 </select>
               </label>
-              {availableLines.length === 0 ? <div className="sk-banner sk-banner--warning">{text.noInvoiceLines}</div> : (
-                <div className="sk-table-wrap"><table className="sk-table"><thead><tr><th>{text.receiptLine}</th><th>{text.product}</th><th>{text.availableToInvoice}</th><th>{text.quantity}</th><th>{text.unitCost}</th></tr></thead>
-                  <tbody>{availableLines.map((line) => <tr key={line.receipt_line_id}>
-                    <td>{line.receipt_document_number}</td><td>{line.variant_sku} · {line.variant_name}</td><td>{line.quantity_available_to_invoice} {line.unit_code}</td>
-                    <td><input value={quantities[line.receipt_line_id] ?? ''} inputMode="decimal" onChange={(event) => setQuantities({ ...quantities, [line.receipt_line_id]: event.target.value })} aria-label={`${text.quantity} ${line.variant_sku}`} /></td>
-                    <td><input value={costs[line.receipt_line_id] ?? line.unit_cost} inputMode="decimal" onChange={(event) => setCosts({ ...costs, [line.receipt_line_id]: event.target.value })} aria-label={`${text.unitCost} ${line.variant_sku}`} /></td>
-                  </tr>)}</tbody></table></div>
+              {invoiceableLines.length === 0 ? <div className="sk-banner sk-banner--warning">{text.noInvoiceLines}</div> : (
+                <>
+                  <label>{text.product}
+                    <select value={receiptLineId} onChange={(event) => selectLine(Number(event.target.value))} required data-testid="invoice-receipt-line">
+                      {invoiceableLines.map((line) => <option key={line.receipt_line_id} value={line.receipt_line_id}>{line.variant_sku} · {line.variant_name} ({line.quantity_available_to_invoice} {line.unit_code})</option>)}
+                    </select>
+                  </label>
+                  {selectedLine ? <p className="sk-muted">{text.availableToInvoice}: {selectedLine.quantity_available_to_invoice} {selectedLine.unit_code}</p> : null}
+                  <label>{text.quantity}<input value={quantity} inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} required data-testid="invoice-quantity" /></label>
+                  <label>{text.unitCost}<input value={unitCost} inputMode="decimal" onChange={(event) => setUnitCost(event.target.value)} required data-testid="invoice-unit-cost" /></label>
+                </>
               )}
               <label>{text.note}<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
-              <div className="sk-form-actions"><button type="button" className="sk-button sk-button--secondary" onClick={() => setShowCreate(false)}>{text.cancel}</button><button type="submit" className="sk-button sk-button--primary" disabled={submitting || availableLines.length === 0} data-testid="save-invoice-draft">{submitting ? text.processing : text.createInvoice}</button></div>
+              <div className="sk-form-actions"><button type="button" className="sk-button sk-button--secondary" onClick={() => setShowCreate(false)}>{text.cancel}</button><button type="submit" className="sk-button sk-button--primary" disabled={submitting || invoiceableLines.length === 0} data-testid="save-invoice-draft">{submitting ? text.processing : text.createInvoice}</button></div>
             </form>
           </div>
         </div>

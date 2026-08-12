@@ -25,6 +25,7 @@ import { InventoryScreen } from '../features/inventory/InventoryScreen';
 import { PosScreen } from '../features/pos/PosScreen';
 import { CashSessionScreen } from '../features/cash-session/CashSessionScreen';
 import { DocumentsScreen } from '../features/documents/DocumentsScreen';
+import { JournalsScreen } from '../features/accounting/JournalsScreen';
 import { CustomersScreen } from '../features/customers/CustomersScreen';
 import { HistoricalFinanceScreen } from '../features/onboarding/HistoricalFinanceScreen';
 import { OpeningStateScreen } from '../features/onboarding/OpeningStateScreen';
@@ -328,6 +329,7 @@ function AuthenticatedApp() {
       {view === 'pos' && <PosScreen />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}
+      {view === 'journals' && <JournalsScreen />}
       {view === 'customers' && <CustomersScreen sessionToken={user?.token ?? ''} />}
       {view === 'suppliers' && <SuppliersScreen sessionToken={user?.token ?? ''} />}
       {view === 'purchase_orders' && procurementCapabilities && (

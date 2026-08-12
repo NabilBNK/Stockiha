@@ -25,8 +25,10 @@ import type {
   Warehouse,
 } from '../../shared/ipc/dto';
 import { useI18n } from '../../shared/i18n';
+import { useErrorText } from '../../shared/hooks/useErrorText';
 import PurchaseReceiptModal from './PurchaseReceiptModal';
 import { LandedCostModal } from './LandedCostModal';
+import { addExactDecimals, multiplyExactDecimals } from './procurementDecimal';
 import { PROCUREMENT_COPY } from './procurementCopy';
 
 interface Props {
@@ -38,6 +40,7 @@ interface Props {
 export default function PurchaseOrdersScreen({ sessionToken, capabilities, openFiscalPeriodId }: Props) {
   const { t, locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
+  const errorText = useErrorText();
   const [orders, setOrders] = useState<PurchaseOrderSummary[]>([]);
   const [receipts, setReceipts] = useState<PurchaseReceiptSummary[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -86,7 +89,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
         setWarehouseId(whsData[0].id);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load procurement data');
+      setError(errorText(err));
     } finally {
       setLoading(false);
     }
@@ -120,13 +123,9 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
   };
 
   const calculateSubtotal = () => {
-    return lines
-      .reduce((sum, l) => {
-        const qty = parseFloat(l.quantity_ordered) || 0;
-        const cost = parseFloat(l.unit_cost) || 0;
-        return sum + qty * cost;
-      }, 0)
-      .toFixed(2);
+    return addExactDecimals(
+      lines.map((l) => multiplyExactDecimals(l.quantity_ordered, l.unit_cost)),
+    );
   };
 
   const handleCreateOrder = async (e: React.FormEvent) => {
@@ -150,7 +149,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       setSuccessBanner('Purchase order draft created successfully.');
       await loadData();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create purchase order');
+      setError(errorText(err));
     }
   };
 
@@ -165,7 +164,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
         setSelectedDetail(updated);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to confirm purchase order');
+      setError(errorText(err));
     }
   };
 
@@ -180,7 +179,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
         setSelectedDetail(updated);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to cancel purchase order');
+      setError(errorText(err));
     }
   };
 
@@ -190,7 +189,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       const detail = await getPurchaseOrderDetail(sessionToken, orderId);
       setSelectedDetail(detail);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load PO details');
+      setError(errorText(err));
     }
   };
 
@@ -200,7 +199,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       const detail = await getPurchaseOrderDetail(sessionToken, orderId);
       setReceiptPoDetail(detail);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load PO details for receipt');
+      setError(errorText(err));
     }
   };
 
@@ -360,10 +359,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
                     />
                   </td>
                   <td>
-                    {(
-                      (parseFloat(line.quantity_ordered) || 0) * (parseFloat(line.unit_cost) || 0)
-                    ).toFixed(2)}{' '}
-                    DZD
+                    {multiplyExactDecimals(line.quantity_ordered, line.unit_cost)} DZD
                   </td>
                   <td>
                     <button

@@ -58,8 +58,24 @@ describe('S4-001 customer documents', () => {
     let generated = false;
     let reprintArgs: Record<string, unknown> | null = null;
     let generationCalls = 0;
-
     wireInvoke(baseHandlers({
+      list_business_documents: () => [
+        {
+          document_id: 700,
+          document_type: 'CREDIT_SALE',
+          document_number: 'CR-2026-000001',
+          document_date: '2026-07-31',
+          counterparty_name: 'Atlas Distribution',
+          total_amount: '1500.00',
+          currency_code: 'DZD',
+          status: 'POSTED',
+          generation_status: generated ? 'COMPLETED' : 'PENDING',
+          print_status: generated ? 'PENDING' : 'WAITING_FOR_GENERATION',
+          journal_document_id: 900,
+          journal_document_number: 'JE-900',
+          created_at: '2026-07-31T10:00:00Z',
+        },
+      ],
       list_printable_documents: () => [
         {
           document_id: 700,
@@ -111,9 +127,10 @@ describe('S4-001 customer documents', () => {
     await login();
     fireEvent.click(screen.getByRole('button', { name: 'Documents' }));
 
-    expect(await screen.findByRole('heading', { name: 'Documents' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Business Documents' })).toBeInTheDocument();
     expect(await screen.findByText('CR-2026-000001')).toBeInTheDocument();
-    expect(screen.getByText('Customer payment receipt')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByTestId('view-doc-700'));
     expect(await screen.findByTestId('credit-invoice-lines')).toHaveTextContent('Credit Item');
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate PDF' }));

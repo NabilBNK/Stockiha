@@ -572,3 +572,44 @@ export interface SupplierPaymentDto {
   journal_document_number: string | null;
   created_at: string;
 }
+
+export interface JournalSummary {
+  document_id: number;
+  document_number: string | null;
+  document_date: string;
+  fiscal_period_id: number;
+  source_type: string;
+  source_id: number | null;
+  source_document_number: string | null;
+  description: string | null;
+  total_debit: string;
+  total_credit: string;
+  is_balanced: boolean;
+  created_at: string;
+}
+
+export interface JournalLineDto {
+  line_number: number;
+  account_code: string;
+  account_name: string;
+  debit: string;
+  credit: string;
+}
+
+export interface JournalDetail extends JournalSummary {
+  lines: JournalLineDto[];
+}
+
+export interface BusinessDocumentDto {
+  document_id: number;
+  document_number: string | null;
+  document_type: string;
+  document_date: string;
+  status: string;
+  posted_at: string | null;
+  generation_status: string;
+  print_status: string;
+  linked_journal_id: number | null;
+  linked_journal_number: string | null;
+  detail_summary: string | null;
+}

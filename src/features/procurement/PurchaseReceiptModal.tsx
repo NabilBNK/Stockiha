@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { confirmPurchaseReceipt, getOpenFiscalPeriod } from '../../shared/ipc/gateway';
 import type { ConfirmPurchaseReceiptResult, OpenFiscalPeriod, PurchaseOrderDetailDto } from '../../shared/ipc/dto';
 import { useI18n } from '../../shared/i18n';
+import { useErrorText } from '../../shared/hooks/useErrorText';
+import { currentBusinessDate } from '../../shared/utils/businessDate';
 import { useAppData } from '../../app/AppDataContext';
+import { isDecimalLessThanOrEqual, isPositiveDecimal } from './procurementDecimal';
 import { PROCUREMENT_COPY } from './procurementCopy';
 
 interface Props {
@@ -20,9 +23,10 @@ export default function PurchaseReceiptModal({
 }: Props) {
   const { t, locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
+  const errorText = useErrorText();
   const { openFiscalPeriod: appOpenPeriod } = useAppData();
   const [fiscalPeriod, setFiscalPeriod] = useState<OpenFiscalPeriod | null>(appOpenPeriod);
-  const [documentDate, setDocumentDate] = useState(new Date().toISOString().substring(0, 10));
+  const [documentDate, setDocumentDate] = useState(currentBusinessDate());
   const [lineQtys, setLineQtys] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +44,7 @@ export default function PurchaseReceiptModal({
       }
       setFiscalPeriod(fp);
       if (fp) {
-        const today = new Date().toISOString().substring(0, 10);
+        const today = currentBusinessDate();
         if (today >= fp.starts_on && today <= fp.ends_on) {
           setDocumentDate(today);
         } else {
@@ -53,19 +57,19 @@ export default function PurchaseReceiptModal({
     // Prefill receipt line quantities with remaining quantity
     const initial: Record<number, string> = {};
     for (const l of poDetail.lines) {
-      if (parseFloat(l.remaining_quantity) > 0) {
+      if (isPositiveDecimal(l.remaining_quantity)) {
         initial[l.id] = l.remaining_quantity;
       } else {
         initial[l.id] = '0.000';
       }
     }
     setLineQtys(initial);
-  }, [sessionToken, poDetail]);
+  }, [sessionToken, poDetail, appOpenPeriod]);
 
   const handleConfirmReceipt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fiscalPeriod) {
-      setError('No open fiscal period available');
+      setError(text.openPeriodRequired);
       return;
     }
 
@@ -74,7 +78,7 @@ export default function PurchaseReceiptModal({
         const qtyStr =
           lineQtys[l.id] !== undefined
             ? lineQtys[l.id]
-            : parseFloat(l.remaining_quantity) > 0
+            : isPositiveDecimal(l.remaining_quantity)
             ? l.remaining_quantity
             : '0.000';
         return {
@@ -82,10 +86,10 @@ export default function PurchaseReceiptModal({
           quantity_received: qtyStr,
         };
       })
-      .filter((l) => parseFloat(l.quantity_received) > 0);
+      .filter((l) => isPositiveDecimal(l.quantity_received));
 
     if (linesPayload.length === 0) {
-      setError('Please enter a positive receipt quantity for at least one line.');
+      setError(text.receiveNow);
       return;
     }
 
@@ -93,9 +97,7 @@ export default function PurchaseReceiptModal({
     for (const item of linesPayload) {
       const pol = poDetail.lines.find((l) => l.id === item.po_line_id);
       if (pol) {
-        const remaining = parseFloat(pol.remaining_quantity);
-        const entered = parseFloat(item.quantity_received);
-        if (entered > remaining + 0.0001) {
+        if (!isDecimalLessThanOrEqual(item.quantity_received, pol.remaining_quantity)) {
           setError(`Quantity for ${pol.variant_name} exceeds remaining quantity (${pol.remaining_quantity}).`);
           return;
         }
@@ -114,7 +116,7 @@ export default function PurchaseReceiptModal({
       });
       onSuccess(res);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to confirm purchase receipt');
+      setError(errorText(err));
     } finally {
       setSubmitting(false);
     }

@@ -23,6 +23,7 @@ export type AppView =
   | 'pos'
   | 'session'
   | 'documents'
+  | 'journals'
   | 'customers'
   | 'suppliers'
   | 'purchase_orders'
@@ -41,6 +42,7 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard', group: 'main', icon: '⌂' },
+  { view: 'journals', labels: { fr: 'Journaux', ar: 'اليومية', en: 'Journals' }, group: 'main', icon: '≡' },
   { view: 'historical_finance', labels: { fr: 'Finance historique', ar: 'المالية التاريخية', en: 'Historical finance' }, group: 'main', icon: '▥' },
   { view: 'settings', labels: { fr: 'Paramètres', ar: 'الإعدادات', en: 'Settings' }, group: 'main', icon: '⚙' },
   { view: 'products', labelKey: 'nav.products', group: 'stock', icon: '□' },

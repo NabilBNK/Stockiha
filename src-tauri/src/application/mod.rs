@@ -24,6 +24,7 @@ pub(crate) mod customer_service;
 pub(crate) mod dashboard;
 pub(crate) mod documents;
 pub(crate) mod drawer;
+pub(crate) mod finance_service;
 pub(crate) mod fiscal;
 pub(crate) mod inventory;
 pub(crate) mod onboarding;

@@ -25,6 +25,20 @@ export function listPrintableDocuments(
   return call<PrintableDocument[]>(COMMANDS.LIST_PRINTABLE_DOCUMENTS, { sessionToken, limit });
 }
 
+export function listBusinessDocuments(
+  sessionToken: string,
+  limit = 100,
+  offset = 0,
+  documentType: string | null = null,
+): Promise<import('./documentDto').BusinessDocument[]> {
+  return call<import('./documentDto').BusinessDocument[]>(COMMANDS.LIST_BUSINESS_DOCUMENTS, {
+    sessionToken,
+    limit,
+    offset,
+    documentType,
+  });
+}
+
 export function getCustomerDocumentPayload(
   sessionToken: string,
   documentId: number,
@@ -62,4 +76,31 @@ export function listCustomerDocumentJobs(
   documentId: number,
 ): Promise<DocumentJob[]> {
   return call<DocumentJob[]>(COMMANDS.LIST_DOCUMENT_JOBS, { sessionToken, documentId });
+}
+
+export function getBusinessDocumentDetail(
+  sessionToken: string,
+  documentId: number,
+): Promise<import('./documentDto').BusinessDocumentDetail> {
+  return call<import('./documentDto').BusinessDocumentDetail>(COMMANDS.GET_BUSINESS_DOCUMENT_DETAIL, {
+    sessionToken,
+    documentId,
+  });
+}
+
+export function getBusinessDocumentReports(
+  sessionToken: string,
+  filter: import('./documentDto').DocumentReportFilter = {},
+): Promise<import('./documentDto').BusinessDocumentReportResult> {
+  return call<import('./documentDto').BusinessDocumentReportResult>(COMMANDS.GET_BUSINESS_DOCUMENT_REPORTS, {
+    sessionToken,
+    dateFrom: filter.date_from ?? null,
+    dateTo: filter.date_to ?? null,
+    documentType: filter.document_type ?? null,
+    status: filter.status ?? null,
+    search: filter.search ?? null,
+    hasJournal: filter.has_journal ?? null,
+    limit: filter.limit ?? 100,
+    offset: filter.offset ?? 0,
+  });
 }

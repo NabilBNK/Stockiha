@@ -158,6 +158,26 @@ pub(crate) async fn list_printable_documents(
 }
 
 #[tauri::command]
+pub(crate) async fn list_business_documents(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    limit: Option<i32>,
+    offset: Option<i32>,
+    document_type: Option<String>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    documents::list_business_documents(
+        pool,
+        &session_token,
+        limit.unwrap_or(100),
+        offset.unwrap_or(0),
+        document_type,
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
 pub(crate) async fn get_customer_document_payload(
     state: State<'_, DatabaseState>,
     session_token: String,
@@ -203,4 +223,78 @@ pub(crate) async fn enqueue_customer_reprint(
     documents::enqueue_customer_reprint(pool, &session_token, document_id, &idempotency_key)
         .await
         .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_business_document_detail(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    document_id: i64,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    documents::get_business_document_detail(pool, &session_token, document_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_business_document_reports(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    document_type: Option<String>,
+    status: Option<String>,
+    search: Option<String>,
+    has_journal: Option<bool>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let parse_date = |s: &str| -> Result<time::Date, AppError> {
+        if let Ok(d) = time::Date::parse(s, &time::format_description::well_known::Rfc3339) {
+            return Ok(d);
+        }
+        let parts: Vec<&str> = s.split('T').next().unwrap_or(s).split('-').collect();
+        if parts.len() == 3 {
+            if let (Ok(y), Ok(m), Ok(d)) = (
+                parts[0].parse::<i32>(),
+                parts[1].parse::<u8>(),
+                parts[2].parse::<u8>(),
+            ) {
+                if let (Ok(month), Ok(day)) = (time::Month::try_from(m), d.try_into()) {
+                    if let Ok(date) = time::Date::from_calendar_date(y, month, day) {
+                        return Ok(date);
+                    }
+                }
+            }
+        }
+        Err(AppError::internal(format!("invalid date format: {}", s)))
+    };
+
+    let df = date_from
+        .as_deref()
+        .map(parse_date)
+        .transpose()
+        .map_err(IpcError::from)?;
+    let dt = date_to
+        .as_deref()
+        .map(parse_date)
+        .transpose()
+        .map_err(IpcError::from)?;
+
+    documents::get_business_document_reports(
+        pool,
+        &session_token,
+        df,
+        dt,
+        document_type.as_deref(),
+        status.as_deref(),
+        search.as_deref(),
+        has_journal,
+        limit,
+        offset,
+    )
+    .await
+    .map_err(IpcError::from)
 }

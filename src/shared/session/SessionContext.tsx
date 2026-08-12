@@ -38,7 +38,7 @@ interface SessionContextValue {
   setActiveCashSession: (session: ActiveCashSession | null) => void;
 }
 
-const SessionContext = createContext<SessionContextValue | null>(null);
+export const SessionContext = createContext<SessionContextValue | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);

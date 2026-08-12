@@ -46,3 +46,24 @@ export function isDecimalLessThanOrEqual(value: string, limit: string): boolean 
   return left.units * 10n ** BigInt(scale - left.scale)
     <= right.units * 10n ** BigInt(scale - right.scale);
 }
+
+export function multiplyExactDecimals(a: string, b: string): string {
+  const matchA = /^(-?)(\d+)(?:\.(\d+))?$/.exec(a.trim());
+  const matchB = /^(-?)(\d+)(?:\.(\d+))?$/.exec(b.trim());
+  if (!matchA || !matchB) return '0.00';
+  const fracA = matchA[3] ?? '';
+  const fracB = matchB[3] ?? '';
+  const signA = matchA[1] === '-' ? -1n : 1n;
+  const signB = matchB[1] === '-' ? -1n : 1n;
+  const unitsA = signA * BigInt(`${matchA[2]}${fracA}`);
+  const unitsB = signB * BigInt(`${matchB[2]}${fracB}`);
+  const product = unitsA * unitsB;
+  const totalScale = fracA.length + fracB.length;
+  if (totalScale === 0) return `${product.toString()}.00`;
+  const sign = product < 0n ? '-' : '';
+  const abs = product < 0n ? -product : product;
+  const padded = abs.toString().padStart(totalScale + 1, '0');
+  const intPart = padded.slice(0, -totalScale);
+  const fracPart = padded.slice(-totalScale).padEnd(2, '0').slice(0, 2);
+  return `${sign}${intPart}.${fracPart}`;
+}

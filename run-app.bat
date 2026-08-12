@@ -1,8 +1,7 @@
 @echo off
 title Stockiha Development Runner
 
-echo Ensuring workspace is on branch agent/enhance-historical-finance-analytics...
-git checkout agent/enhance-historical-finance-analytics 2>nul || git checkout -b agent/enhance-historical-finance-analytics origin/agent/enhance-historical-finance-analytics 2>nul
+echo Running Stockiha on current branch...
 
 echo Terminating any existing running Stockiha instance and freeing port 1420...
 taskkill /F /IM stockiha.exe /IM stockiha-backend.exe /IM tauri.exe /IM cargo.exe /IM node.exe 2>nul
@@ -19,9 +18,9 @@ if exist "%LOCALAPPDATA%\Stockiha\r8-acceptance\runtime.key" (
 )
 
 if defined STOCKIHA_RUNTIME_PW (
-    echo Ensuring PostgreSQL service is active on port 55433...
-    powershell -NoProfile -Command "$ready = & 'C:\Program Files\PostgreSQL\18\bin\pg_isready.exe' -h 127.0.0.1 -p 55433 2>&1; if ($ready -notlike '*accepting connections*') { & 'C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe' start -D '$env:LOCALAPPDATA\Stockiha\r8-acceptance\data-55433' -l '$env:LOCALAPPDATA\Stockiha\r8-acceptance\postgres-55433.log' -w }" >nul 2>&1
-    set "STOCKIHA_DEV_DATABASE_URL=postgres://stockiha_runtime:%STOCKIHA_RUNTIME_PW%@127.0.0.1:55433/stockiha_r8_acceptance_20260808165143_test?sslmode=disable"
+    echo Ensuring PostgreSQL service is active on port 5433...
+    powershell -NoProfile -Command "$ready = & 'C:\Program Files\PostgreSQL\18\bin\pg_isready.exe' -h 127.0.0.1 -p 5433 2>&1; if ($ready -notlike '*accepting connections*') { Start-Process -FilePath 'C:\Program Files\PostgreSQL\18\bin\postgres.exe' -ArgumentList '-D', `\"$env:LOCALAPPDATA\Stockiha\r8-acceptance\data-55433`\", '-p', '5433' -WindowStyle Hidden }" >nul 2>&1
+    set "STOCKIHA_DEV_DATABASE_URL=postgres://stockiha_runtime:%STOCKIHA_RUNTIME_PW%@127.0.0.1:5433/stockiha_r8e_verification_test?sslmode=disable"
 )
 
 if not defined STOCKIHA_DEV_DATABASE_URL (

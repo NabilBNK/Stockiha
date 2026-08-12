@@ -504,3 +504,41 @@ export function listSupplierPayments(
     supplierId: supplierId ?? null,
   });
 }
+
+export function listJournals(
+  sessionToken: string,
+  limit?: number,
+  offset?: number
+): Promise<import('./dto').JournalSummary[]> {
+  return call<import('./dto').JournalSummary[]>(COMMANDS.LIST_JOURNALS, {
+    sessionToken,
+    limit: limit ?? 100,
+    offset: offset ?? 0,
+  });
+}
+
+export function getJournalDetail(
+  sessionToken: string,
+  journalDocId: number
+): Promise<import('./dto').JournalDetail> {
+  return call<import('./dto').JournalDetail>(COMMANDS.GET_JOURNAL_DETAIL, {
+    sessionToken,
+    journalDocId,
+  });
+}
+
+export function listBusinessDocuments(
+  sessionToken: string,
+  limit?: number,
+  offset?: number,
+  documentType?: string | null
+): Promise<import('./dto').BusinessDocumentDto[]> {
+  return call<import('./dto').BusinessDocumentDto[]>(COMMANDS.LIST_BUSINESS_DOCUMENTS, {
+    sessionToken,
+    limit: limit ?? 100,
+    offset: offset ?? 0,
+    documentType: documentType ?? null,
+  });
+}
+
+export { getBusinessDocumentDetail, getBusinessDocumentReports } from './documentGateway';

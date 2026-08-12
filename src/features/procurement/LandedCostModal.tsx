@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 
 import { useI18n } from '../../shared/i18n';
+import { useErrorText } from '../../shared/hooks/useErrorText';
+import { currentBusinessDate } from '../../shared/utils/businessDate';
 import { allocateLandedCost } from '../../shared/ipc/gateway';
 import type { AllocateLandedCostResult, PurchaseReceiptSummary } from '../../shared/ipc/dto';
 import { isPositiveDecimal } from './procurementDecimal';
@@ -23,9 +25,10 @@ export function LandedCostModal({
 }: Props) {
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
+  const errorText = useErrorText();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'BY_QTY' | 'BY_VALUE' | 'EQUAL_PER_LINE'>('BY_QTY');
-  const [documentDate, setDocumentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [documentDate, setDocumentDate] = useState(currentBusinessDate());
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +55,7 @@ export function LandedCostModal({
       });
       onSuccess(result);
     } catch (caught: unknown) {
-      setError((caught as Error)?.message || text.requestUncertain);
+      setError(errorText(caught));
     } finally {
       setSubmitting(false);
     }

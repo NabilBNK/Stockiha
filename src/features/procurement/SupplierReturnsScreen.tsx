@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useI18n } from '../../shared/i18n';
+import { useErrorText } from '../../shared/hooks/useErrorText';
+import { currentBusinessDate } from '../../shared/utils/businessDate';
 import {
   confirmSupplierReturn,
   createSupplierReturnDraft,
@@ -27,6 +29,7 @@ interface Props {
 export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabilities }: Props) {
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
+  const errorText = useErrorText();
   const [returns, setReturns] = useState<SupplierReturnSummary[]>([]);
   const [orders, setOrders] = useState<PurchaseOrderSummary[]>([]);
   const [receiptLines, setReceiptLines] = useState<PurchaseReceiptLineDto[]>([]);
@@ -56,11 +59,11 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
       setOrders(orderData.filter((order) => ['PARTIALLY_RECEIVED', 'RECEIVED'].includes(order.status)));
       setReceiptLines(receiptLineData);
     } catch (caught: unknown) {
-      setError((caught as Error)?.message || text.returnEmpty);
+      setError(errorText(caught));
     } finally {
       setLoading(false);
     }
-  }, [sessionToken, text.returnEmpty]);
+  }, [sessionToken, errorText]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
@@ -121,7 +124,7 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
       setNote('');
       await loadData();
     } catch (caught: unknown) {
-      setError((caught as Error)?.message || text.returnEmpty);
+      setError(errorText(caught));
     } finally {
       setSubmitting(false);
     }
@@ -140,13 +143,13 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
         request_id: confirmRequestIds.current[documentId],
         return_document_id: documentId,
         fiscal_period_id: openFiscalPeriodId,
-        document_date: new Date().toISOString().slice(0, 10),
+        document_date: currentBusinessDate(),
       });
       setResult(posting);
       setSuccess(`${text.returnConfirmed} ${posting.document_number}`);
       await loadData();
     } catch (caught: unknown) {
-      setError((caught as Error)?.message || text.requestUncertain);
+      setError(errorText(caught));
     } finally {
       setSubmitting(false);
     }

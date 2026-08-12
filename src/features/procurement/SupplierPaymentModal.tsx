@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 
 import { useI18n } from '../../shared/i18n';
+import { useErrorText } from '../../shared/hooks/useErrorText';
+import { currentBusinessDate } from '../../shared/utils/businessDate';
 import { postSupplierPayment } from '../../shared/ipc/gateway';
 import type { PostSupplierPaymentResult, SupplierLiabilityDto } from '../../shared/ipc/dto';
 import { isDecimalLessThanOrEqual, isPositiveDecimal } from './procurementDecimal';
@@ -17,9 +19,10 @@ interface Props {
 export function SupplierPaymentModal({ liability, sessionToken, fiscalPeriodId, onClose, onPaymentPosted }: Props) {
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
+  const errorText = useErrorText();
   const [amount, setAmount] = useState(liability.remaining_amount);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'CHECK'>('CASH');
-  const [documentDate, setDocumentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [documentDate, setDocumentDate] = useState(currentBusinessDate());
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +53,7 @@ export function SupplierPaymentModal({ liability, sessionToken, fiscalPeriodId, 
       });
       onPaymentPosted(result);
     } catch (caught: unknown) {
-      setError((caught as Error)?.message || text.requestUncertain);
+      setError(errorText(caught));
     } finally {
       setSubmitting(false);
     }

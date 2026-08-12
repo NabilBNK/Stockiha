@@ -207,6 +207,25 @@ pub(crate) async fn list_printable_documents(
         .collect())
 }
 
+pub(crate) async fn list_business_documents(
+    pool: &PgPool,
+    session_token: &str,
+    limit: i32,
+    offset: i32,
+    document_type: Option<String>,
+) -> Result<Value, AppError> {
+    let res: Value = sqlx::query_scalar("SELECT documents.list_business_documents($1, $2, $3, $4)")
+        .bind(session_token)
+        .bind(limit)
+        .bind(offset)
+        .bind(document_type)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    Ok(res)
+}
+
 pub(crate) async fn get_customer_document_payload(
     pool: &PgPool,
     session_token: &str,
@@ -330,6 +349,48 @@ pub(crate) async fn enqueue_customer_reprint(
         .fetch_one(pool)
         .await
         .map_err(AppError::from_posting_error)
+}
+
+pub(crate) async fn get_business_document_detail(
+    pool: &PgPool,
+    session_token: &str,
+    document_id: i64,
+) -> Result<Value, AppError> {
+    sqlx::query_scalar::<_, Value>("SELECT documents.get_business_document_detail($1, $2)")
+        .bind(session_token)
+        .bind(document_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
+}
+
+pub(crate) async fn get_business_document_reports(
+    pool: &PgPool,
+    session_token: &str,
+    date_from: Option<Date>,
+    date_to: Option<Date>,
+    document_type: Option<&str>,
+    status: Option<&str>,
+    search: Option<&str>,
+    has_journal: Option<bool>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, AppError> {
+    sqlx::query_scalar::<_, Value>(
+        "SELECT documents.get_business_document_reports($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(session_token)
+    .bind(date_from)
+    .bind(date_to)
+    .bind(document_type)
+    .bind(status)
+    .bind(search)
+    .bind(has_journal)
+    .bind(limit)
+    .bind(offset)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)
 }
 
 async fn complete_generation_failure(
