@@ -92,6 +92,9 @@ impl AppError {
     /// text remains private in `diagnostic` and is dropped at IPC conversion.
     pub fn from_posting_error(err: sqlx::Error) -> Self {
         let message = err.to_string();
+        if cfg!(debug_assertions) {
+            eprintln!("[DB_POSTING_ERROR] {}", message);
+        }
         let Some(db_err) = err.as_database_error() else {
             return AppError::Internal(message);
         };

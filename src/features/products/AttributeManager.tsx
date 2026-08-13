@@ -1,7 +1,9 @@
 /**
- * Slice 2 — create attributes/values and assign per-variant attribute values.
+ * Slice 2 — attribute & attribute value management.
+ * Note: Non-nested event handlers are used (no nested <form> elements)
+ * to prevent outer form bubbling and accidental session/logout rejections.
  */
-import { useState, type FormEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 
 import { Banner, Button, Spinner, TextField } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
@@ -35,8 +37,7 @@ export function AttributeManager({
   const [valueOk, setValueOk] = useState<Record<number, boolean>>({});
   const [addingValue, setAddingValue] = useState<Record<number, boolean>>({});
 
-  async function handleCreateAttr(e: FormEvent) {
-    e.preventDefault();
+  async function handleCreateAttr() {
     if (creatingAttr || !attrName.trim()) return;
     setCreatingAttr(true);
     setAttrError(null);
@@ -52,8 +53,7 @@ export function AttributeManager({
     }
   }
 
-  async function handleAddValue(e: FormEvent, attrId: number) {
-    e.preventDefault();
+  async function handleAddValue(attrId: number) {
     const name = (valueName[attrId] ?? '').trim();
     if (!name || addingValue[attrId]) return;
     setAddingValue((prev) => ({ ...prev, [attrId]: true }));
@@ -74,14 +74,30 @@ export function AttributeManager({
     onSelectionChange({ ...selected, [attrId]: valueId });
   }
 
+  function handleAttrKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      void handleCreateAttr();
+    }
+  }
+
+  function handleValueKeyDown(e: KeyboardEvent<HTMLInputElement>, attrId: number) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      void handleAddValue(attrId);
+    }
+  }
+
   if (refLoading) return <Spinner />;
 
   return (
     <div>
       <h3>{t('attrs.title')}</h3>
 
-      {/* Create attribute form */}
-      <form className="sk-form" onSubmit={handleCreateAttr} aria-label={t('attrs.create')}>
+      {/* Create attribute section (no <form> to prevent nested form submit issues) */}
+      <div className="sk-form">
         {attrError ? <Banner tone="error">{attrError}</Banner> : null}
         {attrOk ? <Banner tone="success">{t('attrs.created')}</Banner> : null}
         <div className="sk-form__grid">
@@ -89,13 +105,19 @@ export function AttributeManager({
             label={t('attrs.name')}
             value={attrName}
             onChange={(e) => setAttrName(e.target.value)}
+            onKeyDown={handleAttrKeyDown}
             disabled={creatingAttr || busy}
           />
         </div>
-        <Button type="submit" loading={creatingAttr} disabled={!attrName.trim() || busy}>
+        <Button
+          type="button"
+          onClick={() => void handleCreateAttr()}
+          loading={creatingAttr}
+          disabled={!attrName.trim() || busy}
+        >
           {t('attrs.create')}
         </Button>
-      </form>
+      </div>
 
       {/* Attribute list with value management and selection */}
       {attributes.length === 0 ? (
@@ -123,27 +145,26 @@ export function AttributeManager({
                 ))}
               </div>
 
-              {/* Add value form */}
-              <form
-                onSubmit={(e) => void handleAddValue(e, attr.attribute_id)}
-                style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end', marginBlockStart: '0.5rem' }}
-              >
+              {/* Add value section */}
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end', marginBlockStart: '0.5rem' }}>
                 <TextField
                   label={t('attrs.valueName')}
                   value={valueName[attr.attribute_id] ?? ''}
                   onChange={(e) => setValueName((prev) => ({ ...prev, [attr.attribute_id]: e.target.value }))}
+                  onKeyDown={(e) => handleValueKeyDown(e, attr.attribute_id)}
                   error={valueError[attr.attribute_id] || undefined}
                   disabled={addingValue[attr.attribute_id] || busy}
                 />
                 <Button
-                  type="submit"
+                  type="button"
                   variant="secondary"
+                  onClick={() => void handleAddValue(attr.attribute_id)}
                   loading={addingValue[attr.attribute_id]}
                   disabled={!(valueName[attr.attribute_id] ?? '').trim() || busy}
                 >
                   {t('attrs.addValue')}
                 </Button>
-              </form>
+              </div>
               {valueOk[attr.attribute_id] ? <Banner tone="success">{t('attrs.valueAdded')}</Banner> : null}
             </div>
           ))}
