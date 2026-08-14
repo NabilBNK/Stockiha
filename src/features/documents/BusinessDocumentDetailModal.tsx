@@ -4,6 +4,7 @@ import { useI18n } from '../../shared/i18n';
 import { getBusinessDocumentDetail } from '../../shared/ipc/documentGateway';
 import type { BusinessDocumentDetail } from '../../shared/ipc/documentDto';
 import { JournalDetailModal } from '../accounting/JournalsScreen';
+import { downloadPurchaseReceiptXlsx } from '../procurement/purchaseReceiptExport';
 import {
   formatDisplayAmount,
   formatDisplayDate,
@@ -55,17 +56,17 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
       });
   }, [documentId, token]);
 
-  if (!documentId) return null;
+  const header = detail?.header;
+  const docType = header?.document_type;
+  const docNum = header?.document_number;
+  const docStatus = header?.status;
+  const docDate = header?.document_date;
+  const docFiscalYear = header?.fiscal_year;
 
-  const header = (detail as any)?.header || detail;
-  const docType = header?.document_type || (detail as any)?.document_type;
-  const docNum = header?.document_number || (detail as any)?.document_number;
-  const docStatus = header?.status || (detail as any)?.status;
-  const docDate = header?.document_date || (detail as any)?.document_date;
-  const docFiscalYear = header?.fiscal_year || (detail as any)?.fiscal_year;
-
-  const sub = detail?.subtype_detail || {};
-  const lines: any[] = sub.lines || [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sub = (detail?.subtype_detail || {}) as Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lines: any[] = Array.isArray(sub.lines) ? sub.lines : [];
   const relationships = detail?.relationships || [];
   const journal = detail?.journal;
   const printJobs = detail?.print_jobs;
@@ -381,6 +382,49 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
 
         {/* FOOTER */}
         <footer className="sk-detail-dialog__footer">
+          {(docType === 'PURCHASE_TRANSACTION' || docType === 'PURCHASE_RECEIPT') && detail && (
+            <>
+              <button
+                type="button"
+                className="sk-btn sk-btn--primary"
+                onClick={() => window.print()}
+              >
+                Print / PDF
+              </button>
+              <button
+                type="button"
+                className="sk-btn sk-btn--secondary"
+                onClick={() => {
+                  downloadPurchaseReceiptXlsx({
+                    documentNumber: docNum || `PUR-${documentId}`,
+                    documentDate: docDate || '',
+                    supplierName: sub.supplier_name || 'Supplier',
+                    supplierDocRef: sub.external_supplier_document_number || '',
+                    paymentStatus: sub.payment_status || 'PAID',
+                    paymentMethod: sub.payment_method || 'N/A',
+                    subtotal: String(sub.gross_subtotal || sub.total_amount || 0),
+                    additionalCosts: String(sub.additional_cost_amount || 0),
+                    grandTotal: String(sub.total_amount || 0),
+                    paidAmount: String(sub.paid_amount || 0),
+                    remainingAmount: String(sub.outstanding_amount || 0),
+                    lines: lines.map((l: any, idx: number) => ({
+                      lineNumber: l.line_number || idx + 1,
+                      sku: l.sku || l.sku_snapshot || 'SKU-000',
+                      productName: l.product_name || l.product_name_snapshot || 'Product',
+                      variantName: l.variant_name || undefined,
+                      barcode: l.barcode || undefined,
+                      unitCode: l.unit_code || l.unit_code_snapshot || 'U',
+                      quantity: parseFloat(l.quantity || l.received_quantity || 0),
+                      unitCost: parseFloat(l.unit_cost || 0),
+                      lineTotal: parseFloat(l.line_total || 0),
+                    })),
+                  });
+                }}
+              >
+                Export Excel (.xlsx)
+              </button>
+            </>
+          )}
           <button type="button" className="sk-btn sk-btn--secondary" onClick={onClose}>
             {copy.close}
           </button>

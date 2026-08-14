@@ -533,6 +533,149 @@ impl PostSupplierPaymentPayload {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseAdditionalCostInput {
+    pub cost_type: String,
+    pub amount: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseTransactionLineInput {
+    pub variant_id: i64,
+    pub unit_id: i64,
+    pub quantity: String,
+    pub unit_cost: String,
+    pub tax_amount: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostPurchaseTransactionPayload {
+    pub request_id: String,
+    pub supplier_id: i64,
+    pub document_date: String,
+    pub external_supplier_document_number: Option<String>,
+    pub payment_status: String,
+    pub payment_method: Option<String>,
+    pub paid_amount: Option<String>,
+    pub print_after_confirmation: bool,
+    pub note: Option<String>,
+    pub lines: Vec<PurchaseTransactionLineInput>,
+    pub additional_costs: Option<Vec<PurchaseAdditionalCostInput>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseTransactionChildDocuments {
+    pub purchase_order_id: i64,
+    pub goods_receipt_id: i64,
+    pub supplier_invoice_id: i64,
+    pub supplier_payment_id: Option<i64>,
+    pub landed_cost_document_ids: Option<Vec<i64>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostPurchaseTransactionResult {
+    pub document_id: i64,
+    pub document_number: String,
+    pub status: String,
+    pub supplier_id: i64,
+    pub warehouse_id: i64,
+    pub gross_subtotal: String,
+    pub discount_amount: String,
+    pub tax_amount: String,
+    pub total_amount: String,
+    pub payment_status: String,
+    pub payment_method: Option<String>,
+    pub paid_amount: String,
+    pub outstanding_amount: String,
+    pub due_date: Option<String>,
+    pub child_documents: PurchaseTransactionChildDocuments,
+    pub generation_status: String,
+    pub print_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrandDto {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VariantAttributeDto {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlternateUnitOptionDto {
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub conversion_factor: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseProductOption {
+    pub product_id: i64,
+    pub variant_id: i64,
+    pub sku: String,
+    pub product_name: String,
+    pub variant_name: Option<String>,
+    pub primary_barcode: Option<String>,
+    pub brand: Option<BrandDto>,
+    pub default_unit_id: i64,
+    pub default_unit_code: String,
+    pub default_unit_name: Option<String>,
+    pub alternate_units: Vec<AlternateUnitOptionDto>,
+    pub attributes: Vec<VariantAttributeDto>,
+    pub is_active: bool,
+}
+
+impl PostPurchaseTransactionPayload {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.supplier_id <= 0 {
+            return Err("Supplier selection is required.".to_string());
+        }
+        if self.document_date.trim().is_empty() {
+            return Err("Document date is required.".to_string());
+        }
+        if !matches!(
+            self.payment_status.as_str(),
+            "PAID" | "PARTIALLY_PAID" | "UNPAID"
+        ) {
+            return Err("Invalid payment status.".to_string());
+        }
+        if matches!(self.payment_status.as_str(), "PAID" | "PARTIALLY_PAID") {
+            let method = self.payment_method.as_deref().unwrap_or("");
+            if !matches!(method, "CASH" | "BANK_TRANSFER") {
+                return Err(
+                    "Payment method must be Cash or Bank Transfer when paid or partially paid."
+                        .to_string(),
+                );
+            }
+        }
+        if self.lines.is_empty() {
+            return Err("Purchase transaction must contain at least one product line.".to_string());
+        }
+        for (idx, line) in self.lines.iter().enumerate() {
+            if line.variant_id <= 0 || line.unit_id <= 0 {
+                return Err(format!("Line {}: invalid variant or unit", idx + 1));
+            }
+            positive_decimal(&line.quantity, &format!("Line {} quantity", idx + 1))?;
+            non_negative_decimal(&line.unit_cost, &format!("Line {} unit cost", idx + 1))?;
+            if line.unit_id == 1 {
+                if let Ok(dec) = line.quantity.parse::<rust_decimal::Decimal>() {
+                    if dec.fract() != rust_decimal::Decimal::ZERO {
+                        return Err(format!(
+                            "Quantity for unit U on line {} must be a whole number.",
+                            idx + 1
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -590,5 +733,42 @@ mod tests {
             request_id: "00000000-0000-4000-8000-000000000002".to_string(),
         };
         assert!(payment.validate().is_err());
+    }
+
+    #[test]
+    fn test_post_purchase_transaction_reproduction_case_valid() {
+        let payload = PostPurchaseTransactionPayload {
+            request_id: "00000000-0000-4000-8000-000000000099".to_string(),
+            supplier_id: 1,
+            external_supplier_document_number: Some("343754896".to_string()),
+            document_date: "2026-08-14".to_string(),
+            payment_status: "PARTIALLY_PAID".to_string(),
+            payment_method: Some("CASH".to_string()),
+            paid_amount: Some("20000".to_string()),
+            print_after_confirmation: false,
+            note: None,
+            lines: vec![
+                PurchaseTransactionLineInput {
+                    variant_id: 1,
+                    unit_id: 1,
+                    quantity: "10".to_string(),
+                    unit_cost: "1000".to_string(),
+                },
+                PurchaseTransactionLineInput {
+                    variant_id: 2,
+                    unit_id: 1,
+                    quantity: "10".to_string(),
+                    unit_cost: "1200".to_string(),
+                },
+                PurchaseTransactionLineInput {
+                    variant_id: 3,
+                    unit_id: 1,
+                    quantity: "10".to_string(),
+                    unit_cost: "800".to_string(),
+                },
+            ],
+            additional_costs: None,
+        };
+        assert!(payload.validate().is_ok());
     }
 }
