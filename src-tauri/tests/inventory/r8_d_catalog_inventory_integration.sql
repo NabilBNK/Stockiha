@@ -112,7 +112,7 @@ BEGIN
     );
     v_variant_id := ((v_product -> 'variant_ids') ->> 0)::bigint;
     v_other_variant_id := ((v_product -> 'variant_ids') ->> 1)::bigint;
-    PERFORM catalog.add_variant_unit(
+    PERFORM catalog.add_variant_alt_unit(
         v_token,
         v_variant_id,
         v_carton_unit_id,
