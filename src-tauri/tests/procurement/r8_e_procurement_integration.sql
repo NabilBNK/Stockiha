@@ -439,7 +439,7 @@ BEGIN
         HAVING sum(line.debit) <> sum(line.credit)
     ), 'Every R8-E journal must balance';
 
-    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) = 20260811140000,
+    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) = 20260812100000,
         'R8-E schema version must be current';
 
     RAISE NOTICE '=== ALL R8-E PROCUREMENT ACCEPTANCE ASSERTIONS PASSED ===';
