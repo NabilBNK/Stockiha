@@ -3,6 +3,11 @@
 -- Auto-generated SKU, Barcode operational identity, Removal of Reference Cost & Variant Unit.
 SET ROLE stockiha_owner;
 
+-- Drop incompatible functions whose signatures or return row types change
+DROP FUNCTION IF EXISTS catalog.update_variant(text, bigint, text, numeric, boolean);
+DROP FUNCTION IF EXISTS catalog.resolve_barcode(text, text);
+DROP FUNCTION IF EXISTS catalog.list_catalog_products(text, text);
+
 -- 1. Create sequence for auto-SKU generation if not exists
 CREATE SEQUENCE IF NOT EXISTS catalog.variant_sku_seq START WITH 1;
 
