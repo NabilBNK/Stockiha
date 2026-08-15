@@ -106,6 +106,9 @@ pub(crate) struct UnitResponse {
 pub(crate) struct CatalogProductResponse {
     pub product_id: i64,
     pub name: String,
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub unit_name: String,
     pub is_active: bool,
     pub variant_count: i64,
     pub active_variant_count: i64,
@@ -116,9 +119,16 @@ pub(crate) struct ResolvedBarcodeResponse {
     pub variant_id: i64,
     pub product_id: i64,
     pub sku: String,
+    pub name_override: Option<String>,
+    pub effective_variant_name: String,
+    pub primary_barcode: Option<String>,
+    pub operational_identifier: String,
+    pub identifier_type: String,
     pub product_name: String,
     pub sale_price: String,
-    pub base_unit_id: i64,
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub unit_name: String,
     pub variant_is_active: bool,
     pub product_is_active: bool,
 }
@@ -164,7 +174,7 @@ pub(crate) async fn update_variant(
     state: State<'_, DatabaseState>,
     session_token: String,
     variant_id: i64,
-    sku: String,
+    name_override: Option<String>,
     sale_price: Decimal,
     is_active: bool,
 ) -> Result<(), IpcError> {
@@ -173,7 +183,7 @@ pub(crate) async fn update_variant(
         pool,
         &session_token,
         variant_id,
-        &sku,
+        name_override.as_deref(),
         sale_price,
         is_active,
     )
@@ -200,10 +210,11 @@ pub(crate) async fn update_product(
     session_token: String,
     product_id: i64,
     name: String,
+    unit_id: i64,
     is_active: bool,
 ) -> Result<(), IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::update_product(pool, &session_token, product_id, &name, is_active)
+    catalog::update_product(pool, &session_token, product_id, &name, unit_id, is_active)
         .await
         .map_err(IpcError::from)
 }
@@ -383,9 +394,16 @@ pub(crate) async fn resolve_barcode(
                 variant_id: r.variant_id,
                 product_id: r.product_id,
                 sku: r.sku,
+                name_override: r.name_override,
+                effective_variant_name: r.effective_variant_name,
+                primary_barcode: r.primary_barcode,
+                operational_identifier: r.operational_identifier,
+                identifier_type: r.identifier_type,
                 product_name: r.product_name,
                 sale_price: r.sale_price,
-                base_unit_id: r.base_unit_id,
+                unit_id: r.unit_id,
+                unit_code: r.unit_code,
+                unit_name: r.unit_name,
                 variant_is_active: r.variant_is_active,
                 product_is_active: r.product_is_active,
             })
@@ -408,6 +426,9 @@ pub(crate) async fn list_catalog_products(
                 .map(|i| CatalogProductResponse {
                     product_id: i.product_id,
                     name: i.name,
+                    unit_id: i.unit_id,
+                    unit_code: i.unit_code,
+                    unit_name: i.unit_name,
                     is_active: i.is_active,
                     variant_count: i.variant_count,
                     active_variant_count: i.active_variant_count,

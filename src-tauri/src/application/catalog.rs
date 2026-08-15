@@ -114,6 +114,9 @@ pub(crate) struct UnitItem {
 pub(crate) struct CatalogProduct {
     pub product_id: i64,
     pub name: String,
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub unit_name: String,
     pub is_active: bool,
     pub variant_count: i64,
     pub active_variant_count: i64,
@@ -123,9 +126,16 @@ pub(crate) struct ResolvedBarcode {
     pub variant_id: i64,
     pub product_id: i64,
     pub sku: String,
+    pub name_override: Option<String>,
+    pub effective_variant_name: String,
+    pub primary_barcode: Option<String>,
+    pub operational_identifier: String,
+    pub identifier_type: String,
     pub product_name: String,
     pub sale_price: String,
-    pub base_unit_id: i64,
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub unit_name: String,
     pub variant_is_active: bool,
     pub product_is_active: bool,
 }
@@ -206,14 +216,14 @@ pub(crate) async fn update_variant(
     pool: &PgPool,
     session_token: &str,
     variant_id: i64,
-    sku: &str,
+    name_override: Option<&str>,
     sale_price: Decimal,
     is_active: bool,
 ) -> Result<(), AppError> {
     sqlx::query("SELECT catalog.update_variant($1, $2, $3, $4, $5)")
         .bind(session_token)
         .bind(variant_id)
-        .bind(sku)
+        .bind(name_override)
         .bind(sale_price)
         .bind(is_active)
         .execute(pool)
@@ -245,12 +255,14 @@ pub(crate) async fn update_product(
     session_token: &str,
     product_id: i64,
     name: &str,
+    unit_id: i64,
     is_active: bool,
 ) -> Result<(), AppError> {
-    sqlx::query("SELECT catalog.update_product($1, $2, $3, $4)")
+    sqlx::query("SELECT catalog.update_product($1, $2, $3, $4, $5)")
         .bind(session_token)
         .bind(product_id)
         .bind(name)
+        .bind(unit_id)
         .bind(is_active)
         .execute(pool)
         .await
@@ -459,9 +471,29 @@ pub(crate) async fn resolve_barcode(
     session_token: &str,
     barcode: &str,
 ) -> Result<Option<ResolvedBarcode>, AppError> {
-    let row = sqlx::query_as::<_, (i64, i64, String, String, Decimal, i64, bool, bool)>(
-        "SELECT variant_id, product_id, sku, product_name, sale_price, \
-         base_unit_id, variant_is_active, product_is_active \
+    let row = sqlx::query_as::<
+        _,
+        (
+            i64,
+            i64,
+            String,
+            Option<String>,
+            String,
+            Option<String>,
+            String,
+            String,
+            String,
+            Decimal,
+            i64,
+            String,
+            String,
+            bool,
+            bool,
+        ),
+    >(
+        "SELECT variant_id, product_id, sku, name_override, effective_variant_name, \
+         primary_barcode, operational_identifier, identifier_type, product_name, sale_price, \
+         unit_id, unit_code, unit_name, variant_is_active, product_is_active \
          FROM catalog.resolve_barcode($1, $2)",
     )
     .bind(session_token)
@@ -475,9 +507,16 @@ pub(crate) async fn resolve_barcode(
             variant_id,
             product_id,
             sku,
+            name_override,
+            effective_variant_name,
+            primary_barcode,
+            operational_identifier,
+            identifier_type,
             product_name,
             sale_price,
-            base_unit_id,
+            unit_id,
+            unit_code,
+            unit_name,
             variant_is_active,
             product_is_active,
         )| {
@@ -485,9 +524,16 @@ pub(crate) async fn resolve_barcode(
                 variant_id,
                 product_id,
                 sku,
+                name_override,
+                effective_variant_name,
+                primary_barcode,
+                operational_identifier,
+                identifier_type,
                 product_name,
                 sale_price: sale_price.to_string(),
-                base_unit_id,
+                unit_id,
+                unit_code,
+                unit_name,
                 variant_is_active,
                 product_is_active,
             }
@@ -501,8 +547,9 @@ pub(crate) async fn list_catalog_products(
     session_token: &str,
     search: Option<&str>,
 ) -> Result<Vec<CatalogProduct>, AppError> {
-    let rows = sqlx::query_as::<_, (i64, String, bool, i64, i64)>(
-        "SELECT product_id, name, is_active, variant_count, active_variant_count \
+    let rows = sqlx::query_as::<_, (i64, String, i64, String, String, bool, i64, i64)>(
+        "SELECT product_id, name, unit_id, unit_code, unit_name, is_active, \
+         variant_count, active_variant_count \
          FROM catalog.list_catalog_products($1, $2)",
     )
     .bind(session_token)
@@ -514,9 +561,21 @@ pub(crate) async fn list_catalog_products(
     Ok(rows
         .into_iter()
         .map(
-            |(product_id, name, is_active, variant_count, active_variant_count)| CatalogProduct {
+            |(
                 product_id,
                 name,
+                unit_id,
+                unit_code,
+                unit_name,
+                is_active,
+                variant_count,
+                active_variant_count,
+            )| CatalogProduct {
+                product_id,
+                name,
+                unit_id,
+                unit_code,
+                unit_name,
                 is_active,
                 variant_count,
                 active_variant_count,
