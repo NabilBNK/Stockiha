@@ -120,7 +120,7 @@ BEGIN
 
     ASSERT v_started ->> 'status' = 'STARTED', 'First restore verification must start';
     ASSERT NOT (v_started ->> 'is_replay')::boolean, 'First restore verification is not replay';
-    ASSERT v_started ->> 'current_schema_version' = '20260811140000',
+    ASSERT v_started ->> 'current_schema_version' = '20260812100000',
         'Restore verification must expose the current database schema version';
 
     v_replay := operations.begin_restore_verification_attempt(
