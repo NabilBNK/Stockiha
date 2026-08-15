@@ -12,6 +12,38 @@ import {
   humanStatus,
 } from '../../shared/utils/formatters';
 
+interface DocumentDetailLineItem {
+  line_number?: number;
+  sku?: string;
+  sku_snapshot?: string;
+  product_name?: string;
+  product_name_snapshot?: string;
+  variant_name?: string;
+  barcode?: string;
+  unit_code?: string;
+  unit_code_snapshot?: string;
+  quantity?: string | number;
+  ordered_quantity?: string | number;
+  received_quantity?: string | number;
+  invoiced_quantity?: string | number;
+  returned_quantity?: string | number;
+  unit_cost?: string | number;
+  unit_price?: string | number;
+  supplier_unit_cost?: string | number;
+  line_total?: string | number;
+}
+
+function isDocumentDetailLineItem(item: unknown): item is DocumentDetailLineItem {
+  return typeof item === 'object' && item !== null;
+}
+
+function getSubtypeString(sub: Record<string, unknown>, key: string): string | null {
+  const val = sub[key];
+  if (typeof val === 'string' && val.trim().length > 0) return val;
+  if (typeof val === 'number') return String(val);
+  return null;
+}
+
 interface BusinessDocumentDetailModalProps {
   documentId: number | null;
   onClose: () => void;
@@ -63,13 +95,22 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
   const docDate = header?.document_date;
   const docFiscalYear = header?.fiscal_year;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sub = (detail?.subtype_detail || {}) as Record<string, any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const lines: any[] = Array.isArray(sub.lines) ? sub.lines : [];
+  const sub: Record<string, unknown> = detail?.subtype_detail || {};
+  const lines: DocumentDetailLineItem[] = Array.isArray(sub.lines)
+    ? sub.lines.filter(isDocumentDetailLineItem)
+    : [];
   const relationships = detail?.relationships || [];
   const journal = detail?.journal;
   const printJobs = detail?.print_jobs;
+
+  const supplierName = getSubtypeString(sub, 'supplier_name');
+  const supplierCode = getSubtypeString(sub, 'supplier_code');
+  const customerName = getSubtypeString(sub, 'customer_name');
+  const warehouseName = getSubtypeString(sub, 'warehouse_name');
+  const totalMonetaryVal =
+    getSubtypeString(sub, 'total_amount') ||
+    getSubtypeString(sub, 'base_total_amount') ||
+    getSubtypeString(sub, 'amount');
 
   const copy = {
     en: {
@@ -140,8 +181,6 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
     },
   }[locale];
 
-  const totalMonetaryVal = sub.total_amount || sub.base_total_amount || sub.amount;
-
   return (
     <div
       className="sk-modal-overlay"
@@ -209,27 +248,27 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
               <section className="sk-detail-dialog__section">
                 <h3 className="sk-detail-dialog__section-title">{copy.overview}</h3>
                 <div className="sk-detail-dialog__grid">
-                  {sub.supplier_name && (
+                  {supplierName && (
                     <div className="sk-detail-dialog__field">
                       <span className="sk-detail-dialog__field-label">{copy.supplier}</span>
-                      <span className="sk-detail-dialog__field-val">{sub.supplier_name}</span>
-                      {sub.supplier_code && (
-                        <span className="sk-detail-dialog__field-sub">Code: {sub.supplier_code}</span>
+                      <span className="sk-detail-dialog__field-val">{supplierName}</span>
+                      {supplierCode && (
+                        <span className="sk-detail-dialog__field-sub">Code: {supplierCode}</span>
                       )}
                     </div>
                   )}
 
-                  {sub.customer_name && (
+                  {customerName && (
                     <div className="sk-detail-dialog__field">
                       <span className="sk-detail-dialog__field-label">{copy.customer}</span>
-                      <span className="sk-detail-dialog__field-val">{sub.customer_name}</span>
+                      <span className="sk-detail-dialog__field-val">{customerName}</span>
                     </div>
                   )}
 
-                  {sub.warehouse_name && (
+                  {warehouseName && (
                     <div className="sk-detail-dialog__field">
                       <span className="sk-detail-dialog__field-label">{copy.warehouse}</span>
-                      <span className="sk-detail-dialog__field-val">{sub.warehouse_name}</span>
+                      <span className="sk-detail-dialog__field-val">{warehouseName}</span>
                     </div>
                   )}
 
@@ -395,28 +434,37 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
                 type="button"
                 className="sk-btn sk-btn--secondary"
                 onClick={() => {
+                  const extDocNum = getSubtypeString(sub, 'external_supplier_document_number') || '';
+                  const payStatus = getSubtypeString(sub, 'payment_status') || 'PAID';
+                  const payMethod = getSubtypeString(sub, 'payment_method') || 'N/A';
+                  const subtotalVal = getSubtypeString(sub, 'gross_subtotal') || totalMonetaryVal || '0';
+                  const addCostVal = getSubtypeString(sub, 'additional_cost_amount') || '0';
+                  const grandTotalVal = getSubtypeString(sub, 'total_amount') || '0';
+                  const paidVal = getSubtypeString(sub, 'paid_amount') || '0';
+                  const remainingVal = getSubtypeString(sub, 'outstanding_amount') || '0';
+
                   downloadPurchaseReceiptXlsx({
                     documentNumber: docNum || `PUR-${documentId}`,
                     documentDate: docDate || '',
-                    supplierName: sub.supplier_name || 'Supplier',
-                    supplierDocRef: sub.external_supplier_document_number || '',
-                    paymentStatus: sub.payment_status || 'PAID',
-                    paymentMethod: sub.payment_method || 'N/A',
-                    subtotal: String(sub.gross_subtotal || sub.total_amount || 0),
-                    additionalCosts: String(sub.additional_cost_amount || 0),
-                    grandTotal: String(sub.total_amount || 0),
-                    paidAmount: String(sub.paid_amount || 0),
-                    remainingAmount: String(sub.outstanding_amount || 0),
-                    lines: lines.map((l: any, idx: number) => ({
+                    supplierName: supplierName || 'Supplier',
+                    supplierDocRef: extDocNum,
+                    paymentStatus: payStatus,
+                    paymentMethod: payMethod,
+                    subtotal: subtotalVal,
+                    additionalCosts: addCostVal,
+                    grandTotal: grandTotalVal,
+                    paidAmount: paidVal,
+                    remainingAmount: remainingVal,
+                    lines: lines.map((l: DocumentDetailLineItem, idx: number) => ({
                       lineNumber: l.line_number || idx + 1,
                       sku: l.sku || l.sku_snapshot || 'SKU-000',
                       productName: l.product_name || l.product_name_snapshot || 'Product',
                       variantName: l.variant_name || undefined,
                       barcode: l.barcode || undefined,
                       unitCode: l.unit_code || l.unit_code_snapshot || 'U',
-                      quantity: parseFloat(l.quantity || l.received_quantity || 0),
-                      unitCost: parseFloat(l.unit_cost || 0),
-                      lineTotal: parseFloat(l.line_total || 0),
+                      quantity: parseFloat(String(l.quantity || l.received_quantity || 0)),
+                      unitCost: parseFloat(String(l.unit_cost || 0)),
+                      lineTotal: parseFloat(String(l.line_total || 0)),
                     })),
                   });
                 }}

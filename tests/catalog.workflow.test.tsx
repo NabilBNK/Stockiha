@@ -47,7 +47,7 @@ function makeHandlers(extra: Handlers = {}): Handlers {
     }),
     list_catalog_products: () => [],
     list_attributes: () => [],
-    list_units: () => [],
+    list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
     ...extra,
   };
 }
@@ -108,24 +108,24 @@ describe('create product with multiple variants', () => {
     // Fill product name
     fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'T-Shirt' } });
 
-    // Fill first variant
-    const skuFields = screen.getAllByLabelText('SKU');
-    const priceFields = screen.getAllByLabelText('Sale price');
-    fireEvent.change(skuFields[0], { target: { value: 'TSH-S' } });
+    // Fill first variant sale price (SKU is generated automatically)
+    const priceFields = screen.getAllByLabelText(/Sale price/i);
     fireEvent.change(priceFields[0], { target: { value: '10.00' } });
 
     // Add a second variant
-    fireEvent.click(screen.getByRole('button', { name: 'Add variant' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Add variant' }));
 
-    // Fill second variant (new fields appear)
-    const skuFields2 = screen.getAllByLabelText('SKU');
-    const priceFields2 = screen.getAllByLabelText('Sale price');
-    expect(skuFields2.length).toBe(2);
-    fireEvent.change(skuFields2[1], { target: { value: 'TSH-M' } });
+    // Fill second variant
+    const priceFields2 = screen.getAllByLabelText(/Sale price/i);
+    expect(priceFields2.length).toBe(2);
     fireEvent.change(priceFields2[1], { target: { value: '12.00' } });
 
+    // Wait for unit auto-selection effect to enable submit button
+    const submitBtn = screen.getByTestId('submit-create-product');
+    await waitFor(() => expect(submitBtn).not.toBeDisabled());
+
     // Submit
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(submitBtn);
 
     await waitFor(() => {
       expect(createCall).not.toBeNull();
@@ -133,12 +133,11 @@ describe('create product with multiple variants', () => {
 
     // Verify argument shapes
     expect(createCall!.name).toBe('T-Shirt');
+    expect(createCall!.unitId).toBe(1);
     const variants = createCall!.variants as Array<Record<string, unknown>>;
     expect(variants).toHaveLength(2);
-    expect(variants[0].sku).toBe('TSH-S');
     expect(variants[0].sale_price).toBe('10.00');
     expect(typeof variants[0].sale_price).toBe('string');
-    expect(variants[1].sku).toBe('TSH-M');
     expect(variants[1].sale_price).toBe('12.00');
   });
 
@@ -157,12 +156,13 @@ describe('create product with multiple variants', () => {
     fireEvent.click(newBtn);
 
     fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Client Test Product' } });
-    const skuFields = screen.getAllByLabelText('SKU');
-    const priceFields = screen.getAllByLabelText('Sale price');
-    fireEvent.change(skuFields[0], { target: { value: 'TEST-CLIENT-01' } });
+    const priceFields = screen.getAllByLabelText(/Sale price/i);
     fireEvent.change(priceFields[0], { target: { value: '150.00' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    const submitBtn = screen.getByTestId('submit-create-product');
+    await waitFor(() => expect(submitBtn).not.toBeDisabled());
+
+    fireEvent.click(submitBtn);
 
     await waitFor(() => {
       expect(createdProductData).not.toBeNull();
@@ -170,7 +170,6 @@ describe('create product with multiple variants', () => {
 
     expect(createdProductData!.name).toBe('Client Test Product');
     const vars = createdProductData!.variants as Array<Record<string, unknown>>;
-    expect(vars[0].sku).toBe('TEST-CLIENT-01');
     expect(vars[0].sale_price).toBe('150.00');
   });
 });
@@ -187,12 +186,13 @@ describe('backend validation error display', () => {
     fireEvent.click(newBtn);
 
     fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Bad' } });
-    const skuField = screen.getByLabelText('SKU');
-    const priceField = screen.getByLabelText('Sale price');
-    fireEvent.change(skuField, { target: { value: 'X' } });
+    const priceField = screen.getByLabelText(/Sale price/i);
     fireEvent.change(priceField, { target: { value: '1.00' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    const submitBtn = screen.getByTestId('submit-create-product');
+    await waitFor(() => expect(submitBtn).not.toBeDisabled());
+
+    fireEvent.click(submitBtn);
 
     const errorBanner = await screen.findByTestId('create-error');
     expect(errorBanner.textContent).toBe('Some of the entered values are invalid.');
@@ -205,9 +205,10 @@ describe('variant attribute configuration', () => {
   it('calls setVariantAttributes with the selected attribute value ids', async () => {
     let setAttrsCall: Record<string, unknown> | null = null;
     const detail = {
-      product_id: 1, name: 'T-Shirt', is_active: true,
+      product_id: 1, name: 'T-Shirt', is_active: true, unit_id: 1,
       variants: [{
-        variant_id: 10, sku: 'TSH-S', sale_price: '10.00', is_active: true,
+        variant_id: 10, operational_identifier: 'TSH-S', identifier_type: 'SKU', sale_price: '10.00', is_active: true,
+        effective_variant_name: 'T-Shirt', name_override: null, primary_barcode: null,
         base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
         attributes: [], alternate_units: [], barcodes: [],
       }],
@@ -220,7 +221,7 @@ describe('variant attribute configuration', () => {
       list_attributes: () => [
         { attribute_id: 1, name: 'Size', attribute_values: [{ id: 3, value: 'S' }, { id: 4, value: 'M' }] },
       ],
-      list_units: () => [],
+      list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
       set_variant_attributes: (args) => {
         setAttrsCall = args;
         return null;
@@ -235,6 +236,9 @@ describe('variant attribute configuration', () => {
 
     // Wait for detail to load and variant to appear
     await screen.findByTestId('variant-row-10');
+
+    // Click edit variant to open modal
+    fireEvent.click(screen.getByTestId('edit-variant-10'));
 
     // Select attribute value
     const sRadio = await screen.findByRole('radio', { name: 'S' });
@@ -253,9 +257,10 @@ describe('add SKU and barcode', () => {
   it('keeps the add-variant draft separate from the selected variant editor', async () => {
     let addCall: Record<string, unknown> | null = null;
     const detail = {
-      product_id: 1, name: 'Widget', is_active: true,
+      product_id: 1, name: 'Widget', is_active: true, unit_id: 1,
       variants: [{
-        variant_id: 10, sku: 'WID-1', sale_price: '5.00', is_active: true,
+        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', is_active: true,
+        effective_variant_name: 'Widget', name_override: null, primary_barcode: null,
         base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
         attributes: [], alternate_units: [], barcodes: [],
       }],
@@ -266,11 +271,12 @@ describe('add SKU and barcode', () => {
       ],
       get_product_detail: () => detail,
       list_attributes: () => [],
-      list_units: () => [],
+      list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
       add_variant: (args) => {
         addCall = args;
         detail.variants.push({
-          variant_id: 11, sku: 'WID-2', sale_price: '7.00', is_active: true,
+          variant_id: 11, operational_identifier: 'WID-2', identifier_type: 'SKU', sale_price: '7.00', is_active: true,
+          effective_variant_name: 'Widget V2', name_override: null, primary_barcode: null,
           base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
           attributes: [], alternate_units: [], barcodes: [],
         });
@@ -282,26 +288,26 @@ describe('add SKU and barcode', () => {
     fireEvent.click(await screen.findByTestId('edit-product-1'));
     await screen.findByTestId('variant-row-10');
 
-    const addForm = screen.getByRole('form', { name: 'Add variant' });
-    const editForm = await screen.findByRole('form', { name: 'Variants WID-1' });
-    fireEvent.change(within(addForm).getByLabelText('SKU'), { target: { value: 'WID-2' } });
-    fireEvent.change(within(addForm).getByLabelText('Sale price'), { target: { value: '7.00' } });
+    // Click + Add variant button to open Add Variant Modal
+    fireEvent.click(screen.getByRole('button', { name: '+ Add variant' }));
+    const addModal = await screen.findByRole('dialog', { name: 'Add variant' });
 
-    expect(within(editForm).getByLabelText('SKU')).toHaveValue('WID-1');
-    expect(within(editForm).getByLabelText('Sale price')).toHaveValue('5.00');
+    const priceInput = within(addModal).getByLabelText(/Sale price/i);
+    fireEvent.change(priceInput, { target: { value: '7.00' } });
 
-    fireEvent.click(within(addForm).getByRole('button', { name: 'Add variant' }));
+    fireEvent.click(within(addModal).getByRole('button', { name: 'Add variant' }));
     await waitFor(() => expect(addCall).not.toBeNull());
     expect(addCall!.productId).toBe(1);
-    expect(addCall!.variant).toMatchObject({ sku: 'WID-2', sale_price: '7.00' });
+    expect(addCall!.variant).toMatchObject({ sale_price: '7.00' });
   });
 
   it('calls addVariantBarcode with the barcode string', async () => {
     let barcodeCall: Record<string, unknown> | null = null;
     const detail = {
-      product_id: 1, name: 'Widget', is_active: true,
+      product_id: 1, name: 'Widget', is_active: true, unit_id: 1,
       variants: [{
-        variant_id: 10, sku: 'WID-1', sale_price: '5.00', is_active: true,
+        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', is_active: true,
+        effective_variant_name: 'Widget', name_override: null, primary_barcode: null,
         base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
         attributes: [], alternate_units: [], barcodes: [],
       }],
@@ -312,7 +318,7 @@ describe('add SKU and barcode', () => {
       ],
       get_product_detail: () => detail,
       list_attributes: () => [],
-      list_units: () => [],
+      list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
       add_variant_barcode: (args) => {
         barcodeCall = args;
         return 99;
@@ -324,12 +330,13 @@ describe('add SKU and barcode', () => {
     const editBtn = await screen.findByTestId('edit-product-1');
     fireEvent.click(editBtn);
     await screen.findByTestId('variant-row-10');
-    fireEvent.click(screen.getByTestId('variant-row-10'));
+    fireEvent.click(screen.getByTestId('edit-variant-10'));
 
-    // Find barcode input and add
-    const barcodeInput = await screen.findByLabelText('Barcode');
+    // Find barcode form inside modal and fill input
+    const barcodeForm = await screen.findByTestId('barcode-form');
+    const barcodeInput = within(barcodeForm).getByLabelText('Barcode');
     fireEvent.change(barcodeInput, { target: { value: '6001234567890' } });
-    fireEvent.click(screen.getByTestId('add-barcode-btn'));
+    fireEvent.click(within(barcodeForm).getByTestId('add-barcode-btn'));
 
     await waitFor(() => expect(barcodeCall).not.toBeNull());
     expect(barcodeCall!.variantId).toBe(10);
@@ -337,61 +344,14 @@ describe('add SKU and barcode', () => {
   });
 });
 
-describe('alternate unit management', () => {
-  it('calls addVariantAltUnit with string conversionFactor', async () => {
-    let altUnitCall: Record<string, unknown> | null = null;
-    const detail = {
-      product_id: 1, name: 'Widget', is_active: true,
-      variants: [{
-        variant_id: 10, sku: 'WID-1', sale_price: '5.00', is_active: true,
-        base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
-        attributes: [], alternate_units: [], barcodes: [],
-      }],
-    };
-    wireInvoke(makeHandlers({
-      list_catalog_products: () => [
-        { product_id: 1, name: 'Widget', is_active: true, variant_count: 1, active_variant_count: 1 },
-      ],
-      get_product_detail: () => detail,
-      list_attributes: () => [],
-      list_units: () => [{ id: 2, code: 'BOX', name: 'Box' }],
-      add_variant_alt_unit: (args) => {
-        altUnitCall = args;
-        return 55;
-      },
-    }));
-    render(<App />);
-    await loginAndNavigate();
-
-    const editBtn = await screen.findByTestId('edit-product-1');
-    fireEvent.click(editBtn);
-    await screen.findByTestId('variant-row-10');
-    fireEvent.click(screen.getByTestId('variant-row-10'));
-
-    // Select alternate unit
-    const altSelect = await screen.findByLabelText('Units');
-    fireEvent.change(altSelect, { target: { value: '2' } });
-
-    const factorInput = screen.getByLabelText('Conversion factor');
-    fireEvent.change(factorInput, { target: { value: '12' } });
-
-    fireEvent.click(screen.getByTestId('add-alt-unit-btn'));
-
-    await waitFor(() => expect(altUnitCall).not.toBeNull());
-    expect(altUnitCall!.variantId).toBe(10);
-    expect(altUnitCall!.unitId).toBe(2);
-    expect(typeof altUnitCall!.conversionFactor).toBe('string');
-    expect(altUnitCall!.conversionFactor).toBe('12');
-  });
-});
-
 describe('deactivate a variant', () => {
   it('calls setVariantActive with false when deactivate is clicked', async () => {
     let toggleCall: Record<string, unknown> | null = null;
     const detail = {
-      product_id: 1, name: 'Widget', is_active: true,
+      product_id: 1, name: 'Widget', is_active: true, unit_id: 1,
       variants: [{
-        variant_id: 10, sku: 'WID-1', sale_price: '5.00', is_active: true,
+        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', is_active: true,
+        effective_variant_name: 'Widget', name_override: null, primary_barcode: null,
         base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
         attributes: [], alternate_units: [], barcodes: [],
       }],
@@ -402,7 +362,7 @@ describe('deactivate a variant', () => {
       ],
       get_product_detail: () => detail,
       list_attributes: () => [],
-      list_units: () => [],
+      list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
       set_variant_active: (args) => {
         toggleCall = args;
         return null;

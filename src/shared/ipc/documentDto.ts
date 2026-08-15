@@ -122,7 +122,7 @@ export interface BusinessDocumentPrintJobs {
 
 export interface BusinessDocumentDetail {
   header: BusinessDocumentHeader;
-  subtype_detail: Record<string, any>;
+  subtype_detail: Record<string, unknown>;
   relationships: BusinessDocumentRelationship[];
   journal: BusinessDocumentLinkedJournal | null;
   print_jobs: BusinessDocumentPrintJobs;

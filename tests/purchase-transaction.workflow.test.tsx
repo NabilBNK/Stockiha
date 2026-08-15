@@ -128,8 +128,9 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
     // Select supplier
     fireEvent.change(screen.getByLabelText(/Supplier \*/i), { target: { value: '1' } });
 
-    // Add Product line
+    // Add Product line via product picker modal
     fireEvent.click(screen.getAllByText('+ Add Product')[0]);
+    fireEvent.click(screen.getAllByText('+ Select')[0]);
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '1500' } });
 
     // Click confirm without supplier document ID (should succeed!)
@@ -163,14 +164,25 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
     // Fill header
     fireEvent.change(screen.getByLabelText(/Supplier \*/i), { target: { value: '1' } });
 
-    // Add Product line
+    // Add Product line via product picker modal
     fireEvent.click(screen.getAllByText('+ Add Product')[0]);
+
+    // Check product option displaying Brand, Attributes, and SKU in picker modal
+    expect(screen.getByText(/Tissu Coton Luxe/i)).toBeInTheDocument();
+    expect(screen.getByText(/MaisonTex/i)).toBeInTheDocument();
+    expect(screen.getByText(/SKU-TEX-WHITE/i)).toBeInTheDocument();
+    expect(screen.getByText(/Color:\s*White/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByText('+ Select')[0]);
 
     // Check discount column does NOT exist in table header or summary
     expect(screen.queryByText(/^Discount$/i)).not.toBeInTheDocument();
 
-    // Check product option displaying Brand and Attributes
-    expect(screen.getByText(/Tissu Coton Luxe · White \[MaisonTex\] - SKU-TEX-WHITE Color: White/i)).toBeInTheDocument();
+    // Check selected product line item details
+    expect(screen.getAllByText(/Tissu Coton Luxe/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/MaisonTex/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/SKU-TEX-WHITE/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/White/i).length).toBeGreaterThan(0);
 
     // Enter unit cost
     const costInput = screen.getByPlaceholderText('0.00');
@@ -189,8 +201,9 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
 
     fireEvent.change(screen.getByLabelText(/Supplier \*/i), { target: { value: '1' } });
 
-    // Add Product line
+    // Add Product line via product picker modal
     fireEvent.click(screen.getAllByText('+ Add Product')[0]);
+    fireEvent.click(screen.getAllByText('+ Select')[0]);
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '1000' } });
 
     // Toggle Partially Paid
@@ -239,6 +252,7 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
     fireEvent.change(screen.getByLabelText(/Supplier \*/i), { target: { value: '1' } });
     fireEvent.change(screen.getByLabelText(/Supplier document reference/i), { target: { value: 'FA-2026-77' } });
     fireEvent.click(screen.getAllByText('+ Add Product')[0]);
+    fireEvent.click(screen.getAllByText('+ Select')[0]);
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '1000' } });
 
     // Click Confirm Purchase to open modal
@@ -316,6 +330,8 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
     fireEvent.change(screen.getByLabelText(/Supplier \*/i), { target: { value: '1' } });
     fireEvent.change(screen.getByLabelText(/Supplier document reference/i), { target: { value: '343754896' } });
     fireEvent.click(screen.getAllByText('+ Add Product')[0]);
+    fireEvent.click(screen.getAllByText('+ Select')[0]);
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30000' } });
 
     fireEvent.click(screen.getByText('Partially Paid'));
     fireEvent.change(screen.getByLabelText(/Paid now \*/i), { target: { value: '20000' } });
