@@ -30,7 +30,7 @@ BEGIN
 
         IF v_owner = 'stockiha_owner' THEN
             CONTINUE;
-        ELSIF v_owner IN ('postgres', 'stockiha_admin', 'stockiha_migrator') THEN
+        ELSIF v_owner = 'postgres' THEN
             EXECUTE format('ALTER TABLE %s OWNER TO stockiha_owner', v_oid);
         ELSE
             RAISE EXCEPTION 'unexpected owner % for R2 relation %', v_owner, v_relation;
@@ -56,7 +56,7 @@ BEGIN
 
         IF v_owner = 'stockiha_owner' THEN
             CONTINUE;
-        ELSIF v_owner IN ('postgres', 'stockiha_admin', 'stockiha_migrator') THEN
+        ELSIF v_owner = 'postgres' THEN
             EXECUTE format('ALTER FUNCTION %s OWNER TO stockiha_owner', v_function_oid::regprocedure);
         ELSE
             RAISE EXCEPTION 'unexpected owner % for R2 function %', v_owner, v_signature;
