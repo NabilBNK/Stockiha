@@ -162,10 +162,36 @@ try {
     Write-Host 'Canonical baseline provisioning: PASS'
     Write-Host 'Applying only migrations newer than the baseline from the current branch...'
 
-    $env:DATABASE_URL = $targetMigratorUrl
-    & $sqlxPath migrate run --source $CurrentMigrations
+    $bridgeGranted = $false
+    & $psqlPath $targetAdminUrl -X -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations TO stockiha_owner;" 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Fail 'Current-branch pending migrations failed on the clean database.'
+        Fail 'Could not grant temporary SQLx metadata privileges to stockiha_owner.'
+    }
+    $bridgeGranted = $true
+
+    try {
+        $env:DATABASE_URL = $targetMigratorUrl
+        & $sqlxPath migrate run --source $CurrentMigrations
+        if ($LASTEXITCODE -ne 0) {
+            Fail 'Current-branch pending migrations failed on the clean database.'
+        }
+    }
+    finally {
+        if ($bridgeGranted) {
+            & $psqlPath $targetAdminUrl -X -v ON_ERROR_STOP=1 -c "REVOKE SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations FROM stockiha_owner;" 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Fail 'Could not revoke temporary SQLx metadata privileges from stockiha_owner.'
+            }
+
+            $residualAcl = (& $psqlPath $targetAdminUrl -X -v ON_ERROR_STOP=1 -At -c "SELECT (has_table_privilege('stockiha_owner', 'public._sqlx_migrations', 'SELECT')::int)::text || ':' || (has_table_privilege('stockiha_owner', 'public._sqlx_migrations', 'INSERT')::int)::text || ':' || (has_table_privilege('stockiha_owner', 'public._sqlx_migrations', 'UPDATE')::int)::text;" 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0) {
+                Fail 'Could not verify revocation of temporary SQLx metadata privileges.'
+            }
+
+            if ($residualAcl -ne '0:0:0') {
+                Fail "Temporary metadata privileges were not fully revoked (detected residual ACL $residualAcl, expected 0:0:0)."
+            }
+        }
     }
 
     Write-Host 'Current-branch pending migrations: PASS'
@@ -206,6 +232,7 @@ try {
     Write-Host 'CLEAN DATABASE NORMALIZATION: PASS'
     Write-Host "DATABASE=$DatabaseName"
     Write-Host "LATEST_SQLX_MIGRATION=$latestMigration"
+    Write-Host 'CURRENT_BRANCH_OWNER_METADATA_BRIDGE=BOUNDED'
     Write-Host "CORE_DIGEST_EXISTS=$coreDigestExists"
     Write-Host "PURCHASE_RECEIPT_DOCUMENT_KIND_EXISTS=$purchaseDocumentKindExists"
     Write-Host "LIVE_PURCHASE_DIGEST_CALLS=$digestCount"
