@@ -163,18 +163,20 @@ export interface CashSaleLineInput {
 export interface AttributeValue { id: number; value: string; }
 export interface AttributeDefinition { attribute_id: number; name: string; attribute_values: AttributeValue[]; }
 export interface Unit { id: number; code: string; name: string; }
-export interface CatalogProduct { product_id: number; name: string; is_active: boolean; variant_count: number; active_variant_count: number; }
-export interface ResolvedBarcode { variant_id: number; product_id: number; sku: string; product_name: string; sale_price: string; base_unit_id: number; variant_is_active: boolean; product_is_active: boolean; }
+export interface CatalogProduct { product_id: number; name: string; unit_id: number; unit_code: string; unit_name: string; is_active: boolean; variant_count: number; active_variant_count: number; }
+
+export interface ResolvedBarcode { variant_id: number; product_id: number; sku: string; name_override: string | null; effective_variant_name: string; primary_barcode: string | null; operational_identifier: string; identifier_type: 'BARCODE' | 'SKU'; product_name: string; sale_price: string; unit_id: number; unit_code: string; unit_name: string; variant_is_active: boolean; product_is_active: boolean; }
 export interface VariantAttribute { attribute_id: number; attribute_name: string; attribute_value_id: number; value: string; }
-export interface VariantAltUnit { id: number; unit_id: number; unit_code: string; conversion_factor: string; }
-export interface VariantBarcode { id: number; barcode: string; }
-export interface VariantDetail { variant_id: number; sku: string; sale_price: string; is_active: boolean; base_unit_id: number; base_unit_code: string; attribute_signature: string; attributes: VariantAttribute[]; alternate_units: VariantAltUnit[]; barcodes: VariantBarcode[]; }
-export interface ProductDetail { product_id: number; name: string; is_active: boolean; variants: VariantDetail[]; }
+export interface VariantBarcode { id: number; barcode: string; is_primary: boolean; }
+export interface VariantDetail { variant_id: number; sku: string; name_override: string | null; effective_variant_name: string; primary_barcode: string | null; operational_identifier: string; identifier_type: 'BARCODE' | 'SKU'; sale_price: string; is_active: boolean; attribute_signature: string; attributes: VariantAttribute[]; barcodes: VariantBarcode[]; }
+export interface ProductDetail { product_id: number; name: string; unit_id: number; unit_code: string; unit_name: string; is_active: boolean; variants: VariantDetail[]; }
 export interface CreatedProductWithVariants { product_id: number; variant_ids: number[]; }
+
+export interface VariantAltUnit { id: number; variant_id: number; unit_id: number; conversion_factor: string; unit_code: string; unit_name: string; }
 
 // Input payloads (sent as JSON; snake_case; string decimals):
 export interface AltUnitInput { unit_id: number; conversion_factor: string; }
-export interface VariantInput { sku: string; sale_price: string; is_active: boolean; base_unit_id?: number; attribute_value_ids?: number[]; barcodes?: string[]; alternate_units?: AltUnitInput[]; }
+export interface VariantInput { name_override?: string; sale_price: string; is_active: boolean; attribute_value_ids?: number[]; barcodes?: string[]; }
 
 // S2-002 — stock adjustment DTOs. Every decimal remains a string.
 export type StockAdjustmentReasonCode =
@@ -573,6 +575,99 @@ export interface SupplierPaymentDto {
   created_at: string;
 }
 
+export type PurchasePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT';
+export type PurchasePaymentStatus = 'PAID' | 'PARTIALLY_PAID' | 'UNPAID';
+
+export interface BrandDto {
+  id: number;
+  name: string;
+}
+
+export interface VariantAttributeDto {
+  name: string;
+  value: string;
+}
+
+export interface AlternateUnitOptionDto {
+  unit_id: number;
+  unit_code: string;
+  conversion_factor: string;
+}
+
+export interface PurchaseProductOption {
+  product_id: number;
+  variant_id: number;
+  sku: string;
+  product_name: string;
+  variant_name?: string | null;
+  primary_barcode?: string | null;
+  brand?: BrandDto | null;
+  default_unit_id: number;
+  default_unit_code: string;
+  default_unit_name?: string | null;
+  alternate_units: AlternateUnitOptionDto[];
+  attributes: VariantAttributeDto[];
+  is_active: boolean;
+  default_unit_cost?: string;
+  last_purchase_cost?: string;
+}
+
+export interface PurchaseAdditionalCostInput {
+  cost_type: string;
+  amount: string;
+}
+
+export interface PurchaseTransactionLineInput {
+  variant_id: number;
+  unit_id: number;
+  quantity: string;
+  unit_cost: string;
+  tax_amount?: string | null;
+}
+
+export interface PostPurchaseTransactionPayload {
+  request_id: string;
+  supplier_id: number;
+  document_date: string;
+  external_supplier_document_number?: string | null;
+  payment_status: string;
+  payment_method?: string | null;
+  paid_amount?: string | null;
+  print_after_confirmation: boolean;
+  note?: string | null;
+  notes?: string;
+  lines: PurchaseTransactionLineInput[];
+  additional_costs?: PurchaseAdditionalCostInput[] | null;
+}
+
+export interface PurchaseTransactionChildDocuments {
+  purchase_order_id: number;
+  goods_receipt_id: number;
+  supplier_invoice_id: number;
+  supplier_payment_id?: number | null;
+  landed_cost_document_ids?: number[] | null;
+}
+
+export interface PostPurchaseTransactionResult {
+  document_id: number;
+  document_number: string;
+  status: string;
+  supplier_id: number;
+  warehouse_id: number;
+  gross_subtotal: string;
+  discount_amount: string;
+  tax_amount: string;
+  total_amount: string;
+  payment_status: string;
+  payment_method?: string | null;
+  paid_amount: string;
+  outstanding_amount: string;
+  due_date?: string | null;
+  child_documents: PurchaseTransactionChildDocuments;
+  generation_status: string;
+  print_status?: string | null;
+}
+
 export interface JournalSummary {
   document_id: number;
   document_number: string | null;
@@ -608,7 +703,7 @@ export interface BusinessDocumentDto {
   status: string;
   posted_at: string | null;
   generation_status: string;
-  print_status: string;
+  print_status: string | null;
   linked_journal_id: number | null;
   linked_journal_number: string | null;
   detail_summary: string | null;

@@ -14,7 +14,6 @@ vi.mock('../src/shared/ipc/gateway');
 const mockSuppliers: Supplier[] = [
   {
     id: 1,
-    supplier_id: 1,
     code: 'SUP-001',
     name: 'SARL Import Export',
     contact_name: null,

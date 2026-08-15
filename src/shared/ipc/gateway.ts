@@ -265,24 +265,24 @@ export function listDocumentJobs(sessionToken: string, documentId: number): Prom
 
 // Slice 2 — variant catalog gateway wrappers
 
-export function createProductWithVariants(sessionToken: string, name: string, isActive: boolean, variants: VariantInput[]): Promise<CreatedProductWithVariants> {
-  return call<CreatedProductWithVariants>(COMMANDS.CREATE_PRODUCT_WITH_VARIANTS, { sessionToken, name, isActive, variants });
+export function createProductWithVariants(sessionToken: string, name: string, unitId: number, isActive: boolean, variants: VariantInput[]): Promise<CreatedProductWithVariants> {
+  return call<CreatedProductWithVariants>(COMMANDS.CREATE_PRODUCT_WITH_VARIANTS, { sessionToken, name, unitId, isActive, variants });
 }
 
 export function addVariant(sessionToken: string, productId: number, variant: VariantInput): Promise<number> {
   return call<number>(COMMANDS.ADD_VARIANT, { sessionToken, productId, variant });
 }
 
-export function updateVariant(sessionToken: string, variantId: number, sku: string, salePrice: string, isActive: boolean): Promise<void> {
-  return call<void>(COMMANDS.UPDATE_VARIANT, { sessionToken, variantId, sku, salePrice, isActive });
+export function updateVariant(sessionToken: string, variantId: number, nameOverride: string | null, salePrice: string, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_VARIANT, { sessionToken, variantId, nameOverride, salePrice, isActive });
 }
 
 export function setVariantActive(sessionToken: string, variantId: number, isActive: boolean): Promise<void> {
   return call<void>(COMMANDS.SET_VARIANT_ACTIVE, { sessionToken, variantId, isActive });
 }
 
-export function updateProduct(sessionToken: string, productId: number, name: string, isActive: boolean): Promise<void> {
-  return call<void>(COMMANDS.UPDATE_PRODUCT, { sessionToken, productId, name, isActive });
+export function updateProduct(sessionToken: string, productId: number, name: string, unitId: number, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_PRODUCT, { sessionToken, productId, name, unitId, isActive });
 }
 
 export function createAttribute(sessionToken: string, name: string): Promise<number> {
@@ -502,6 +502,24 @@ export function listSupplierPayments(
   return call<import('./dto').SupplierPaymentDto[]>(COMMANDS.LIST_SUPPLIER_PAYMENTS, {
     sessionToken,
     supplierId: supplierId ?? null,
+  });
+}
+
+export function listPurchaseProductOptions(
+  sessionToken: string
+): Promise<import('./dto').PurchaseProductOption[]> {
+  return call<import('./dto').PurchaseProductOption[]>(COMMANDS.LIST_PURCHASE_PRODUCT_OPTIONS, {
+    sessionToken,
+  });
+}
+
+export function postPurchaseTransaction(
+  sessionToken: string,
+  payload: import('./dto').PostPurchaseTransactionPayload
+): Promise<import('./dto').PostPurchaseTransactionResult> {
+  return call<import('./dto').PostPurchaseTransactionResult>(COMMANDS.POST_PURCHASE_TRANSACTION, {
+    sessionToken,
+    payload,
   });
 }
 

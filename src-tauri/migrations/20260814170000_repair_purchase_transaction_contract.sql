@@ -174,7 +174,6 @@ DECLARE
     v_add_cost_item record;
     
     v_print_after boolean;
-    v_print_format text;
     v_gen_status text := 'NOT_ENQUEUED';
     v_print_status text := NULL;
     v_res jsonb;
@@ -608,11 +607,15 @@ BEGIN
     END;
 
     -- 14. Document Print Job Enqueue if requested
-    v_print_format := core.get_setting('purchase_default_print_format', 'A4');
     IF v_print_after THEN
-        PERFORM core.enqueue_document_job(v_root_doc_id, 'GENERATE_PURCHASE_TRANSACTION_PDF', jsonb_build_object('format', v_print_format));
-        v_gen_status := 'COMPLETED';
-        v_print_status := 'NOT_CONFIGURED';
+        PERFORM generation_job_id
+        FROM documents.enqueue_business_document_jobs(
+            v_root_doc_id,
+            'PURCHASE_RECEIPT_PDF',
+            'purchase_receipt:' || v_root_doc_id::text
+        );
+        v_gen_status := 'QUEUED';
+        v_print_status := 'QUEUED';
     END IF;
 
     -- Return JSON Result

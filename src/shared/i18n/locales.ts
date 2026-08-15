@@ -485,6 +485,8 @@ const ar: Record<MessageKey, string> = {
   // catalog
   'catalog.title': '\u0627\u0644\u0643\u062a\u0627\u0644\u0648\u063a',
   'catalog.new': '\u0645\u0646\u062a\u062c \u062c\u062f\u064a\u062f',
+  'catalog.createProduct': '\u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0645\u0646\u062a\u062c',
+  'catalog.unit': '\u0627\u0644\u0648\u062d\u062f\u0629',
   'catalog.edit': '\u062a\u0639\u062f\u064a\u0644 \u0627\u0644\u0645\u0646\u062a\u062c',
   'catalog.name': '\u0627\u0633\u0645 \u0627\u0644\u0645\u0646\u062a\u062c',
   'catalog.active': '\u0646\u0634\u0637',

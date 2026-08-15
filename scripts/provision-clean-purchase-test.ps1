@@ -182,6 +182,15 @@ try {
 
     $digestCount = ([regex]::Matches($purchaseDefinition, 'digest\s*\(')).Count
     $coreEnqueueCount = ([regex]::Matches($purchaseDefinition, 'core\.enqueue_document_job\s*\(')).Count
+    $canonicalEnqueueCount = ([regex]::Matches($purchaseDefinition, 'documents\.enqueue_business_document_jobs\s*\(')).Count
+
+    if ($coreEnqueueCount -ne 0) {
+        Fail "Clean provisioning failed: live purchase function still calls core.enqueue_document_job ($coreEnqueueCount occurrences found)."
+    }
+
+    if ($canonicalEnqueueCount -lt 1) {
+        Fail "Clean provisioning failed: live purchase function does not call documents.enqueue_business_document_jobs ($canonicalEnqueueCount occurrences found)."
+    }
 
     $coreDigestExists = (& $psqlPath $targetAdminUrl -X -v ON_ERROR_STOP=1 -At -c "SELECT (to_regprocedure('core.digest(text,text)') IS NOT NULL)::int;" 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) {
@@ -201,6 +210,7 @@ try {
     Write-Host "PURCHASE_RECEIPT_DOCUMENT_KIND_EXISTS=$purchaseDocumentKindExists"
     Write-Host "LIVE_PURCHASE_DIGEST_CALLS=$digestCount"
     Write-Host "LIVE_PURCHASE_CORE_ENQUEUE_CALLS=$coreEnqueueCount"
+    Write-Host "LIVE_PURCHASE_CANONICAL_ENQUEUE_CALLS=$canonicalEnqueueCount"
     Write-Host 'OLD_DIAGNOSTIC_DATABASE_MODIFIED=no'
     Write-Host '========================================================'
     Write-Host 'Do not test Confirm Purchase yet. This command establishes a trustworthy clean database only.'

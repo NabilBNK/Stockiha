@@ -433,7 +433,7 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
                 />
 
                 {/* Inline Attribute Selection */}
-                <div style={{ marginBlockStart: '1.25rem', paddingTop: '1rem', borderBlockTop: '1px border-subtle' }}>
+                <div style={{ marginBlockStart: '1.25rem', paddingTop: '1rem', borderBlockStart: '1px solid var(--sk-border)' }}>
                   <AttributeManager
                     attributes={catalog.attributes}
                     refLoading={catalog.refLoading}
