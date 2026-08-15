@@ -132,11 +132,12 @@ pub(crate) async fn create_product_with_variants(
     state: State<'_, DatabaseState>,
     session_token: String,
     name: String,
+    unit_id: i64,
     is_active: bool,
     variants: serde_json::Value,
 ) -> Result<CreatedProductWithVariants, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::create_product_with_variants(pool, &session_token, &name, is_active, variants)
+    catalog::create_product_with_variants(pool, &session_token, &name, unit_id, is_active, variants)
         .await
         .map(|c| CreatedProductWithVariants {
             product_id: c.product_id,

@@ -139,14 +139,16 @@ pub(crate) async fn create_product_with_variants(
     pool: &PgPool,
     session_token: &str,
     name: &str,
+    unit_id: i64,
     is_active: bool,
     variants: JsonValue,
 ) -> Result<CreatedProductWithVariants, AppError> {
     let (json,) = sqlx::query_as::<_, (JsonValue,)>(
-        "SELECT catalog.create_product_with_variants($1, $2, $3, $4)",
+        "SELECT catalog.create_product_with_variants($1, $2, $3, $4, $5)",
     )
     .bind(session_token)
     .bind(name)
+    .bind(unit_id)
     .bind(is_active)
     .bind(variants)
     .fetch_one(pool)
