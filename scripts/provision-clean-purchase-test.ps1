@@ -163,13 +163,21 @@ try {
     Write-Host 'Applying only migrations newer than the baseline from the current branch...'
 
     $bridgeGranted = $false
-    & $psqlPath $targetAdminUrl -X -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations TO stockiha_owner;" 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Fail 'Could not grant temporary SQLx metadata privileges to stockiha_owner.'
-    }
-    $bridgeGranted = $true
+    $schemaUsageGranted = $false
 
     try {
+        & $psqlPath $targetAdminUrl -X -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA procurement TO stockiha_migrator;" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Fail 'Could not grant temporary procurement schema usage to stockiha_migrator.'
+        }
+        $schemaUsageGranted = $true
+
+        & $psqlPath $targetAdminUrl -X -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations TO stockiha_owner;" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Fail 'Could not grant temporary SQLx metadata privileges to stockiha_owner.'
+        }
+        $bridgeGranted = $true
+
         $env:DATABASE_URL = $targetMigratorUrl
         & $sqlxPath migrate run --source $CurrentMigrations
         if ($LASTEXITCODE -ne 0) {
@@ -190,6 +198,22 @@ try {
 
             if ($residualAcl -ne '0:0:0') {
                 Fail "Temporary metadata privileges were not fully revoked (detected residual ACL $residualAcl, expected 0:0:0)."
+            }
+        }
+
+        if ($schemaUsageGranted) {
+            & $psqlPath $targetAdminUrl -X -v ON_ERROR_STOP=1 -c "REVOKE USAGE ON SCHEMA procurement FROM stockiha_migrator;" 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Fail 'Could not revoke temporary procurement schema usage from stockiha_migrator.'
+            }
+
+            $schemaUsagePrivilege = (& $psqlPath $targetAdminUrl -X -v ON_ERROR_STOP=1 -At -c "SELECT (has_schema_privilege('stockiha_migrator', 'procurement', 'USAGE')::int)::text;" 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0) {
+                Fail 'Could not verify revocation of temporary procurement schema usage.'
+            }
+
+            if ($schemaUsagePrivilege -ne '0') {
+                Fail "Temporary procurement schema usage was not fully revoked (detected privilege $schemaUsagePrivilege, expected 0)."
             }
         }
     }
@@ -233,6 +257,7 @@ try {
     Write-Host "DATABASE=$DatabaseName"
     Write-Host "LATEST_SQLX_MIGRATION=$latestMigration"
     Write-Host 'CURRENT_BRANCH_OWNER_METADATA_BRIDGE=BOUNDED'
+    Write-Host 'CURRENT_BRANCH_MIGRATOR_SCHEMA_VISIBILITY_BRIDGE=BOUNDED'
     Write-Host "CORE_DIGEST_EXISTS=$coreDigestExists"
     Write-Host "PURCHASE_RECEIPT_DOCUMENT_KIND_EXISTS=$purchaseDocumentKindExists"
     Write-Host "LIVE_PURCHASE_DIGEST_CALLS=$digestCount"
