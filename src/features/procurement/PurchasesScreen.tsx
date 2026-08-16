@@ -4,7 +4,7 @@ import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { listPurchaseReceipts } from '../../shared/ipc/gateway';
 import type { PurchaseReceiptSummary } from '../../shared/ipc/dto';
-import { PurchaseTransactionScreen } from './PurchaseTransactionScreen';
+import { DirectPurchaseScreen } from './DirectPurchaseScreen';
 
 interface Props {
   sessionToken: string;
@@ -53,8 +53,10 @@ const HISTORY_COPY = {
  * MVP purchasing entry point.
  *
  * Direct Purchase is the only active operator workflow in this release. The
- * historical Purchase Order implementation remains in the repository for a
- * future advanced policy, but it is deliberately not selectable here.
+ * historical Purchase Order and aggregate single-entry implementations remain
+ * in the repository for compatibility/future work, but normal purchasing posts
+ * the physical Purchase Receipt only. Supplier invoices/payables are separate
+ * downstream business events.
  */
 export default function PurchasesScreen({ sessionToken }: Props) {
   const { locale } = useI18n();
@@ -83,7 +85,7 @@ export default function PurchasesScreen({ sessionToken }: Props) {
 
   return (
     <>
-      <PurchaseTransactionScreen sessionToken={sessionToken} />
+      <DirectPurchaseScreen sessionToken={sessionToken} onPosted={() => void loadHistory()} />
 
       <section className="sk-screen" aria-labelledby="direct-purchase-history-title">
         <header className="sk-screen__header">
