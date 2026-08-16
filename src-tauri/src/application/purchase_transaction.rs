@@ -80,14 +80,12 @@ pub(crate) async fn post_purchase_transaction(
     let payload_json = serde_json::to_value(&payload)
         .map_err(|error| AppError::internal(format!("Invalid purchase payload JSON: {error}")))?;
 
-    query_scalar(
-        "SELECT procurement.post_purchase_transaction($1, $2::uuid, $3, $4)",
-    )
-    .bind(session_token)
-    .bind(&payload.request_id)
-    .bind(hash.as_slice())
-    .bind(payload_json)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)
+    query_scalar("SELECT procurement.post_purchase_transaction($1, $2::uuid, $3, $4)")
+        .bind(session_token)
+        .bind(&payload.request_id)
+        .bind(hash.as_slice())
+        .bind(payload_json)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
 }
