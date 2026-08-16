@@ -318,8 +318,9 @@ export interface ConfirmPurchaseReceiptPayload {
 export interface PurchaseReceiptSummary {
   document_id: number;
   document_number: string;
-  purchase_order_id: number;
-  purchase_order_number: string;
+  receipt_origin: 'PURCHASE_ORDER' | 'DIRECT_PURCHASE';
+  purchase_order_id: number | null;
+  purchase_order_number: string | null;
   supplier_id: number;
   supplier_name: string;
   warehouse_id: number;
@@ -428,7 +429,7 @@ export interface CreateSupplierInvoicePayload {
 export interface CreateSupplierInvoiceResult {
   document_id: number;
   supplier_id: number;
-  purchase_order_id: number;
+  purchase_order_id: number | null;
   status: 'DRAFT';
   subtotal: string;
   total_amount: string;
