@@ -1,7 +1,7 @@
 -- Direct-purchase recovery acceptance.
 -- Proves that one operator confirmation posts goods that already arrived without
 -- fabricating a purchase order, while preserving WAC, GRNI/AP, landed-cost,
--- idempotency and persisted workflow-policy semantics.
+-- supplier-return, idempotency and persisted workflow-policy semantics.
 \set ON_ERROR_STOP on
 
 DO $$
@@ -18,13 +18,19 @@ DECLARE
     v_document_date date;
     v_request_id uuid := 'd1000000-0000-4000-8000-000000000001'::uuid;
     v_request_hash bytea := sha256('direct-purchase-acceptance'::bytea);
+    v_return_request_id uuid := 'd1000000-0000-4000-8000-000000000003'::uuid;
     v_po_count_before bigint;
     v_root_id bigint;
     v_receipt_id bigint;
     v_invoice_id bigint;
+    v_return_id bigint;
     v_result jsonb;
     v_repeat jsonb;
     v_policy jsonb;
+    v_receipt_lines jsonb;
+    v_return_draft jsonb;
+    v_return_result jsonb;
+    v_return_history jsonb;
     v_qty numeric;
     v_value numeric;
     v_wac numeric;
@@ -237,6 +243,127 @@ BEGIN
         HAVING sum(line.debit) <> sum(line.credit)
     ), 'Every direct-purchase receipt, landed-cost and invoice journal must balance';
 
+    -- The return read model must expose a direct receipt as an eligible source,
+    -- with nullable PO fields instead of fabricating a purchase order.
+    v_receipt_lines := procurement.list_purchase_receipt_lines(v_admin_token, NULL);
+    ASSERT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_receipt_lines) item
+        WHERE (item ->> 'receipt_document_id')::bigint = v_receipt_id
+          AND item ->> 'receipt_origin' = 'DIRECT_PURCHASE'
+          AND item -> 'purchase_order_id' = 'null'::jsonb
+          AND item -> 'po_line_id' = 'null'::jsonb
+          AND (item ->> 'quantity_returnable_for_variant')::numeric = 10.000
+    ), 'Direct receipt must be visible and returnable without a PO reference';
+
+    v_return_draft := procurement.create_supplier_return_draft(
+        v_admin_token,
+        v_supplier_id,
+        v_warehouse_id,
+        NULL::bigint,
+        v_receipt_id,
+        'DEFECTIVE_GOODS',
+        'Return two units from direct purchase',
+        jsonb_build_array(jsonb_build_object(
+            'variant_id', v_variant_id,
+            'quantity', '2.000',
+            'unit_cost', '100.00'
+        ))
+    );
+    v_return_id := (v_return_draft ->> 'document_id')::bigint;
+    ASSERT v_return_id IS NOT NULL, 'Direct purchase return must create a draft document';
+    ASSERT v_return_draft -> 'purchase_order_id' = 'null'::jsonb,
+        'Direct purchase return draft must keep purchase order null';
+    ASSERT (v_return_draft ->> 'receipt_document_id')::bigint = v_receipt_id,
+        'Direct purchase return draft must reference the exact goods receipt';
+
+    v_return_result := inventory.confirm_supplier_return(
+        v_admin_token,
+        v_return_request_id,
+        sha256('direct-purchase-return-confirm'::bytea),
+        v_return_id,
+        v_period_id,
+        v_document_date
+    );
+    ASSERT v_return_result ->> 'status' = 'POSTED',
+        'Direct purchase supplier return must post';
+    ASSERT v_return_result ->> 'clearing_role' = 'ACCOUNTS_PAYABLE',
+        'Invoiced direct purchase return must clear accounts payable';
+    ASSERT (v_return_result ->> 'clearing_amount')::numeric = 200.00,
+        'Two returned units must clear 200 DZD of goods AP at authoritative purchase cost';
+    ASSERT (v_return_result ->> 'inventory_value')::numeric = 220.00,
+        'Return must issue inventory at current 110 DZD WAC including allocated freight';
+    ASSERT (v_return_result ->> 'variance_amount')::numeric = 20.00,
+        'Return must recognize the 20 DZD difference between WAC issue and supplier clearing';
+
+    SELECT quantity_on_hand, total_value, last_known_wac
+    INTO v_qty, v_value, v_wac
+    FROM inventory.positions
+    WHERE warehouse_id = v_warehouse_id
+      AND variant_id = v_variant_id;
+    ASSERT v_qty = 8.000 AND v_value = 880.00 AND v_wac = 110.000000,
+        'Direct purchase return must leave 8 units at the same 110 DZD WAC';
+
+    SELECT outstanding_amount
+    INTO v_invoice_ap
+    FROM procurement.supplier_liabilities
+    WHERE invoice_document_id = v_invoice_id;
+    SELECT outstanding_amount
+    INTO v_landed_ap
+    FROM procurement.supplier_liabilities
+    WHERE receipt_document_id = v_receipt_id
+      AND invoice_document_id IS NULL;
+    ASSERT v_invoice_ap = 800.00,
+        'Direct purchase return must reduce goods AP from 1000 to 800 DZD';
+    ASSERT v_landed_ap = 100.00,
+        'Goods return must not silently erase the separate freight liability';
+
+    ASSERT EXISTS (
+        SELECT 1
+        FROM procurement.supplier_returns supplier_return
+        WHERE supplier_return.document_id = v_return_id
+          AND supplier_return.purchase_order_id IS NULL
+          AND supplier_return.receipt_document_id = v_receipt_id
+    ), 'Posted direct purchase return must remain linked to the receipt, not a PO';
+    ASSERT EXISTS (
+        SELECT 1
+        FROM inventory.movements movement
+        WHERE movement.reference_type = 'SUPPLIER_RETURN'
+          AND movement.reference_id = v_return_id
+          AND movement.variant_id = v_variant_id
+          AND movement.movement_type = 'ISSUE'
+          AND movement.quantity_delta = -2.000
+          AND movement.inventory_value_delta = -220.00
+    ), 'Direct purchase return must append the canonical inventory ISSUE movement';
+    ASSERT NOT EXISTS (
+        SELECT journal.document_id
+        FROM finance.journal_entries journal
+        JOIN finance.journal_lines line ON line.document_id = journal.document_id
+        WHERE journal.source_type = 'PURCHASE_RETURN'
+          AND journal.source_id = v_return_id
+        GROUP BY journal.document_id
+        HAVING sum(line.debit) <> sum(line.credit)
+    ), 'Direct purchase supplier-return journal must balance';
+
+    v_return_history := procurement.list_supplier_returns(v_admin_token, v_supplier_id);
+    ASSERT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_return_history) item
+        WHERE (item ->> 'document_id')::bigint = v_return_id
+          AND item -> 'purchase_order_id' = 'null'::jsonb
+          AND (item ->> 'receipt_document_id')::bigint = v_receipt_id
+          AND item ->> 'receipt_document_number' IS NOT NULL
+    ), 'Supplier return history must expose the direct receipt source';
+
+    v_receipt_lines := procurement.list_purchase_receipt_lines(v_admin_token, NULL);
+    ASSERT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_receipt_lines) item
+        WHERE (item ->> 'receipt_document_id')::bigint = v_receipt_id
+          AND (item ->> 'quantity_returned_for_variant')::numeric = 2.000
+          AND (item ->> 'quantity_returnable_for_variant')::numeric = 8.000
+    ), 'Return read model must reduce the direct receipt returnable quantity after posting';
+
     v_repeat := procurement.post_purchase_transaction(
         v_admin_token,
         v_request_id,
@@ -303,8 +430,8 @@ BEGIN
     ASSERT (SELECT count(*) FROM procurement.purchase_orders) = v_po_count_before,
         'Policy switch must not fabricate a purchase order either';
 
-    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) >= 20260816162000,
-        'Recovery schema state must include the direct-purchase contract';
+    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) >= 20260816163000,
+        'Recovery schema state must include the direct-purchase supplier-return contract';
 
     RAISE NOTICE '=== DIRECT PURCHASE RECOVERY ASSERTIONS PASSED ===';
 END;
