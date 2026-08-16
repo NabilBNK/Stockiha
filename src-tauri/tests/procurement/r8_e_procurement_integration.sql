@@ -439,8 +439,11 @@ BEGIN
         HAVING sum(line.debit) <> sum(line.credit)
     ), 'Every R8-E journal must balance';
 
-    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) = 20260812100000,
-        'R8-E schema version must be current';
+    -- R8-E is a milestone test, not a claim that no forward migration exists.
+    -- Recovery schema state is deliberately monotonic and later recoverable
+    -- schema changes must advance it (see R6-001 schema_state contract).
+    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) >= 20260812100000,
+        'R8-E schema milestone must be present in the current forward schema';
 
     RAISE NOTICE '=== ALL R8-E PROCUREMENT ACCEPTANCE ASSERTIONS PASSED ===';
 END;
