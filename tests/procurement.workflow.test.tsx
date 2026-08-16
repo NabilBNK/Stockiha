@@ -245,7 +245,7 @@ describe('S3-001 Procurement Workflow', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
     expect(await screen.findByRole('heading', { name: 'Purchase Orders' })).toBeInTheDocument();
-    expect(screen.getByText('PO-2026-000001')).toBeInTheDocument();
+    expect(await screen.findByText('PO-2026-000001')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('receive-po-10'));
     await screen.findByTestId('purchase-receipt-modal');
