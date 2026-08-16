@@ -15,7 +15,8 @@ type PendingDirectPurchase = {
 let memoryPending: PendingDirectPurchase | null = null;
 
 function fingerprint(payload: ConfirmDirectPurchasePayload): string {
-  const { request_id: _requestId, ...intent } = payload;
+  const intent: Partial<ConfirmDirectPurchasePayload> = { ...payload };
+  delete intent.request_id;
   return JSON.stringify(intent);
 }
 
