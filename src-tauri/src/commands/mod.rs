@@ -6,6 +6,7 @@ pub mod catalog;
 pub mod credit_sale;
 pub mod customer;
 pub mod db_health;
+pub mod direct_purchase;
 pub mod documents;
 pub mod drawer;
 pub mod finance;
