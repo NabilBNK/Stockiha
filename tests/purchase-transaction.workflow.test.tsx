@@ -108,7 +108,7 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
       generation_status: 'COMPLETED',
       print_status: 'COMPLETED',
       child_documents: {
-        purchase_order_id: 601,
+        purchase_order_id: null,
         goods_receipt_id: 602,
         supplier_invoice_id: 603,
         supplier_payment_id: 604,
@@ -236,7 +236,7 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
       generation_status: 'QUEUED',
       print_status: 'QUEUED',
       child_documents: {
-        purchase_order_id: 601,
+        purchase_order_id: null,
         goods_receipt_id: 602,
         supplier_invoice_id: 603,
         supplier_payment_id: 604,
@@ -269,6 +269,11 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
       expect(screen.getByText('✓ Purchase Completed Successfully')).toBeInTheDocument();
       expect(screen.getByText('PUR-2026-000001')).toBeInTheDocument();
     });
+
+    expect(ipc.postPurchaseTransaction).toHaveBeenCalledWith(
+      'mock-token',
+      expect.objectContaining({ request_id: 'test-request-id-123' })
+    );
   });
 
   it('renders in French and Arabic (RTL)', async () => {
@@ -314,7 +319,7 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
       generation_status: 'QUEUED',
       print_status: 'QUEUED',
       child_documents: {
-        purchase_order_id: 601,
+        purchase_order_id: null,
         goods_receipt_id: 602,
         supplier_invoice_id: 603,
         supplier_payment_id: 604,
