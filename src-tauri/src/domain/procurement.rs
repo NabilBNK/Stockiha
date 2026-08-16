@@ -497,7 +497,9 @@ impl CreateSupplierReturnPayload {
             return Err("Purchase receipt reference is invalid.".to_string());
         }
         if has_purchase_order == has_direct_receipt {
-            return Err("Exactly one purchase source is required for a supplier return.".to_string());
+            return Err(
+                "Exactly one purchase source is required for a supplier return.".to_string(),
+            );
         }
         if self.lines.is_empty() {
             return Err("Supplier return requires at least one line.".to_string());
