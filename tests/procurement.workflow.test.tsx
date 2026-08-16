@@ -31,6 +31,11 @@ function baseHandlers(extra: Handlers = {}): Handlers {
     }),
     login: () => ({ session_token: 'tok', expires_at: '2026-12-31T23:59:59Z' }),
     inspect_active_cash_session: () => null,
+    get_purchase_workflow_policy: () => ({
+      mode: 'PURCHASE_ORDER',
+      direct_purchase_enabled: false,
+      can_manage: true,
+    }),
     list_warehouses: () => [{ id: 1, code: 'WH1', name: 'Main Warehouse', is_active: true }],
     get_open_fiscal_period: () => ({
       id: 9,
@@ -238,7 +243,7 @@ describe('S3-001 Procurement Workflow', () => {
     render(<App />);
     await login();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Purchase Orders' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
     expect(await screen.findByRole('heading', { name: 'Purchase Orders' })).toBeInTheDocument();
     expect(screen.getByText('PO-2026-000001')).toBeInTheDocument();
 
@@ -308,7 +313,7 @@ describe('R8-E Procurement Acceptance Workflow', () => {
     await login();
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_procurement_capabilities', { sessionToken: 'tok' }));
     expect(screen.queryByRole('button', { name: 'Suppliers' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Purchase Orders' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Purchases' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Supplier Invoices' })).not.toBeInTheDocument();
   });
 
@@ -371,7 +376,7 @@ describe('R8-E Procurement Acceptance Workflow', () => {
     }));
     render(<App />);
     await login();
-    fireEvent.click(await screen.findByRole('button', { name: 'Purchase Orders' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
     await screen.findByTestId('purchase-receipts-table');
     fireEvent.click(screen.getByTestId('allocate-landed-cost-200'));
     fireEvent.change(screen.getByTestId('landed-cost-amount'), { target: { value: '100.00' } });
