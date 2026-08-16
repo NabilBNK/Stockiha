@@ -26,6 +26,25 @@ interface Props {
   capabilities: ProcurementCapabilities | null;
 }
 
+type ReturnSourceKind = 'PURCHASE_ORDER' | 'DIRECT_RECEIPT';
+
+interface ReturnSource {
+  key: string;
+  kind: ReturnSourceKind;
+  id: number;
+  documentNumber: string;
+  supplierId: number;
+  supplierName: string;
+  warehouseId: number;
+  warehouseName: string;
+}
+
+function lineBelongsToSource(line: PurchaseReceiptLineDto, source: ReturnSource): boolean {
+  return source.kind === 'PURCHASE_ORDER'
+    ? line.purchase_order_id === source.id
+    : line.purchase_order_id === null && line.receipt_document_id === source.id;
+}
+
 export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabilities }: Props) {
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
@@ -38,7 +57,7 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
   const [success, setSuccess] = useState<string | null>(null);
   const [result, setResult] = useState<ConfirmSupplierReturnResult | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [purchaseOrderId, setPurchaseOrderId] = useState(0);
+  const [sourceKey, setSourceKey] = useState('');
   const [receiptLineId, setReceiptLineId] = useState(0);
   const [reasonCode, setReasonCode] = useState('DEFECTIVE_GOODS');
   const [quantity, setQuantity] = useState('1.000');
@@ -67,36 +86,91 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
 
   useEffect(() => { void loadData(); }, [loadData]);
 
-  const selectedOrder = orders.find((order) => order.document_id === purchaseOrderId) ?? null;
+  const purchaseSources = useMemo<ReturnSource[]>(() => {
+    const sources: ReturnSource[] = [];
+    const directReceiptIds = new Set<number>();
+
+    for (const line of receiptLines) {
+      if (line.purchase_order_id !== null
+          || line.receipt_origin !== 'DIRECT_PURCHASE'
+          || !isPositiveDecimal(line.quantity_returnable_for_variant)
+          || directReceiptIds.has(line.receipt_document_id)) {
+        continue;
+      }
+      directReceiptIds.add(line.receipt_document_id);
+      sources.push({
+        key: `RECEIPT:${line.receipt_document_id}`,
+        kind: 'DIRECT_RECEIPT',
+        id: line.receipt_document_id,
+        documentNumber: line.receipt_document_number,
+        supplierId: line.supplier_id,
+        supplierName: line.supplier_name,
+        warehouseId: line.warehouse_id,
+        warehouseName: line.warehouse_name,
+      });
+    }
+
+    for (const order of orders) {
+      const hasReturnableLine = receiptLines.some(
+        (line) => line.purchase_order_id === order.document_id
+          && isPositiveDecimal(line.quantity_returnable_for_variant),
+      );
+      if (!hasReturnableLine) continue;
+      sources.push({
+        key: `PO:${order.document_id}`,
+        kind: 'PURCHASE_ORDER',
+        id: order.document_id,
+        documentNumber: order.document_number ?? `#${order.document_id}`,
+        supplierId: order.supplier_id,
+        supplierName: order.supplier_name,
+        warehouseId: order.warehouse_id,
+        warehouseName: order.warehouse_name,
+      });
+    }
+
+    return sources;
+  }, [orders, receiptLines]);
+
+  const selectedSource = purchaseSources.find((source) => source.key === sourceKey) ?? null;
   const returnableLines = useMemo(() => {
+    if (!selectedSource) return [];
     const seen = new Set<number>();
     return receiptLines.filter((line) => {
-      if (line.purchase_order_id !== purchaseOrderId
+      if (!lineBelongsToSource(line, selectedSource)
           || !isPositiveDecimal(line.quantity_returnable_for_variant)
           || seen.has(line.variant_id)) return false;
       seen.add(line.variant_id);
       return true;
     });
-  }, [purchaseOrderId, receiptLines]);
+  }, [receiptLines, selectedSource]);
   const selectedLine = returnableLines.find((line) => line.receipt_line_id === receiptLineId) ?? null;
 
-  function selectOrder(nextId: number) {
-    setPurchaseOrderId(nextId);
-    const first = receiptLines.find(
-      (line) => line.purchase_order_id === nextId && isPositiveDecimal(line.quantity_returnable_for_variant),
-    );
+  function selectSource(nextKey: string) {
+    setSourceKey(nextKey);
+    const source = purchaseSources.find((item) => item.key === nextKey) ?? null;
+    const first = source
+      ? receiptLines.find(
+        (line) => lineBelongsToSource(line, source)
+          && isPositiveDecimal(line.quantity_returnable_for_variant),
+      )
+      : null;
     setReceiptLineId(first?.receipt_line_id ?? 0);
     setQuantity(first ? '1.000' : '');
   }
 
   function openCreateForm() {
+    const firstSource = purchaseSources[0];
+    if (!firstSource) {
+      setError(text.returnable);
+      return;
+    }
     setShowCreate(true);
-    if (orders[0]) selectOrder(orders[0].document_id);
+    selectSource(firstSource.key);
   }
 
   async function createDraft(event: React.FormEvent) {
     event.preventDefault();
-    if (!selectedOrder || !selectedLine || !isPositiveDecimal(quantity)) {
+    if (!selectedSource || !selectedLine || !isPositiveDecimal(quantity)) {
       setError(text.returnable);
       return;
     }
@@ -108,9 +182,10 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
       setSubmitting(true);
       setError(null);
       const draft = await createSupplierReturnDraft(sessionToken, {
-        supplier_id: selectedOrder.supplier_id,
-        warehouse_id: selectedOrder.warehouse_id,
-        purchase_order_id: selectedOrder.document_id,
+        supplier_id: selectedSource.supplierId,
+        warehouse_id: selectedSource.warehouseId,
+        purchase_order_id: selectedSource.kind === 'PURCHASE_ORDER' ? selectedSource.id : null,
+        receipt_document_id: selectedSource.kind === 'DIRECT_RECEIPT' ? selectedSource.id : null,
         reason_code: reasonCode,
         note: note.trim() || null,
         lines: [{
@@ -178,9 +253,9 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
 
       {loading ? <div>{text.loading}</div> : returns.length === 0 ? <div className="sk-card sk-muted">{text.returnEmpty}</div> : (
         <div className="sk-table-wrap"><table className="sk-table" data-testid="supplier-returns-table"><thead><tr>
-          <th>{text.document}</th><th>{text.supplier}</th><th>{text.purchaseOrder}</th><th>{text.warehouse}</th><th>{text.reason}</th><th>{text.status}</th><th>{text.journal}</th><th>{text.actions}</th>
+          <th>{text.document}</th><th>{text.supplier}</th><th>{text.purchaseOrder} / {text.receipt}</th><th>{text.warehouse}</th><th>{text.reason}</th><th>{text.status}</th><th>{text.journal}</th><th>{text.actions}</th>
         </tr></thead><tbody>{returns.map((item) => <tr key={item.document_id}>
-          <td><strong>{item.document_number ?? `#${item.document_id}`}</strong></td><td>{item.supplier_name}</td><td>{item.purchase_order_number ?? '—'}</td><td>{item.warehouse_name}</td><td>{item.reason_code}</td>
+          <td><strong>{item.document_number ?? `#${item.document_id}`}</strong></td><td>{item.supplier_name}</td><td>{item.purchase_order_number ?? item.receipt_document_number ?? '—'}</td><td>{item.warehouse_name}</td><td>{item.reason_code}</td>
           <td><span className={`sk-badge ${item.status === 'POSTED' ? 'sk-badge--success' : 'sk-badge--warning'}`}>{item.status}</span></td><td>{item.journal_document_number ?? item.journal_document_id ?? '—'}</td>
           <td>{item.status === 'DRAFT' && capabilities?.can_post_supplier_return ? <button type="button" className="sk-button sk-button--small sk-button--success" disabled={submitting} onClick={() => void confirmReturn(item.document_id)} data-testid={`confirm-return-${item.document_id}`}>{text.confirmReturn}</button> : '—'}</td>
         </tr>)}</tbody></table></div>
@@ -189,7 +264,7 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
       {showCreate ? <div className="sk-modal-overlay" data-testid="supplier-return-modal"><div className="sk-modal-content">
         <header className="sk-modal-header"><h2>{text.newReturn}</h2><button type="button" className="sk-modal-close" onClick={() => setShowCreate(false)} aria-label={text.close}>×</button></header>
         <form className="sk-form" onSubmit={createDraft}>
-          <label>{text.purchaseOrder}<select value={purchaseOrderId} onChange={(event) => selectOrder(Number(event.target.value))} required data-testid="return-po-select">{orders.map((order) => <option key={order.document_id} value={order.document_id}>{order.document_number} · {order.supplier_name}</option>)}</select></label>
+          <label>{text.purchaseOrder} / {text.receipt}<select value={sourceKey} onChange={(event) => selectSource(event.target.value)} required data-testid="return-po-select">{purchaseSources.map((source) => <option key={source.key} value={source.key}>{source.kind === 'DIRECT_RECEIPT' ? text.receipt : text.purchaseOrder} {source.documentNumber} · {source.supplierName}</option>)}</select></label>
           <label>{text.product}<select value={receiptLineId} onChange={(event) => setReceiptLineId(Number(event.target.value))} required data-testid="return-receipt-line">{returnableLines.map((line) => <option key={line.receipt_line_id} value={line.receipt_line_id}>{line.variant_sku} · {line.variant_name} ({line.quantity_returnable_for_variant} {line.unit_code})</option>)}</select></label>
           {selectedLine ? <p className="sk-muted">{text.returnable}: {selectedLine.quantity_returnable_for_variant} {selectedLine.unit_code}</p> : null}
           <label>{text.quantity}<input value={quantity} inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} required data-testid="return-quantity" /></label>
