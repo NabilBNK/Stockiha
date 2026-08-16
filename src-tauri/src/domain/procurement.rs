@@ -127,9 +127,10 @@ pub struct PurchaseReceiptLineDto {
     pub receipt_line_id: i64,
     pub receipt_document_id: i64,
     pub receipt_document_number: String,
-    pub purchase_order_id: i64,
-    pub purchase_order_number: String,
-    pub po_line_id: i64,
+    pub receipt_origin: String,
+    pub purchase_order_id: Option<i64>,
+    pub purchase_order_number: Option<String>,
+    pub po_line_id: Option<i64>,
     pub supplier_id: i64,
     pub supplier_name: String,
     pub warehouse_id: i64,
@@ -314,6 +315,7 @@ pub struct CreateSupplierReturnPayload {
     pub supplier_id: i64,
     pub warehouse_id: i64,
     pub purchase_order_id: Option<i64>,
+    pub receipt_document_id: Option<i64>,
     pub reason_code: Option<String>,
     pub note: Option<String>,
     pub lines: Vec<CreateSupplierReturnLinePayload>,
@@ -323,7 +325,8 @@ pub struct CreateSupplierReturnPayload {
 pub struct CreateSupplierReturnResult {
     pub document_id: i64,
     pub supplier_id: i64,
-    pub purchase_order_id: i64,
+    pub purchase_order_id: Option<i64>,
+    pub receipt_document_id: Option<i64>,
     pub status: String,
 }
 
@@ -379,6 +382,8 @@ pub struct SupplierReturnSummary {
     pub warehouse_name: String,
     pub purchase_order_id: Option<i64>,
     pub purchase_order_number: Option<String>,
+    pub receipt_document_id: Option<i64>,
+    pub receipt_document_number: Option<String>,
     pub status: String,
     pub reason_code: String,
     pub journal_document_id: Option<i64>,
@@ -479,11 +484,20 @@ impl ConfirmSupplierInvoicePayload {
 
 impl CreateSupplierReturnPayload {
     pub fn validate(&self) -> Result<(), String> {
-        if self.supplier_id <= 0
-            || self.warehouse_id <= 0
-            || self.purchase_order_id.unwrap_or_default() <= 0
-        {
-            return Err("Supplier, warehouse, and purchase order are required.".to_string());
+        if self.supplier_id <= 0 || self.warehouse_id <= 0 {
+            return Err("Supplier and warehouse are required.".to_string());
+        }
+
+        let has_purchase_order = matches!(self.purchase_order_id, Some(id) if id > 0);
+        let has_direct_receipt = matches!(self.receipt_document_id, Some(id) if id > 0);
+        if self.purchase_order_id.is_some() && !has_purchase_order {
+            return Err("Purchase order reference is invalid.".to_string());
+        }
+        if self.receipt_document_id.is_some() && !has_direct_receipt {
+            return Err("Purchase receipt reference is invalid.".to_string());
+        }
+        if has_purchase_order == has_direct_receipt {
+            return Err("Exactly one purchase source is required for a supplier return.".to_string());
         }
         if self.lines.is_empty() {
             return Err("Supplier return requires at least one line.".to_string());
@@ -565,7 +579,7 @@ pub struct PostPurchaseTransactionPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PurchaseTransactionChildDocuments {
-    pub purchase_order_id: i64,
+    pub purchase_order_id: Option<i64>,
     pub goods_receipt_id: i64,
     pub supplier_invoice_id: i64,
     pub supplier_payment_id: Option<i64>,
@@ -733,6 +747,48 @@ mod tests {
             request_id: "00000000-0000-4000-8000-000000000002".to_string(),
         };
         assert!(payment.validate().is_err());
+    }
+
+    #[test]
+    fn supplier_return_accepts_exactly_one_purchase_source() {
+        let line = CreateSupplierReturnLinePayload {
+            variant_id: 7,
+            quantity: "1.000".to_string(),
+            unit_cost: "100.00".to_string(),
+        };
+
+        let po_return = CreateSupplierReturnPayload {
+            supplier_id: 1,
+            warehouse_id: 1,
+            purchase_order_id: Some(10),
+            receipt_document_id: None,
+            reason_code: Some("DEFECTIVE_GOODS".to_string()),
+            note: None,
+            lines: vec![line.clone()],
+        };
+        assert!(po_return.validate().is_ok());
+
+        let direct_return = CreateSupplierReturnPayload {
+            supplier_id: 1,
+            warehouse_id: 1,
+            purchase_order_id: None,
+            receipt_document_id: Some(20),
+            reason_code: Some("WRONG_ITEM".to_string()),
+            note: None,
+            lines: vec![line.clone()],
+        };
+        assert!(direct_return.validate().is_ok());
+
+        let ambiguous = CreateSupplierReturnPayload {
+            supplier_id: 1,
+            warehouse_id: 1,
+            purchase_order_id: Some(10),
+            receipt_document_id: Some(20),
+            reason_code: None,
+            note: None,
+            lines: vec![line],
+        };
+        assert!(ambiguous.validate().is_err());
     }
 
     #[test]
