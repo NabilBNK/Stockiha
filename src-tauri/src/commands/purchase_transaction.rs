@@ -17,6 +17,29 @@ pub(crate) async fn list_purchase_product_options(
 }
 
 #[tauri::command]
+pub(crate) async fn get_purchase_workflow_policy(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    purchase_transaction::get_purchase_workflow_policy(pool, &session_token)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn update_purchase_workflow_policy(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    mode: String,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    purchase_transaction::update_purchase_workflow_policy(pool, &session_token, &mode)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
 pub(crate) async fn post_purchase_transaction(
     state: State<'_, DatabaseState>,
     session_token: String,
