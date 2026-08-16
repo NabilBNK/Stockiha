@@ -113,6 +113,9 @@ export type ProcurementCopy = {
   confirmGoodsReceipt: string;
   receiptDate: string;
   receiveNow: string;
+  previouslyReceived: string;
+  confirming: string;
+  optionalNote: string;
   newPurchase: string;
   confirmPurchase: string;
   purchaseConfirmed: string;

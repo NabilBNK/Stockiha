@@ -5,26 +5,25 @@ import {
   confirmPurchaseOrder,
   createPurchaseOrderDraft,
   getPurchaseOrderDetail,
-  listProducts,
+  listPurchaseProductOptions,
   listPurchaseOrders,
   listPurchaseReceipts,
   listSuppliers,
-  listUnits,
   listWarehouses,
   newRequestId,
+  updatePurchaseOrderDraft,
 } from '../../shared/ipc/gateway';
 import type {
   ConfirmDirectPurchasePayload,
   ConfirmPurchaseReceiptResult,
   AllocateLandedCostResult,
   CreatePoLinePayload,
-  ProductListItem,
+  PurchaseProductOption,
   PurchaseOrderDetailDto,
   PurchaseOrderSummary,
   PurchaseReceiptSummary,
   ProcurementCapabilities,
   Supplier,
-  Unit,
   Warehouse,
 } from '../../shared/ipc/dto';
 import { currentBusinessDate } from '../../shared/utils/businessDate';
@@ -32,7 +31,7 @@ import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import PurchaseReceiptModal from './PurchaseReceiptModal';
 import { LandedCostModal } from './LandedCostModal';
-import { addExactDecimals, multiplyExactDecimals } from './procurementDecimal';
+import { addExactDecimals, isPositiveDecimal, multiplyExactDecimals } from './procurementDecimal';
 import { PROCUREMENT_COPY } from './procurementCopy';
 
 interface Props {
@@ -49,13 +48,14 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
   const [receipts, setReceipts] = useState<PurchaseReceiptSummary[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [products, setProducts] = useState<ProductListItem[]>([]);
-  const [units, setUnits] = useState<Unit[]>([]);
+  const [products, setProducts] = useState<PurchaseProductOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingPurchaseOrderId, setEditingPurchaseOrderId] = useState<number | null>(null);
+  const [lineErrors, setLineErrors] = useState<Record<number, { unit?: string; quantity?: string; unitCost?: string }>>({});
   const [selectedDetail, setSelectedDetail] = useState<PurchaseOrderDetailDto | null>(null);
   const [receiptPoDetail, setReceiptPoDetail] = useState<PurchaseOrderDetailDto | null>(null);
   const [landedCostReceipt, setLandedCostReceipt] = useState<PurchaseReceiptSummary | null>(null);
@@ -73,20 +73,18 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
     try {
       setLoading(true);
       setError(null);
-      const [posData, receiptData, suppsData, whsData, prodsData, unitsData] = await Promise.all([
+      const [posData, receiptData, suppsData, whsData, prodsData] = await Promise.all([
         listPurchaseOrders(sessionToken),
         listPurchaseReceipts(sessionToken),
         listSuppliers(sessionToken),
         listWarehouses(sessionToken),
-        listProducts(sessionToken, warehouseId || 1),
-        listUnits(sessionToken),
+        listPurchaseProductOptions(sessionToken),
       ]);
       setOrders(posData);
       setReceipts(receiptData);
       setSuppliers(suppsData);
       setWarehouses(whsData);
       setProducts(prodsData);
-      setUnits(unitsData);
 
       if (suppsData.length > 0 && supplierId === 0) {
         setSupplierId(suppsData[0].id);
@@ -106,14 +104,14 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
   }, [sessionToken]);
 
   const addLine = () => {
-    if (products.length === 0 || units.length === 0) return;
+    if (products.length === 0) return;
     setLines([
       ...lines,
       {
         variant_id: products[0].variant_id,
-        unit_id: units[0].id,
+        unit_id: products[0].default_unit_id,
         quantity_ordered: '10.000',
-        unit_cost: products[0].sale_price || '100.00',
+        unit_cost: '100.00',
       },
     ]);
   };
@@ -126,6 +124,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
     const next = [...lines];
     next[index] = updated;
     setLines(next);
+    setLineErrors((current) => ({ ...current, [index]: {} }));
   };
 
   const calculateSubtotal = () => {
@@ -139,13 +138,30 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       setError('Please select a supplier, warehouse, and add at least one line.');
       return;
     }
-    for (const line of lines) {
-      const q = parseFloat(line.quantity_ordered);
-      const c = parseFloat(line.unit_cost);
-      if (isNaN(q) || q <= 0 || isNaN(c) || c < 0) {
-        setError('Quantity must be greater than 0 and unit cost must be at least 0.');
-        return;
+    const effectiveLines = new Set<string>();
+    const nextLineErrors: Record<number, { unit?: string; quantity?: string; unitCost?: string }> = {};
+    lines.forEach((line, index) => {
+      const errors: { unit?: string; quantity?: string; unitCost?: string } = {};
+      const product = products.find((item) => item.variant_id === line.variant_id);
+      const validUnits = product
+        ? [product.default_unit_id, ...product.alternate_units.map((unit) => unit.unit_id)]
+        : [];
+      if (!product || !validUnits.includes(line.unit_id)) {
+        errors.unit = 'Choose a unit configured for this product.';
       }
+      if (!isPositiveDecimal(line.quantity_ordered)) errors.quantity = 'Enter a quantity greater than 0, for example 1 or 1.500.';
+      if (!/^\d+(?:\.\d+)?$/.test(line.unit_cost.trim())) errors.unitCost = 'Enter a unit cost of 0 or more, for example 1000 or 1000.00.';
+      const effectiveLine = `${line.variant_id}:${line.unit_id}`;
+      if (effectiveLines.has(effectiveLine)) {
+        errors.quantity = 'This product and unit already appear on another line. Combine the quantities or remove one line.';
+      }
+      effectiveLines.add(effectiveLine);
+      if (errors.unit || errors.quantity || errors.unitCost) nextLineErrors[index] = errors;
+    });
+    if (Object.keys(nextLineErrors).length > 0) {
+      setLineErrors(nextLineErrors);
+      setError('Correct the highlighted values, then confirm the purchase.');
+      return;
     }
     if (!openFiscalPeriodId) {
       setError(text.openPeriodRequired);
@@ -154,6 +170,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
 
     try {
       setError(null);
+      setSuccessBanner(null);
       directRequestId.current ??= newRequestId();
       const payload: ConfirmDirectPurchasePayload = {
         request_id: directRequestId.current,
@@ -190,16 +207,22 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
 
     try {
       setError(null);
-      await createPurchaseOrderDraft(sessionToken, {
+      const payload = {
         supplier_id: supplierId,
         warehouse_id: warehouseId,
         note: note || null,
         lines,
-      });
+      };
+      if (editingPurchaseOrderId === null) {
+        await createPurchaseOrderDraft(sessionToken, payload);
+      } else {
+        await updatePurchaseOrderDraft(sessionToken, { purchase_order_id: editingPurchaseOrderId, ...payload });
+      }
       setShowCreateForm(false);
+      setEditingPurchaseOrderId(null);
       setLines([]);
       setNote('');
-      setSuccessBanner('Purchase order draft created successfully.');
+      setSuccessBanner(editingPurchaseOrderId === null ? 'Purchase draft saved.' : 'Purchase draft updated.');
       await loadData();
     } catch (err: unknown) {
       setError(errorText(err));
@@ -225,7 +248,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
     try {
       setError(null);
       await cancelPurchaseOrder(sessionToken, orderId);
-      setSuccessBanner(`Purchase Order cancelled.`);
+      setSuccessBanner(null);
       await loadData();
       if (selectedDetail && selectedDetail.document_id === orderId) {
         const updated = await getPurchaseOrderDetail(sessionToken, orderId);
@@ -241,6 +264,29 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       setError(null);
       const detail = await getPurchaseOrderDetail(sessionToken, orderId);
       setSelectedDetail(detail);
+    } catch (err: unknown) {
+      setError(errorText(err));
+    }
+  };
+
+  const editDraft = async (orderId: number) => {
+    try {
+      setError(null);
+      setSuccessBanner(null);
+      const draft = await getPurchaseOrderDetail(sessionToken, orderId);
+      if (draft.status !== 'DRAFT') return;
+      setEditingPurchaseOrderId(draft.document_id);
+      setSupplierId(draft.supplier_id);
+      setWarehouseId(draft.warehouse_id);
+      setNote(draft.note ?? '');
+      setLines(draft.lines.map((line) => ({
+        variant_id: line.variant_id,
+        unit_id: line.unit_id,
+        quantity_ordered: line.quantity_ordered,
+        unit_cost: line.unit_cost,
+      })));
+      setLineErrors({});
+      setShowCreateForm(true);
     } catch (err: unknown) {
       setError(errorText(err));
     }
@@ -286,12 +332,15 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
           type="button"
           className="sk-button sk-button--primary"
           onClick={() => {
+            setSuccessBanner(null);
+            setEditingPurchaseOrderId(null);
+            setLineErrors({});
             setShowCreateForm(true);
             if (lines.length === 0) addLine();
           }}
           data-testid="create-po-btn"
         >
-          {text.newPurchaseOrder}
+          {text.newPurchase}
         </button>
       </header>
 
@@ -309,7 +358,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
 
       {showCreateForm && (
         <form className="sk-card sk-form" onSubmit={handleCreateOrder} data-testid="create-po-form">
-          <h2>{text.newPurchase}</h2>
+          <h2>{editingPurchaseOrderId === null ? text.newPurchase : 'Edit purchase draft'}</h2>
           <div className="sk-form-grid">
             <label>
               {text.supplier} *
@@ -383,13 +432,19 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
                   <td>
                     <select
                       value={line.variant_id}
-                      onChange={(e) =>
-                        updateLine(idx, { ...line, variant_id: parseInt(e.target.value, 10) })
-                      }
+                      onChange={(e) => {
+                        const variantId = parseInt(e.target.value, 10);
+                        const product = products.find((item) => item.variant_id === variantId);
+                        updateLine(idx, {
+                          ...line,
+                          variant_id: variantId,
+                          unit_id: product?.default_unit_id ?? line.unit_id,
+                        });
+                      }}
                     >
                       {products.map((p) => (
                         <option key={p.variant_id} value={p.variant_id}>
-                          {p.sku} — {p.name}
+                          {p.sku} — {p.product_name}{p.variant_name ? ` — ${p.variant_name}` : ''}
                         </option>
                       ))}
                     </select>
@@ -398,29 +453,47 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
                     <select
                       value={line.unit_id}
                       onChange={(e) => updateLine(idx, { ...line, unit_id: parseInt(e.target.value, 10) })}
+                      aria-invalid={Boolean(lineErrors[idx]?.unit)}
+                      aria-describedby={lineErrors[idx]?.unit ? `purchase-line-${idx}-unit-error` : undefined}
                     >
-                      {units.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.code}
-                        </option>
-                      ))}
+                      {(() => {
+                        const product = products.find((item) => item.variant_id === line.variant_id);
+                        if (!product) return <option value="">Choose a product first</option>;
+                        return <>
+                          <option value={product.default_unit_id}>{product.default_unit_code}</option>
+                          {product.alternate_units.map((unit) => (
+                            <option key={unit.unit_id} value={unit.unit_id}>
+                              {unit.unit_code} (x{unit.conversion_factor})
+                            </option>
+                          ))}
+                        </>;
+                      })()}
                     </select>
+                    {lineErrors[idx]?.unit && <small id={`purchase-line-${idx}-unit-error`} className="sk-field-error">{lineErrors[idx].unit}</small>}
                   </td>
                   <td>
                     <input
                       type="text"
+                      inputMode="decimal"
                       className="sk-input-small"
                       value={line.quantity_ordered}
                       onChange={(e) => updateLine(idx, { ...line, quantity_ordered: e.target.value })}
+                      aria-invalid={Boolean(lineErrors[idx]?.quantity)}
+                      aria-describedby={lineErrors[idx]?.quantity ? `purchase-line-${idx}-quantity-error` : undefined}
                     />
+                    {lineErrors[idx]?.quantity && <small id={`purchase-line-${idx}-quantity-error`} className="sk-field-error">{lineErrors[idx].quantity}</small>}
                   </td>
                   <td>
                     <input
                       type="text"
+                      inputMode="decimal"
                       className="sk-input-small"
                       value={line.unit_cost}
                       onChange={(e) => updateLine(idx, { ...line, unit_cost: e.target.value })}
+                      aria-invalid={Boolean(lineErrors[idx]?.unitCost)}
+                      aria-describedby={lineErrors[idx]?.unitCost ? `purchase-line-${idx}-cost-error` : undefined}
                     />
+                    {lineErrors[idx]?.unitCost && <small id={`purchase-line-${idx}-cost-error`} className="sk-field-error">{lineErrors[idx].unitCost}</small>}
                   </td>
                   <td>
                     {multiplyExactDecimals(line.quantity_ordered, line.unit_cost)} DZD
@@ -457,7 +530,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
             <button
               type="button"
               className="sk-button sk-button--secondary"
-              onClick={() => setShowCreateForm(false)}
+              onClick={() => { setShowCreateForm(false); setEditingPurchaseOrderId(null); setLineErrors({}); }}
             >
               {t('common.cancel')}
             </button>
@@ -470,7 +543,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
               {text.confirmPurchase}
             </button>
             <button type="submit" className="sk-button sk-button--secondary" data-testid="save-po-draft-btn">
-              {text.saveDraft}
+              {editingPurchaseOrderId === null ? text.saveDraft : 'Update draft'}
             </button>
           </div>
         </form>
@@ -532,14 +605,21 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
                         {text.view}
                       </button>{' '}
                       {po.status === 'DRAFT' && (
-                        <button
+                        <><button
+                          type="button"
+                          className="sk-button sk-button--small"
+                          onClick={() => editDraft(po.document_id)}
+                          data-testid={`edit-po-${po.document_id}`}
+                        >
+                          {text.edit}
+                        </button>{' '}<button
                           type="button"
                           className="sk-button sk-button--small sk-button--primary"
                           onClick={() => handleConfirmOrder(po.document_id)}
                           data-testid={`confirm-po-${po.document_id}`}
                         >
                           {text.confirmOrder}
-                        </button>
+                        </button></>
                       )}{' '}
                       {capabilities.can_post_purchase_receipt
                         && (po.status === 'CONFIRMED' || po.status === 'PARTIALLY_RECEIVED') && (

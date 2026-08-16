@@ -27,9 +27,19 @@ ALTER TABLE procurement.purchase_receipts
     CHECK (receipt_origin IN ('DIRECT_PURCHASE', 'PURCHASE_ORDER'));
 
 -- Backfill existing historical purchase receipts as PURCHASE_ORDER
+-- The table's posted-row immutability trigger correctly blocks ordinary
+-- updates. Disable only that UPDATE trigger while this transaction performs
+-- the deterministic classification backfill; ALTER TABLE keeps an exclusive
+-- lock and PostgreSQL rolls the trigger state back if the migration fails.
+ALTER TABLE procurement.purchase_receipts
+    DISABLE TRIGGER purchase_receipts_forbid_update;
+
 UPDATE procurement.purchase_receipts
 SET receipt_origin = 'PURCHASE_ORDER'
 WHERE purchase_order_id IS NOT NULL;
+
+ALTER TABLE procurement.purchase_receipts
+    ENABLE TRIGGER purchase_receipts_forbid_update;
 
 ALTER TABLE procurement.purchase_receipts
     ALTER COLUMN purchase_order_id DROP NOT NULL;
@@ -1225,3 +1235,5 @@ $$;
 
 REVOKE ALL ON FUNCTION inventory.confirm_supplier_return(text, uuid, bytea, bigint, bigint, date) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION inventory.confirm_supplier_return(text, uuid, bytea, bigint, bigint, date) TO stockiha_runtime;
+
+RESET ROLE;

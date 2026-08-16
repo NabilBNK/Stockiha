@@ -5,8 +5,8 @@ use crate::domain::procurement::{
     ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult, ConfirmSupplierInvoiceResult,
     ConfirmSupplierReturnResult, CreatePurchaseOrderPayload, CreateSupplierInvoiceResult,
     CreateSupplierReturnResult, PostSupplierPaymentResult, ProcurementCapabilities,
-    PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseReceiptLineDto, PurchaseReceiptSummary,
-    UpdatePurchaseOrderPayload,
+    PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseProductOption, PurchaseReceiptLineDto,
+    PurchaseReceiptSummary, UpdatePurchaseOrderPayload,
 };
 use crate::domain::supplier::{CreateSupplierPayload, Supplier, UpdateSupplierPayload};
 use crate::error::AppError;
@@ -241,6 +241,21 @@ pub(crate) async fn list_purchase_orders(
     Ok(orders)
 }
 
+pub(crate) async fn list_purchase_product_options(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<Vec<PurchaseProductOption>, AppError> {
+    let result: JsonValue = query_scalar("SELECT procurement.list_purchase_product_options($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(result).map_err(|error| {
+        AppError::internal(format!("Failed to parse purchase product options: {error}"))
+    })
+}
+
 pub(crate) async fn get_purchase_order_detail(
     pool: &PgPool,
     session_token: &str,
@@ -314,20 +329,21 @@ pub(crate) async fn confirm_direct_purchase(
     let lines_json = serde_json::to_value(&payload.lines)
         .map_err(|e| AppError::internal(format!("Invalid lines JSON: {e}")))?;
 
-    let res: JsonValue =
-        query_scalar("SELECT inventory.confirm_direct_purchase($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9)")
-            .bind(session_token)
-            .bind(&payload.request_id)
-            .bind(hash.as_slice())
-            .bind(payload.supplier_id)
-            .bind(payload.warehouse_id)
-            .bind(payload.fiscal_period_id)
-            .bind(doc_date)
-            .bind(payload.note.as_deref())
-            .bind(&lines_json)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
+    let res: JsonValue = query_scalar(
+        "SELECT inventory.confirm_direct_purchase($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(session_token)
+    .bind(&payload.request_id)
+    .bind(hash.as_slice())
+    .bind(payload.supplier_id)
+    .bind(payload.warehouse_id)
+    .bind(payload.fiscal_period_id)
+    .bind(doc_date)
+    .bind(payload.note.as_deref())
+    .bind(&lines_json)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
 
     let result: ConfirmDirectPurchaseResult = serde_json::from_value(res)
         .map_err(|e| AppError::internal(format!("Failed to parse direct purchase result: {e}")))?;

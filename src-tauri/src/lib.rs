@@ -120,6 +120,7 @@ pub fn run() {
             commands::procurement::confirm_purchase_order,
             commands::procurement::cancel_purchase_order,
             commands::procurement::list_purchase_orders,
+            commands::procurement::list_purchase_product_options,
             commands::procurement::get_purchase_order_detail,
             commands::procurement::confirm_purchase_receipt,
             commands::procurement::confirm_direct_purchase,

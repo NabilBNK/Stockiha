@@ -72,6 +72,21 @@ function baseHandlers(extra: Handlers = {}): Handlers {
         last_known_wac: '80.000000',
       },
     ],
+    list_purchase_product_options: () => [
+      {
+        product_id: 1,
+        variant_id: 7,
+        sku: 'SKU-7',
+        product_name: 'Procurement Item A',
+        variant_name: null,
+        default_unit_id: 1,
+        default_unit_code: 'UNIT',
+        default_unit_name: 'Unit',
+        alternate_units: [],
+        attributes: [],
+        is_active: true,
+      },
+    ],
     list_catalog_products: () => [
       {
         product_id: 1,
@@ -128,7 +143,7 @@ beforeEach(() => {
 describe('Direct Purchasing Workflow (Part 1)', () => {
   it('confirms Direct Purchase atomically without fake POs and updates purchases list', async () => {
     let directPurchaseCall: Record<string, unknown> | null = null;
-    let receiptsList = [
+    const receiptsList = [
       {
         document_id: 100,
         document_number: 'PR-2026-000001',
@@ -216,5 +231,55 @@ describe('Direct Purchasing Workflow (Part 1)', () => {
     expect(screen.getByText('PR-2026-000001')).toBeInTheDocument();
     expect(screen.getByText('Direct Purchase')).toBeInTheDocument();
     expect(screen.getByText('JE-2026-000001')).toBeInTheDocument();
+  });
+
+  it('rejects duplicate effective lines before submitting a Direct Purchase', async () => {
+    wireInvoke(baseHandlers());
+
+    render(<App />);
+    await login();
+    fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
+    fireEvent.click(screen.getByTestId('create-po-btn'));
+    await screen.findByText('Global Supplier SARL (SUP-001)');
+    fireEvent.click(screen.getByTestId('add-po-line-btn'));
+    await waitFor(() => expect(screen.getAllByRole('textbox')).toHaveLength(3));
+    fireEvent.click(screen.getByTestId('add-po-line-btn'));
+    await waitFor(() => expect(screen.getAllByRole('textbox')).toHaveLength(5));
+    fireEvent.click(screen.getByTestId('confirm-direct-purchase-btn'));
+
+    expect(screen.getByTestId('po-error')).toHaveTextContent(
+      'Correct the highlighted values, then confirm the purchase.',
+    );
+    expect(screen.getByText('This product and unit already appear on another line. Combine the quantities or remove one line.')).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'confirm_direct_purchase',
+      expect.anything(),
+    );
+  });
+
+  it('marks invalid quantity and unit cost with a specific correction before submitting', async () => {
+    wireInvoke(baseHandlers());
+
+    render(<App />);
+    await login();
+    fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
+    fireEvent.click(screen.getByTestId('create-po-btn'));
+    await screen.findByText('Global Supplier SARL (SUP-001)');
+    fireEvent.click(screen.getByTestId('add-po-line-btn'));
+    await waitFor(() => expect(screen.getAllByRole('textbox')).toHaveLength(3));
+
+    const lineInputs = screen.getAllByRole('textbox');
+    fireEvent.change(lineInputs[1], { target: { value: '0' } });
+    fireEvent.change(lineInputs[2], { target: { value: 'not-a-cost' } });
+    fireEvent.click(screen.getByTestId('confirm-direct-purchase-btn'));
+
+    expect(screen.getByTestId('po-error')).toHaveTextContent(
+      'Correct the highlighted values, then confirm the purchase.',
+    );
+    expect(lineInputs[1]).toHaveAttribute('aria-invalid', 'true');
+    expect(lineInputs[2]).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Enter a quantity greater than 0, for example 1 or 1.500.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a unit cost of 0 or more, for example 1000 or 1000.00.')).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith('confirm_direct_purchase', expect.anything());
   });
 });
