@@ -26,8 +26,9 @@ pub(crate) async fn confirm_direct_purchase(
         "lines": &payload.lines,
     });
     let hash = payload_hash(&canonical);
-    let lines = serde_json::to_value(&payload.lines)
-        .map_err(|error| AppError::internal(format!("Invalid Direct Purchase lines JSON: {error}")))?;
+    let lines = serde_json::to_value(&payload.lines).map_err(|error| {
+        AppError::internal(format!("Invalid Direct Purchase lines JSON: {error}"))
+    })?;
 
     let result: JsonValue = query_scalar(
         "SELECT inventory.confirm_direct_purchase_receipt($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9)",
