@@ -32,6 +32,7 @@ pub(crate) mod opening_state;
 pub(crate) mod opening_state_application;
 pub(crate) mod opening_state_lifecycle;
 pub(crate) mod procurement_service;
+pub(crate) mod purchase_transaction;
 pub(crate) mod receivables;
 pub(crate) mod recovery;
 pub(crate) mod recovery_creation;
