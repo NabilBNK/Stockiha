@@ -38,15 +38,34 @@ suites=(
 
 for suite in "${suites[@]}"; do
   echo "Running ${suite}"
-  psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<SQL
+  if ! output=$(psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 2>&1 <<SQL
 BEGIN;
 \i ${suite}
 SET CONSTRAINTS ALL IMMEDIATE;
 ROLLBACK;
 SQL
+  ); then
+    printf '%s\n' "$output"
+    diagnostic=$(printf '%s\n' "$output" | tail -n 12)
+    diagnostic=${diagnostic//'%'/'%25'}
+    diagnostic=${diagnostic//$'\r'/'%0D'}
+    diagnostic=${diagnostic//$'\n'/'%0A'}
+    echo "::error file=${suite}::SQL integration suite failed.%0A${diagnostic}"
+    exit 1
+  fi
+  printf '%s\n' "$output"
 done
 
 # S2-002 owns its BEGIN/ROLLBACK because it explicitly tests transaction
 # rollback behavior.
-psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 \
-  -f src-tauri/tests/inventory/s2_002_stock_adjustment_integration.sql
+if ! output=$(psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 \
+  -f src-tauri/tests/inventory/s2_002_stock_adjustment_integration.sql 2>&1); then
+  printf '%s\n' "$output"
+  diagnostic=$(printf '%s\n' "$output" | tail -n 12)
+  diagnostic=${diagnostic//'%'/'%25'}
+  diagnostic=${diagnostic//$'\r'/'%0D'}
+  diagnostic=${diagnostic//$'\n'/'%0A'}
+  echo "::error file=src-tauri/tests/inventory/s2_002_stock_adjustment_integration.sql::SQL integration suite failed.%0A${diagnostic}"
+  exit 1
+fi
+printf '%s\n' "$output"
