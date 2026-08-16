@@ -1,7 +1,9 @@
 -- Direct Purchase MVP acceptance.
--- Proves that one operator confirmation posts physically received goods without
--- fabricating a Purchase Order, preserves WAC/GRNI/AP/landed-cost semantics,
--- supports receipt-line supplier returns, and is idempotent.
+--
+-- One operator confirmation posts only the physical Purchase Receipt, inventory
+-- movement/WAC and the Inventory/GRNI journal. It must not fabricate a Purchase
+-- Order and must not silently create a Supplier Invoice, AP or supplier payment.
+-- Supplier Invoice/AP is covered separately by direct_purchase_invoice_integration.sql.
 \set ON_ERROR_STOP on
 
 DO $$
@@ -21,16 +23,18 @@ DECLARE
     v_request_id uuid := 'd1000000-0000-4000-8000-000000000001'::uuid;
     v_request_hash bytea := sha256('direct-purchase-basic-acceptance'::bytea);
     v_landed_request_id uuid := 'd1000000-0000-4000-8000-000000000002'::uuid;
-    v_return_request_id uuid := 'd1000000-0000-4000-8000-000000000003'::uuid;
+    v_landed_alloc_request_id uuid := 'd1000000-0000-4000-8000-000000000003'::uuid;
+    v_return_request_id uuid := 'd1000000-0000-4000-8000-000000000004'::uuid;
     v_po_count_before bigint;
-    v_root_id bigint;
+    v_invoice_count_before bigint;
+    v_liability_count_before bigint;
+    v_payment_count_before bigint;
     v_receipt_id bigint;
-    v_invoice_id bigint;
-    v_landed_root_id bigint;
     v_landed_receipt_id bigint;
     v_return_id bigint;
     v_result jsonb;
     v_repeat jsonb;
+    v_landed_receipt jsonb;
     v_landed_result jsonb;
     v_policy jsonb;
     v_return_draft jsonb;
@@ -39,12 +43,8 @@ DECLARE
     v_qty numeric;
     v_value numeric;
     v_wac numeric;
-    v_ap numeric;
     v_denied boolean := false;
 BEGIN
-    -- ---------------------------------------------------------------------
-    -- Test authority/session and deterministic business prerequisites.
-    -- ---------------------------------------------------------------------
     INSERT INTO iam.users (username, display_name, password_hash)
     VALUES ('direct_purchase_admin_' || v_suffix, 'Direct Purchase Admin', 'hash')
     RETURNING id INTO v_admin_id;
@@ -111,16 +111,13 @@ BEGIN
         v_product_b_id, v_unit_id, 'DIRECT-B-' || v_suffix, 180.00, true
     ) RETURNING id INTO v_variant_b_id;
 
-    -- Seed the exact manual-acceptance WAC baseline: 20 units / 1600 DZD / 80 DZD.
     INSERT INTO inventory.positions (
         warehouse_id, variant_id, quantity_on_hand, total_value, last_known_wac
     ) VALUES (
         v_warehouse_id, v_variant_a_id, 20.000, 1600.0000, 80.000000
     );
 
-    -- ---------------------------------------------------------------------
-    -- MVP policy is Direct Purchase and cannot be changed at runtime.
-    -- ---------------------------------------------------------------------
+    -- The MVP exposes Direct Purchase only and the advanced PO selector is locked.
     v_policy := procurement.get_purchase_workflow_policy(v_admin_token);
     ASSERT v_policy ->> 'mode' = 'DIRECT_PURCHASE',
         'Direct Purchase must be the active MVP purchasing workflow';
@@ -132,61 +129,39 @@ BEGIN
     EXCEPTION WHEN object_not_in_prerequisite_state THEN
         v_denied := true;
     END;
-    ASSERT v_denied,
-        'Runtime workflow mutation must be rejected while advanced PO mode is future work';
-
-    v_policy := procurement.get_purchase_workflow_policy(v_admin_token);
-    ASSERT v_policy ->> 'mode' = 'DIRECT_PURCHASE',
-        'Rejected workflow mutation must leave Direct Purchase active';
+    ASSERT v_denied, 'Runtime workflow mutation must be rejected';
 
     SELECT count(*) INTO v_po_count_before FROM procurement.purchase_orders;
+    SELECT count(*) INTO v_invoice_count_before FROM procurement.supplier_invoices;
+    SELECT count(*) INTO v_liability_count_before FROM procurement.supplier_liabilities;
+    SELECT count(*) INTO v_payment_count_before FROM procurement.supplier_payments;
 
-    -- ---------------------------------------------------------------------
     -- Small acceptance scenario: existing 20 @ 80, buy 10 @ 100.
-    -- Expected: 30 units, 2600 DZD, WAC 86.666667.
-    -- ---------------------------------------------------------------------
-    v_result := procurement.post_purchase_transaction(
+    v_result := inventory.confirm_direct_purchase_receipt(
         v_admin_token,
         v_request_id,
         v_request_hash,
-        jsonb_build_object(
-            'supplier_id', v_supplier_id,
-            'document_date', v_document_date,
-            'external_supplier_document_number', NULL,
-            'payment_status', 'UNPAID',
-            'payment_method', NULL,
-            'print_after_confirmation', false,
-            'note', 'Direct Purchase MVP WAC acceptance',
-            'lines', jsonb_build_array(jsonb_build_object(
-                'variant_id', v_variant_a_id,
-                'unit_id', v_unit_id,
-                'quantity', '10.000',
-                'unit_cost', '100.00'
-            )),
-            'additional_costs', '[]'::jsonb
-        )
+        v_supplier_id,
+        v_warehouse_id,
+        v_period_id,
+        v_document_date,
+        jsonb_build_array(jsonb_build_object(
+            'variant_id', v_variant_a_id,
+            'unit_id', v_unit_id,
+            'quantity_received', '10.000',
+            'unit_cost', '100.00'
+        )),
+        'Direct Purchase MVP WAC acceptance'
     );
 
-    v_root_id := (v_result ->> 'document_id')::bigint;
-    v_receipt_id := (v_result -> 'child_documents' ->> 'goods_receipt_id')::bigint;
-    v_invoice_id := (v_result -> 'child_documents' ->> 'supplier_invoice_id')::bigint;
-
-    ASSERT v_root_id IS NOT NULL, 'Direct Purchase must create its transaction root';
+    v_receipt_id := (v_result ->> 'document_id')::bigint;
     ASSERT v_receipt_id IS NOT NULL, 'Direct Purchase must create a Purchase Receipt';
-    ASSERT v_result -> 'child_documents' -> 'purchase_order_id' = 'null'::jsonb,
-        'Direct Purchase must not return a synthetic Purchase Order';
+    ASSERT v_result ->> 'receipt_origin' = 'DIRECT_PURCHASE',
+        'Receipt response must identify DIRECT_PURCHASE';
+    ASSERT v_result -> 'purchase_order_id' = 'null'::jsonb,
+        'Direct Purchase must return no Purchase Order';
     ASSERT (SELECT count(*) FROM procurement.purchase_orders) = v_po_count_before,
-        'Direct Purchase must not create any Purchase Order row';
-
-    ASSERT EXISTS (
-        SELECT 1
-        FROM procurement.purchase_transactions purchase_tx
-        WHERE purchase_tx.document_id = v_root_id
-          AND purchase_tx.purchase_order_id IS NULL
-          AND purchase_tx.goods_receipt_id = v_receipt_id
-          AND purchase_tx.gross_subtotal = 1000.00
-          AND purchase_tx.total_amount = 1000.00
-    ), 'Direct Purchase root must persist truthful totals without a PO';
+        'Direct Purchase must create zero Purchase Order rows';
 
     ASSERT EXISTS (
         SELECT 1
@@ -195,7 +170,7 @@ BEGIN
           AND receipt.purchase_order_id IS NULL
           AND receipt.receipt_origin = 'DIRECT_PURCHASE'
           AND receipt.total_amount = 1000.00
-    ), 'Purchase Receipt must be explicitly DIRECT_PURCHASE with no PO';
+    ), 'Direct Purchase must persist a truthful standalone Purchase Receipt';
 
     ASSERT EXISTS (
         SELECT 1
@@ -214,12 +189,9 @@ BEGIN
     WHERE warehouse_id = v_warehouse_id
       AND variant_id = v_variant_a_id;
 
-    ASSERT v_qty = 30.000,
-        '20 existing + 10 purchased must produce 30 units';
-    ASSERT v_value = 2600.0000,
-        '1600 existing + 1000 purchase must produce 2600 DZD inventory value';
-    ASSERT v_wac = 86.666667,
-        '2600 / 30 must produce authoritative WAC 86.666667';
+    ASSERT v_qty = 30.000, '20 existing + 10 purchased must produce 30 units';
+    ASSERT v_value = 2600.0000, '1600 existing + 1000 purchase must produce 2600 DZD inventory value';
+    ASSERT v_wac = 86.666667, '2600 / 30 must produce authoritative WAC 86.666667';
 
     ASSERT EXISTS (
         SELECT 1
@@ -259,69 +231,36 @@ BEGIN
         HAVING sum(line.debit) <> sum(line.credit)
     ), 'Direct Purchase receipt journal must balance';
 
-    -- Current one-entry purchase contract immediately produces the supplier
-    -- invoice/AP leg after the physical receipt. It must match the direct receipt,
-    -- never a fabricated PO.
-    ASSERT v_invoice_id IS NOT NULL, 'Purchase transaction must create its supplier invoice evidence';
-    ASSERT EXISTS (
-        SELECT 1
-        FROM procurement.supplier_invoices invoice
-        WHERE invoice.document_id = v_invoice_id
-          AND invoice.purchase_order_id IS NULL
-          AND invoice.supplier_id = v_supplier_id
-          AND invoice.base_total_amount = 1000.00
-    ), 'Supplier Invoice must remain compatible with a Direct Purchase receipt';
+    -- Crucial policy assertion: physical receipt confirmation is NOT an invoice.
+    ASSERT (SELECT count(*) FROM procurement.supplier_invoices) = v_invoice_count_before,
+        'Direct Purchase must not auto-create a Supplier Invoice';
+    ASSERT (SELECT count(*) FROM procurement.supplier_liabilities) = v_liability_count_before,
+        'Direct Purchase must not auto-create Accounts Payable';
+    ASSERT (SELECT count(*) FROM procurement.supplier_payments) = v_payment_count_before,
+        'Direct Purchase must not auto-pay the supplier';
 
-    ASSERT EXISTS (
-        SELECT 1
-        FROM procurement.supplier_invoice_lines invoice_line
-        JOIN procurement.purchase_receipt_lines receipt_line
-          ON receipt_line.id = invoice_line.receipt_line_id
-        WHERE invoice_line.document_id = v_invoice_id
-          AND invoice_line.po_line_id IS NULL
-          AND receipt_line.document_id = v_receipt_id
-          AND invoice_line.variant_id = v_variant_a_id
-          AND invoice_line.quantity = 10.000
-    ), 'Supplier invoice line must match the exact Direct Purchase receipt line';
-
-    SELECT outstanding_amount
-    INTO v_ap
-    FROM procurement.supplier_liabilities
-    WHERE invoice_document_id = v_invoice_id;
-    ASSERT v_ap = 1000.00,
-        'Unpaid Direct Purchase must create 1000 DZD supplier liability';
-
-    -- ---------------------------------------------------------------------
-    -- Idempotency: same request and hash return the same transaction once.
-    -- ---------------------------------------------------------------------
-    v_repeat := procurement.post_purchase_transaction(
+    -- Idempotency: same request and hash returns the same receipt exactly once.
+    v_repeat := inventory.confirm_direct_purchase_receipt(
         v_admin_token,
         v_request_id,
         v_request_hash,
-        jsonb_build_object(
-            'supplier_id', v_supplier_id,
-            'document_date', v_document_date,
-            'external_supplier_document_number', NULL,
-            'payment_status', 'UNPAID',
-            'payment_method', NULL,
-            'print_after_confirmation', false,
-            'note', 'Direct Purchase MVP WAC acceptance',
-            'lines', jsonb_build_array(jsonb_build_object(
-                'variant_id', v_variant_a_id,
-                'unit_id', v_unit_id,
-                'quantity', '10.000',
-                'unit_cost', '100.00'
-            )),
-            'additional_costs', '[]'::jsonb
-        )
+        v_supplier_id,
+        v_warehouse_id,
+        v_period_id,
+        v_document_date,
+        jsonb_build_array(jsonb_build_object(
+            'variant_id', v_variant_a_id,
+            'unit_id', v_unit_id,
+            'quantity_received', '10.000',
+            'unit_cost', '100.00'
+        )),
+        'Direct Purchase MVP WAC acceptance'
     );
 
-    ASSERT (v_repeat ->> 'document_id')::bigint = v_root_id,
-        'Retry must return the original Direct Purchase';
-    ASSERT (SELECT count(*) FROM procurement.purchase_transactions WHERE document_id = v_root_id) = 1,
-        'Retry must not duplicate the purchase root';
+    ASSERT (v_repeat ->> 'document_id')::bigint = v_receipt_id,
+        'Retry must return the original Purchase Receipt';
     ASSERT (SELECT count(*) FROM procurement.purchase_receipts WHERE document_id = v_receipt_id) = 1,
-        'Retry must not duplicate the receipt';
+        'Retry must not duplicate the Purchase Receipt';
 
     SELECT quantity_on_hand, total_value, last_known_wac
     INTO v_qty, v_value, v_wac
@@ -330,49 +269,45 @@ BEGIN
     ASSERT v_qty = 30.000 AND v_value = 2600.0000 AND v_wac = 86.666667,
         'Retry must not duplicate stock or valuation';
 
-    -- ---------------------------------------------------------------------
-    -- Direct Purchase landed-cost compatibility on a separate variant.
-    -- ---------------------------------------------------------------------
-    v_landed_result := procurement.post_purchase_transaction(
+    -- Landed cost stays a separate downstream action against the posted receipt.
+    v_landed_receipt := inventory.confirm_direct_purchase_receipt(
         v_admin_token,
         v_landed_request_id,
-        sha256('direct-purchase-landed-cost'::bytea),
-        jsonb_build_object(
-            'supplier_id', v_supplier_id,
-            'document_date', v_document_date,
-            'external_supplier_document_number', NULL,
-            'payment_status', 'UNPAID',
-            'payment_method', NULL,
-            'print_after_confirmation', false,
-            'note', 'Direct Purchase landed cost acceptance',
-            'lines', jsonb_build_array(jsonb_build_object(
-                'variant_id', v_variant_b_id,
-                'unit_id', v_unit_id,
-                'quantity', '10.000',
-                'unit_cost', '100.00'
-            )),
-            'additional_costs', jsonb_build_array(jsonb_build_object(
-                'cost_type', 'FREIGHT',
-                'amount', '100.00'
-            ))
-        )
+        sha256('direct-purchase-landed-receipt'::bytea),
+        v_supplier_id,
+        v_warehouse_id,
+        v_period_id,
+        v_document_date,
+        jsonb_build_array(jsonb_build_object(
+            'variant_id', v_variant_b_id,
+            'unit_id', v_unit_id,
+            'quantity_received', '10.000',
+            'unit_cost', '100.00'
+        )),
+        'Direct Purchase landed cost base receipt'
     );
+    v_landed_receipt_id := (v_landed_receipt ->> 'document_id')::bigint;
 
-    v_landed_root_id := (v_landed_result ->> 'document_id')::bigint;
-    v_landed_receipt_id := (v_landed_result -> 'child_documents' ->> 'goods_receipt_id')::bigint;
-    ASSERT v_landed_root_id IS NOT NULL AND v_landed_receipt_id IS NOT NULL,
-        'Direct Purchase with landed cost must post successfully';
-    ASSERT v_landed_result -> 'child_documents' -> 'purchase_order_id' = 'null'::jsonb,
-        'Landed cost must not force a fake Purchase Order';
-    ASSERT (SELECT count(*) FROM procurement.purchase_orders) = v_po_count_before,
-        'Landed-cost Direct Purchase must not create a Purchase Order';
+    v_landed_result := inventory.allocate_landed_cost(
+        v_admin_token,
+        v_landed_alloc_request_id,
+        sha256('direct-purchase-landed-allocation'::bytea),
+        v_landed_receipt_id,
+        100.00,
+        'BY_VALUE',
+        v_period_id,
+        v_document_date,
+        'Freight after Direct Purchase receipt'
+    );
+    ASSERT v_landed_result ->> 'status' = 'POSTED',
+        'Landed cost must post against a Direct Purchase receipt';
 
     SELECT quantity_on_hand, total_value, last_known_wac
     INTO v_qty, v_value, v_wac
     FROM inventory.positions
     WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_b_id;
     ASSERT v_qty = 10.000 AND v_value = 1100.0000 AND v_wac = 110.000000,
-        '10 x 100 plus 100 freight must produce 1100 DZD value and 110 WAC';
+        'Separate landed cost must produce 1100 DZD value and 110 WAC';
 
     ASSERT EXISTS (
         SELECT 1
@@ -383,11 +318,9 @@ BEGIN
           AND movement.movement_type = 'COST_ONLY'
           AND movement.quantity_delta = 0
           AND movement.inventory_value_delta = 100.00
-    ), 'Direct Purchase landed cost must append canonical COST_ONLY valuation movement';
+    ), 'Landed cost must append canonical COST_ONLY valuation movement';
 
-    -- ---------------------------------------------------------------------
-    -- Supplier Return compatibility through exact receipt lineage.
-    -- ---------------------------------------------------------------------
+    -- A Direct Purchase can be returned before invoice; the clearing leg is GRNI.
     v_return_draft := procurement.create_supplier_return_draft(
         v_admin_token,
         v_supplier_id,
@@ -419,29 +352,15 @@ BEGIN
         v_document_date
     );
 
-    ASSERT v_return_result ->> 'status' = 'POSTED',
-        'Direct Purchase Supplier Return must post';
-    ASSERT EXISTS (
-        SELECT 1
-        FROM procurement.supplier_returns supplier_return
-        WHERE supplier_return.document_id = v_return_id
-          AND supplier_return.purchase_order_id IS NULL
-          AND supplier_return.receipt_document_id = v_receipt_id
-    ), 'Posted Supplier Return must remain linked to receipt rather than a PO';
+    ASSERT v_return_result ->> 'status' = 'POSTED', 'Direct Purchase Supplier Return must post';
+    ASSERT v_return_result ->> 'clearing_role' = 'GRNI',
+        'Pre-invoice Direct Purchase return must clear GRNI rather than AP';
 
     SELECT quantity_on_hand
     INTO v_qty
     FROM inventory.positions
     WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_a_id;
-    ASSERT v_qty = 28.000,
-        'Returning two units from the 30-unit stock position must leave 28';
-
-    SELECT outstanding_amount
-    INTO v_ap
-    FROM procurement.supplier_liabilities
-    WHERE invoice_document_id = v_invoice_id;
-    ASSERT v_ap = 800.00,
-        'Two-unit return at authoritative 100 DZD supplier cost must reduce AP to 800 DZD';
+    ASSERT v_qty = 28.000, 'Returning two units from 30 must leave 28';
 
     v_receipt_lines := procurement.list_purchase_receipt_lines(v_admin_token, NULL);
     ASSERT EXISTS (
@@ -453,14 +372,16 @@ BEGIN
           AND item -> 'po_line_id' = 'null'::jsonb
           AND (item ->> 'quantity_returned_for_variant')::numeric = 2.000
           AND (item ->> 'quantity_returnable_for_variant')::numeric = 8.000
-    ), 'Direct receipt read model must expose correct returnable quantity without a PO';
+    ), 'Direct receipt read model must expose returnable quantity without a PO';
 
     ASSERT (SELECT count(*) FROM procurement.purchase_orders) = v_po_count_before,
         'Complete Direct Purchase scenario must create zero synthetic Purchase Orders';
+    ASSERT (SELECT count(*) FROM procurement.supplier_invoices) = v_invoice_count_before,
+        'Receipt/landed-cost/return scenario must not silently create supplier invoices';
 
-    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) >= 20260816164000,
-        'Schema state must include the Direct Purchase MVP policy lock';
+    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) >= 20260816166000,
+        'Schema state must include the receipt-only Direct Purchase posting contract';
 
-    RAISE NOTICE '=== DIRECT PURCHASE MVP ACCEPTANCE ASSERTIONS PASSED ===';
+    RAISE NOTICE '=== DIRECT PURCHASE RECEIPT-ONLY MVP ASSERTIONS PASSED ===';
 END;
 $$;
