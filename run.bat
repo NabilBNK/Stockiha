@@ -32,7 +32,7 @@ if not defined STOCKIHA_DEV_DATABASE_URL (
 )
 
 echo Ensuring PostgreSQL service is active on port 5433...
-powershell -NoProfile -Command "$ready = & 'C:\Program Files\PostgreSQL\18\bin\pg_isready.exe' -h 127.0.0.1 -p 5433 2>&1; if ($ready -notlike '*accepting connections*') { Start-Process -FilePath 'C:\Program Files\PostgreSQL\18\bin\postgres.exe' -ArgumentList '-D', ('\"' + $env:LOCALAPPDATA + '\Stockiha\r8-acceptance\data-55433\"'), '-p', '5433' -WindowStyle Hidden; Start-Sleep -Seconds 2; $ready = & 'C:\Program Files\PostgreSQL\18\bin\pg_isready.exe' -h 127.0.0.1 -p 5433 2>&1 }; if ($ready -notlike '*accepting connections*') { Write-Error 'PostgreSQL did not become ready on port 5433.'; exit 1 }"
+powershell -NoProfile -Command "$ready = & 'C:\Program Files\PostgreSQL\18\bin\pg_isready.exe' -h 127.0.0.1 -p 5433 2>&1; if ($ready -notlike '*accepting connections*') { $dataDir = (Get-ChildItem -Directory ($env:LOCALAPPDATA + '\Stockiha\r8-acceptance\data*') -ErrorAction SilentlyContinue | Select-Object -First 1).FullName; if (-not $dataDir) { $dataDir = $env:LOCALAPPDATA + '\Stockiha\r8-acceptance\data-5433' }; Start-Process -FilePath 'C:\Program Files\PostgreSQL\18\bin\postgres.exe' -ArgumentList '-D', ('\"' + $dataDir + '\"'), '-p', '5433' -WindowStyle Hidden; for ($i = 0; $i -lt 10; $i++) { Start-Sleep -Milliseconds 500; $ready = & 'C:\Program Files\PostgreSQL\18\bin\pg_isready.exe' -h 127.0.0.1 -p 5433 2>&1; if ($ready -like '*accepting connections*') { break } } }; if ($ready -notlike '*accepting connections*') { Write-Error 'PostgreSQL did not become ready on port 5433.'; exit 1 }"
 if errorlevel 1 (
     echo ERROR: PostgreSQL is not available on port 5433.
     exit /b 1

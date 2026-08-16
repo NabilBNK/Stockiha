@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   cancelPurchaseOrder,
+  confirmDirectPurchase,
   confirmPurchaseOrder,
   createPurchaseOrderDraft,
   getPurchaseOrderDetail,
@@ -10,8 +11,10 @@ import {
   listSuppliers,
   listUnits,
   listWarehouses,
+  newRequestId,
 } from '../../shared/ipc/gateway';
 import type {
+  ConfirmDirectPurchasePayload,
   ConfirmPurchaseReceiptResult,
   AllocateLandedCostResult,
   CreatePoLinePayload,
@@ -24,6 +27,7 @@ import type {
   Unit,
   Warehouse,
 } from '../../shared/ipc/dto';
+import { currentBusinessDate } from '../../shared/utils/businessDate';
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import PurchaseReceiptModal from './PurchaseReceiptModal';
@@ -58,6 +62,8 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
   const [landedCostResult, setLandedCostResult] = useState<AllocateLandedCostResult | null>(null);
 
   // Form state
+  const directRequestId = useRef<string | null>(null);
+  const [documentDate, setDocumentDate] = useState<string>(currentBusinessDate());
   const [supplierId, setSupplierId] = useState<number>(0);
   const [warehouseId, setWarehouseId] = useState<number>(0);
   const [note, setNote] = useState('');
@@ -126,6 +132,53 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
     return addExactDecimals(
       lines.map((l) => multiplyExactDecimals(l.quantity_ordered, l.unit_cost)),
     );
+  };
+
+  const handleConfirmDirectPurchase = async () => {
+    if (supplierId <= 0 || warehouseId <= 0 || lines.length === 0) {
+      setError('Please select a supplier, warehouse, and add at least one line.');
+      return;
+    }
+    for (const line of lines) {
+      const q = parseFloat(line.quantity_ordered);
+      const c = parseFloat(line.unit_cost);
+      if (isNaN(q) || q <= 0 || isNaN(c) || c < 0) {
+        setError('Quantity must be greater than 0 and unit cost must be at least 0.');
+        return;
+      }
+    }
+    if (!openFiscalPeriodId) {
+      setError(text.openPeriodRequired);
+      return;
+    }
+
+    try {
+      setError(null);
+      directRequestId.current ??= newRequestId();
+      const payload: ConfirmDirectPurchasePayload = {
+        request_id: directRequestId.current,
+        supplier_id: supplierId,
+        warehouse_id: warehouseId,
+        fiscal_period_id: openFiscalPeriodId,
+        document_date: documentDate,
+        note: note.trim() || null,
+        lines: lines.map((l) => ({
+          variant_id: l.variant_id,
+          unit_id: l.unit_id,
+          quantity_received: l.quantity_ordered,
+          unit_cost: l.unit_cost,
+        })),
+      };
+      const result = await confirmDirectPurchase(sessionToken, payload);
+      directRequestId.current = null;
+      setShowCreateForm(false);
+      setLines([]);
+      setNote('');
+      setSuccessBanner(`${text.purchaseConfirmed} ${result.document_number} (${result.total_amount} DZD)`);
+      await loadData();
+    } catch (err: unknown) {
+      setError(errorText(err));
+    }
   };
 
   const handleCreateOrder = async (e: React.FormEvent) => {
@@ -256,7 +309,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
 
       {showCreateForm && (
         <form className="sk-card sk-form" onSubmit={handleCreateOrder} data-testid="create-po-form">
-          <h2>{text.createPurchaseOrderDraft}</h2>
+          <h2>{text.newPurchase}</h2>
           <div className="sk-form-grid">
             <label>
               {text.supplier} *
@@ -288,6 +341,17 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label>
+              {text.date} *
+              <input
+                type="date"
+                value={documentDate}
+                onChange={(e) => setDocumentDate(e.target.value)}
+                required
+                data-testid="direct-purchase-date-input"
+              />
             </label>
 
             <label className="sk-grid-full">
@@ -397,7 +461,15 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
             >
               {t('common.cancel')}
             </button>
-            <button type="submit" className="sk-button sk-button--primary" data-testid="save-po-draft-btn">
+            <button
+              type="button"
+              className="sk-button sk-button--primary"
+              onClick={handleConfirmDirectPurchase}
+              data-testid="confirm-direct-purchase-btn"
+            >
+              {text.confirmPurchase}
+            </button>
+            <button type="submit" className="sk-button sk-button--secondary" data-testid="save-po-draft-btn">
               {text.saveDraft}
             </button>
           </div>
@@ -532,7 +604,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
                 {receipts.map((receipt) => (
                   <tr key={receipt.document_id}>
                     <td><strong>{receipt.document_number}</strong></td>
-                    <td>{receipt.purchase_order_number}</td>
+                    <td>{receipt.purchase_order_number ?? (receipt.receipt_origin === 'DIRECT_PURCHASE' ? 'Direct Purchase' : '—')}</td>
                     <td>{receipt.supplier_name}</td>
                     <td className="sk-num">{receipt.total_amount} DZD</td>
                     <td>{receipt.journal_document_number ?? receipt.journal_document_id ?? '—'}</td>

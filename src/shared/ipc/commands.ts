@@ -115,6 +115,7 @@ export const COMMANDS = {
   LIST_PURCHASE_ORDERS: 'list_purchase_orders',
   GET_PURCHASE_ORDER_DETAIL: 'get_purchase_order_detail',
   CONFIRM_PURCHASE_RECEIPT: 'confirm_purchase_receipt',
+  CONFIRM_DIRECT_PURCHASE: 'confirm_direct_purchase',
   LIST_PURCHASE_RECEIPTS: 'list_purchase_receipts',
   LIST_PURCHASE_RECEIPT_LINES: 'list_purchase_receipt_lines',
   GET_PROCUREMENT_CAPABILITIES: 'get_procurement_capabilities',

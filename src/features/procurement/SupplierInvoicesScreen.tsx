@@ -72,7 +72,9 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
   const selectedOrder = orders.find((order) => order.document_id === purchaseOrderId) ?? null;
   const invoiceableLines = useMemo(() => {
     return receiptLines.filter(
-      (line) => line.purchase_order_id === purchaseOrderId && isPositiveDecimal(line.quantity_available_to_invoice),
+      (line) =>
+        (purchaseOrderId === 0 || line.purchase_order_id === purchaseOrderId) &&
+        isPositiveDecimal(line.quantity_available_to_invoice),
     );
   }, [purchaseOrderId, receiptLines]);
   const selectedLine = invoiceableLines.find((line) => line.receipt_line_id === receiptLineId) ?? null;
@@ -80,7 +82,9 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
   function selectOrder(nextId: number) {
     setPurchaseOrderId(nextId);
     const first = receiptLines.find(
-      (line) => line.purchase_order_id === nextId && isPositiveDecimal(line.quantity_available_to_invoice),
+      (line) =>
+        (nextId === 0 || line.purchase_order_id === nextId) &&
+        isPositiveDecimal(line.quantity_available_to_invoice),
     );
     setReceiptLineId(first?.receipt_line_id ?? 0);
     setQuantity(first?.quantity_available_to_invoice ?? '1.000');
@@ -96,12 +100,16 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
 
   function openCreateForm() {
     setShowCreate(true);
-    if (orders[0]) selectOrder(orders[0].document_id);
+    if (orders[0]) {
+      selectOrder(orders[0].document_id);
+    } else if (receiptLines[0]) {
+      selectOrder(0);
+    }
   }
 
   async function createDraft(event: React.FormEvent) {
     event.preventDefault();
-    if (!selectedOrder || !selectedLine || !isPositiveDecimal(quantity) || !isPositiveDecimal(unitCost)) {
+    if (!selectedLine || !isPositiveDecimal(quantity) || !isPositiveDecimal(unitCost)) {
       setError(text.noInvoiceLines);
       return;
     }
@@ -113,14 +121,14 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
       setSubmitting(true);
       setError(null);
       const draft = await createSupplierInvoiceDraft(sessionToken, {
-        supplier_id: selectedOrder.supplier_id,
-        purchase_order_id: selectedOrder.document_id,
+        supplier_id: selectedLine.supplier_id,
+        purchase_order_id: selectedLine.purchase_order_id ?? (selectedOrder?.document_id || null),
         currency_code: 'DZD',
         exchange_rate_to_dzd: '1.000000',
         note: note.trim() || null,
         lines: [{
           line_number: 1,
-          po_line_id: selectedLine.po_line_id,
+          po_line_id: selectedLine.po_line_id ?? null,
           receipt_line_id: selectedLine.receipt_line_id,
           variant_id: selectedLine.variant_id,
           quantity,

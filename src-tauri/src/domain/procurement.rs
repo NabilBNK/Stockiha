@@ -104,11 +104,47 @@ pub struct ConfirmPurchaseReceiptPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmDirectPurchaseLinePayload {
+    pub variant_id: i64,
+    pub unit_id: i64,
+    pub quantity_received: String,
+    pub unit_cost: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmDirectPurchasePayload {
+    pub request_id: String,
+    pub supplier_id: i64,
+    pub warehouse_id: i64,
+    pub fiscal_period_id: i64,
+    pub document_date: String,
+    pub note: Option<String>,
+    pub lines: Vec<ConfirmDirectPurchaseLinePayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmDirectPurchaseResult {
+    pub document_id: i64,
+    pub document_number: String,
+    pub receipt_origin: Option<String>,
+    pub purchase_order_id: Option<i64>,
+    pub purchase_order_number: Option<String>,
+    pub supplier_id: i64,
+    pub warehouse_id: i64,
+    pub total_amount: String,
+    pub journal_document_id: Option<i64>,
+    pub journal_document_number: Option<String>,
+    pub order_status: String,
+    pub posted_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PurchaseReceiptSummary {
     pub document_id: i64,
     pub document_number: String,
-    pub purchase_order_id: i64,
-    pub purchase_order_number: String,
+    pub receipt_origin: Option<String>,
+    pub purchase_order_id: Option<i64>,
+    pub purchase_order_number: Option<String>,
     pub supplier_id: i64,
     pub supplier_name: String,
     pub warehouse_id: i64,
@@ -127,9 +163,10 @@ pub struct PurchaseReceiptLineDto {
     pub receipt_line_id: i64,
     pub receipt_document_id: i64,
     pub receipt_document_number: String,
-    pub purchase_order_id: i64,
-    pub purchase_order_number: String,
-    pub po_line_id: i64,
+    pub receipt_origin: Option<String>,
+    pub purchase_order_id: Option<i64>,
+    pub purchase_order_number: Option<String>,
+    pub po_line_id: Option<i64>,
     pub supplier_id: i64,
     pub supplier_name: String,
     pub warehouse_id: i64,
@@ -152,8 +189,9 @@ pub struct PurchaseReceiptLineDto {
 pub struct ConfirmPurchaseReceiptResult {
     pub document_id: i64,
     pub document_number: String,
-    pub purchase_order_id: i64,
-    pub purchase_order_number: String,
+    pub receipt_origin: Option<String>,
+    pub purchase_order_id: Option<i64>,
+    pub purchase_order_number: Option<String>,
     pub supplier_id: i64,
     pub warehouse_id: i64,
     pub total_amount: String,
@@ -208,7 +246,7 @@ pub struct CreateSupplierInvoicePayload {
 pub struct CreateSupplierInvoiceResult {
     pub document_id: i64,
     pub supplier_id: i64,
-    pub purchase_order_id: i64,
+    pub purchase_order_id: Option<i64>,
     pub status: String,
     pub subtotal: String,
     pub total_amount: String,

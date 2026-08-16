@@ -71,9 +71,12 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
   const returnableLines = useMemo(() => {
     const seen = new Set<number>();
     return receiptLines.filter((line) => {
-      if (line.purchase_order_id !== purchaseOrderId
-          || !isPositiveDecimal(line.quantity_returnable_for_variant)
-          || seen.has(line.variant_id)) return false;
+      if (
+        (purchaseOrderId !== 0 && line.purchase_order_id !== purchaseOrderId) ||
+        !isPositiveDecimal(line.quantity_returnable_for_variant) ||
+        seen.has(line.variant_id)
+      )
+        return false;
       seen.add(line.variant_id);
       return true;
     });
@@ -83,7 +86,9 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
   function selectOrder(nextId: number) {
     setPurchaseOrderId(nextId);
     const first = receiptLines.find(
-      (line) => line.purchase_order_id === nextId && isPositiveDecimal(line.quantity_returnable_for_variant),
+      (line) =>
+        (nextId === 0 || line.purchase_order_id === nextId) &&
+        isPositiveDecimal(line.quantity_returnable_for_variant),
     );
     setReceiptLineId(first?.receipt_line_id ?? 0);
     setQuantity(first ? '1.000' : '');
@@ -91,12 +96,16 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
 
   function openCreateForm() {
     setShowCreate(true);
-    if (orders[0]) selectOrder(orders[0].document_id);
+    if (orders[0]) {
+      selectOrder(orders[0].document_id);
+    } else if (receiptLines[0]) {
+      selectOrder(0);
+    }
   }
 
   async function createDraft(event: React.FormEvent) {
     event.preventDefault();
-    if (!selectedOrder || !selectedLine || !isPositiveDecimal(quantity)) {
+    if (!selectedLine || !isPositiveDecimal(quantity)) {
       setError(text.returnable);
       return;
     }
@@ -108,9 +117,9 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
       setSubmitting(true);
       setError(null);
       const draft = await createSupplierReturnDraft(sessionToken, {
-        supplier_id: selectedOrder.supplier_id,
-        warehouse_id: selectedOrder.warehouse_id,
-        purchase_order_id: selectedOrder.document_id,
+        supplier_id: selectedLine.supplier_id,
+        warehouse_id: selectedLine.warehouse_id,
+        purchase_order_id: selectedLine.purchase_order_id ?? (selectedOrder?.document_id || null),
         reason_code: reasonCode,
         note: note.trim() || null,
         lines: [{

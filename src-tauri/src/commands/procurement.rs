@@ -1,10 +1,11 @@
 use crate::application::procurement_service;
 use crate::domain::procurement::{
-    AllocateLandedCostResult, ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult,
-    ConfirmSupplierInvoiceResult, ConfirmSupplierReturnResult, CreatePurchaseOrderPayload,
-    CreateSupplierInvoiceResult, CreateSupplierReturnResult, PostSupplierPaymentResult,
-    ProcurementCapabilities, PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseReceiptLineDto,
-    PurchaseReceiptSummary, UpdatePurchaseOrderPayload,
+    AllocateLandedCostResult, ConfirmDirectPurchasePayload, ConfirmDirectPurchaseResult,
+    ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult, ConfirmSupplierInvoiceResult,
+    ConfirmSupplierReturnResult, CreatePurchaseOrderPayload, CreateSupplierInvoiceResult,
+    CreateSupplierReturnResult, PostSupplierPaymentResult, ProcurementCapabilities,
+    PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseReceiptLineDto, PurchaseReceiptSummary,
+    UpdatePurchaseOrderPayload,
 };
 use crate::domain::supplier::{CreateSupplierPayload, Supplier, UpdateSupplierPayload};
 use crate::error::IpcError;
@@ -129,6 +130,18 @@ pub(crate) async fn confirm_purchase_receipt(
 ) -> Result<ConfirmPurchaseReceiptResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     procurement_service::confirm_purchase_receipt(pool, &session_token, payload)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn confirm_direct_purchase(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    payload: ConfirmDirectPurchasePayload,
+) -> Result<ConfirmDirectPurchaseResult, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::confirm_direct_purchase(pool, &session_token, payload)
         .await
         .map_err(IpcError::from)
 }

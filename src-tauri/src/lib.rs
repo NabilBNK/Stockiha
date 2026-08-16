@@ -122,6 +122,7 @@ pub fn run() {
             commands::procurement::list_purchase_orders,
             commands::procurement::get_purchase_order_detail,
             commands::procurement::confirm_purchase_receipt,
+            commands::procurement::confirm_direct_purchase,
             commands::procurement::list_purchase_receipts,
             commands::procurement::list_purchase_receipt_lines,
             commands::procurement::get_procurement_capabilities,

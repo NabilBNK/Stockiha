@@ -238,8 +238,8 @@ describe('S3-001 Procurement Workflow', () => {
     render(<App />);
     await login();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Purchase Orders' }));
-    expect(await screen.findByRole('heading', { name: 'Purchase Orders' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
+    expect(await screen.findByRole('heading', { name: 'Purchases' })).toBeInTheDocument();
     expect(screen.getByText('PO-2026-000001')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('receive-po-10'));
@@ -308,7 +308,7 @@ describe('R8-E Procurement Acceptance Workflow', () => {
     await login();
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_procurement_capabilities', { sessionToken: 'tok' }));
     expect(screen.queryByRole('button', { name: 'Suppliers' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Purchase Orders' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Purchases' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Supplier Invoices' })).not.toBeInTheDocument();
   });
 
@@ -371,7 +371,7 @@ describe('R8-E Procurement Acceptance Workflow', () => {
     }));
     render(<App />);
     await login();
-    fireEvent.click(await screen.findByRole('button', { name: 'Purchase Orders' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
     await screen.findByTestId('purchase-receipts-table');
     fireEvent.click(screen.getByTestId('allocate-landed-cost-200'));
     fireEvent.change(screen.getByTestId('landed-cost-amount'), { target: { value: '100.00' } });

@@ -31,6 +31,8 @@ import type {
   StockAdjustmentResult,
   StockAdjustmentUnit,
   StockReceiptResult,
+  ConfirmDirectPurchasePayload,
+  ConfirmDirectPurchaseResult,
   ConfirmPurchaseReceiptPayload,
   ConfirmPurchaseReceiptResult,
   CreatePurchaseOrderPayload,
@@ -391,6 +393,13 @@ export function confirmPurchaseReceipt(
   payload: ConfirmPurchaseReceiptPayload
 ): Promise<ConfirmPurchaseReceiptResult> {
   return call<ConfirmPurchaseReceiptResult>(COMMANDS.CONFIRM_PURCHASE_RECEIPT, { sessionToken, payload });
+}
+
+export function confirmDirectPurchase(
+  sessionToken: string,
+  payload: ConfirmDirectPurchasePayload
+): Promise<ConfirmDirectPurchaseResult> {
+  return call<ConfirmDirectPurchaseResult>(COMMANDS.CONFIRM_DIRECT_PURCHASE, { sessionToken, payload });
 }
 
 export function listPurchaseReceipts(
