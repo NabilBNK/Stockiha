@@ -5,59 +5,49 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
-import { postPurchaseTransaction } from '../src/shared/ipc/gateway';
-import type { PostPurchaseTransactionPayload, PostPurchaseTransactionResult } from '../src/shared/ipc/dto';
+import { confirmDirectPurchase } from '../src/shared/ipc/directPurchaseGateway';
+import type {
+  ConfirmDirectPurchasePayload,
+  ConfirmDirectPurchaseResult,
+} from '../src/shared/ipc/directPurchaseDto';
 
-const STORAGE_KEY = 'stockiha.pendingPurchaseTransaction';
+const STORAGE_KEY = 'stockiha.pendingDirectPurchase';
 
-const result: PostPurchaseTransactionResult = {
-  document_id: 900,
-  document_number: 'PUR-2026-000001',
-  status: 'POSTED',
+const result: ConfirmDirectPurchaseResult = {
+  document_id: 901,
+  document_number: 'PR-2026-000001',
+  receipt_origin: 'DIRECT_PURCHASE',
+  purchase_order_id: null,
+  purchase_order_number: null,
   supplier_id: 1,
-  warehouse_id: 1,
-  gross_subtotal: '1000.00',
-  discount_amount: '0.00',
-  tax_amount: '0.00',
+  warehouse_id: 2,
   total_amount: '1000.00',
-  payment_status: 'UNPAID',
-  payment_method: null,
-  paid_amount: '0.00',
-  outstanding_amount: '1000.00',
-  child_documents: {
-    purchase_order_id: null,
-    goods_receipt_id: 901,
-    supplier_invoice_id: 902,
-    supplier_payment_id: null,
-  },
-  generation_status: 'QUEUED',
-  print_status: 'QUEUED',
+  journal_document_id: 902,
+  journal_document_number: 'JE-2026-000001',
+  order_status: null,
+  posted_at: '2026-08-16T12:00:00Z',
 };
 
-function payload(requestId: string, unitCost = '100.00'): PostPurchaseTransactionPayload {
+function payload(requestId: string, unitCost = '100.00'): ConfirmDirectPurchasePayload {
   return {
     request_id: requestId,
     supplier_id: 1,
+    warehouse_id: 2,
+    fiscal_period_id: 3,
     document_date: '2026-08-16',
-    external_supplier_document_number: null,
-    payment_status: 'UNPAID',
-    payment_method: null,
-    paid_amount: null,
-    print_after_confirmation: false,
     note: null,
     lines: [{
       variant_id: 7,
       unit_id: 1,
-      quantity: '10',
+      quantity_received: '10',
       unit_cost: unitCost,
     }],
-    additional_costs: null,
   };
 }
 
 function sentRequestId(callIndex: number): string {
   const args = invokeMock.mock.calls[callIndex][1] as {
-    payload: PostPurchaseTransactionPayload;
+    payload: ConfirmDirectPurchasePayload;
   };
   return args.payload.request_id;
 }
@@ -72,21 +62,22 @@ describe('Direct Purchase gateway idempotency', () => {
     invokeMock
       .mockRejectedValueOnce({ code: 'INTERNAL_ERROR' })
       .mockResolvedValueOnce(result)
-      .mockResolvedValueOnce({ ...result, document_id: 910, document_number: 'PUR-2026-000002' });
+      .mockResolvedValueOnce({ ...result, document_id: 910, document_number: 'PR-2026-000002' });
 
-    await expect(postPurchaseTransaction('tok', payload('request-A'))).rejects.toBeDefined();
+    await expect(confirmDirectPurchase('tok', payload('request-A'))).rejects.toBeDefined();
 
-    // The UI can generate a new candidate id on the retry; the gateway must
-    // retain the original identity for the unchanged, outcome-unknown intent.
-    await expect(postPurchaseTransaction('tok', payload('request-B'))).resolves.toEqual(result);
+    // The UI may create a fresh candidate request id on retry. The gateway must
+    // keep the original id for the unchanged outcome-unknown purchase intent.
+    await expect(confirmDirectPurchase('tok', payload('request-B'))).resolves.toEqual(result);
 
+    expect(invokeMock.mock.calls[0][0]).toBe('confirm_direct_purchase');
     expect(sentRequestId(0)).toBe('request-A');
     expect(sentRequestId(1)).toBe('request-A');
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
 
-    // Once success is confirmed, a deliberate new purchase with identical
-    // business values is a new transaction and must use its new request id.
-    await postPurchaseTransaction('tok', payload('request-C'));
+    // A confirmed success ends the idempotency retry window. A deliberate new
+    // purchase with identical values therefore uses its new request id.
+    await confirmDirectPurchase('tok', payload('request-C'));
     expect(sentRequestId(2)).toBe('request-C');
   });
 
@@ -95,8 +86,8 @@ describe('Direct Purchase gateway idempotency', () => {
       .mockRejectedValueOnce({ code: 'INTERNAL_ERROR' })
       .mockResolvedValueOnce(result);
 
-    await expect(postPurchaseTransaction('tok', payload('request-A', '100.00'))).rejects.toBeDefined();
-    await postPurchaseTransaction('tok', payload('request-B', '110.00'));
+    await expect(confirmDirectPurchase('tok', payload('request-A', '100.00'))).rejects.toBeDefined();
+    await confirmDirectPurchase('tok', payload('request-B', '110.00'));
 
     expect(sentRequestId(0)).toBe('request-A');
     expect(sentRequestId(1)).toBe('request-B');
