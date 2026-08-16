@@ -63,6 +63,51 @@ function Invoke-PsqlCommand(
     }
 }
 
+function Get-MetadataPrivilegeSnapshot(
+    [string]$PsqlPath,
+    [string]$DatabaseUrl,
+    [string]$Role
+) {
+    return Invoke-PsqlScalar `
+        -PsqlPath $PsqlPath `
+        -DatabaseUrl $DatabaseUrl `
+        -Sql "SELECT (has_table_privilege('$Role', 'public._sqlx_migrations', 'SELECT')::int)::text || ':' || (has_table_privilege('$Role', 'public._sqlx_migrations', 'INSERT')::int)::text || ':' || (has_table_privilege('$Role', 'public._sqlx_migrations', 'UPDATE')::int)::text;" `
+        -FailureMessage "Could not inspect SQLx metadata privileges for $Role."
+}
+
+function Restore-MetadataPrivilegeSnapshot(
+    [string]$PsqlPath,
+    [string]$DatabaseUrl,
+    [string]$Role,
+    [string]$Snapshot
+) {
+    $parts = $Snapshot.Split(':')
+    if ($parts.Count -ne 3) {
+        Fail "Invalid SQLx metadata privilege snapshot for $Role: $Snapshot"
+    }
+
+    $privileges = @('SELECT', 'INSERT', 'UPDATE')
+    for ($index = 0; $index -lt $privileges.Count; $index++) {
+        if ($parts[$index] -eq '0') {
+            $privilege = $privileges[$index]
+            Invoke-PsqlCommand `
+                -PsqlPath $PsqlPath `
+                -DatabaseUrl $DatabaseUrl `
+                -Sql "REVOKE $privilege ON TABLE public._sqlx_migrations FROM $Role;" `
+                -FailureMessage "Could not restore the SQLx metadata $privilege privilege for $Role."
+        }
+    }
+
+    $restored = Get-MetadataPrivilegeSnapshot `
+        -PsqlPath $PsqlPath `
+        -DatabaseUrl $DatabaseUrl `
+        -Role $Role
+
+    if ($restored -ne $Snapshot) {
+        Fail "SQLx metadata privileges for $Role were not restored (before $Snapshot, after $restored)."
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $migrationsPath = Join-Path $repoRoot 'src-tauri\migrations'
 if (-not (Test-Path -LiteralPath $migrationsPath)) {
@@ -117,7 +162,7 @@ Configure one of:
   STOCKIHA_ADMIN_PW
   $localSecretRoot\admin.key
 
-The administrator credential is used only to grant and then revoke the narrow migration metadata privileges required by the existing Stockiha database.
+The administrator credential is used only to grant and restore the narrow migration metadata privileges required by the existing Stockiha database.
 "@
 }
 
@@ -162,8 +207,8 @@ if ($sqlxVersion -notmatch '0\.8\.') {
 }
 
 $oldDatabaseUrl = $env:DATABASE_URL
-$metadataBridgeGranted = $false
-$procurementUsageGranted = $false
+$metadataSnapshots = @{}
+$procurementUsageSnapshot = $null
 
 try {
     $metadataTableExists = Invoke-PsqlScalar `
@@ -173,12 +218,19 @@ try {
         -FailureMessage 'Could not inspect SQLx migration metadata.'
 
     if ($metadataTableExists -eq '1') {
-        Invoke-PsqlCommand `
-            -PsqlPath $psqlPath `
-            -DatabaseUrl $adminUrl `
-            -Sql 'GRANT SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations TO stockiha_owner;' `
-            -FailureMessage 'Could not grant the temporary SQLx metadata bridge to stockiha_owner.'
-        $metadataBridgeGranted = $true
+        foreach ($role in @('stockiha_migrator', 'stockiha_owner')) {
+            $snapshot = Get-MetadataPrivilegeSnapshot `
+                -PsqlPath $psqlPath `
+                -DatabaseUrl $adminUrl `
+                -Role $role
+            $metadataSnapshots[$role] = $snapshot
+
+            Invoke-PsqlCommand `
+                -PsqlPath $psqlPath `
+                -DatabaseUrl $adminUrl `
+                -Sql "GRANT SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations TO $role;" `
+                -FailureMessage "Could not grant the temporary SQLx metadata bridge to $role."
+        }
     }
 
     $procurementSchemaExists = Invoke-PsqlScalar `
@@ -188,12 +240,19 @@ try {
         -FailureMessage 'Could not inspect the procurement schema.'
 
     if ($procurementSchemaExists -eq '1') {
-        Invoke-PsqlCommand `
+        $procurementUsageSnapshot = Invoke-PsqlScalar `
             -PsqlPath $psqlPath `
             -DatabaseUrl $adminUrl `
-            -Sql 'GRANT USAGE ON SCHEMA procurement TO stockiha_migrator;' `
-            -FailureMessage 'Could not grant temporary procurement schema usage to stockiha_migrator.'
-        $procurementUsageGranted = $true
+            -Sql "SELECT (has_schema_privilege('stockiha_migrator', 'procurement', 'USAGE')::int)::text;" `
+            -FailureMessage 'Could not inspect procurement schema usage for stockiha_migrator.'
+
+        if ($procurementUsageSnapshot -eq '0') {
+            Invoke-PsqlCommand `
+                -PsqlPath $psqlPath `
+                -DatabaseUrl $adminUrl `
+                -Sql 'GRANT USAGE ON SCHEMA procurement TO stockiha_migrator;' `
+                -FailureMessage 'Could not grant temporary procurement schema usage to stockiha_migrator.'
+        }
     }
 
     $env:DATABASE_URL = $migrationUrl
@@ -213,39 +272,31 @@ try {
 finally {
     $env:DATABASE_URL = $oldDatabaseUrl
 
-    if ($metadataBridgeGranted) {
-        Invoke-PsqlCommand `
-            -PsqlPath $psqlPath `
-            -DatabaseUrl $adminUrl `
-            -Sql 'REVOKE SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations FROM stockiha_owner;' `
-            -FailureMessage 'Could not revoke the temporary SQLx metadata bridge from stockiha_owner.'
-
-        $residualMetadataAcl = Invoke-PsqlScalar `
-            -PsqlPath $psqlPath `
-            -DatabaseUrl $adminUrl `
-            -Sql "SELECT (has_table_privilege('stockiha_owner', 'public._sqlx_migrations', 'SELECT')::int)::text || ':' || (has_table_privilege('stockiha_owner', 'public._sqlx_migrations', 'INSERT')::int)::text || ':' || (has_table_privilege('stockiha_owner', 'public._sqlx_migrations', 'UPDATE')::int)::text;" `
-            -FailureMessage 'Could not verify revocation of temporary SQLx metadata privileges.'
-
-        if ($residualMetadataAcl -ne '0:0:0') {
-            Fail "Temporary SQLx metadata privileges were not fully revoked (detected $residualMetadataAcl, expected 0:0:0)."
+    foreach ($role in @('stockiha_migrator', 'stockiha_owner')) {
+        if ($metadataSnapshots.ContainsKey($role)) {
+            Restore-MetadataPrivilegeSnapshot `
+                -PsqlPath $psqlPath `
+                -DatabaseUrl $adminUrl `
+                -Role $role `
+                -Snapshot $metadataSnapshots[$role]
         }
     }
 
-    if ($procurementUsageGranted) {
+    if ($null -ne $procurementUsageSnapshot -and $procurementUsageSnapshot -eq '0') {
         Invoke-PsqlCommand `
             -PsqlPath $psqlPath `
             -DatabaseUrl $adminUrl `
             -Sql 'REVOKE USAGE ON SCHEMA procurement FROM stockiha_migrator;' `
-            -FailureMessage 'Could not revoke temporary procurement schema usage from stockiha_migrator.'
+            -FailureMessage 'Could not restore procurement schema usage for stockiha_migrator.'
 
-        $residualSchemaAcl = Invoke-PsqlScalar `
+        $restoredSchemaUsage = Invoke-PsqlScalar `
             -PsqlPath $psqlPath `
             -DatabaseUrl $adminUrl `
             -Sql "SELECT (has_schema_privilege('stockiha_migrator', 'procurement', 'USAGE')::int)::text;" `
-            -FailureMessage 'Could not verify revocation of temporary procurement schema usage.'
+            -FailureMessage 'Could not verify restoration of procurement schema usage.'
 
-        if ($residualSchemaAcl -ne '0') {
-            Fail "Temporary procurement schema usage was not fully revoked (detected $residualSchemaAcl, expected 0)."
+        if ($restoredSchemaUsage -ne '0') {
+            Fail "Temporary procurement schema usage was not restored (expected 0, found $restoredSchemaUsage)."
         }
     }
 }
