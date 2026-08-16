@@ -26,9 +26,39 @@ interface Props {
   capabilities: ProcurementCapabilities | null;
 }
 
+type InvoiceSource = {
+  key: string;
+  supplierId: number;
+  purchaseOrderId: number | null;
+  receiptDocumentId: number | null;
+  label: string;
+};
+
+const SOURCE_COPY = {
+  en: {
+    source: 'Purchase source',
+    direct: 'Direct purchase receipt',
+    po: 'Purchase order receipt',
+    none: 'No invoiceable purchase receipts are available.',
+  },
+  fr: {
+    source: 'Source d’achat',
+    direct: 'Réception d’achat direct',
+    po: 'Réception de commande fournisseur',
+    none: 'Aucune réception d’achat facturable n’est disponible.',
+  },
+  ar: {
+    source: 'مصدر الشراء',
+    direct: 'وصل شراء مباشر',
+    po: 'وصل طلب شراء',
+    none: 'لا توجد وصولات شراء قابلة للفوترة.',
+  },
+} as const;
+
 export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capabilities }: Props) {
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
+  const sourceText = SOURCE_COPY[locale];
   const errorText = useErrorText();
   const [invoices, setInvoices] = useState<SupplierInvoiceSummary[]>([]);
   const [orders, setOrders] = useState<PurchaseOrderSummary[]>([]);
@@ -38,7 +68,7 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
   const [success, setSuccess] = useState<string | null>(null);
   const [postingResult, setPostingResult] = useState<ConfirmSupplierInvoiceResult | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [purchaseOrderId, setPurchaseOrderId] = useState(0);
+  const [sourceKey, setSourceKey] = useState('');
   const [receiptLineId, setReceiptLineId] = useState(0);
   const [quantity, setQuantity] = useState('1.000');
   const [unitCost, setUnitCost] = useState('0.00');
@@ -69,19 +99,73 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
     void loadData();
   }, [loadData]);
 
-  const selectedOrder = orders.find((order) => order.document_id === purchaseOrderId) ?? null;
+  const invoiceSources = useMemo<InvoiceSource[]>(() => {
+    const sources: InvoiceSource[] = [];
+
+    for (const order of orders) {
+      const hasInvoiceableReceipt = receiptLines.some(
+        (line) => line.purchase_order_id === order.document_id && isPositiveDecimal(line.quantity_available_to_invoice),
+      );
+      if (!hasInvoiceableReceipt) continue;
+      sources.push({
+        key: `PO:${order.document_id}`,
+        supplierId: order.supplier_id,
+        purchaseOrderId: order.document_id,
+        receiptDocumentId: null,
+        label: `${sourceText.po} · ${order.document_number ?? `#${order.document_id}`} · ${order.supplier_name}`,
+      });
+    }
+
+    const seenDirectReceipts = new Set<number>();
+    for (const line of receiptLines) {
+      if (
+        line.receipt_origin !== 'DIRECT_PURCHASE'
+        || line.purchase_order_id !== null
+        || !isPositiveDecimal(line.quantity_available_to_invoice)
+        || seenDirectReceipts.has(line.receipt_document_id)
+      ) {
+        continue;
+      }
+      seenDirectReceipts.add(line.receipt_document_id);
+      sources.push({
+        key: `PR:${line.receipt_document_id}`,
+        supplierId: line.supplier_id,
+        purchaseOrderId: null,
+        receiptDocumentId: line.receipt_document_id,
+        label: `${sourceText.direct} · ${line.receipt_document_number} · ${line.supplier_name}`,
+      });
+    }
+
+    return sources;
+  }, [orders, receiptLines, sourceText.direct, sourceText.po]);
+
+  const selectedSource = invoiceSources.find((source) => source.key === sourceKey) ?? null;
   const invoiceableLines = useMemo(() => {
-    return receiptLines.filter(
-      (line) => line.purchase_order_id === purchaseOrderId && isPositiveDecimal(line.quantity_available_to_invoice),
-    );
-  }, [purchaseOrderId, receiptLines]);
+    if (!selectedSource) return [];
+    return receiptLines.filter((line) => {
+      if (!isPositiveDecimal(line.quantity_available_to_invoice)) return false;
+      if (selectedSource.purchaseOrderId !== null) {
+        return line.purchase_order_id === selectedSource.purchaseOrderId;
+      }
+      return line.receipt_origin === 'DIRECT_PURCHASE'
+        && line.purchase_order_id === null
+        && line.receipt_document_id === selectedSource.receiptDocumentId;
+    });
+  }, [receiptLines, selectedSource]);
   const selectedLine = invoiceableLines.find((line) => line.receipt_line_id === receiptLineId) ?? null;
 
-  function selectOrder(nextId: number) {
-    setPurchaseOrderId(nextId);
-    const first = receiptLines.find(
-      (line) => line.purchase_order_id === nextId && isPositiveDecimal(line.quantity_available_to_invoice),
-    );
+  function selectSource(nextKey: string) {
+    setSourceKey(nextKey);
+    const source = invoiceSources.find((item) => item.key === nextKey) ?? null;
+    const first = source
+      ? receiptLines.find((line) => {
+          if (!isPositiveDecimal(line.quantity_available_to_invoice)) return false;
+          if (source.purchaseOrderId !== null) return line.purchase_order_id === source.purchaseOrderId;
+          return line.receipt_origin === 'DIRECT_PURCHASE'
+            && line.purchase_order_id === null
+            && line.receipt_document_id === source.receiptDocumentId;
+        })
+      : null;
     setReceiptLineId(first?.receipt_line_id ?? 0);
     setQuantity(first?.quantity_available_to_invoice ?? '1.000');
     setUnitCost(first?.unit_cost ?? '0.00');
@@ -96,12 +180,12 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
 
   function openCreateForm() {
     setShowCreate(true);
-    if (orders[0]) selectOrder(orders[0].document_id);
+    if (invoiceSources[0]) selectSource(invoiceSources[0].key);
   }
 
   async function createDraft(event: React.FormEvent) {
     event.preventDefault();
-    if (!selectedOrder || !selectedLine || !isPositiveDecimal(quantity) || !isPositiveDecimal(unitCost)) {
+    if (!selectedSource || !selectedLine || !isPositiveDecimal(quantity) || !isPositiveDecimal(unitCost)) {
       setError(text.noInvoiceLines);
       return;
     }
@@ -113,8 +197,8 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
       setSubmitting(true);
       setError(null);
       const draft = await createSupplierInvoiceDraft(sessionToken, {
-        supplier_id: selectedOrder.supplier_id,
-        purchase_order_id: selectedOrder.document_id,
+        supplier_id: selectedLine.supplier_id,
+        purchase_order_id: selectedSource.purchaseOrderId,
         currency_code: 'DZD',
         exchange_rate_to_dzd: '1.000000',
         note: note.trim() || null,
@@ -130,6 +214,8 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
       setSuccess(`${text.invoiceDraftCreated} #${draft.document_id}`);
       setShowCreate(false);
       setNote('');
+      setSourceKey('');
+      setReceiptLineId(0);
       await loadData();
     } catch (caught: unknown) {
       setError(errorText(caught));
@@ -197,14 +283,14 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
         <div className="sk-table-wrap">
           <table className="sk-table" data-testid="supplier-invoices-table">
             <thead><tr>
-              <th>{text.document}</th><th>{text.supplier}</th><th>{text.purchaseOrder}</th><th>{text.total}</th>
+              <th>{text.document}</th><th>{text.supplier}</th><th>{sourceText.source}</th><th>{text.total}</th>
               <th>{text.status}</th><th>{text.journal}</th><th>{text.outstanding}</th><th>{text.actions}</th>
             </tr></thead>
             <tbody>{invoices.map((invoice) => (
               <tr key={invoice.document_id}>
                 <td><strong>{invoice.document_number ?? `#${invoice.document_id}`}</strong></td>
                 <td>{invoice.supplier_name}</td>
-                <td>{invoice.purchase_order_number ?? '—'}</td>
+                <td>{invoice.purchase_order_number ?? sourceText.direct}</td>
                 <td className="sk-num">{invoice.base_total_amount} DZD</td>
                 <td><span className={`sk-badge ${invoice.status === 'POSTED' ? 'sk-badge--success' : 'sk-badge--warning'}`}>{invoice.status}</span></td>
                 <td>{invoice.journal_document_number ?? invoice.journal_document_id ?? '—'}</td>
@@ -225,25 +311,28 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
           <div className="sk-modal-content sk-modal-content--large">
             <header className="sk-modal-header"><h2>{text.createInvoice}</h2><button type="button" className="sk-modal-close" onClick={() => setShowCreate(false)} aria-label={text.close}>×</button></header>
             <form className="sk-form" onSubmit={createDraft}>
-              <label>{text.purchaseOrder}
-                <select value={purchaseOrderId} onChange={(event) => selectOrder(Number(event.target.value))} required data-testid="invoice-po-select">
-                  {orders.map((order) => <option key={order.document_id} value={order.document_id}>{order.document_number} · {order.supplier_name}</option>)}
-                </select>
-              </label>
-              {invoiceableLines.length === 0 ? <div className="sk-banner sk-banner--warning">{text.noInvoiceLines}</div> : (
+              {invoiceSources.length === 0 ? <div className="sk-banner sk-banner--warning">{sourceText.none}</div> : (
+                <label>{sourceText.source}
+                  <select value={sourceKey} onChange={(event) => selectSource(event.target.value)} required data-testid="invoice-source-select">
+                    {invoiceSources.map((source) => <option key={source.key} value={source.key}>{source.label}</option>)}
+                  </select>
+                </label>
+              )}
+              {invoiceSources.length > 0 && invoiceableLines.length === 0 ? <div className="sk-banner sk-banner--warning">{text.noInvoiceLines}</div> : null}
+              {invoiceableLines.length > 0 ? (
                 <>
                   <label>{text.product}
                     <select value={receiptLineId} onChange={(event) => selectLine(Number(event.target.value))} required data-testid="invoice-receipt-line">
-                      {invoiceableLines.map((line) => <option key={line.receipt_line_id} value={line.receipt_line_id}>{line.variant_sku} · {line.variant_name} ({line.quantity_available_to_invoice} {line.unit_code})</option>)}
+                      {invoiceableLines.map((line) => <option key={line.receipt_line_id} value={line.receipt_line_id}>{line.receipt_document_number} · {line.variant_sku} · {line.variant_name} ({line.quantity_available_to_invoice} {line.unit_code})</option>)}
                     </select>
                   </label>
                   {selectedLine ? <p className="sk-muted">{text.availableToInvoice}: {selectedLine.quantity_available_to_invoice} {selectedLine.unit_code}</p> : null}
                   <label>{text.quantity}<input value={quantity} inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} required data-testid="invoice-quantity" /></label>
                   <label>{text.unitCost}<input value={unitCost} inputMode="decimal" onChange={(event) => setUnitCost(event.target.value)} required data-testid="invoice-unit-cost" /></label>
                 </>
-              )}
+              ) : null}
               <label>{text.note}<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
-              <div className="sk-form-actions"><button type="button" className="sk-button sk-button--secondary" onClick={() => setShowCreate(false)}>{text.cancel}</button><button type="submit" className="sk-button sk-button--primary" disabled={submitting || invoiceableLines.length === 0} data-testid="save-invoice-draft">{submitting ? text.processing : text.createInvoice}</button></div>
+              <div className="sk-form-actions"><button type="button" className="sk-button sk-button--secondary" onClick={() => setShowCreate(false)}>{text.cancel}</button><button type="submit" className="sk-button sk-button--primary" disabled={submitting || !selectedSource || invoiceableLines.length === 0} data-testid="save-invoice-draft">{submitting ? text.processing : text.createInvoice}</button></div>
             </form>
           </div>
         </div>
