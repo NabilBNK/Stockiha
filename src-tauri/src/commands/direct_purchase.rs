@@ -1,5 +1,7 @@
 use crate::application::direct_purchase;
-use crate::domain::direct_purchase::{ConfirmDirectPurchasePayload, ConfirmDirectPurchaseResult};
+use crate::domain::direct_purchase::{
+    ConfirmDirectPurchasePayload, ConfirmDirectPurchaseResult,
+};
 use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
 use tauri::State;
