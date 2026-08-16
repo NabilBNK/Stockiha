@@ -31,7 +31,6 @@ import { HistoricalFinanceScreen } from '../features/onboarding/HistoricalFinanc
 import { OpeningStateScreen } from '../features/onboarding/OpeningStateScreen';
 import { OpeningStateApplicationScreen } from '../features/onboarding/OpeningStateApplicationScreen';
 import { DrawerPolicySettingsScreen } from '../features/settings/DrawerPolicySettingsScreen';
-import { PurchaseWorkflowSettingsScreen } from '../features/settings/PurchaseWorkflowSettingsScreen';
 import { RecoverySettingsScreen } from '../features/settings/RecoverySettingsScreen';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
 import PurchasesScreen from '../features/procurement/PurchasesScreen';
@@ -319,7 +318,6 @@ function AuthenticatedApp() {
               </Button>
             </section>
           ) : null}
-          <PurchaseWorkflowSettingsScreen sessionToken={user?.token ?? ''} />
           <DrawerPolicySettingsScreen sessionToken={user?.token ?? ''} />
           <RecoverySettingsScreen sessionToken={user?.token ?? ''} />
         </>
@@ -335,11 +333,7 @@ function AuthenticatedApp() {
       {view === 'customers' && <CustomersScreen sessionToken={user?.token ?? ''} />}
       {view === 'suppliers' && <SuppliersScreen sessionToken={user?.token ?? ''} />}
       {view === 'purchase_orders' && procurementCapabilities && (
-        <PurchasesScreen
-          sessionToken={user?.token ?? ''}
-          capabilities={procurementCapabilities}
-          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
-        />
+        <PurchasesScreen sessionToken={user?.token ?? ''} />
       )}
       {view === 'supplier_invoices' && (
         <SupplierInvoicesScreen
