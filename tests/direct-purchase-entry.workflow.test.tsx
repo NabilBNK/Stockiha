@@ -84,9 +84,14 @@ describe('Direct Purchase entry', () => {
     expect(screen.queryByText(/receive goods/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/purchase order/i)).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Supplier'), { target: { value: '7' } });
-    fireEvent.change(screen.getByLabelText('Product / variant'), { target: { value: '11' } });
-    fireEvent.change(screen.getByLabelText('Quantity received'), { target: { value: '10' } });
+    const comboboxes = screen.getAllByRole('combobox');
+    expect(comboboxes).toHaveLength(3);
+    fireEvent.change(comboboxes[0], { target: { value: '7' } });
+    fireEvent.change(comboboxes[2], { target: { value: '11' } });
+
+    const numericInputs = screen.getAllByRole('spinbutton');
+    expect(numericInputs).toHaveLength(2);
+    fireEvent.change(numericInputs[0], { target: { value: '10' } });
 
     const confirmButton = screen.getByRole('button', { name: 'Confirm Purchase' });
     expect(confirmButton).toBeEnabled();
