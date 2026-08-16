@@ -77,7 +77,8 @@ type PendingPurchaseRequest = {
 let pendingPurchaseFallback: PendingPurchaseRequest | null = null;
 
 function purchaseIntentFingerprint(payload: import('./dto').PostPurchaseTransactionPayload): string {
-  const { request_id: _requestId, ...intent } = payload;
+  const intent: Partial<import('./dto').PostPurchaseTransactionPayload> = { ...payload };
+  delete intent.request_id;
   return JSON.stringify(intent);
 }
 
@@ -583,19 +584,12 @@ export async function postPurchaseTransaction(
 
   writePendingPurchaseRequest(pending);
 
-  try {
-    const result = await call<import('./dto').PostPurchaseTransactionResult>(COMMANDS.POST_PURCHASE_TRANSACTION, {
-      sessionToken,
-      payload: { ...payload, request_id: pending.requestId },
-    });
-    clearPendingPurchaseRequest(pending);
-    return result;
-  } catch (error) {
-    // Keep the request identity when the outcome is unknown. Re-submitting the
-    // unchanged purchase will therefore hit backend idempotency instead of
-    // creating a second receipt, movement, journal, invoice, or payment.
-    throw error;
-  }
+  const result = await call<import('./dto').PostPurchaseTransactionResult>(COMMANDS.POST_PURCHASE_TRANSACTION, {
+    sessionToken,
+    payload: { ...payload, request_id: pending.requestId },
+  });
+  clearPendingPurchaseRequest(pending);
+  return result;
 }
 
 export function listJournals(
