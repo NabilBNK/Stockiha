@@ -107,8 +107,9 @@ pub struct ConfirmPurchaseReceiptPayload {
 pub struct PurchaseReceiptSummary {
     pub document_id: i64,
     pub document_number: String,
-    pub purchase_order_id: i64,
-    pub purchase_order_number: String,
+    pub receipt_origin: String,
+    pub purchase_order_id: Option<i64>,
+    pub purchase_order_number: Option<String>,
     pub supplier_id: i64,
     pub supplier_name: String,
     pub warehouse_id: i64,
@@ -209,7 +210,7 @@ pub struct CreateSupplierInvoicePayload {
 pub struct CreateSupplierInvoiceResult {
     pub document_id: i64,
     pub supplier_id: i64,
-    pub purchase_order_id: i64,
+    pub purchase_order_id: Option<i64>,
     pub status: String,
     pub subtotal: String,
     pub total_amount: String,
@@ -443,8 +444,11 @@ impl AllocateLandedCostPayload {
 
 impl CreateSupplierInvoicePayload {
     pub fn validate(&self) -> Result<(), String> {
-        if self.supplier_id <= 0 || self.purchase_order_id.unwrap_or_default() <= 0 {
-            return Err("Supplier and purchase order are required.".to_string());
+        if self.supplier_id <= 0 {
+            return Err("Supplier is required.".to_string());
+        }
+        if matches!(self.purchase_order_id, Some(id) if id <= 0) {
+            return Err("Purchase order reference is invalid.".to_string());
         }
         if self.lines.is_empty() {
             return Err("Supplier invoice requires at least one receipt line.".to_string());
@@ -453,11 +457,17 @@ impl CreateSupplierInvoicePayload {
             return Err("Only DZD supplier invoices are enabled for the MVP.".to_string());
         }
         if let Some(rate) = self.exchange_rate_to_dzd.as_deref() {
-            positive_decimal(rate, "exchange rate")?;
+            let parsed = positive_decimal(rate, "exchange rate")?;
+            if parsed != Decimal::ONE {
+                return Err("DZD supplier invoice exchange rate must be 1.000000.".to_string());
+            }
         }
+
+        let is_purchase_order_invoice = self.purchase_order_id.is_some();
         for (index, line) in self.lines.iter().enumerate() {
+            let invalid_optional_po_line = matches!(line.po_line_id, Some(id) if id <= 0);
             if line.line_number <= 0
-                || line.po_line_id.unwrap_or_default() <= 0
+                || invalid_optional_po_line
                 || line.receipt_line_id.unwrap_or_default() <= 0
                 || line.variant_id <= 0
             {
@@ -466,6 +476,20 @@ impl CreateSupplierInvoicePayload {
                     index + 1
                 ));
             }
+
+            if is_purchase_order_invoice && line.po_line_id.is_none() {
+                return Err(format!(
+                    "Invoice line {} requires a Purchase Order line reference.",
+                    index + 1
+                ));
+            }
+            if !is_purchase_order_invoice && line.po_line_id.is_some() {
+                return Err(format!(
+                    "Direct Purchase invoice line {} must not contain a Purchase Order line reference.",
+                    index + 1
+                ));
+            }
+
             positive_decimal(&line.quantity, "invoice quantity")?;
             non_negative_decimal(&line.unit_cost, "invoice unit cost")?;
         }
@@ -749,6 +773,36 @@ mod tests {
             request_id: "00000000-0000-4000-8000-000000000002".to_string(),
         };
         assert!(payment.validate().is_err());
+    }
+
+    #[test]
+    fn supplier_invoice_accepts_direct_receipt_without_po_and_rejects_mixed_source() {
+        let direct = CreateSupplierInvoicePayload {
+            supplier_id: 1,
+            purchase_order_id: None,
+            currency_code: Some("DZD".to_string()),
+            exchange_rate_to_dzd: Some("1.000000".to_string()),
+            note: None,
+            lines: vec![CreateSupplierInvoiceLinePayload {
+                line_number: 1,
+                po_line_id: None,
+                receipt_line_id: Some(501),
+                variant_id: 7,
+                quantity: "2.000".to_string(),
+                unit_cost: "100.00".to_string(),
+            }],
+        };
+        assert!(direct.validate().is_ok());
+
+        let mixed = CreateSupplierInvoicePayload {
+            purchase_order_id: None,
+            lines: vec![CreateSupplierInvoiceLinePayload {
+                po_line_id: Some(101),
+                ..direct.lines[0].clone()
+            }],
+            ..direct
+        };
+        assert!(mixed.validate().is_err());
     }
 
     #[test]
