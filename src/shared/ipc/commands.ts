@@ -130,6 +130,8 @@ export const COMMANDS = {
   LIST_SUPPLIER_PAYMENTS: 'list_supplier_payments',
   LIST_PURCHASE_PRODUCT_OPTIONS: 'list_purchase_product_options',
   POST_PURCHASE_TRANSACTION: 'post_purchase_transaction',
+  GET_PURCHASE_WORKFLOW_POLICY: 'get_purchase_workflow_policy',
+  UPDATE_PURCHASE_WORKFLOW_POLICY: 'update_purchase_workflow_policy',
   // Slice 4 — Customers & receivables
   CREATE_CUSTOMER: 'create_customer',
   UPDATE_CUSTOMER: 'update_customer',
