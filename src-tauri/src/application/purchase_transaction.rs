@@ -22,6 +22,30 @@ pub(crate) async fn list_purchase_product_options(
     })
 }
 
+pub(crate) async fn get_purchase_workflow_policy(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<JsonValue, AppError> {
+    query_scalar("SELECT procurement.get_purchase_workflow_policy($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
+}
+
+pub(crate) async fn update_purchase_workflow_policy(
+    pool: &PgPool,
+    session_token: &str,
+    mode: &str,
+) -> Result<JsonValue, AppError> {
+    query_scalar("SELECT procurement.update_purchase_workflow_policy($1, $2)")
+        .bind(session_token)
+        .bind(mode)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
+}
+
 /// Post one operator-level purchase transaction.
 ///
 /// PostgreSQL owns the authoritative inventory/accounting orchestration. Rust
