@@ -315,44 +315,11 @@ export interface ConfirmPurchaseReceiptPayload {
   lines: ConfirmPurchaseReceiptLinePayload[];
 }
 
-export interface ConfirmDirectPurchaseLinePayload {
-  variant_id: number;
-  unit_id: number;
-  quantity_received: string;
-  unit_cost: string;
-}
-
-export interface ConfirmDirectPurchasePayload {
-  request_id: string;
-  supplier_id: number;
-  warehouse_id: number;
-  fiscal_period_id: number;
-  document_date: string;
-  note?: string | null;
-  lines: ConfirmDirectPurchaseLinePayload[];
-}
-
-export interface ConfirmDirectPurchaseResult {
-  document_id: number;
-  document_number: string;
-  receipt_origin?: string | null;
-  purchase_order_id: number | null;
-  purchase_order_number: string | null;
-  supplier_id: number;
-  warehouse_id: number;
-  total_amount: string;
-  journal_document_id: number | null;
-  journal_document_number: string | null;
-  order_status: string;
-  posted_at: string;
-}
-
 export interface PurchaseReceiptSummary {
   document_id: number;
   document_number: string;
-  receipt_origin?: string | null;
-  purchase_order_id: number | null;
-  purchase_order_number: string | null;
+  purchase_order_id: number;
+  purchase_order_number: string;
   supplier_id: number;
   supplier_name: string;
   warehouse_id: number;
@@ -370,10 +337,9 @@ export interface PurchaseReceiptLineDto {
   receipt_line_id: number;
   receipt_document_id: number;
   receipt_document_number: string;
-  receipt_origin?: string | null;
-  purchase_order_id: number | null;
-  purchase_order_number: string | null;
-  po_line_id: number | null;
+  purchase_order_id: number;
+  purchase_order_number: string;
+  po_line_id: number;
   supplier_id: number;
   supplier_name: string;
   warehouse_id: number;
@@ -395,9 +361,8 @@ export interface PurchaseReceiptLineDto {
 export interface ConfirmPurchaseReceiptResult {
   document_id: number;
   document_number: string;
-  receipt_origin?: string | null;
-  purchase_order_id: number | null;
-  purchase_order_number: string | null;
+  purchase_order_id: number;
+  purchase_order_number: string;
   supplier_id: number;
   warehouse_id: number;
   total_amount: string;
@@ -462,7 +427,7 @@ export interface CreateSupplierInvoicePayload {
 export interface CreateSupplierInvoiceResult {
   document_id: number;
   supplier_id: number;
-  purchase_order_id?: number | null;
+  purchase_order_id: number;
   status: 'DRAFT';
   subtotal: string;
   total_amount: string;

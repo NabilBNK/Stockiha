@@ -113,17 +113,13 @@ export type ProcurementCopy = {
   confirmGoodsReceipt: string;
   receiptDate: string;
   receiveNow: string;
-  newPurchase: string;
-  confirmPurchase: string;
-  purchaseConfirmed: string;
-  purchasesTitle: string;
-  purchaseNumber: string;
+  previouslyReceived: string;
+  confirming: string;
+  optionalNote: string;
 };
 
 export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
   en: {
-    newPurchase: 'New purchase', confirmPurchase: 'Confirm purchase', purchaseConfirmed: 'Direct purchase posted successfully.',
-    purchasesTitle: 'Purchases & goods receipts', purchaseNumber: 'Purchase #',
     refresh: 'Refresh', cancel: 'Cancel', close: 'Close', loading: 'Loading…', actions: 'Actions',
     status: 'Status', supplier: 'Supplier', warehouse: 'Warehouse', purchaseOrder: 'Purchase order',
     receipt: 'Receipt', document: 'Document', journal: 'Journal', amount: 'Amount', date: 'Date',
@@ -159,8 +155,6 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     receiveNow: 'Receive now', previouslyReceived: 'Previously received', confirming: 'Confirming…', optionalNote: 'Optional purchase-order note',
   },
   fr: {
-    newPurchase: 'Nouvel achat', confirmPurchase: 'Confirmer l’achat', purchaseConfirmed: 'Achat direct enregistré avec succès.',
-    purchasesTitle: 'Achats et réceptions de marchandises', purchaseNumber: 'N° Achat',
     refresh: 'Actualiser', cancel: 'Annuler', close: 'Fermer', loading: 'Chargement…', actions: 'Actions',
     status: 'Statut', supplier: 'Fournisseur', warehouse: 'Dépôt', purchaseOrder: "Commande d’achat",
     receipt: 'Réception', document: 'Document', journal: 'Journal', amount: 'Montant', date: 'Date',
@@ -196,8 +190,6 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     receiveNow: 'Réception actuelle', previouslyReceived: 'Déjà reçu', confirming: 'Confirmation…', optionalNote: 'Note facultative de commande',
   },
   ar: {
-    newPurchase: 'شراء جديد', confirmPurchase: 'تأكيد الشراء', purchaseConfirmed: 'تم تسجيل الشراء المباشر بنجاح.',
-    purchasesTitle: 'المشتريات واستلام البضائع', purchaseNumber: 'رقم الشراء',
     refresh: 'تحديث', cancel: 'إلغاء', close: 'إغلاق', loading: 'جارٍ التحميل…', actions: 'الإجراءات',
     status: 'الحالة', supplier: 'المورد', warehouse: 'المخزن', purchaseOrder: 'أمر الشراء',
     receipt: 'الاستلام', document: 'المستند', journal: 'القيد', amount: 'المبلغ', date: 'التاريخ',
