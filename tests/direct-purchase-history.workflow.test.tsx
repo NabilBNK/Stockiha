@@ -6,8 +6,8 @@ import PurchasesScreen from '../src/features/procurement/PurchasesScreen';
 import * as ipc from '../src/shared/ipc/gateway';
 
 vi.mock('../src/shared/ipc/gateway');
-vi.mock('../src/features/procurement/PurchaseTransactionScreen', () => ({
-  PurchaseTransactionScreen: () => <div data-testid="direct-purchase-form-stub">Direct purchase form</div>,
+vi.mock('../src/features/procurement/DirectPurchaseScreen', () => ({
+  DirectPurchaseScreen: () => <div data-testid="direct-purchase-form-stub">Direct purchase form</div>,
 }));
 
 describe('Direct Purchase history', () => {
@@ -60,6 +60,7 @@ describe('Direct Purchase history', () => {
       </I18nProvider>,
     );
 
+    expect(screen.getByTestId('direct-purchase-form-stub')).toBeInTheDocument();
     await waitFor(() => expect(ipc.listPurchaseReceipts).toHaveBeenCalledWith('tok'));
     expect(await screen.findByTestId('direct-purchase-history')).toHaveTextContent('PR-2026-000123');
     expect(screen.getByTestId('direct-purchase-history')).toHaveTextContent('Direct Supplier');
