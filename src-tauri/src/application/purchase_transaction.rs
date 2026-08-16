@@ -62,18 +62,19 @@ pub(crate) async fn post_purchase_transaction(
 
     // The request UUID identifies the retry. It is intentionally excluded from
     // the canonical business payload hash so only business-content changes
-    // trigger an idempotency conflict.
+    // trigger an idempotency conflict. Borrow the owned fields here so the
+    // payload remains available for serialization and SQL binding below.
     let canonical = json!({
         "supplier_id": payload.supplier_id,
-        "document_date": payload.document_date,
-        "external_supplier_document_number": payload.external_supplier_document_number,
-        "payment_status": payload.payment_status,
-        "payment_method": payload.payment_method,
-        "paid_amount": payload.paid_amount,
+        "document_date": &payload.document_date,
+        "external_supplier_document_number": &payload.external_supplier_document_number,
+        "payment_status": &payload.payment_status,
+        "payment_method": &payload.payment_method,
+        "paid_amount": &payload.paid_amount,
         "print_after_confirmation": payload.print_after_confirmation,
-        "note": payload.note,
-        "lines": payload.lines,
-        "additional_costs": payload.additional_costs,
+        "note": &payload.note,
+        "lines": &payload.lines,
+        "additional_costs": &payload.additional_costs,
     });
     let hash = payload_hash(&canonical);
     let payload_json = serde_json::to_value(&payload)
