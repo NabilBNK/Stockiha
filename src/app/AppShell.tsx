@@ -50,7 +50,7 @@ const NAV: NavItem[] = [
   { view: 'stock', labelKey: 'nav.stockReceipt', group: 'stock', icon: '↓' },
   { view: 'adjustment', labelKey: 'nav.stockAdjustment', group: 'stock', icon: '±' },
   { view: 'suppliers', labelKey: 'nav.suppliers', group: 'buy', icon: '◎' },
-  { view: 'purchase_orders', labelKey: 'nav.purchaseOrders', group: 'buy', icon: '≡' },
+  { view: 'purchase_orders', labels: { fr: 'Achats', ar: 'المشتريات', en: 'Purchases' }, group: 'buy', icon: '≡' },
   { view: 'supplier_invoices', labelKey: 'nav.supplierInvoices', group: 'buy', icon: '▤' },
   { view: 'supplier_liabilities', labelKey: 'nav.supplierLiabilities', group: 'buy', icon: '₫' },
   { view: 'supplier_returns', labelKey: 'nav.supplierReturns', group: 'buy', icon: '↩' },
