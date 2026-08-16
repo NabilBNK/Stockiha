@@ -67,6 +67,64 @@ export function newRequestId(): string {
   return crypto.randomUUID();
 }
 
+const PENDING_PURCHASE_STORAGE_KEY = 'stockiha.pendingPurchaseTransaction';
+
+type PendingPurchaseRequest = {
+  fingerprint: string;
+  requestId: string;
+};
+
+let pendingPurchaseFallback: PendingPurchaseRequest | null = null;
+
+function purchaseIntentFingerprint(payload: import('./dto').PostPurchaseTransactionPayload): string {
+  const { request_id: _requestId, ...intent } = payload;
+  return JSON.stringify(intent);
+}
+
+function readPendingPurchaseRequest(): PendingPurchaseRequest | null {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return pendingPurchaseFallback;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PENDING_PURCHASE_STORAGE_KEY);
+    if (!raw) return pendingPurchaseFallback;
+    const parsed = JSON.parse(raw) as Partial<PendingPurchaseRequest>;
+    if (typeof parsed.fingerprint !== 'string' || typeof parsed.requestId !== 'string') {
+      window.localStorage.removeItem(PENDING_PURCHASE_STORAGE_KEY);
+      return pendingPurchaseFallback;
+    }
+    return { fingerprint: parsed.fingerprint, requestId: parsed.requestId };
+  } catch {
+    return pendingPurchaseFallback;
+  }
+}
+
+function writePendingPurchaseRequest(pending: PendingPurchaseRequest): void {
+  pendingPurchaseFallback = pending;
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(PENDING_PURCHASE_STORAGE_KEY, JSON.stringify(pending));
+  } catch {
+    // The in-memory fallback still protects retries during this application run.
+  }
+}
+
+function clearPendingPurchaseRequest(expected: PendingPurchaseRequest): void {
+  const current = readPendingPurchaseRequest();
+  if (current?.fingerprint !== expected.fingerprint || current.requestId !== expected.requestId) {
+    return;
+  }
+
+  pendingPurchaseFallback = null;
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(PENDING_PURCHASE_STORAGE_KEY);
+  } catch {
+    // Clearing the in-memory copy is sufficient for the current run.
+  }
+}
+
 export function getSetupStatus(): Promise<SetupStatus> {
   return call<SetupStatus>(COMMANDS.GET_SETUP_STATUS);
 }
@@ -513,14 +571,31 @@ export function listPurchaseProductOptions(
   });
 }
 
-export function postPurchaseTransaction(
+export async function postPurchaseTransaction(
   sessionToken: string,
   payload: import('./dto').PostPurchaseTransactionPayload
 ): Promise<import('./dto').PostPurchaseTransactionResult> {
-  return call<import('./dto').PostPurchaseTransactionResult>(COMMANDS.POST_PURCHASE_TRANSACTION, {
-    sessionToken,
-    payload,
-  });
+  const fingerprint = purchaseIntentFingerprint(payload);
+  const existing = readPendingPurchaseRequest();
+  const pending: PendingPurchaseRequest = existing?.fingerprint === fingerprint
+    ? existing
+    : { fingerprint, requestId: payload.request_id };
+
+  writePendingPurchaseRequest(pending);
+
+  try {
+    const result = await call<import('./dto').PostPurchaseTransactionResult>(COMMANDS.POST_PURCHASE_TRANSACTION, {
+      sessionToken,
+      payload: { ...payload, request_id: pending.requestId },
+    });
+    clearPendingPurchaseRequest(pending);
+    return result;
+  } catch (error) {
+    // Keep the request identity when the outcome is unknown. Re-submitting the
+    // unchanged purchase will therefore hit backend idempotency instead of
+    // creating a second receipt, movement, journal, invoice, or payment.
+    throw error;
+  }
 }
 
 export function listJournals(
