@@ -59,7 +59,10 @@ impl ConfirmDirectPurchasePayload {
 
         for (index, line) in self.lines.iter().enumerate() {
             if line.variant_id <= 0 || line.unit_id <= 0 {
-                return Err(format!("Line {} has invalid product references.", index + 1));
+                return Err(format!(
+                    "Line {} has invalid product references.",
+                    index + 1
+                ));
             }
 
             let quantity: Decimal = line.quantity_received.parse().map_err(|_| {
@@ -74,7 +77,10 @@ impl ConfirmDirectPurchasePayload {
                 .parse()
                 .map_err(|_| format!("Line {} has an invalid unit cost.", index + 1))?;
             if cost < Decimal::ZERO {
-                return Err(format!("Line {} unit cost cannot be negative.", index + 1));
+                return Err(format!(
+                    "Line {} unit cost cannot be negative.",
+                    index + 1
+                ));
             }
         }
 
