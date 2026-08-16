@@ -521,18 +521,20 @@ pub(crate) async fn create_supplier_return_draft(
     let lines_json = serde_json::to_value(&payload.lines)
         .map_err(|e| AppError::internal(format!("Invalid lines JSON: {e}")))?;
 
-    let res: JsonValue =
-        query_scalar("SELECT procurement.create_supplier_return_draft($1, $2, $3, $4, $5, $6, $7)")
-            .bind(session_token)
-            .bind(payload.supplier_id)
-            .bind(payload.warehouse_id)
-            .bind(payload.purchase_order_id)
-            .bind(payload.reason_code)
-            .bind(payload.note)
-            .bind(lines_json)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
+    let res: JsonValue = query_scalar(
+        "SELECT procurement.create_supplier_return_draft($1, $2, $3, $4, $5, $6, $7, $8)",
+    )
+    .bind(session_token)
+    .bind(payload.supplier_id)
+    .bind(payload.warehouse_id)
+    .bind(payload.purchase_order_id)
+    .bind(payload.receipt_document_id)
+    .bind(payload.reason_code)
+    .bind(payload.note)
+    .bind(lines_json)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
 
     serde_json::from_value(res).map_err(|error| {
         AppError::internal(format!(
