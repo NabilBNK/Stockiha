@@ -15,6 +15,7 @@ pub mod opening_state;
 pub mod opening_state_application;
 pub mod opening_state_lifecycle;
 pub mod procurement;
+pub mod purchase_transaction;
 pub mod receivables;
 pub mod recovery;
 pub mod reference;
