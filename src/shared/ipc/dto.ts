@@ -337,9 +337,10 @@ export interface PurchaseReceiptLineDto {
   receipt_line_id: number;
   receipt_document_id: number;
   receipt_document_number: string;
-  purchase_order_id: number;
-  purchase_order_number: string;
-  po_line_id: number;
+  receipt_origin: string;
+  purchase_order_id: number | null;
+  purchase_order_number: string | null;
+  po_line_id: number | null;
   supplier_id: number;
   supplier_name: string;
   warehouse_id: number;
@@ -496,6 +497,7 @@ export interface CreateSupplierReturnPayload {
   supplier_id: number;
   warehouse_id: number;
   purchase_order_id?: number | null;
+  receipt_document_id?: number | null;
   reason_code?: string | null;
   note?: string | null;
   lines: CreateSupplierReturnLinePayload[];
@@ -504,7 +506,8 @@ export interface CreateSupplierReturnPayload {
 export interface CreateSupplierReturnResult {
   document_id: number;
   supplier_id: number;
-  purchase_order_id: number;
+  purchase_order_id: number | null;
+  receipt_document_id: number | null;
   status: 'DRAFT';
 }
 
@@ -555,6 +558,8 @@ export interface SupplierReturnSummary {
   warehouse_name: string;
   purchase_order_id: number | null;
   purchase_order_number: string | null;
+  receipt_document_id: number | null;
+  receipt_document_number: string | null;
   status: string;
   reason_code: string;
   journal_document_id: number | null;
@@ -641,7 +646,7 @@ export interface PostPurchaseTransactionPayload {
 }
 
 export interface PurchaseTransactionChildDocuments {
-  purchase_order_id: number;
+  purchase_order_id: number | null;
   goods_receipt_id: number;
   supplier_invoice_id: number;
   supplier_payment_id?: number | null;
