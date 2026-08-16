@@ -136,6 +136,8 @@ pub fn run() {
             commands::procurement::list_supplier_returns,
             commands::procurement::list_supplier_payments,
             commands::purchase_transaction::list_purchase_product_options,
+            commands::purchase_transaction::get_purchase_workflow_policy,
+            commands::purchase_transaction::update_purchase_workflow_policy,
             commands::purchase_transaction::post_purchase_transaction,
             commands::customer::create_customer,
             commands::customer::update_customer,
