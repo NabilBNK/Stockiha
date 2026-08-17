@@ -71,6 +71,39 @@ describe('setup-state routing', () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
   });
+
+  it('recovers from a stale setup screen after another initializer wins', async () => {
+    const getSetupStatus = vi.fn()
+      .mockReturnValueOnce({
+        initialized: false,
+        administrator_exists: false,
+        warehouse_exists: false,
+        open_fiscal_period_exists: false,
+        workstation_configured: false,
+      })
+      .mockReturnValue({
+        initialized: true,
+        administrator_exists: true,
+        warehouse_exists: true,
+        open_fiscal_period_exists: true,
+        workstation_configured: true,
+      });
+    wireInvoke({
+      get_setup_status: getSetupStatus,
+      bootstrap_first_admin: () => { throw { code: 'PRECONDITION_FAILED' }; },
+    });
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Initial setup' });
+
+    fireEvent.change(screen.getByLabelText('Administrator username'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password' } });
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Admin' } });
+    fireEvent.change(screen.getByLabelText('Warehouse name'), { target: { value: 'Main' } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Initial setup' }));
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByTestId('setup-error')).not.toBeInTheDocument();
+  });
 });
 
 describe('login', () => {

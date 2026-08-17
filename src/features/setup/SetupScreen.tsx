@@ -8,7 +8,7 @@ import { useState, type FormEvent } from 'react';
 import { WORKSTATION_ID } from '../../app/config';
 import { Banner, Button, TextField } from '../../shared/components';
 import { useI18n, type Locale } from '../../shared/i18n';
-import { useErrorText } from '../../shared/hooks/useErrorText';
+import { codeForError, useErrorText } from '../../shared/hooks/useErrorText';
 import { useSession } from '../../shared/session/SessionContext';
 import * as ipc from '../../shared/ipc/gateway';
 import {
@@ -118,6 +118,21 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       setSetupSessionToken(token);
       setStep('opening-choice');
     } catch (err) {
+      // Setup is one-time. A stale setup screen (or a concurrent first-admin
+      // attempt) can reach bootstrap after another process has initialized the
+      // database; route to the normal sign-in flow instead of showing a raw
+      // precondition error.
+      if (codeForError(err) === 'PRECONDITION_FAILED') {
+        try {
+          const status = await ipc.getSetupStatus();
+          if (status.initialized) {
+            onComplete();
+            return;
+          }
+        } catch {
+          // Preserve the original safe error if the status refresh fails.
+        }
+      }
       setError(errorText(err));
     } finally {
       setSubmitting(false);
