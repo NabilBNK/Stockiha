@@ -209,20 +209,10 @@ export function PurchaseReceiptDetailModal({
                   : (receipt.purchase_order_number ?? `PO #${receipt.purchase_order_id}`)}
               </strong>
             </div>
-            {receipt.landed_cost_amount && (
-              <div className="pr-detail-field">
-                <span className="pr-detail-field__label">{text.landedCost}</span>
-                <strong className="pr-detail-field__value">
-                  {receipt.landed_cost_amount} DZD
-                  {receipt.landed_cost_journal_number ? ` (${receipt.landed_cost_journal_number})` : ''}
-                </strong>
-              </div>
-            )}
           </section>
 
-          {/* ORDER LINES TABLE */}
           <section className="sk-detail-dialog__section">
-            <h3 className="sk-detail-dialog__section-title">{text.orderLines}</h3>
+            <h3 className="sk-detail-dialog__section-title">{text.purchasedItems}</h3>
             {loading ? (
               <div className="sk-spinner">{text.loading}</div>
             ) : lines.length === 0 ? (

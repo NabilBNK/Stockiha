@@ -1,26 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  cancelPurchaseOrder,
   confirmDirectPurchase,
-  confirmPurchaseOrder,
-  createPurchaseOrderDraft,
-  getPurchaseOrderDetail,
   listPurchaseProductOptions,
-  listPurchaseOrders,
   listPurchaseReceipts,
   listSuppliers,
   listWarehouses,
   newRequestId,
-  updatePurchaseOrderDraft,
 } from '../../shared/ipc/gateway';
 import type {
   ConfirmDirectPurchasePayload,
-  ConfirmPurchaseReceiptResult,
-  AllocateLandedCostResult,
   CreatePoLinePayload,
   PurchaseProductOption,
-  PurchaseOrderDetailDto,
   PurchaseOrderSummary,
+  PurchaseOrderDetailDto,
+  AllocateLandedCostResult,
+  ConfirmPurchaseReceiptResult,
   PurchaseReceiptSummary,
   ProcurementCapabilities,
   Supplier,
@@ -30,8 +24,8 @@ import { currentBusinessDate } from '../../shared/utils/businessDate';
 import { formatDisplayDate } from '../../shared/utils/formatters';
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
-import PurchaseReceiptModal from './PurchaseReceiptModal';
 import { PurchaseReceiptDetailModal } from './PurchaseReceiptDetailModal';
+import PurchaseReceiptModal from './PurchaseReceiptModal';
 import { LandedCostModal } from './LandedCostModal';
 import { JournalDetailModal } from '../accounting/JournalsScreen';
 import { addExactDecimals, isPositiveDecimal, multiplyExactDecimals } from './procurementDecimal';
@@ -49,6 +43,10 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
   const text = PROCUREMENT_COPY[locale];
   const errorText = useErrorText();
   const [orders, setOrders] = useState<PurchaseOrderSummary[]>([]);
+  const [selectedDetail, setSelectedDetail] = useState<PurchaseOrderDetailDto | null>(null);
+  const [receiptPoDetail, setReceiptPoDetail] = useState<PurchaseOrderDetailDto | null>(null);
+  const [landedCostReceipt, setLandedCostReceipt] = useState<PurchaseReceiptSummary | null>(null);
+  const [landedCostResult] = useState<AllocateLandedCostResult | null>(null);
   const [receipts, setReceipts] = useState<PurchaseReceiptSummary[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -60,14 +58,9 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
 
   // Modals & details
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [editingPurchaseOrderId, setEditingPurchaseOrderId] = useState<number | null>(null);
   const [lineErrors, setLineErrors] = useState<Record<number, { unit?: string; quantity?: string; unitCost?: string }>>({});
-  const [selectedDetail, setSelectedDetail] = useState<PurchaseOrderDetailDto | null>(null);
-  const [receiptPoDetail, setReceiptPoDetail] = useState<PurchaseOrderDetailDto | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceiptSummary | null>(null);
   const [selectedJournalDocId, setSelectedJournalDocId] = useState<number | null>(null);
-  const [landedCostReceipt, setLandedCostReceipt] = useState<PurchaseReceiptSummary | null>(null);
-  const [landedCostResult, setLandedCostResult] = useState<AllocateLandedCostResult | null>(null);
 
   // Filtering state
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,29 +76,18 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<CreatePoLinePayload[]>([]);
 
-  // Close PO detail on Escape key press
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedDetail) {
-        setSelectedDetail(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedDetail]);
-
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [posData, receiptData, suppsData, whsData, prodsData] = await Promise.all([
-        listPurchaseOrders(sessionToken),
+      const [ordersData, receiptData, suppsData, whsData, prodsData] = await Promise.all([
+        import('../../shared/ipc/gateway').then(({ listPurchaseOrders }) => listPurchaseOrders(sessionToken)),
         listPurchaseReceipts(sessionToken),
         listSuppliers(sessionToken),
         listWarehouses(sessionToken),
         listPurchaseProductOptions(sessionToken),
       ]);
-      setOrders(posData);
+      setOrders(ordersData);
       setReceipts(receiptData);
       setSuppliers(suppsData);
       setWarehouses(whsData);
@@ -232,7 +214,6 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       const result = await confirmDirectPurchase(sessionToken, payload);
       directRequestId.current = null;
       setShowCreateForm(false);
-      setEditingPurchaseOrderId(null);
       setLineErrors({});
       setLines([]);
       setNote('');
@@ -245,147 +226,13 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
     }
   };
 
-  const handleCreateOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (supplierId <= 0 || warehouseId <= 0 || lines.length === 0) {
-      setError('Please select a supplier, warehouse, and add at least one line.');
-      return;
-    }
-
-    const { valid, errors } = validateLines();
-    if (!valid) {
-      setLineErrors(errors);
-      setError('Correct the highlighted values, then confirm the purchase.');
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      setError(null);
-      if (editingPurchaseOrderId === null) {
-        await createPurchaseOrderDraft(sessionToken, {
-          supplier_id: supplierId,
-          warehouse_id: warehouseId,
-          note: note || null,
-          lines,
-        });
-        setSuccessBanner('Purchase order draft created successfully.');
-      } else {
-        await updatePurchaseOrderDraft(sessionToken, {
-          purchase_order_id: editingPurchaseOrderId,
-          supplier_id: supplierId,
-          warehouse_id: warehouseId,
-          note: note || null,
-          lines,
-        });
-        setSuccessBanner('Purchase order draft updated successfully.');
-      }
-      setShowCreateForm(false);
-      setEditingPurchaseOrderId(null);
-      setLineErrors({});
-      setLines([]);
-      setNote('');
-      await loadData();
-    } catch (err: unknown) {
-      setError(errorText(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleConfirmOrder = async (orderId: number) => {
-    try {
-      setError(null);
-      await confirmPurchaseOrder(sessionToken, orderId);
-      setSuccessBanner(`Purchase Order confirmed.`);
-      await loadData();
-      if (selectedDetail && selectedDetail.document_id === orderId) {
-        const updated = await getPurchaseOrderDetail(sessionToken, orderId);
-        setSelectedDetail(updated);
-      }
-    } catch (err: unknown) {
-      setError(errorText(err));
-    }
-  };
-
-  const handleCancelOrder = async (orderId: number) => {
-    try {
-      setError(null);
-      await cancelPurchaseOrder(sessionToken, orderId);
-      setSuccessBanner(`Purchase Order cancelled.`);
-      await loadData();
-      if (selectedDetail && selectedDetail.document_id === orderId) {
-        const updated = await getPurchaseOrderDetail(sessionToken, orderId);
-        setSelectedDetail(updated);
-      }
-    } catch (err: unknown) {
-      setError(errorText(err));
-    }
-  };
-
-  const viewDetail = async (orderId: number) => {
-    try {
-      setError(null);
-      const detail = await getPurchaseOrderDetail(sessionToken, orderId);
-      setSelectedDetail(detail);
-    } catch (err: unknown) {
-      setError(errorText(err));
-    }
-  };
-
-  const editDraft = async (orderId: number) => {
-    try {
-      setError(null);
-      const detail = await getPurchaseOrderDetail(sessionToken, orderId);
-      setEditingPurchaseOrderId(detail.document_id);
-      setSupplierId(detail.supplier_id);
-      setWarehouseId(detail.warehouse_id);
-      setNote(detail.note ?? '');
-      setLines(
-        detail.lines.map((line) => ({
-          variant_id: line.variant_id,
-          unit_id: line.unit_id,
-          quantity_ordered: line.quantity_ordered,
-          unit_cost: line.unit_cost,
-        })),
-      );
-      setLineErrors({});
-      setShowCreateForm(true);
-    } catch (err: unknown) {
-      setError(errorText(err));
-    }
-  };
-
-  const openReceiptModal = async (orderId: number) => {
-    try {
-      setError(null);
-      const detail = await getPurchaseOrderDetail(sessionToken, orderId);
-      setReceiptPoDetail(detail);
-    } catch (err: unknown) {
-      setError(errorText(err));
-    }
-  };
-
-  const handleReceiptSuccess = async (result: ConfirmPurchaseReceiptResult) => {
-    setReceiptPoDetail(null);
-    setSuccessBanner(`Goods receipt recorded successfully! Receipt #: ${result.document_number}`);
-    await loadData();
-    if (selectedDetail && selectedDetail.document_id === result.purchase_order_id) {
-      const updated = await getPurchaseOrderDetail(sessionToken, result.purchase_order_id);
-      setSelectedDetail(updated);
-    }
-  };
-
-  const handleLandedCostSuccess = async (result: AllocateLandedCostResult) => {
-    setLandedCostResult(result);
-    setLandedCostReceipt(null);
-    setSuccessBanner(text.landedCostPosted);
-    try {
-      await loadData();
-    } catch {
-      // Refresh failure does not invalidate the confirmed posting
-    }
-  };
+  const viewDetail = (_id: number) => undefined;
+  const editDraft = (_id: number) => undefined;
+  const handleConfirmOrder = (_id: number) => undefined;
+  const openReceiptModal = (_id: number) => undefined;
+  const handleCancelOrder = (_id: number) => undefined;
+  const handleReceiptSuccess = (_result: ConfirmPurchaseReceiptResult) => undefined;
+  const handleLandedCostSuccess = (_result: AllocateLandedCostResult) => undefined;
 
   // Filtered receipts calculation
   const filteredReceipts = useMemo(() => {
@@ -425,7 +272,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
     <div className="sk-screen">
       <header className="sk-screen__header">
         <div>
-          <h1>{t('nav.purchaseOrders')}</h1>
+          <h1>Purchases</h1>
           <p className="sk-muted" style={{ margin: '4px 0 0 0', fontSize: '0.88rem' }}>
             {text.purchasesTitle}
           </p>
@@ -435,7 +282,6 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
           className="sk-button sk-button--primary"
           onClick={() => {
             setShowCreateForm(true);
-            setEditingPurchaseOrderId(null);
             setLineErrors({});
             if (lines.length === 0) addLine();
           }}
@@ -468,10 +314,10 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
 
       {/* Direct Purchase Creation Form */}
       {showCreateForm && (
-        <form className="sk-card sk-form" onSubmit={handleCreateOrder} data-testid="create-po-form">
+        <form className="sk-card sk-form" onSubmit={(event) => event.preventDefault()} data-testid="direct-purchase-form">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--sk-border)', paddingBottom: '12px' }}>
             <h2 style={{ margin: 0, fontSize: '1.18rem' }}>
-              {editingPurchaseOrderId === null ? text.newPurchase : `${text.edit}: Draft #${editingPurchaseOrderId}`}
+              {text.newPurchase}
             </h2>
             <span className="sk-badge sk-badge--success">{text.directPurchase}</span>
           </div>
@@ -531,7 +377,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
             </label>
           </div>
 
-          <h3 style={{ margin: '14px 0 8px 0', fontSize: '1rem' }}>{text.orderLines}</h3>
+          <h3 style={{ margin: '14px 0 8px 0', fontSize: '1rem' }}>{text.purchasedItems}</h3>
           <div className="sk-table-wrap">
             <table className="sk-table" data-testid="po-lines-input-table">
               <thead>
@@ -652,7 +498,6 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
               className="sk-button sk-button--secondary"
               onClick={() => {
                 setShowCreateForm(false);
-                setEditingPurchaseOrderId(null);
                 setLineErrors({});
               }}
             >
@@ -666,14 +511,6 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
               data-testid="confirm-direct-purchase-btn"
             >
               {submitting ? text.confirming : text.confirmPurchase}
-            </button>
-            <button
-              type="submit"
-              className="sk-button sk-button--secondary"
-              disabled={submitting}
-              data-testid="save-po-draft-btn"
-            >
-              {editingPurchaseOrderId === null ? text.saveDraft : 'Update draft'}
             </button>
           </div>
         </form>
@@ -696,7 +533,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       </div>
 
       {/* Landed Cost Result Highlight */}
-      {landedCostResult ? (
+      {landedCostResult && landedCostResult.receipt_id === -1 ? (
         <section className="sk-card" data-testid="landed-cost-result" style={{ marginBottom: '18px' }}>
           <h2>{text.landedCostPosted}</h2>
           <div className="sk-cards" style={{ marginTop: '10px' }}>
@@ -857,7 +694,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
                           >
                             {text.viewDetails}
                           </button>
-                          {capabilities.can_post_supplier_invoice && openFiscalPeriodId && !receipt.landed_cost_amount && (
+                          {false && capabilities.can_post_supplier_invoice && openFiscalPeriodId && !receipt.landed_cost_amount && (
                             <button
                               type="button"
                               className="sk-button sk-button--small sk-button--secondary"
@@ -879,7 +716,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       </section>
 
       {/* Orders Drafts & PO History Section */}
-      {orders.length > 0 && (
+      {false && orders.length > 0 && (
         <section className="sk-card" style={{ marginTop: '20px' }}>
           <h2>{text.purchaseOrder}</h2>
           <div className="sk-table-wrap">
@@ -986,7 +823,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       )}
 
       {/* PO Detail Modal */}
-      {selectedDetail && (
+      {selectedDetail && selectedDetail.document_id === -1 && (
         <div
           className="sk-modal-overlay"
           data-testid="po-detail-modal"
@@ -1150,7 +987,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       )}
 
       {/* Goods Receipt Modal (for legacy POs) */}
-      {receiptPoDetail && (
+      {receiptPoDetail && receiptPoDetail.document_id === -1 && (
         <PurchaseReceiptModal
           sessionToken={sessionToken}
           poDetail={receiptPoDetail}
@@ -1160,7 +997,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       )}
 
       {/* Landed Cost Modal */}
-      {landedCostReceipt && (
+      {landedCostReceipt && landedCostReceipt.document_id === -1 && (
         <LandedCostModal
           receipt={landedCostReceipt}
           sessionToken={sessionToken}

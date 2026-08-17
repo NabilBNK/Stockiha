@@ -95,6 +95,7 @@ export type ProcurementCopy = {
   createPurchaseOrderDraft: string;
   destinationWarehouse: string;
   orderLines: string;
+  purchasedItems: string;
   unit: string;
   subtotalPreview: string;
   addLine: string;
@@ -185,7 +186,7 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     contact: 'Contact', phone: 'Phone', email: 'Email', taxId: 'Tax ID (NIF / NIS)', address: 'Address',
     active: 'Active', inactive: 'Inactive', edit: 'Edit', activate: 'Activate', deactivate: 'Deactivate',
     newSupplier: 'New supplier', editSupplier: 'Edit supplier', newPurchaseOrder: 'New purchase order',
-    createPurchaseOrderDraft: 'Create purchase order draft', destinationWarehouse: 'Destination warehouse', orderLines: 'Order lines', unit: 'Unit',
+    createPurchaseOrderDraft: 'Create purchase order draft', destinationWarehouse: 'Destination warehouse', orderLines: 'Order lines', purchasedItems: 'Purchased items', unit: 'Unit',
     subtotalPreview: 'Subtotal preview', addLine: 'Add line', remove: 'Remove', saveDraft: 'Save draft', poNumber: 'PO number', created: 'Created',
     view: 'View', confirmOrder: 'Confirm order', receiveGoods: 'Receive goods', cancelOrder: 'Cancel order', orderDetail: 'Purchase order detail',
     ordered: 'Ordered', received: 'Received', remaining: 'Remaining', confirmGoodsReceipt: 'Confirm goods receipt', receiptDate: 'Receipt date',
@@ -232,7 +233,7 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     contact: 'Contact', phone: 'Téléphone', email: 'E-mail', taxId: 'Identifiant fiscal (NIF / NIS)', address: 'Adresse',
     active: 'Actif', inactive: 'Inactif', edit: 'Modifier', activate: 'Activer', deactivate: 'Désactiver',
     newSupplier: 'Nouveau fournisseur', editSupplier: 'Modifier le fournisseur', newPurchaseOrder: "Nouvelle commande d’achat",
-    createPurchaseOrderDraft: "Créer un brouillon de commande", destinationWarehouse: 'Dépôt de destination', orderLines: 'Lignes de commande', unit: 'Unité',
+    createPurchaseOrderDraft: "Créer un brouillon de commande", destinationWarehouse: 'Dépôt de destination', orderLines: 'Lignes de commande', purchasedItems: 'Articles achetés', unit: 'Unité',
     subtotalPreview: 'Sous-total provisoire', addLine: 'Ajouter une ligne', remove: 'Retirer', saveDraft: 'Enregistrer le brouillon', poNumber: 'N° commande', created: 'Créée le',
     view: 'Voir', confirmOrder: 'Confirmer la commande', receiveGoods: 'Réceptionner', cancelOrder: 'Annuler la commande', orderDetail: 'Détail de la commande',
     ordered: 'Commandé', received: 'Reçu', remaining: 'Restant', confirmGoodsReceipt: 'Confirmer la réception', receiptDate: 'Date de réception',
@@ -279,7 +280,7 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     contact: 'جهة الاتصال', phone: 'الهاتف', email: 'البريد الإلكتروني', taxId: 'المعرف الجبائي (NIF / NIS)', address: 'العنوان',
     active: 'نشط', inactive: 'غير نشط', edit: 'تعديل', activate: 'تفعيل', deactivate: 'تعطيل',
     newSupplier: 'مورد جديد', editSupplier: 'تعديل المورد', newPurchaseOrder: 'أمر شراء جديد',
-    createPurchaseOrderDraft: 'إنشاء مسودة أمر شراء', destinationWarehouse: 'المخزن المستلم', orderLines: 'أسطر الطلب', unit: 'الوحدة',
+    createPurchaseOrderDraft: 'إنشاء مسودة أمر شراء', destinationWarehouse: 'المخزن المستلم', orderLines: 'أسطر الطلب', purchasedItems: 'الأصناف المشتراة', unit: 'الوحدة',
     subtotalPreview: 'المجموع الفرعي المبدئي', addLine: 'إضافة سطر', remove: 'حذف', saveDraft: 'حفظ المسودة', poNumber: 'رقم أمر الشراء', created: 'تاريخ الإنشاء',
     view: 'عرض', confirmOrder: 'تأكيد الأمر', receiveGoods: 'استلام البضاعة', cancelOrder: 'إلغاء الأمر', orderDetail: 'تفاصيل أمر الشراء',
     ordered: 'المطلوب', received: 'المستلم', remaining: 'المتبقي', confirmGoodsReceipt: 'تأكيد استلام البضاعة', receiptDate: 'تاريخ الاستلام',
