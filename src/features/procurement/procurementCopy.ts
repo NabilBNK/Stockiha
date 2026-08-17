@@ -121,12 +121,42 @@ export type ProcurementCopy = {
   purchaseConfirmed: string;
   purchasesTitle: string;
   purchaseNumber: string;
+  directPurchase: string;
+  purchaseOrderOrigin: string;
+  origin: string;
+  searchReceiptsPlaceholder: string;
+  allOrigins: string;
+  allSuppliers: string;
+  allWarehouses: string;
+  totalReceipts: string;
+  totalValue: string;
+  directPurchases: string;
+  viewDetails: string;
+  receiptDetail: string;
+  accountingImpact: string;
+  inventoryMerchandise: string;
+  grniAccount: string;
+  balancedJournal: string;
+  viewJournal: string;
+  exportXlsx: string;
+  noReceiptsSubtitle: string;
+  retry: string;
 };
 
 export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
   en: {
     newPurchase: 'New purchase', confirmPurchase: 'Confirm purchase', purchaseConfirmed: 'Direct purchase posted successfully.',
     purchasesTitle: 'Purchases & goods receipts', purchaseNumber: 'Purchase #',
+    directPurchase: 'Direct Purchase', purchaseOrderOrigin: 'Purchase Order', origin: 'Origin',
+    searchReceiptsPlaceholder: 'Search receipt #, supplier, journal…',
+    allOrigins: 'All origins', allSuppliers: 'All suppliers', allWarehouses: 'All warehouses',
+    totalReceipts: 'Total Receipts', totalValue: 'Total Value', directPurchases: 'Direct Purchases',
+    viewDetails: 'View details', receiptDetail: 'Purchase Receipt Detail', accountingImpact: 'Accounting Impact',
+    inventoryMerchandise: 'Inventory Merchandise (Debit)', grniAccount: 'Goods Received Not Invoiced (Credit)',
+    balancedJournal: 'Balanced Entry (Debit = Credit)', viewJournal: 'View Journal',
+    exportXlsx: 'Export Excel (.xlsx)',
+    noReceiptsSubtitle: 'Confirmed Direct Purchases and physical goods receipts will appear here.',
+    retry: 'Retry',
     refresh: 'Refresh', cancel: 'Cancel', close: 'Close', loading: 'Loading…', actions: 'Actions',
     status: 'Status', supplier: 'Supplier', warehouse: 'Warehouse', purchaseOrder: 'Purchase order',
     receipt: 'Receipt', document: 'Document', journal: 'Journal', amount: 'Amount', date: 'Date',
@@ -137,7 +167,7 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     noInvoiceLines: 'No uninvoiced receipt lines are available for this purchase order.', landedCost: 'Landed cost',
     allocateLandedCost: 'Allocate landed cost', allocationMethod: 'Allocation method', byQuantity: 'By received quantity',
     byValue: 'By receipt value', equalPerLine: 'Equal per line', landedCostPosted: 'Landed cost posted.',
-    alreadyAllocated: 'Already allocated', noReceipts: 'No posted purchase receipts found.', receiptsTitle: 'Posted receipts & landed cost',
+    alreadyAllocated: 'Already allocated', noReceipts: 'No purchase receipts yet', receiptsTitle: 'Purchase Receipts & History',
     returnTitle: 'Supplier returns & debit notes', returnSubtitle: 'Return received goods through an auditable stock and accounting posting.',
     newReturn: 'New return', returnEmpty: 'No supplier returns found.', returnDraftCreated: 'Supplier return draft created.',
     returnConfirmed: 'Supplier return posted.', confirmReturn: 'Confirm return', reason: 'Reason', defective: 'Defective / damaged goods',
@@ -164,6 +194,16 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
   fr: {
     newPurchase: 'Nouvel achat', confirmPurchase: 'Confirmer l’achat', purchaseConfirmed: 'Achat direct enregistré avec succès.',
     purchasesTitle: 'Achats et réceptions de marchandises', purchaseNumber: 'N° Achat',
+    directPurchase: 'Achat direct', purchaseOrderOrigin: 'Commande d’achat', origin: 'Origine',
+    searchReceiptsPlaceholder: 'Rechercher n° réception, fournisseur, journal…',
+    allOrigins: 'Toutes origines', allSuppliers: 'Tous les fournisseurs', allWarehouses: 'Tous les dépôts',
+    totalReceipts: 'Total Réceptions', totalValue: 'Valeur Totale', directPurchases: 'Achats Directs',
+    viewDetails: 'Voir détails', receiptDetail: 'Détail du Bon de Réception', accountingImpact: 'Impact Comptable',
+    inventoryMerchandise: 'Stock Marchandises (Débit)', grniAccount: 'Factures Non Parvenues / FNP (Crédit)',
+    balancedJournal: 'Écriture Équilibrée (Débit = Crédit)', viewJournal: 'Voir le journal',
+    exportXlsx: 'Exporter Excel (.xlsx)',
+    noReceiptsSubtitle: 'Les achats directs confirmés et les réceptions de marchandises apparaîtront ici.',
+    retry: 'Réessayer',
     refresh: 'Actualiser', cancel: 'Annuler', close: 'Fermer', loading: 'Chargement…', actions: 'Actions',
     status: 'Statut', supplier: 'Fournisseur', warehouse: 'Dépôt', purchaseOrder: "Commande d’achat",
     receipt: 'Réception', document: 'Document', journal: 'Journal', amount: 'Montant', date: 'Date',
@@ -174,7 +214,7 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     noInvoiceLines: 'Aucune ligne de réception non facturée pour cette commande.', landedCost: 'Frais d’approche',
     allocateLandedCost: 'Affecter les frais d’approche', allocationMethod: 'Méthode de répartition', byQuantity: 'Selon la quantité reçue',
     byValue: 'Selon la valeur reçue', equalPerLine: 'Répartition égale', landedCostPosted: 'Frais d’approche comptabilisés.',
-    alreadyAllocated: 'Déjà affectés', noReceipts: 'Aucune réception fournisseur comptabilisée.', receiptsTitle: 'Réceptions et frais d’approche',
+    alreadyAllocated: 'Déjà affectés', noReceipts: 'Aucun bon de réception pour le moment', receiptsTitle: 'Bons de Réception et Historique',
     returnTitle: 'Retours fournisseurs et notes de débit', returnSubtitle: 'Retourner les marchandises reçues avec une écriture stock et comptable traçable.',
     newReturn: 'Nouveau retour', returnEmpty: 'Aucun retour fournisseur.', returnDraftCreated: 'Brouillon de retour créé.',
     returnConfirmed: 'Retour fournisseur comptabilisé.', confirmReturn: 'Confirmer le retour', reason: 'Motif', defective: 'Marchandise défectueuse / endommagée',
@@ -201,6 +241,16 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
   ar: {
     newPurchase: 'شراء جديد', confirmPurchase: 'تأكيد الشراء', purchaseConfirmed: 'تم تسجيل الشراء المباشر بنجاح.',
     purchasesTitle: 'المشتريات واستلام البضائع', purchaseNumber: 'رقم الشراء',
+    directPurchase: 'شراء مباشر', purchaseOrderOrigin: 'أمر شراء', origin: 'المصدر',
+    searchReceiptsPlaceholder: 'بحث برقم الاستلام، المورد، القيد…',
+    allOrigins: 'جميع المصادر', allSuppliers: 'جميع الموردين', allWarehouses: 'جميع المخازن',
+    totalReceipts: 'إجمالي الاستلامات', totalValue: 'القيمة الإجمالية', directPurchases: 'المشتريات المباشرة',
+    viewDetails: 'عرض التفاصيل', receiptDetail: 'تفاصيل وصل الاستلام', accountingImpact: 'الأثر المحاسبي',
+    inventoryMerchandise: 'مخزون البضائع (مدين)', grniAccount: 'بضاعة مستلمة غير مفوترة (دائن)',
+    balancedJournal: 'قيد متوازن (مدين = دائن)', viewJournal: 'عرض القيد',
+    exportXlsx: 'تصدير إكسل (.xlsx)',
+    noReceiptsSubtitle: 'ستظهر هنا المشتريات المباشرة المؤكدة واستلامات البضائع الفعلية.',
+    retry: 'إعادة المحاولة',
     refresh: 'تحديث', cancel: 'إلغاء', close: 'إغلاق', loading: 'جارٍ التحميل…', actions: 'الإجراءات',
     status: 'الحالة', supplier: 'المورد', warehouse: 'المخزن', purchaseOrder: 'أمر الشراء',
     receipt: 'الاستلام', document: 'المستند', journal: 'القيد', amount: 'المبلغ', date: 'التاريخ',
@@ -211,7 +261,7 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     noInvoiceLines: 'لا توجد أسطر استلام غير مفوترة لهذا الأمر.', landedCost: 'تكاليف الاستيراد والنقل',
     allocateLandedCost: 'توزيع التكاليف الإضافية', allocationMethod: 'طريقة التوزيع', byQuantity: 'حسب الكمية المستلمة',
     byValue: 'حسب قيمة الاستلام', equalPerLine: 'بالتساوي على الأسطر', landedCostPosted: 'تم ترحيل التكاليف الإضافية.',
-    alreadyAllocated: 'موزعة مسبقاً', noReceipts: 'لا توجد استلامات شراء مرحلة.', receiptsTitle: 'الاستلامات والتكاليف الإضافية',
+    alreadyAllocated: 'موزعة مسبقاً', noReceipts: 'لا توجد وصولات استلام حتى الآن', receiptsTitle: 'وصولات الاستلام والسجل',
     returnTitle: 'مرتجعات الموردين وإشعارات الخصم', returnSubtitle: 'إرجاع البضاعة المستلمة مع حركة مخزون وقيد محاسبي قابلين للتتبع.',
     newReturn: 'مرتجع جديد', returnEmpty: 'لا توجد مرتجعات موردين.', returnDraftCreated: 'تم إنشاء مسودة المرتجع.',
     returnConfirmed: 'تم ترحيل مرتجع المورد.', confirmReturn: 'تأكيد المرتجع', reason: 'السبب', defective: 'بضاعة تالفة / معيبة',

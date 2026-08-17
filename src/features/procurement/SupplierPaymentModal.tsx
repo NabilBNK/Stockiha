@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
@@ -27,6 +27,17 @@ export function SupplierPaymentModal({ liability, sessionToken, fiscalPeriodId, 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(crypto.randomUUID());
+
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -60,7 +71,13 @@ export function SupplierPaymentModal({ liability, sessionToken, fiscalPeriodId, 
   }
 
   return (
-    <div className="sk-modal-overlay" data-testid="supplier-payment-modal">
+    <div
+      className="sk-modal-overlay"
+      data-testid="supplier-payment-modal"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="sk-modal-content">
         <header className="sk-modal-header">
           <div><h2>{text.paySupplier}</h2><p className="sk-muted">{liability.supplier_name} · {liability.remaining_amount} DZD</p></div>

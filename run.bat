@@ -2,6 +2,9 @@
 title Stockiha Development Runner
 setlocal enabledelayedexpansion
 
+set "STOCKIHA_DEV_DATABASE_URL="
+powershell -NoProfile -Command "Remove-Item Env:STOCKIHA_DEV_DATABASE_URL -ErrorAction SilentlyContinue"
+
 echo ========================================================
 echo Starting Stockiha Development Environment
 echo ========================================================

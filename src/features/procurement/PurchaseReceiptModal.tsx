@@ -66,6 +66,17 @@ export default function PurchaseReceiptModal({
     setLineQtys(initial);
   }, [sessionToken, poDetail, appOpenPeriod]);
 
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const handleConfirmReceipt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fiscalPeriod) {
@@ -123,7 +134,13 @@ export default function PurchaseReceiptModal({
   };
 
   return (
-    <div className="sk-modal-overlay" data-testid="purchase-receipt-modal">
+    <div
+      className="sk-modal-overlay"
+      data-testid="purchase-receipt-modal"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="sk-modal-content sk-modal-content--large">
         <header className="sk-modal-header">
           <h2>{text.receiveGoods} — {poDetail.document_number ?? `#${poDetail.document_id}`}</h2>

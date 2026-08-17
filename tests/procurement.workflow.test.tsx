@@ -84,6 +84,21 @@ function baseHandlers(extra: Handlers = {}): Handlers {
         last_known_wac: '100.000000',
       },
     ],
+    list_purchase_product_options: () => [
+      {
+        product_id: 1,
+        variant_id: 7,
+        sku: 'SKU-7',
+        product_name: 'Procurement Item A',
+        variant_name: null,
+        default_unit_id: 1,
+        default_unit_code: 'UNIT',
+        default_unit_name: 'Unit',
+        alternate_units: [],
+        attributes: [],
+        is_active: true,
+      },
+    ],
     list_units: () => [{ id: 1, code: 'UNIT', name: 'Unit', is_base: true }],
     list_suppliers: () => [
       {

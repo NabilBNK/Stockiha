@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
@@ -34,6 +34,17 @@ export function LandedCostModal({
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(crypto.randomUUID());
 
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!isPositiveDecimal(amount)) {
@@ -62,7 +73,13 @@ export function LandedCostModal({
   }
 
   return (
-    <div className="sk-modal-overlay" data-testid="landed-cost-modal">
+    <div
+      className="sk-modal-overlay"
+      data-testid="landed-cost-modal"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="sk-modal-content">
         <header className="sk-modal-header">
           <div>

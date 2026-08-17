@@ -171,6 +171,17 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
     }
   }
 
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showCreate) {
+        setShowCreate(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showCreate]);
+
   return (
     <section className="sk-screen">
       <header className="sk-screen__header">
@@ -229,7 +240,13 @@ export function SupplierInvoicesScreen({ sessionToken, openFiscalPeriodId, capab
       )}
 
       {showCreate ? (
-        <div className="sk-modal-overlay" data-testid="supplier-invoice-modal">
+        <div
+          className="sk-modal-overlay"
+          data-testid="supplier-invoice-modal"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCreate(false);
+          }}
+        >
           <div className="sk-modal-content sk-modal-content--large">
             <header className="sk-modal-header"><h2>{text.createInvoice}</h2><button type="button" className="sk-modal-close" onClick={() => setShowCreate(false)} aria-label={text.close}>×</button></header>
             <form className="sk-form" onSubmit={createDraft}>

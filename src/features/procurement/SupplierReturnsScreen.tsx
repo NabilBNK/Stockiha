@@ -94,6 +94,17 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
     setQuantity(first ? '1.000' : '');
   }
 
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showCreate) {
+        setShowCreate(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showCreate]);
+
   function openCreateForm() {
     setShowCreate(true);
     if (orders[0]) {
@@ -195,18 +206,63 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
         </tr>)}</tbody></table></div>
       )}
 
-      {showCreate ? <div className="sk-modal-overlay" data-testid="supplier-return-modal"><div className="sk-modal-content">
-        <header className="sk-modal-header"><h2>{text.newReturn}</h2><button type="button" className="sk-modal-close" onClick={() => setShowCreate(false)} aria-label={text.close}>×</button></header>
-        <form className="sk-form" onSubmit={createDraft}>
-          <label>{text.purchaseOrder}<select value={purchaseOrderId} onChange={(event) => selectOrder(Number(event.target.value))} required data-testid="return-po-select">{orders.map((order) => <option key={order.document_id} value={order.document_id}>{order.document_number} · {order.supplier_name}</option>)}</select></label>
-          <label>{text.product}<select value={receiptLineId} onChange={(event) => setReceiptLineId(Number(event.target.value))} required data-testid="return-receipt-line">{returnableLines.map((line) => <option key={line.receipt_line_id} value={line.receipt_line_id}>{line.variant_sku} · {line.variant_name} ({line.quantity_returnable_for_variant} {line.unit_code})</option>)}</select></label>
-          {selectedLine ? <p className="sk-muted">{text.returnable}: {selectedLine.quantity_returnable_for_variant} {selectedLine.unit_code}</p> : null}
-          <label>{text.quantity}<input value={quantity} inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} required data-testid="return-quantity" /></label>
-          <label>{text.reason}<select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}><option value="DEFECTIVE_GOODS">{text.defective}</option><option value="EXCESS_DELIVERY">{text.excess}</option><option value="WRONG_ITEM">{text.wrongItem}</option></select></label>
-          <label>{text.note}<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
-          <div className="sk-form-actions"><button type="button" className="sk-button sk-button--secondary" onClick={() => setShowCreate(false)}>{text.cancel}</button><button type="submit" className="sk-button sk-button--primary" disabled={submitting || !selectedLine} data-testid="save-return-draft">{submitting ? text.processing : text.newReturn}</button></div>
-        </form>
-      </div></div> : null}
+      {showCreate ? (
+        <div
+          className="sk-modal-overlay"
+          data-testid="supplier-return-modal"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCreate(false);
+          }}
+        >
+          <div className="sk-modal-content">
+            <header className="sk-modal-header">
+              <h2>{text.newReturn}</h2>
+              <button type="button" className="sk-modal-close" onClick={() => setShowCreate(false)} aria-label={text.close}>
+                ×
+              </button>
+            </header>
+            <form className="sk-form" onSubmit={createDraft}>
+              <label>
+                {text.purchaseOrder}
+                <select value={purchaseOrderId} onChange={(event) => selectOrder(Number(event.target.value))} required data-testid="return-po-select">
+                  {orders.map((order) => <option key={order.document_id} value={order.document_id}>{order.document_number} · {order.supplier_name}</option>)}
+                </select>
+              </label>
+              <label>
+                {text.product}
+                <select value={receiptLineId} onChange={(event) => setReceiptLineId(Number(event.target.value))} required data-testid="return-receipt-line">
+                  {returnableLines.map((line) => <option key={line.receipt_line_id} value={line.receipt_line_id}>{line.variant_sku} · {line.variant_name} ({line.quantity_returnable_for_variant} {line.unit_code})</option>)}
+                </select>
+              </label>
+              {selectedLine ? <p className="sk-muted">{text.returnable}: {selectedLine.quantity_returnable_for_variant} {selectedLine.unit_code}</p> : null}
+              <label>
+                {text.quantity}
+                <input value={quantity} inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} required data-testid="return-quantity" />
+              </label>
+              <label>
+                {text.reason}
+                <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>
+                  <option value="DEFECTIVE_GOODS">{text.defective}</option>
+                  <option value="EXCESS_DELIVERY">{text.excess}</option>
+                  <option value="WRONG_ITEM">{text.wrongItem}</option>
+                </select>
+              </label>
+              <label>
+                {text.note}
+                <input value={note} onChange={(event) => setNote(event.target.value)} />
+              </label>
+              <div className="sk-form-actions">
+                <button type="button" className="sk-button sk-button--secondary" onClick={() => setShowCreate(false)}>
+                  {text.cancel}
+                </button>
+                <button type="submit" className="sk-button sk-button--primary" disabled={submitting || !selectedLine} data-testid="save-return-draft">
+                  {submitting ? text.processing : text.newReturn}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
