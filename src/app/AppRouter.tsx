@@ -32,6 +32,8 @@ import { OpeningStateScreen } from '../features/onboarding/OpeningStateScreen';
 import { OpeningStateApplicationScreen } from '../features/onboarding/OpeningStateApplicationScreen';
 import { DrawerPolicySettingsScreen } from '../features/settings/DrawerPolicySettingsScreen';
 import { RecoverySettingsScreen } from '../features/settings/RecoverySettingsScreen';
+import { InventoryCorrectionsSettingsScreen } from '../features/settings/InventoryCorrectionsSettingsScreen';
+import { getInventoryCorrectionsSetting } from '../shared/ipc/inventoryCorrectionsGateway';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
 import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
 import type { InventoryCapabilities, ProcurementCapabilities } from '../shared/ipc/dto';
@@ -138,6 +140,7 @@ function AuthenticatedApp() {
     useState<OpeningStateOnboardingStatusResult | null>(null);
   const [inventoryCapabilities, setInventoryCapabilities] =
     useState<InventoryCapabilities | null>(null);
+  const [inventoryCorrectionsEnabled, setInventoryCorrectionsEnabled] = useState<boolean | null>(null);
   const [procurementCapabilities, setProcurementCapabilities] =
     useState<ProcurementCapabilities | null>(null);
 
@@ -154,6 +157,14 @@ function AuthenticatedApp() {
       // either restricted setup stage or its existence to them.
       setOpeningStateStatus(null);
     }
+  }, [user?.token]);
+
+  useEffect(() => {
+    const token = user?.token;
+    if (!token) { setInventoryCorrectionsEnabled(null); return; }
+    let active = true;
+    void getInventoryCorrectionsSetting(token).then((setting) => { if (active) setInventoryCorrectionsEnabled(setting.enabled); }).catch(() => { if (active) setInventoryCorrectionsEnabled(false); });
+    return () => { active = false; };
   }, [user?.token]);
 
   useEffect(() => {
@@ -246,9 +257,9 @@ function AuthenticatedApp() {
       (view !== 'products' || inventoryCapabilities.can_manage_catalog)
       && (view !== 'inventory' || inventoryCapabilities.can_view_inventory)
       && (view !== 'stock' || inventoryCapabilities.can_post_stock_receipt)
-      && (view !== 'adjustment' || inventoryCapabilities.can_manage_inventory);
+      && (view !== 'adjustment' || (inventoryCapabilities.can_manage_inventory && inventoryCorrectionsEnabled));
     if (!allowed) setView('dashboard');
-  }, [inventoryCapabilities, view]);
+  }, [inventoryCapabilities, inventoryCorrectionsEnabled, view]);
 
   useEffect(() => {
     if (!procurementCapabilities) return;
@@ -274,6 +285,7 @@ function AuthenticatedApp() {
       currentView={view}
       onNavigate={setView}
       inventoryCapabilities={inventoryCapabilities}
+      inventoryCorrectionsEnabled={inventoryCorrectionsEnabled}
       procurementCapabilities={procurementCapabilities}
     >
       {view === 'dashboard' && <DashboardScreen />}
@@ -316,13 +328,14 @@ function AuthenticatedApp() {
             </section>
           ) : null}
           <DrawerPolicySettingsScreen sessionToken={user?.token ?? ''} />
+          <InventoryCorrectionsSettingsScreen sessionToken={user?.token ?? ''} />
           <RecoverySettingsScreen sessionToken={user?.token ?? ''} />
         </>
       )}
       {view === 'products' && <ProductsScreen />}
       {view === 'inventory' && <InventoryScreen />}
       {view === 'stock' && <StockReceiptScreen />}
-      {view === 'adjustment' && <StockAdjustmentScreen />}
+      {view === 'adjustment' && inventoryCorrectionsEnabled && <StockAdjustmentScreen />}
       {view === 'pos' && <PosScreen />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}

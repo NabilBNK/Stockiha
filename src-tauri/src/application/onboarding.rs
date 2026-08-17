@@ -8,8 +8,9 @@ use crate::domain::onboarding::{
     HistoricalFinanceSummaryRequest, HistoricalFinanceSummaryResult,
     HistoricalFinanceValidationResult, HistoricalTradeAnalyticsRequest,
     HistoricalTradeBatchDataResult, HistoricalTradeBatchResult, HistoricalTradeValidationResult,
-    ReplaceHistoricalFinanceBatchDataRequest, ReplaceHistoricalTradeBatchDataRequest,
-    UpdateHistoricalFinanceSettingRequest,
+    InventoryCorrectionsSettingResult, ReplaceHistoricalFinanceBatchDataRequest,
+    ReplaceHistoricalTradeBatchDataRequest, UpdateHistoricalFinanceSettingRequest,
+    UpdateInventoryCorrectionsSettingRequest,
 };
 use crate::error::AppError;
 
@@ -52,6 +53,35 @@ pub(crate) async fn update_historical_finance_setting(
             .map_err(AppError::from_posting_error)?;
 
     parse_result(result, "updated historical finance setting")
+}
+
+pub(crate) async fn get_inventory_corrections_setting(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<InventoryCorrectionsSettingResult, AppError> {
+    let result: JsonValue = query_scalar("SELECT onboarding.get_inventory_corrections_setting($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    parse_result(result, "inventory corrections setting")
+}
+
+pub(crate) async fn update_inventory_corrections_setting(
+    pool: &PgPool,
+    session_token: &str,
+    request: UpdateInventoryCorrectionsSettingRequest,
+) -> Result<InventoryCorrectionsSettingResult, AppError> {
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.update_inventory_corrections_setting($1, $2)")
+            .bind(session_token)
+            .bind(request.enabled)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    parse_result(result, "updated inventory corrections setting")
 }
 
 pub(crate) async fn create_historical_finance_batch(

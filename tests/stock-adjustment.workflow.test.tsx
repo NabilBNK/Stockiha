@@ -6,6 +6,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeM
 
 import App from '../src/App';
 import {
+  isValidCorrectionDate,
   isPositiveExactQuantity,
   signedQuantityDelta,
 } from '../src/features/inventory/StockAdjustmentScreen';
@@ -57,6 +58,7 @@ function handlers(extra: Handlers = {}): Handlers {
       can_view_inventory: true,
       can_manage_inventory: true,
     }),
+    get_inventory_corrections_setting: () => ({ enabled: true, canUpdate: true }),
     list_products: () => [
       {
         product_id: 1,
@@ -82,9 +84,11 @@ async function loginAndNavigate() {
   fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Stock adjustment' }));
-  await screen.findByRole('heading', { name: 'Stock adjustment' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Inventory Corrections' }));
+  await screen.findByRole('heading', { name: 'Inventory Corrections' });
+  fireEvent.change(screen.getByLabelText('Item'), { target: { value: '7' } });
   await screen.findByRole('option', { name: 'PACK — Pack' });
+  fireEvent.change(screen.getByLabelText('Correction date'), { target: { value: '2026-07-24' } });
 }
 
 beforeEach(() => {
@@ -106,6 +110,12 @@ describe('exact signed quantity helpers', () => {
   it('converts direction to a signed decimal string without numeric arithmetic', () => {
     expect(signedQuantityDelta('increase', '2.500')).toBe('2.500');
     expect(signedQuantityDelta('decrease', '2.500')).toBe('-2.500');
+  });
+
+  it('keeps dates inside the fiscal-period bounds without UTC conversion', () => {
+    expect(isValidCorrectionDate('2026-07-01', '2026-07-01', '2026-07-31')).toBe(true);
+    expect(isValidCorrectionDate('2026-06-30', '2026-07-01', '2026-07-31')).toBe(false);
+    expect(isValidCorrectionDate('2026-08-01', '2026-07-01', '2026-07-31')).toBe(false);
   });
 });
 
@@ -228,8 +238,8 @@ describe('stock adjustment workflow', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'ع' }));
     expect(document.documentElement).toHaveAttribute('dir', 'rtl');
     expect(document.documentElement).toHaveAttribute('lang', 'ar');
-    fireEvent.click(await screen.findByRole('button', { name: 'تسوية المخزون' }));
-    expect(await screen.findByRole('heading', { name: 'تسوية المخزون' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'تصحيحات المخزون' }));
+    expect(await screen.findByRole('heading', { name: 'تصحيحات المخزون' })).toBeInTheDocument();
     expect(screen.getByLabelText('زيادة المخزون')).toBeInTheDocument();
     expect(screen.getByLabelText('إنقاص المخزون')).toBeInTheDocument();
   });

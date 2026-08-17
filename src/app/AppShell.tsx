@@ -80,12 +80,14 @@ export function AppShell({
   currentView,
   onNavigate,
   inventoryCapabilities,
+  inventoryCorrectionsEnabled,
   procurementCapabilities,
   children,
 }: {
   currentView: AppView;
   onNavigate: (view: AppView) => void;
   inventoryCapabilities: InventoryCapabilities | null;
+  inventoryCorrectionsEnabled: boolean | null;
   procurementCapabilities: ProcurementCapabilities | null;
   children: ReactNode;
 }) {
@@ -155,7 +157,7 @@ export function AppShell({
       case 'stock':
         return inventoryCapabilities?.can_post_stock_receipt ?? false;
       case 'adjustment':
-        return inventoryCapabilities?.can_manage_inventory ?? false;
+        return (inventoryCapabilities?.can_manage_inventory ?? false) && inventoryCorrectionsEnabled === true;
       case 'suppliers':
       case 'purchases':
         return procurementCapabilities?.can_manage_procurement ?? false;

@@ -38,6 +38,11 @@ export interface InventoryCapabilities {
   can_manage_inventory: boolean;
 }
 
+export interface InventoryCorrectionsSetting {
+  enabled: boolean;
+  canUpdate: boolean;
+}
+
 export interface ProcurementCapabilities {
   can_manage_procurement: boolean;
   can_post_purchase_receipt: boolean;

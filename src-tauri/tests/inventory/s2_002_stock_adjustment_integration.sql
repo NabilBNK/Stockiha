@@ -22,16 +22,23 @@ CREATE TEMP TABLE t (k text PRIMARY KEY, v bigint);
 -- Users, roles, live sessions, period and warehouses.
 INSERT INTO iam.users (username, password_hash, display_name) VALUES
     ('s2adj_admin', 'x', 'S2 Adjustment Admin'),
+    ('s2adj_manager', 'x', 'S2 Adjustment Manager'),
     ('s2adj_cashier', 'x', 'S2 Adjustment Cashier');
 INSERT INTO iam.user_roles (user_id, role_id)
     SELECT u.id, r.id FROM iam.users u, iam.roles r
     WHERE u.username = 's2adj_admin' AND r.code = 'ADMIN';
 INSERT INTO iam.user_roles (user_id, role_id)
     SELECT u.id, r.id FROM iam.users u, iam.roles r
+    WHERE u.username = 's2adj_manager' AND r.code = 'MANAGER';
+INSERT INTO iam.user_roles (user_id, role_id)
+    SELECT u.id, r.id FROM iam.users u, iam.roles r
     WHERE u.username = 's2adj_cashier' AND r.code = 'CASHIER';
 INSERT INTO iam.application_sessions (token_hash, user_id, workstation_id, expires_at)
     SELECT sha256('s2adj-admin-token'::bytea), id, 'S2ADJ-ADMIN', now() + interval '1 day'
     FROM iam.users WHERE username = 's2adj_admin';
+INSERT INTO iam.application_sessions (token_hash, user_id, workstation_id, expires_at)
+    SELECT sha256('s2adj-manager-token'::bytea), id, 'S2ADJ-MANAGER', now() + interval '1 day'
+    FROM iam.users WHERE username = 's2adj_manager';
 INSERT INTO iam.application_sessions (token_hash, user_id, workstation_id, expires_at)
     SELECT sha256('s2adj-cashier-token'::bytea), id, 'S2ADJ-CASH', now() + interval '1 day'
     FROM iam.users WHERE username = 's2adj_cashier';
@@ -71,6 +78,7 @@ DECLARE
     v_b bigint;
     v_doc jsonb;
     v_doc_id bigint;
+    v_policy_doc_id bigint;
     v_journal bigint;
     v_count bigint;
     v_debit numeric;
@@ -247,6 +255,78 @@ BEGIN
         'SELECT inventory.confirm_stock_adjustment(%L,%L::uuid,sha256(%L::bytea),%s,%s,%s,1,%L,NULL,%s,%L::date)',
         's2adj-admin-token','00000000-0000-4000-8000-000000000112','other-note',v_warehouse,v_variant,v_base_unit,
         'OTHER',v_period,'2026-07-24'), '22023');
+
+    -- Part 02 policy: managers can read and post while ON, but only an
+    -- administrator can change the persisted correction policy. Disabling it
+    -- rejects before idempotency reservation and leaves prior evidence intact.
+    IF (onboarding.get_inventory_corrections_setting('s2adj-manager-token')->>'enabled')::boolean IS DISTINCT FROM true
+       OR (onboarding.get_inventory_corrections_setting('s2adj-manager-token')->>'canUpdate')::boolean IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'ASSERT FAIL: inventory corrections must default enabled';
+    END IF;
+    IF (onboarding.get_inventory_corrections_setting('s2adj-admin-token')->>'canUpdate')::boolean IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'ASSERT FAIL: administrator policy capability missing';
+    END IF;
+    v_policy_doc_id := (inventory.confirm_stock_adjustment(
+        's2adj-manager-token', '00000000-0000-4000-8000-000000000117', sha256('policy-retry'::bytea),
+        v_warehouse, v_variant, v_base_unit, 1.000, 'FOUND_STOCK', NULL,
+        v_period, '2026-07-24'
+    )->>'document_id')::bigint;
+    PERFORM pg_temp.expect_error(
+        'SELECT onboarding.update_inventory_corrections_setting(''s2adj-manager-token'', false)',
+        '42501'
+    );
+    IF (onboarding.update_inventory_corrections_setting('s2adj-admin-token', false)->>'enabled')::boolean IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'ASSERT FAIL: administrator could not disable inventory corrections';
+    END IF;
+    IF (inventory.confirm_stock_adjustment(
+        's2adj-manager-token', '00000000-0000-4000-8000-000000000117', sha256('policy-retry'::bytea),
+        v_warehouse, v_variant, v_base_unit, 1.000, 'FOUND_STOCK', NULL,
+        v_period, '2026-07-24'
+    )->>'document_id')::bigint <> v_policy_doc_id THEN
+        RAISE EXCEPTION 'ASSERT FAIL: policy-disabled idempotent retry changed the document';
+    END IF;
+    IF (SELECT count(*) FROM inventory.stock_adjustments WHERE document_id = v_policy_doc_id) <> 1 THEN
+        RAISE EXCEPTION 'ASSERT FAIL: policy-disabled idempotent retry duplicated the adjustment';
+    END IF;
+    SELECT count(*) INTO v_count FROM inventory.stock_adjustments;
+    PERFORM pg_temp.expect_error(format(
+        'SELECT inventory.confirm_stock_adjustment(%L,%L::uuid,sha256(%L::bytea),%s,%s,%s,1,%L,NULL,%s,%L::date)',
+        's2adj-manager-token','00000000-0000-4000-8000-000000000120','policy-disabled',v_warehouse,v_variant,v_base_unit,
+        'FOUND_STOCK',v_period,'2026-07-24'), '55000');
+    IF (SELECT count(*) FROM inventory.stock_adjustments) <> v_count THEN
+        RAISE EXCEPTION 'ASSERT FAIL: disabled correction created a stock adjustment';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM core.request_idempotency
+        WHERE operation_key='inventory.confirm_stock_adjustment'
+          AND request_id='00000000-0000-4000-8000-000000000120'
+    ) THEN
+        RAISE EXCEPTION 'ASSERT FAIL: disabled correction reserved an idempotency request';
+    END IF;
+    IF (SELECT count(*) FROM onboarding.inventory_corrections_setting_audit) <> 1 THEN
+        RAISE EXCEPTION 'ASSERT FAIL: policy change audit missing';
+    END IF;
+    IF (onboarding.update_inventory_corrections_setting('s2adj-admin-token', true)->>'enabled')::boolean IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'ASSERT FAIL: administrator could not re-enable inventory corrections';
+    END IF;
+    IF (SELECT count(*) FROM onboarding.inventory_corrections_setting_audit) <> 2 THEN
+        RAISE EXCEPTION 'ASSERT FAIL: policy re-enable audit missing';
+    END IF;
+
+    -- A normal correction date is not forced to the fiscal-period start and
+    -- remains authoritative in the posted business document.
+    v_doc := inventory.confirm_stock_adjustment(
+        's2adj-manager-token', '00000000-0000-4000-8000-000000000118', sha256('policy-reenabled'::bytea),
+        v_warehouse, v_variant, v_base_unit, 1.000, 'FOUND_STOCK', NULL,
+        v_period, '2026-10-17'
+    );
+    IF (SELECT document_date FROM core.business_documents WHERE id=(v_doc->>'document_id')::bigint) <> DATE '2026-10-17' THEN
+        RAISE EXCEPTION 'ASSERT FAIL: correction document date was not preserved';
+    END IF;
+    PERFORM pg_temp.expect_error(format(
+        'SELECT inventory.confirm_stock_adjustment(%L,%L::uuid,sha256(%L::bytea),%s,%s,%s,1,%L,NULL,%s,%L::date)',
+        's2adj-manager-token','00000000-0000-4000-8000-000000000119','outside-period',v_warehouse,v_variant,v_base_unit,
+        'FOUND_STOCK',v_period,'2027-01-01'), '22023');
 
     -- Failed requests roll back every protected write and number claim.
     SELECT count(*) INTO v_count FROM inventory.stock_adjustments;

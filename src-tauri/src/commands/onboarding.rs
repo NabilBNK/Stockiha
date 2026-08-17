@@ -8,8 +8,9 @@ use crate::domain::onboarding::{
     HistoricalFinanceSummaryRequest, HistoricalFinanceSummaryResult,
     HistoricalFinanceValidationResult, HistoricalTradeAnalyticsRequest,
     HistoricalTradeBatchDataResult, HistoricalTradeBatchResult, HistoricalTradeValidationResult,
-    ReplaceHistoricalFinanceBatchDataRequest, ReplaceHistoricalTradeBatchDataRequest,
-    UpdateHistoricalFinanceSettingRequest,
+    InventoryCorrectionsSettingResult, ReplaceHistoricalFinanceBatchDataRequest,
+    ReplaceHistoricalTradeBatchDataRequest, UpdateHistoricalFinanceSettingRequest,
+    UpdateInventoryCorrectionsSettingRequest,
 };
 use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
@@ -34,6 +35,29 @@ pub(crate) async fn update_historical_finance_setting(
 ) -> Result<HistoricalFinanceSettingResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     onboarding::update_historical_finance_setting(pool, &session_token, request)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_inventory_corrections_setting(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<InventoryCorrectionsSettingResult, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    onboarding::get_inventory_corrections_setting(pool, &session_token)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn update_inventory_corrections_setting(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: UpdateInventoryCorrectionsSettingRequest,
+) -> Result<InventoryCorrectionsSettingResult, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    onboarding::update_inventory_corrections_setting(pool, &session_token, request)
         .await
         .map_err(IpcError::from)
 }

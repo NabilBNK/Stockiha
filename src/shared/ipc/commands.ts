@@ -38,6 +38,8 @@ export const COMMANDS = {
   HANDOVER_CASH_SESSION: 'handover_cash_session',
   LIST_DRAWER_OPERATION_POLICY: 'list_drawer_operation_policy',
   UPDATE_DRAWER_OPERATION_POLICY: 'update_drawer_operation_policy',
+  GET_INVENTORY_CORRECTIONS_SETTING: 'get_inventory_corrections_setting',
+  UPDATE_INVENTORY_CORRECTIONS_SETTING: 'update_inventory_corrections_setting',
   // R0 — historical finance onboarding
   GET_HISTORICAL_FINANCE_SETTING: 'get_historical_finance_setting',
   UPDATE_HISTORICAL_FINANCE_SETTING: 'update_historical_finance_setting',

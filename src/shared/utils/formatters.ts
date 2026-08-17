@@ -90,7 +90,7 @@ export function humanDocumentType(type: string | null | undefined, locale: Local
     CREDIT_SALE: { en: 'Credit Sale', fr: 'Vente à crédit', ar: 'بيع بالآجل' },
     CUSTOMER_PAYMENT: { en: 'Customer Payment', fr: 'Paiement client', ar: 'دفع العميل' },
     STOCK_RECEIPT: { en: 'Stock Receipt', fr: 'Entrée de stock', ar: 'وصل استلام مخزون' },
-    STOCK_ADJUSTMENT: { en: 'Stock Adjustment', fr: 'Ajustement de stock', ar: 'تعديل مخزون' },
+    STOCK_ADJUSTMENT: { en: 'Inventory Correction', fr: 'Correction d’inventaire', ar: 'تصحيح المخزون' },
     JOURNAL_ENTRY: { en: 'Journal Entry', fr: 'Écriture comptable', ar: 'قيد محاسبي' },
   };
 

@@ -45,6 +45,8 @@ pub fn run() {
             commands::drawer::update_drawer_operation_policy,
             commands::onboarding::get_historical_finance_setting,
             commands::onboarding::update_historical_finance_setting,
+            commands::onboarding::get_inventory_corrections_setting,
+            commands::onboarding::update_inventory_corrections_setting,
             commands::onboarding::create_historical_finance_batch,
             commands::onboarding::replace_historical_finance_batch_data,
             commands::onboarding::validate_historical_finance_batch,

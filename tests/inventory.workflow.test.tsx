@@ -159,7 +159,7 @@ describe('inventory permissions and posting results', () => {
     expect(screen.queryByRole('button', { name: 'Products' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Inventory' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Stock receipt' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Stock adjustment' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Inventory Corrections' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Point of sale' })).toBeInTheDocument();
   });
 

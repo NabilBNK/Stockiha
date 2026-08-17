@@ -108,6 +108,19 @@ pub(crate) struct HistoricalFinanceSettingResult {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateInventoryCorrectionsSettingRequest {
+    pub(crate) enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InventoryCorrectionsSettingResult {
+    pub(crate) enabled: bool,
+    pub(crate) can_update: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CreateHistoricalFinanceBatchRequest {
     pub(crate) request_id: String,
     pub(crate) source_type: String,
@@ -726,5 +739,17 @@ mod tests {
         }
         .validate()
         .is_ok());
+    }
+
+    #[test]
+    fn parses_inventory_corrections_policy_capability() {
+        let result: InventoryCorrectionsSettingResult = serde_json::from_value(serde_json::json!({
+            "enabled": true,
+            "canUpdate": false,
+        }))
+        .unwrap();
+
+        assert!(result.enabled);
+        assert!(!result.can_update);
     }
 }
