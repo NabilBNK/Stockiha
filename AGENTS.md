@@ -1,122 +1,172 @@
 # Stockiha — AI Engineering Rules
 
 ## Purpose
-Work only on Stockiha and only on the explicitly assigned task. Prefer the smallest complete, testable change. Do not work ahead.
+
+These rules govern all AI-assisted engineering work on Stockiha.
+
+Work only on the explicitly assigned task. Prefer the smallest complete, production-correct, testable change. Do not work ahead, create speculative abstractions, or build temporary parallel architectures.
 
 ## Sources of truth
 
-Before work, read in this order:
+Before implementation, establish the current state from the smallest relevant set of sources:
 
-1. `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`
-2. `AGENTS.md`
-3. `CURRENT_SLICE.md`
-4. `TASKS.md`
-5. Relevant companion specs under `docs/`
-6. Accepted ADRs under `docs/decisions/`
-7. Existing code, migrations, and tests relevant to the task
+1. Running/tested behavior and reproducible failures.
+2. Automated tests and applied database migrations.
+3. Current source code.
+4. `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` for target architecture and roadmap scope.
+5. `CURRENT_SLICE.md` and `TASKS.md` for execution tracking.
+6. Relevant specifications under `docs/`.
+7. Accepted ADRs under `docs/decisions/`.
+8. This `AGENTS.md` for AI execution rules.
 
-Authority rules:
+Repository evidence overrides conversation summaries when they conflict. Do not claim a feature exists merely because a roadmap or task file says it should exist.
 
-- Running and tested behavior, automated tests, current code, and applied migrations determine actual implementation state.
-- `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` is the single authority for target architecture, release scope, and the remaining roadmap.
-- `CURRENT_SLICE.md` and `TASKS.md` are execution trackers; they cannot override stronger implementation evidence or the ground-truth roadmap.
-- Repository documents override conversation memory and agent summaries.
+Do not modify the ground-truth roadmap or accepted architecture without an explicit task requiring that change. Architecture changes require an ADR describing alternatives, risks, migration impact, and the chosen decision.
 
-Do not modify the ground-truth roadmap without explicit user approval. Architecture changes also require an accepted ADR documenting alternatives and risks.
+## Vibe-coding operating modes
 
-## Slice implementation boundary
+Stockiha has exactly two AI workflow modes.
 
-Slice 0 consists of isolated technical feasibility proofs.
+### Mode 1 — Full vibe coding
 
-Slices 1 through 9 are production vertical implementation slices. Work must use
-the intended production architecture, migrations, domain models, application
-services, database posting functions, IPC boundaries, frontend workflows and
-end-to-end tests.
+Use when Codex quota/credits are available.
 
-Do not create proof-only modules, toy implementations, placeholder workflows
-or temporary parallel architectures for Slices 1 through 9.
+Roles:
 
-## Quota and cost discipline
-- Keep planning responses under 700 words unless a blocker requires more.
-- Do not repeat large repository sections.
-- Search within files before reading long files in full.
-- Read only files relevant to the task.
-- Do not browse unless current official documentation is necessary.
-- In plan-only mode, do not install dependencies or run builds.
-- During implementation, install dependencies once.
-- Run targeted tests while developing and the applicable full verification set once at the end.
-- Do not run Tauri packaging unless the task affects packaging, capabilities, configuration, or releases.
-- Do not create speculative code, placeholders, unused abstractions, or future-slice scaffolding.
-- Ask at most one consolidated clarification question when blocked.
+- **ChatGPT** — architect, senior analyst, task decomposition, cross-layer diagnosis, implementation contract, and final high-risk review.
+- **Codex in VS Code** — primary implementation agent for complex, ambiguous, cross-layer, or high-risk repository changes.
+- **Antigravity Gemini** — cheap bounded executor, Windows operator, reproduction agent, mechanical editor, test runner, Git operator, and local/manual QA assistant.
+- **Compiler/tests/database/Git** — objective source of truth for correctness.
+- **User** — product owner and final business acceptance.
 
-## Deadline Mode Execution Rules
-For every remaining task:
-1. **One implementation plan only**: Do not repeatedly revise plans; incorporate essential requirements in the initial proposal.
-2. **One implementation pass**: Build the feature cleanly in a single targeted effort.
-3. **One blocker-focused review**: Review strictly for correctness, security, or blocking bugs. Do not review harmless naming or visibility preferences.
-4. **One Windows verification pass**: Execute applicable checks once at the end of implementation.
-   - **No frontend tests** when no frontend files changed.
-   - **No repeated full test suites** after documentation-only or comment edits.
-   - **No extra tests** beyond essential acceptance criteria.
-5. **Commit and continue**: Upon passing verification, commit immediately and advance. Useful but nonessential improvements go into a backlog.
+Routing rules:
 
-## MVP Batch Execution Rule
-For an explicitly approved multi-task MVP batch spanning an entire vertical slice or major subsystem (e.g. "implement the complete backend transaction chain for Slice 1"):
-1. **Treat the batch as one unit of work.** Do not pause for per-task plan approval between the individual tasks that make up an approved batch.
-2. **Fix ordinary implementation problems autonomously.** Bugs, missing grants, naming corrections, failing tests, and similar routine issues discovered during the batch are corrected in place without stopping to ask.
-3. **Stop only for a genuine blocker**: an architecture conflict, an accounting-integrity conflict, a security conflict, a data-loss risk, a credential requirement, or an environment limitation that has no safe workaround. Routine implementation decisions are not blockers.
-4. **Preserve and correct useful existing work** already staged for the batch rather than discarding and restarting it.
-5. **Batch mode does not waive Git safety or any other non-negotiable confirmation gate.** The full workflow, verification, and diff are still reported at the end of the batch, and explicit approval is still required before any commit, push, merge, PR, or destructive operation, exactly as in the Git safety section below.
+- Route architecture, accounting, WAC, inventory posting, authentication, permissions, migrations, concurrency, persistent-data integrity, and cross React/Rust/PostgreSQL defects to ChatGPT for reasoning and normally Codex for implementation.
+- Route simple UI edits, label/spacing changes, bounded mechanical edits, command execution, branch pulling, reproduction, log collection, and Windows/Tauri acceptance to Antigravity.
+- Do not ask multiple agents to independently solve the same problem.
+- One agent owns implementation for a task. Other agents review or test unless explicitly reassigned.
 
-## Workflow
+Preferred flow for substantial work:
+
+`User → ChatGPT contract → Codex implementation → deterministic verification → ChatGPT diff/risk review → GitHub → Antigravity Windows/manual QA → User acceptance`
+
+### Mode 2 — No-Codex vibe coding
+
+Use whenever the user says Codex is unavailable, quota/credits are exhausted, or No-Codex mode is active.
+
+**Codex is completely removed from the workflow while this mode is active. Never route, recommend, queue, or defer work to Codex.**
+
+Roles:
+
+- **ChatGPT** keeps senior responsibilities: architecture, repository diagnosis, implementation design, exact patch/change instructions where needed, and review.
+- **Antigravity** is constrained to bounded execution: repository inspection, reproduction, exact patch application, mechanical edits, terminal/Git operations, tests, local launch, screenshots/log collection, and manual QA.
+- **Compiler/tests/database/Git** remain the source of truth.
+
+For high-risk work in No-Codex mode, reduce task size rather than increasing Antigravity autonomy. Use small patches, explicit file boundaries, regression tests, and one concern per commit.
+
+Preferred flow:
+
+`User → ChatGPT diagnosis/contract/patch → Antigravity bounded execution → deterministic verification → ChatGPT diff review → Antigravity Windows/manual QA → User acceptance`
+
+Antigravity must not independently redesign accounting, inventory valuation, database architecture, authentication, permissions, migrations, or other high-risk business logic. If such a change is required in No-Codex mode, ChatGPT must define the implementation precisely before Antigravity edits it.
+
+## Cost and context discipline
+
+- Think once; execute once; verify with tools.
+- Do not make ChatGPT, Codex, and Antigravity independently rediscover the same context.
+- Put stable repository rules here instead of repeating them in every prompt.
+- For substantial work, use a concise task contract under `docs/tasks/` when useful.
+- A task contract should contain: objective, current behavior, expected behavior, business rules, in-scope, out-of-scope, affected boundaries, invariants, acceptance tests, regression tests, and completion conditions.
+- Prefer diffs, failing tests, exact logs, and relevant files over entire conversation transcripts.
+- Search within files before reading large files in full.
+- Read only files relevant to the task unless evidence requires expansion.
+- Do not browse external documentation unless current official documentation is materially necessary.
+- Do not reinstall dependencies repeatedly in the same workspace.
+- Run targeted checks during development and the applicable verification set once before completion.
+- Do not package Tauri unless packaging, capabilities, configuration, installer, or release behavior is in scope.
+- Do not create placeholders, fake persistence, mock success paths, disabled tests, unused abstractions, or future-slice scaffolding merely to make a task appear complete.
+
+## Authorization and execution
+
+A clear user request to implement/fix a task is authorization to perform the normal non-destructive engineering workflow needed for that task, including:
+
+- inspect relevant repository state;
+- create/use a dedicated task branch;
+- edit task-related files;
+- add/update tests;
+- run applicable validation;
+- commit the completed task;
+- push the task branch.
+
+Do **not** repeatedly ask for approval for routine implementation steps already covered by the task request.
+
+Still require explicit authorization for destructive or release-impacting operations such as:
+
+- force-push;
+- rewriting published history;
+- deleting branches or tags;
+- destructive database/data operations;
+- merging to `main` when the user has not requested promotion/merge;
+- creating releases or publishing installers.
+
+If a task is blocked by a genuine architecture conflict, accounting-integrity conflict, security conflict, data-loss risk, missing credential, or unavailable environment with no safe workaround, stop and report the blocker. Otherwise resolve ordinary implementation problems autonomously.
+
+## Implementation workflow
 
 ### Before editing
-Report:
-- interpretation
-- in-scope and out-of-scope work
-- exact files expected to change
-- database and security impact
-- tests to add
-- unresolved blockers
 
-Do not edit until the user approves the plan. Under an approved MVP Batch (see above), this plan-approval step applies once, to the batch as a whole, not to each task inside it.
+For substantial tasks, establish internally or report concisely:
+
+- objective and current failure/behavior;
+- in-scope and out-of-scope boundaries;
+- likely files/components affected;
+- database/accounting/security impact;
+- tests or reproduction required;
+- active vibe-coding mode and implementation owner.
+
+Do not turn this into repeated planning cycles. Once the task is understood, implement it.
 
 ### During implementation
-- Use a dedicated `task/...` branch after approval.
+
+- Use a dedicated `task/...` or `fix/...` branch unless the user explicitly directs otherwise.
 - Modify only task-related files.
+- Preserve useful existing work.
+- Stop for unexpected unrelated dirty-tree changes before overwriting them.
 - Do not silently upgrade major dependencies.
-- Add no dependency without justification.
-- Keep Tauri commands thin and reusable logic testable.
-- Keep authoritative business logic out of React.
+- Add no dependency without a concrete need.
+- Keep Tauri commands thin.
+- Keep reusable domain/application logic testable.
+- Keep authoritative financial, inventory, permission, and posting logic out of React.
+- Fix root causes rather than hiding errors or bypassing preconditions.
+- Never weaken validation merely to make acceptance pass.
 
 ### After implementation
-Report concisely:
-- files changed
-- design decisions
-- commands and actual results
-- tests
-- security/database impact
-- Linux limitations
-- Windows/manual checks
-- `git diff --stat`
-- `git status --short`
-- verdict: `PASS`, `PASS WITH MANUAL CHECKS`, or `BLOCKED`
 
-Do not commit or push until the user approves the report.
+Report concisely:
+
+- files changed;
+- important design decisions;
+- commands/tests run and actual results;
+- database/security/accounting impact;
+- known limitations or unresolved failures;
+- required Windows/manual checks;
+- commit/branch information;
+- verdict: `PASS`, `PASS WITH MANUAL CHECKS`, or `BLOCKED`.
 
 ## Git safety
-- Never commit directly to `main`.
-- Never force-push or merge.
-- Stop for unexpected working-tree changes.
-- Show the diff before commit approval.
-- Preserve `package-lock.json` and `src-tauri/Cargo.lock`.
-- Never commit build outputs, secrets, `.env` files, dumps, or machine paths.
 
-Confirmation is required before commit, push, PR creation, destructive Git operations, releases, or tags.
+- Never make ordinary feature work directly on `main`.
+- Never force-push unless the user explicitly requests and understands the impact.
+- Never silently overwrite unrelated local/user changes.
+- Inspect the final diff before committing.
+- Preserve lockfiles when dependency state requires them; do not delete `package-lock.json` or `src-tauri/Cargo.lock` to suppress conflicts.
+- Never commit secrets, `.env` files, credentials, database dumps, build outputs, or machine-specific temporary paths.
+- Prefer one coherent concern per commit, especially for high-risk fixes.
 
-## Stockiha constraints
+## Stockiha non-negotiable invariants
+
 - Stack: Tauri v2, React 19, TypeScript, Vite, Rust, PostgreSQL 18.x, SQLx, Typst, ESC/POS.
-- Windows is the primary target.
+- Windows is the primary runtime target.
 - Never use floating point for authoritative money, tax, quantity, WAC, inventory value, or journals.
 - React is not authoritative for financial, inventory, permission, or posting decisions.
 - Posted ledgers are immutable.
@@ -124,78 +174,60 @@ Confirmation is required before commit, push, PR creation, destructive Git opera
 - Financial operations must be atomic and idempotent.
 - Protected operations validate sessions and permissions.
 - Journals must balance.
-- Corrections use linked reversals or adjustments.
-- Printing failure must not roll back a confirmed document.
-- Historical imports must not silently affect live ledgers.
-- Do not weaken DB roles, posting functions, or `SECURITY DEFINER`.
+- Corrections use linked reversals or explicit adjustments; do not mutate posted history.
+- Printing failure must not roll back an already confirmed business document.
+- Historical imports must not silently affect live operational ledgers.
+- Do not weaken database roles, posting functions, grants, or `SECURITY DEFINER` boundaries to bypass failures.
 - Never expose or log passwords, PINs, raw tokens, hashes, credentials, or sensitive internal errors.
+- Preserve the product → variant model and authoritative identifiers defined by current catalog contracts.
+- Purchase, inventory, return, and sales changes must preserve quantity, valuation, document, and journal consistency across failure/retry paths.
 
-Architecture changes require an ADR, alternatives and risks, explicit approval, then an approved architecture update.
+## Verification policy
 
-## Verification
-Run only checks applicable to changed areas.
+Use deterministic verification appropriate to the changed surface. AI confidence is not evidence.
 
-Frontend:
+Frontend, when applicable:
 
+```bash
 npm run typecheck
 npm run lint
 npm test
 npm run build
+```
 
+Rust, when applicable:
 
-Rust:
-
+```bash
 cargo fmt --check
 cargo check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
+```
 
+Also run relevant integration, migration, posting, security, concurrency, rollback, document-generation, or end-to-end tests when the task touches those boundaries.
 
-Run relevant integration, migration, security, concurrency, rollback, or document tests when applicable.
+For bug fixes, prefer a regression test that fails before the fix and passes after it when practical.
 
-A Linux sandbox cannot prove Windows runtime, WebView2, Credential Manager, Windows Service, MSI/NSIS, Windows spooler, physical ESC/POS output, Arabic thermal output, or cash-drawer behavior. Mark these for Windows or hardware verification.
-# MVP Batch Execution Rule
+Do not claim full verification from a Linux environment for Windows-specific behavior such as WebView2, Windows Credential Manager, Windows Services, MSI/NSIS installers, Windows print spooler, physical ESC/POS output, Arabic thermal rendering, or cash-drawer behavior. Route those checks to Windows/manual acceptance.
 
-## Authority
+## Antigravity operating guardrails
 
-This rule applies to Slice 1 and to any later slice explicitly placed in MVP
-batch mode.
+When Antigravity is used as the cheap execution/QA agent:
 
-It overrides the previous one-task-at-a-time workflow for the affected slice.
+- Give it explicit objective, branch/workspace, scope, files if known, acceptance criteria, and forbidden changes.
+- Prefer `DO NOT MODIFY CODE` during diagnostic or acceptance passes.
+- Ask it to return exact commands, errors, logs, screenshots, `git diff`, and PASS/FAIL evidence rather than conclusions such as “looks good.”
+- Do not let it make opportunistic refactors outside scope.
+- Do not let it bypass failing database functions, permissions, accounting preconditions, or tests.
+- If a task becomes architecturally ambiguous, stop Antigravity editing and route the decision back to ChatGPT.
 
-`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` remains the authoritative source for technical,
-financial, security, and data-integrity decisions.
+## Completion standard
 
-## Primary objective
+A task is complete only when:
 
-Deliver a complete, usable MVP as quickly as possible without creating
-temporary, fake, or structurally incorrect implementations.
-
-Prefer a coherent production implementation of the main business workflow over
-perfect completion of every optional feature.
-
-Optional features may be deferred, but they must be cleanly omitted. Do not
-replace deferred features with placeholders, mock workflows, fake persistence,
-temporary schemas, or parallel architectures.
-
-## Slice 1 execution structure
-
-Slice 1 must be completed in no more than two major implementation batches.
-
-### Batch A — Production backend transaction engine
-
-Build the complete backend foundation and transaction chain:
-
-
-Product
-→ Stock receipt
-→ Warehouse-specific WAC update
-→ Cash-session opening
-→ Cash sale
-→ Stock issue
-→ Cash movement
-→ Balanced accounting journal
-→ Official document number
-→ Document generation job
-→ Print job
-→ Drawer-pulse job
+1. The requested behavior is implemented at the authoritative layer.
+2. Relevant regressions are covered or explicitly justified.
+3. Applicable deterministic checks pass, or pre-existing failures are clearly separated from new failures.
+4. The final diff contains no unrelated changes.
+5. Required Windows/manual acceptance is identified or completed.
+6. The task branch is committed and pushed when implementation was requested, unless the user explicitly asked for a local-only change.
