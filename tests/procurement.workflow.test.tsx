@@ -31,6 +31,11 @@ function baseHandlers(extra: Handlers = {}): Handlers {
     }),
     login: () => ({ session_token: 'tok', expires_at: '2026-12-31T23:59:59Z' }),
     inspect_active_cash_session: () => null,
+    get_purchase_workflow_policy: () => ({
+      mode: 'DIRECT_PURCHASE',
+      direct_purchase_enabled: true,
+      can_manage: false,
+    }),
     list_warehouses: () => [{ id: 1, code: 'WH1', name: 'Main Warehouse', is_active: true }],
     get_open_fiscal_period: () => ({
       id: 9,
@@ -82,6 +87,23 @@ function baseHandlers(extra: Handlers = {}): Handlers {
         is_active: true,
         quantity_on_hand: '10.000',
         last_known_wac: '100.000000',
+      },
+    ],
+    list_purchase_product_options: () => [
+      {
+        product_id: 1,
+        variant_id: 7,
+        sku: 'SKU-7',
+        product_name: 'Procurement Item A',
+        variant_name: 'Procurement Item A',
+        primary_barcode: null,
+        brand: null,
+        default_unit_id: 1,
+        default_unit_code: 'PCS',
+        default_unit_name: 'Pieces',
+        alternate_units: [],
+        attributes: [],
+        is_active: true,
       },
     ],
     list_units: () => [{ id: 1, code: 'UNIT', name: 'Unit', is_base: true }],
@@ -213,42 +235,16 @@ describe('S3-001 Procurement Workflow', () => {
     expect(payload.name).toBe('New Supplier');
   });
 
-  it('navigates to Purchase Orders screen and confirms a goods receipt', async () => {
-    let receiptCall: Record<string, unknown> | null = null;
-    wireInvoke(
-      baseHandlers({
-        confirm_purchase_receipt: (args) => {
-          receiptCall = args;
-          return {
-            document_id: 200,
-            document_number: 'PR-2026-000001',
-            purchase_order_id: 10,
-            purchase_order_number: 'PO-2026-000001',
-            supplier_id: 1,
-            warehouse_id: 1,
-            total_amount: '1000.00',
-            journal_document_id: 300,
-            journal_document_number: 'JE-2026-000001',
-            order_status: 'RECEIVED',
-            posted_at: '2026-01-15T00:00:00Z',
-          };
-        },
-      }),
-    );
+  it('routes Purchases directly to the one-step Direct Purchase workstation', async () => {
+    wireInvoke(baseHandlers());
     render(<App />);
     await login();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Purchase Orders' }));
-    expect(await screen.findByRole('heading', { name: 'Purchase Orders' })).toBeInTheDocument();
-    expect(screen.getByText('PO-2026-000001')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('receive-po-10'));
-    await screen.findByTestId('purchase-receipt-modal');
-
-    fireEvent.click(screen.getByTestId('confirm-receipt-submit-btn'));
-
-    await waitFor(() => expect(receiptCall).not.toBeNull());
-    expect(await screen.findByTestId('po-success-banner')).toHaveTextContent('PR-2026-000001');
+    fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
+    expect(await screen.findByRole('heading', { name: 'New Purchase' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Purchase Orders' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Receive goods/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm Purchase' })).toBeInTheDocument();
   });
 });
 
@@ -308,7 +304,7 @@ describe('R8-E Procurement Acceptance Workflow', () => {
     await login();
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_procurement_capabilities', { sessionToken: 'tok' }));
     expect(screen.queryByRole('button', { name: 'Suppliers' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Purchase Orders' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Purchases' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Supplier Invoices' })).not.toBeInTheDocument();
   });
 
@@ -344,43 +340,60 @@ describe('R8-E Procurement Acceptance Workflow', () => {
     }]);
   });
 
-  it('posts landed cost from receipt history and shows the confirmed result', async () => {
+  it('submits landed costs as part of the Direct Purchase transaction', async () => {
     let postingPayload: Record<string, unknown> | null = null;
     wireInvoke(baseHandlers({
-      list_purchase_receipts: () => [{
-        document_id: 200,
-        document_number: 'PR-2026-000001',
-        purchase_order_id: 10,
-        purchase_order_number: 'PO-2026-000001',
-        supplier_id: 1,
-        supplier_name: 'Global Supplier SARL',
-        warehouse_id: 1,
-        warehouse_name: 'Main Warehouse',
-        total_amount: '1000.00',
-        journal_document_id: 210,
-        journal_document_number: 'JE-2026-000001',
-        landed_cost_amount: null,
-        landed_cost_journal_id: null,
-        landed_cost_journal_number: null,
-        posted_at: '2026-01-15T00:00:00Z',
-      }],
-      allocate_landed_cost: (args) => {
+      post_purchase_transaction: (args) => {
         postingPayload = args;
-        return { receipt_id: 200, landed_cost_amount: '100.00', inventory_debit: '100.00', variance_debit: '0.00', journal_document_id: 211, status: 'POSTED' };
+        return {
+          document_id: 900,
+          document_number: 'PUR-2026-000001',
+          status: 'POSTED',
+          supplier_id: 1,
+          warehouse_id: 1,
+          gross_subtotal: '1000.00',
+          discount_amount: '0.00',
+          tax_amount: '0.00',
+          total_amount: '1100.00',
+          payment_status: 'UNPAID',
+          payment_method: null,
+          paid_amount: '0.00',
+          outstanding_amount: '1100.00',
+          generation_status: 'QUEUED',
+          print_status: 'QUEUED',
+          child_documents: {
+            purchase_order_id: null,
+            goods_receipt_id: 901,
+            supplier_invoice_id: 902,
+            supplier_payment_id: null,
+            landed_cost_document_ids: [903],
+          },
+        };
       },
     }));
     render(<App />);
     await login();
-    fireEvent.click(await screen.findByRole('button', { name: 'Purchase Orders' }));
-    await screen.findByTestId('purchase-receipts-table');
-    fireEvent.click(screen.getByTestId('allocate-landed-cost-200'));
-    fireEvent.change(screen.getByTestId('landed-cost-amount'), { target: { value: '100.00' } });
-    fireEvent.click(screen.getByTestId('post-landed-cost'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
+    await screen.findByRole('heading', { name: 'New Purchase' });
+
+    fireEvent.change(screen.getByLabelText(/Supplier \*/i), { target: { value: '1' } });
+    fireEvent.click(screen.getAllByText('+ Add Product')[0]);
+    fireEvent.click(screen.getAllByText('+ Select')[0]);
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '1000' } });
+    fireEvent.click(screen.getByText('Unpaid'));
+
+    fireEvent.click(screen.getByText('+ Add Cost'));
+    fireEvent.change(screen.getByPlaceholderText('Amount (DZD)'), { target: { value: '100.00' } });
+
+    fireEvent.click(screen.getByText('Confirm Purchase'));
+    const confirmButtons = screen.getAllByText('Confirm Purchase');
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
     await waitFor(() => expect(postingPayload).not.toBeNull());
     const payload = (postingPayload as unknown as { payload: Record<string, unknown> }).payload;
-    expect(payload.fiscal_period_id).toBe(9);
-    expect(payload.receipt_id).toBe(200);
-    expect(await screen.findByTestId('landed-cost-result')).toHaveTextContent('100.00 DZD');
+    expect(payload.additional_costs).toEqual([{ cost_type: 'Transport', amount: '100.00' }]);
+    expect(payload.payment_status).toBe('UNPAID');
+    expect(await screen.findByText('PUR-2026-000001')).toBeInTheDocument();
   });
 
   it('confirms supplier return with the real open fiscal period and exact result', async () => {

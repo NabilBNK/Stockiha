@@ -71,13 +71,13 @@ export function useCatalog(token: string) {
   }, [token, errorText]);
 
   const createProductWithVariants = useCallback(async (
-    name: string, isActive: boolean, variants: VariantInput[],
+    name: string, unitId: number, isActive: boolean, variants: VariantInput[],
   ) => {
-    return ipc.createProductWithVariants(token, name, isActive, variants);
+    return ipc.createProductWithVariants(token, name, unitId, isActive, variants);
   }, [token]);
 
-  const updateProduct = useCallback(async (productId: number, name: string, isActive: boolean) => {
-    return ipc.updateProduct(token, productId, name, isActive);
+  const updateProduct = useCallback(async (productId: number, name: string, unitId: number, isActive: boolean) => {
+    return ipc.updateProduct(token, productId, name, unitId, isActive);
   }, [token]);
 
   const addVariant = useCallback(async (productId: number, variant: VariantInput) => {
@@ -85,9 +85,9 @@ export function useCatalog(token: string) {
   }, [token]);
 
   const updateVariant = useCallback(async (
-    variantId: number, sku: string, salePrice: string, isActive: boolean,
+    variantId: number, nameOverride: string | null, salePrice: string, isActive: boolean,
   ) => {
-    return ipc.updateVariant(token, variantId, sku, salePrice, isActive);
+    return ipc.updateVariant(token, variantId, nameOverride, salePrice, isActive);
   }, [token]);
 
   const setVariantActive = useCallback(async (variantId: number, isActive: boolean) => {
@@ -116,20 +116,6 @@ export function useCatalog(token: string) {
     return id;
   }, [token, loadRefData]);
 
-  const setVariantBaseUnit = useCallback(async (variantId: number, unitId: number) => {
-    return ipc.setVariantBaseUnit(token, variantId, unitId);
-  }, [token]);
-
-  const addVariantAltUnit = useCallback(async (
-    variantId: number, unitId: number, conversionFactor: string,
-  ) => {
-    return ipc.addVariantAltUnit(token, variantId, unitId, conversionFactor);
-  }, [token]);
-
-  const removeVariantAltUnit = useCallback(async (variantUnitId: number) => {
-    return ipc.removeVariantAltUnit(token, variantUnitId);
-  }, [token]);
-
   const addVariantBarcode = useCallback(async (variantId: number, barcode: string) => {
     return ipc.addVariantBarcode(token, variantId, barcode);
   }, [token]);
@@ -149,8 +135,7 @@ export function useCatalog(token: string) {
     createProductWithVariants, updateProduct,
     addVariant, updateVariant, setVariantActive,
     createAttribute, addAttributeValue, setVariantAttributes,
-    createUnit, setVariantBaseUnit,
-    addVariantAltUnit, removeVariantAltUnit,
+    createUnit,
     addVariantBarcode, removeVariantBarcode,
   };
 }

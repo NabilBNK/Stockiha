@@ -82,6 +82,7 @@ export function humanDocumentType(type: string | null | undefined, locale: Local
   const LABELS: Record<string, Record<Locale, string>> = {
     PURCHASE_ORDER: { en: 'Purchase Order', fr: 'Bon de commande', ar: 'طلب شراء' },
     PURCHASE_RECEIPT: { en: 'Purchase Receipt', fr: 'Bon de réception', ar: 'وصل استلام شراء' },
+    PURCHASE_TRANSACTION: { en: 'Purchase Transaction', fr: 'Reçu d’Achat', ar: 'عملية شراء' },
     SUPPLIER_INVOICE: { en: 'Supplier Invoice', fr: 'Facture fournisseur', ar: 'فاتورة المورد' },
     PURCHASE_RETURN: { en: 'Supplier Return', fr: 'Retour fournisseur', ar: 'إرجاع للمورد' },
     SUPPLIER_PAYMENT: { en: 'Supplier Payment', fr: 'Paiement fournisseur', ar: 'دفع للمورد' },

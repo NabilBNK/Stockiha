@@ -38,13 +38,13 @@ pub const DEV_DATABASE_URL_ENV: &str = "STOCKIHA_DEV_DATABASE_URL";
 #[cfg(test)]
 const TEST_DATABASE_URL_ENV: &str = "STOCKIHA_TEST_DATABASE_URL";
 
-/// Maximum pool connections for the connectivity proof (S0-003 mandate).
-pub const MAX_CONNECTIONS: u32 = 5;
+/// Maximum pool connections for the application pool.
+pub const MAX_CONNECTIONS: u32 = 25;
 
 /// How long an acquire (including the lazy initial connect) may take before
-/// failing (S0-003 mandate). This bounds the health check without any
+/// failing. This bounds the health check without any
 /// `tokio::time::timeout` in production code.
-pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Fixed diagnostic for a configuration value that could not be parsed.
 ///

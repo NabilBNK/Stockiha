@@ -93,27 +93,18 @@ BEGIN
     v_product := catalog.create_product_with_variants(
         v_token,
         'R8-D Notebook',
+        v_base_unit_id,
         true,
         jsonb_build_array(
             jsonb_build_object(
-                'sku', 'R8D-NB-S',
                 'sale_price', '150.00',
                 'is_active', true,
-                'base_unit_id', v_base_unit_id,
                 'attribute_value_ids', jsonb_build_array(v_small_id),
-                'barcodes', jsonb_build_array('613000000001'),
-                'alternate_units', jsonb_build_array(
-                    jsonb_build_object(
-                        'unit_id', v_carton_unit_id,
-                        'conversion_factor', '12.000000'
-                    )
-                )
+                'barcodes', jsonb_build_array('613000000001')
             ),
             jsonb_build_object(
-                'sku', 'R8D-NB-L',
                 'sale_price', '180.00',
                 'is_active', true,
-                'base_unit_id', v_base_unit_id,
                 'attribute_value_ids', jsonb_build_array(v_large_id),
                 'barcodes', jsonb_build_array('613000000002')
             )
@@ -121,6 +112,12 @@ BEGIN
     );
     v_variant_id := ((v_product -> 'variant_ids') ->> 0)::bigint;
     v_other_variant_id := ((v_product -> 'variant_ids') ->> 1)::bigint;
+    PERFORM catalog.add_variant_alt_unit(
+        v_token,
+        v_variant_id,
+        v_carton_unit_id,
+        12.000000
+    );
 
     ASSERT (
         SELECT conversion_factor FROM catalog.variant_units
@@ -200,7 +197,7 @@ BEGIN
 
     ASSERT (
         SELECT quantity_on_hand FROM inventory.list_inventory_snapshot(
-            v_token, v_warehouse_id, 'R8D-NB-S', false
+            v_token, v_warehouse_id, '613000000001', false
         )
     ) = 20.000, 'Snapshot quantity must be 20';
     ASSERT (
@@ -276,12 +273,12 @@ BEGIN
     PERFORM catalog.set_variant_active(v_token, v_other_variant_id, false);
     ASSERT NOT EXISTS (
         SELECT 1 FROM inventory.list_inventory_snapshot(
-            v_token, v_warehouse_id, 'R8D-NB-L', false
+            v_token, v_warehouse_id, '613000000002', false
         )
     ), 'Inactive variants must be hidden by default';
     ASSERT EXISTS (
         SELECT 1 FROM inventory.list_inventory_snapshot(
-            v_token, v_warehouse_id, 'R8D-NB-L', true
+            v_token, v_warehouse_id, '613000000002', true
         )
         WHERE NOT variant_is_active
     ), 'Inactive variants must remain inspectable when requested';

@@ -1,0 +1,75 @@
+name: Purchase Recovery DB Diagnostic
+
+on:
+  push:
+    branches:
+      - fix/purchase-confirm-recovery
+
+permissions:
+  contents: read
+
+jobs:
+  migration-diagnostic:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: stockiha_recovery_diag
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d stockiha_recovery_diag"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGPASSWORD: postgres
+      ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/stockiha_recovery_diag
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Bootstrap roles
+        run: |
+          psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE stockiha_owner NOLOGIN;
+          CREATE ROLE stockiha_migrator NOLOGIN;
+          CREATE ROLE stockiha_admin NOLOGIN;
+          CREATE ROLE stockiha_runtime LOGIN PASSWORD 'runtime_ci_password';
+          CREATE ROLE stockiha_backup LOGIN PASSWORD 'backup_ci_password';
+          GRANT CREATE ON DATABASE stockiha_recovery_diag TO stockiha_owner;
+          SQL
+      - name: Apply migrations with captured diagnostics
+        id: migrate
+        shell: bash
+        run: |
+          set +e
+          : > migration-diagnostic.log
+          status=0
+          while IFS= read -r migration; do
+            echo "===== APPLYING: $migration =====" | tee -a migration-diagnostic.log
+            psql "$ADMIN_URL" -X -v ON_ERROR_STOP=1 -f "$migration" 2>&1 | tee -a migration-diagnostic.log
+            rc=${PIPESTATUS[0]}
+            if [[ $rc -ne 0 ]]; then
+              echo "===== FAILED: $migration (exit $rc) =====" | tee -a migration-diagnostic.log
+              status=$rc
+              break
+            fi
+          done < <(find src-tauri/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload migration diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: purchase-recovery-migration-diagnostic-${{ github.run_id }}
+          path: migration-diagnostic.log
+          if-no-files-found: error
+      - name: Fail if migration failed
+        if: steps.migrate.outputs.exit_code != '0'
+        run: exit 1

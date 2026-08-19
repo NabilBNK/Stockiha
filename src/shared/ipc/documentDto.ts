@@ -17,7 +17,7 @@ export interface BusinessDocument {
   status: string;
   posted_at: string | null;
   generation_status: string;
-  print_status: string;
+  print_status: string | null;
   linked_journal_id: number | null;
   linked_journal_number: string | null;
   detail_summary: string | null;
@@ -122,7 +122,7 @@ export interface BusinessDocumentPrintJobs {
 
 export interface BusinessDocumentDetail {
   header: BusinessDocumentHeader;
-  subtype_detail: Record<string, any>;
+  subtype_detail: Record<string, unknown>;
   relationships: BusinessDocumentRelationship[];
   journal: BusinessDocumentLinkedJournal | null;
   print_jobs: BusinessDocumentPrintJobs;

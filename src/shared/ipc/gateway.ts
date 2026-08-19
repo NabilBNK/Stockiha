@@ -67,6 +67,65 @@ export function newRequestId(): string {
   return crypto.randomUUID();
 }
 
+const PENDING_PURCHASE_STORAGE_KEY = 'stockiha.pendingPurchaseTransaction';
+
+type PendingPurchaseRequest = {
+  fingerprint: string;
+  requestId: string;
+};
+
+let pendingPurchaseFallback: PendingPurchaseRequest | null = null;
+
+function purchaseIntentFingerprint(payload: import('./dto').PostPurchaseTransactionPayload): string {
+  const intent: Partial<import('./dto').PostPurchaseTransactionPayload> = { ...payload };
+  delete intent.request_id;
+  return JSON.stringify(intent);
+}
+
+function readPendingPurchaseRequest(): PendingPurchaseRequest | null {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return pendingPurchaseFallback;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PENDING_PURCHASE_STORAGE_KEY);
+    if (!raw) return pendingPurchaseFallback;
+    const parsed = JSON.parse(raw) as Partial<PendingPurchaseRequest>;
+    if (typeof parsed.fingerprint !== 'string' || typeof parsed.requestId !== 'string') {
+      window.localStorage.removeItem(PENDING_PURCHASE_STORAGE_KEY);
+      return pendingPurchaseFallback;
+    }
+    return { fingerprint: parsed.fingerprint, requestId: parsed.requestId };
+  } catch {
+    return pendingPurchaseFallback;
+  }
+}
+
+function writePendingPurchaseRequest(pending: PendingPurchaseRequest): void {
+  pendingPurchaseFallback = pending;
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(PENDING_PURCHASE_STORAGE_KEY, JSON.stringify(pending));
+  } catch {
+    // The in-memory fallback still protects retries during this application run.
+  }
+}
+
+function clearPendingPurchaseRequest(expected: PendingPurchaseRequest): void {
+  const current = readPendingPurchaseRequest();
+  if (current?.fingerprint !== expected.fingerprint || current.requestId !== expected.requestId) {
+    return;
+  }
+
+  pendingPurchaseFallback = null;
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(PENDING_PURCHASE_STORAGE_KEY);
+  } catch {
+    // Clearing the in-memory copy is sufficient for the current run.
+  }
+}
+
 export function getSetupStatus(): Promise<SetupStatus> {
   return call<SetupStatus>(COMMANDS.GET_SETUP_STATUS);
 }
@@ -265,24 +324,24 @@ export function listDocumentJobs(sessionToken: string, documentId: number): Prom
 
 // Slice 2 — variant catalog gateway wrappers
 
-export function createProductWithVariants(sessionToken: string, name: string, isActive: boolean, variants: VariantInput[]): Promise<CreatedProductWithVariants> {
-  return call<CreatedProductWithVariants>(COMMANDS.CREATE_PRODUCT_WITH_VARIANTS, { sessionToken, name, isActive, variants });
+export function createProductWithVariants(sessionToken: string, name: string, unitId: number, isActive: boolean, variants: VariantInput[]): Promise<CreatedProductWithVariants> {
+  return call<CreatedProductWithVariants>(COMMANDS.CREATE_PRODUCT_WITH_VARIANTS, { sessionToken, name, unitId, isActive, variants });
 }
 
 export function addVariant(sessionToken: string, productId: number, variant: VariantInput): Promise<number> {
   return call<number>(COMMANDS.ADD_VARIANT, { sessionToken, productId, variant });
 }
 
-export function updateVariant(sessionToken: string, variantId: number, sku: string, salePrice: string, isActive: boolean): Promise<void> {
-  return call<void>(COMMANDS.UPDATE_VARIANT, { sessionToken, variantId, sku, salePrice, isActive });
+export function updateVariant(sessionToken: string, variantId: number, nameOverride: string | null, salePrice: string, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_VARIANT, { sessionToken, variantId, nameOverride, salePrice, isActive });
 }
 
 export function setVariantActive(sessionToken: string, variantId: number, isActive: boolean): Promise<void> {
   return call<void>(COMMANDS.SET_VARIANT_ACTIVE, { sessionToken, variantId, isActive });
 }
 
-export function updateProduct(sessionToken: string, productId: number, name: string, isActive: boolean): Promise<void> {
-  return call<void>(COMMANDS.UPDATE_PRODUCT, { sessionToken, productId, name, isActive });
+export function updateProduct(sessionToken: string, productId: number, name: string, unitId: number, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_PRODUCT, { sessionToken, productId, name, unitId, isActive });
 }
 
 export function createAttribute(sessionToken: string, name: string): Promise<number> {
@@ -503,6 +562,34 @@ export function listSupplierPayments(
     sessionToken,
     supplierId: supplierId ?? null,
   });
+}
+
+export function listPurchaseProductOptions(
+  sessionToken: string
+): Promise<import('./dto').PurchaseProductOption[]> {
+  return call<import('./dto').PurchaseProductOption[]>(COMMANDS.LIST_PURCHASE_PRODUCT_OPTIONS, {
+    sessionToken,
+  });
+}
+
+export async function postPurchaseTransaction(
+  sessionToken: string,
+  payload: import('./dto').PostPurchaseTransactionPayload
+): Promise<import('./dto').PostPurchaseTransactionResult> {
+  const fingerprint = purchaseIntentFingerprint(payload);
+  const existing = readPendingPurchaseRequest();
+  const pending: PendingPurchaseRequest = existing?.fingerprint === fingerprint
+    ? existing
+    : { fingerprint, requestId: payload.request_id };
+
+  writePendingPurchaseRequest(pending);
+
+  const result = await call<import('./dto').PostPurchaseTransactionResult>(COMMANDS.POST_PURCHASE_TRANSACTION, {
+    sessionToken,
+    payload: { ...payload, request_id: pending.requestId },
+  });
+  clearPendingPurchaseRequest(pending);
+  return result;
 }
 
 export function listJournals(

@@ -89,8 +89,10 @@ export function Banner({
 }
 
 export function ConfirmDialog({
+  open = true,
   title,
   body,
+  message,
   confirmLabel,
   cancelLabel,
   onConfirm,
@@ -98,8 +100,10 @@ export function ConfirmDialog({
   confirmVariant = 'primary',
   busy = false,
 }: {
+  open?: boolean;
   title: string;
   body?: ReactNode;
+  message?: ReactNode;
   confirmLabel: string;
   cancelLabel: string;
   onConfirm: () => void;
@@ -107,6 +111,9 @@ export function ConfirmDialog({
   confirmVariant?: ButtonVariant;
   busy?: boolean;
 }) {
+  if (!open) return null;
+  const content = body ?? message;
+
   return (
     <div className="sk-modal__backdrop" role="presentation" onClick={onCancel}>
       <div
@@ -117,7 +124,7 @@ export function ConfirmDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="sk-modal__title">{title}</h2>
-        {body ? <div className="sk-modal__body">{body}</div> : null}
+        {content ? <div className="sk-modal__body">{content}</div> : null}
         <div className="sk-modal__actions">
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
             {cancelLabel}

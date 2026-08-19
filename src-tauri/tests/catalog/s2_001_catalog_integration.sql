@@ -54,13 +54,12 @@ BEGIN
     v_kg := catalog.create_unit('admintok', 'KG', 'Kilogram');
     v_gram := catalog.create_unit('admintok', 'G', 'Gram');
 
-    -- Create a product with TWO variants, attributes, barcodes, alt units
-    v_res := catalog.create_product_with_variants('admintok', 'T-Shirt', true, jsonb_build_array(
-        jsonb_build_object('sku','TS-S-W','sale_price','10.00','is_active',true,
+    -- Create a product with TWO variants, attributes and barcodes.
+    v_res := catalog.create_product_with_variants('admintok', 'T-Shirt', v_kg, true, jsonb_build_array(
+        jsonb_build_object('sale_price','10.00','is_active',true,
             'attribute_value_ids', jsonb_build_array(v_s, v_w),
-            'barcodes', jsonb_build_array('6001'),
-            'alternate_units', jsonb_build_array(jsonb_build_object('unit_id', v_carton, 'conversion_factor','12'))),
-        jsonb_build_object('sku','TS-M-B','sale_price','12.00','is_active',true,
+            'barcodes', jsonb_build_array('6001')),
+        jsonb_build_object('sale_price','12.00','is_active',true,
             'attribute_value_ids', jsonb_build_array(v_m, v_b),
             'barcodes', jsonb_build_array('6002','6003'))
     ));
@@ -75,10 +74,21 @@ BEGIN
     SELECT count(*) INTO v_cnt FROM catalog.product_variants WHERE product_id = v_pid;
     IF v_cnt <> 2 THEN RAISE EXCEPTION 'ASSERT FAIL: expected 2 variants, got %', v_cnt; END IF;
 
-    -- base unit backfilled to canonical UNIT
+    -- product-owned unit is copied to each variant
     SELECT u.normalized_code INTO v_txt FROM catalog.product_variants pv
         JOIN catalog.units u ON u.id = pv.base_unit_id WHERE pv.id = v_v1;
-    IF v_txt <> 'UNIT' THEN RAISE EXCEPTION 'ASSERT FAIL: base unit not UNIT (%)', v_txt; END IF;
+    IF v_txt <> 'KG' THEN RAISE EXCEPTION 'ASSERT FAIL: base unit not KG (%)', v_txt; END IF;
+
+    -- attribute ownership is persisted, not merely the selected value id
+    SELECT count(*) INTO v_cnt
+        FROM catalog.variant_attribute_values vav
+        JOIN catalog.attribute_values av
+          ON av.id = vav.attribute_value_id
+         AND av.attribute_id = vav.attribute_id
+        WHERE vav.variant_id = v_v1;
+    IF v_cnt <> 2 THEN
+        RAISE EXCEPTION 'ASSERT FAIL: expected 2 valid variant-attribute mappings, got %', v_cnt;
+    END IF;
 
     -- attribute signature non-empty and deterministic (sorted attribute_id:value_id)
     SELECT attribute_signature INTO v_txt FROM catalog.product_variants WHERE id = v_v1;
@@ -88,6 +98,7 @@ BEGIN
     END IF;
 
     -- exact conversion factor stored exactly
+    PERFORM catalog.add_variant_alt_unit('admintok', v_v1, v_carton, 12);
     SELECT conversion_factor::text INTO v_txt FROM catalog.variant_units WHERE variant_id=v_v1 AND unit_id=v_carton;
     IF v_txt <> '12.000000' THEN RAISE EXCEPTION 'ASSERT FAIL: carton factor %', v_txt; END IF;
 
@@ -107,19 +118,19 @@ BEGIN
     SELECT v INTO v_m FROM t WHERE k='m'; SELECT v INTO v_b FROM t WHERE k='b';
     SELECT v INTO v_carton FROM t WHERE k='carton'; SELECT v INTO v_kg FROM t WHERE k='kg'; SELECT v INTO v_gram FROM t WHERE k='gram';
 
-    -- duplicate SKU (global) rejected
+    -- negative sale price rejected
     PERFORM pg_temp.expect_error(
-        format('SELECT catalog.add_variant(%L,%s,%L::jsonb)','admintok',v_pid,'{"sku":"TS-S-W","sale_price":"9.00"}'), '22023');
+        format('SELECT catalog.add_variant(%L,%s,%L::jsonb)','admintok',v_pid,'{"sale_price":"-1.00"}'), '22023');
 
     -- duplicate attribute-value combination under same product rejected
     PERFORM pg_temp.expect_error(
         format('SELECT catalog.add_variant(%L,%s,%L::jsonb)','admintok',v_pid,
-            format('{"sku":"TS-DUP","sale_price":"9.00","attribute_value_ids":[%s,%s]}', v_s, v_w)), '22023');
+            format('{"sale_price":"9.00","attribute_value_ids":[%s,%s]}', v_s, v_w)), '22023');
 
     -- two values of the same attribute rejected
     PERFORM pg_temp.expect_error(
         format('SELECT catalog.add_variant(%L,%s,%L::jsonb)','admintok',v_pid,
-            format('{"sku":"TS-BAD","sale_price":"9.00","attribute_value_ids":[%s,%s]}', v_s, v_m)), '22023');
+            format('{"sale_price":"9.00","attribute_value_ids":[%s,%s]}', v_s, v_m)), '22023');
 
     -- duplicate barcode (global) rejected
     PERFORM pg_temp.expect_error(
@@ -134,7 +145,7 @@ BEGIN
     PERFORM pg_temp.expect_error(
         format('INSERT INTO catalog.variant_units(variant_id,unit_id,conversion_factor) VALUES (%s,%s,0)', v_v1, v_gram), '23514');
 
-    -- blank barcode / blank sku rejected
+    -- blank barcode rejected
     PERFORM pg_temp.expect_error(format('SELECT catalog.add_variant_barcode(%L,%s,%L)','admintok',v_v1,'   '), '22023');
 
     -- exact fractional factor (gram per kg = 0.001) preserved
@@ -151,9 +162,10 @@ END $$;
 
 -- ---- Barcode resolution + active/inactive rules ----------------------------
 DO $$
-DECLARE v_pid bigint; v_v1 bigint; v_cnt bigint;
+DECLARE v_pid bigint; v_v1 bigint; v_kg bigint; v_cnt bigint;
 BEGIN
     SELECT v INTO v_pid FROM t WHERE k='pid'; SELECT v INTO v_v1 FROM t WHERE k='v1';
+    SELECT v INTO v_kg FROM t WHERE k='kg';
 
     -- resolve returns exactly one active variant
     SELECT count(*) INTO v_cnt FROM catalog.resolve_barcode('admintok','6001');
@@ -171,14 +183,14 @@ BEGIN
     PERFORM catalog.set_variant_active('admintok', v_v1, true);
 
     -- deactivate product cascades to all variants
-    PERFORM catalog.update_product('admintok', v_pid, 'T-Shirt', false);
+    PERFORM catalog.update_product('admintok', v_pid, 'T-Shirt', v_kg, false);
     IF (SELECT count(*) FROM catalog.product_variants WHERE product_id=v_pid AND is_active) <> 0 THEN
         RAISE EXCEPTION 'ASSERT FAIL: product deactivate did not cascade';
     END IF;
     -- cannot activate a variant while product inactive
     PERFORM pg_temp.expect_error(format('SELECT catalog.set_variant_active(%L,%s,true)','admintok',v_v1), '55000');
     -- reactivate product, then variant
-    PERFORM catalog.update_product('admintok', v_pid, 'T-Shirt', true);
+    PERFORM catalog.update_product('admintok', v_pid, 'T-Shirt', v_kg, true);
     PERFORM catalog.set_variant_active('admintok', v_v1, true);
     IF (SELECT count(*) FROM catalog.resolve_barcode('admintok','6001')) <> 1 THEN
         RAISE EXCEPTION 'ASSERT FAIL: barcode not resolvable after reactivation';
@@ -188,8 +200,9 @@ END $$;
 
 -- ---- Authorization + rollback + Slice 1 preservation -----------------------
 DO $$
-DECLARE v_before bigint; v_after bigint; v_s bigint; v_w bigint;
+DECLARE v_before bigint; v_after bigint; v_kg bigint;
 BEGIN
+    SELECT v INTO v_kg FROM t WHERE k='kg';
     -- authorization: cashier lacks MANAGE_CATALOG -> 42501; invalid token -> 28000
     PERFORM pg_temp.expect_error('SELECT catalog.create_attribute(''cashtok'',''Material'')', '42501');
     PERFORM pg_temp.expect_error('SELECT catalog.create_attribute(''bogustoken'',''Material'')', '28000');
@@ -197,8 +210,11 @@ BEGIN
     -- rollback: a multi-variant create that fails on the 2nd variant leaves NO product
     SELECT count(*) INTO v_before FROM catalog.products;
     PERFORM pg_temp.expect_error(
-        'SELECT catalog.create_product_with_variants(''admintok'',''RollbackTest'',true,'
-        || '''[{"sku":"RB-1","sale_price":"1.00"},{"sku":"  ","sale_price":"2.00"}]''::jsonb)', '22023');
+        format(
+            'SELECT catalog.create_product_with_variants(%L,%L,%s,true,%L::jsonb)',
+            'admintok', 'RollbackTest', v_kg,
+            '[{"sale_price":"1.00"},{"sale_price":"-1.00"}]'
+        ), '22023');
     SELECT count(*) INTO v_after FROM catalog.products;
     IF v_after <> v_before THEN RAISE EXCEPTION 'ASSERT FAIL: rollback left partial product (% -> %)', v_before, v_after; END IF;
     IF EXISTS (SELECT 1 FROM catalog.products WHERE name='RollbackTest') THEN

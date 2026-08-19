@@ -107,8 +107,9 @@ pub struct ConfirmPurchaseReceiptPayload {
 pub struct PurchaseReceiptSummary {
     pub document_id: i64,
     pub document_number: String,
-    pub purchase_order_id: i64,
-    pub purchase_order_number: String,
+    pub receipt_origin: String,
+    pub purchase_order_id: Option<i64>,
+    pub purchase_order_number: Option<String>,
     pub supplier_id: i64,
     pub supplier_name: String,
     pub warehouse_id: i64,
@@ -127,9 +128,10 @@ pub struct PurchaseReceiptLineDto {
     pub receipt_line_id: i64,
     pub receipt_document_id: i64,
     pub receipt_document_number: String,
-    pub purchase_order_id: i64,
-    pub purchase_order_number: String,
-    pub po_line_id: i64,
+    pub receipt_origin: String,
+    pub purchase_order_id: Option<i64>,
+    pub purchase_order_number: Option<String>,
+    pub po_line_id: Option<i64>,
     pub supplier_id: i64,
     pub supplier_name: String,
     pub warehouse_id: i64,
@@ -208,7 +210,7 @@ pub struct CreateSupplierInvoicePayload {
 pub struct CreateSupplierInvoiceResult {
     pub document_id: i64,
     pub supplier_id: i64,
-    pub purchase_order_id: i64,
+    pub purchase_order_id: Option<i64>,
     pub status: String,
     pub subtotal: String,
     pub total_amount: String,
@@ -314,6 +316,7 @@ pub struct CreateSupplierReturnPayload {
     pub supplier_id: i64,
     pub warehouse_id: i64,
     pub purchase_order_id: Option<i64>,
+    pub receipt_document_id: Option<i64>,
     pub reason_code: Option<String>,
     pub note: Option<String>,
     pub lines: Vec<CreateSupplierReturnLinePayload>,
@@ -323,7 +326,8 @@ pub struct CreateSupplierReturnPayload {
 pub struct CreateSupplierReturnResult {
     pub document_id: i64,
     pub supplier_id: i64,
-    pub purchase_order_id: i64,
+    pub purchase_order_id: Option<i64>,
+    pub receipt_document_id: Option<i64>,
     pub status: String,
 }
 
@@ -379,6 +383,8 @@ pub struct SupplierReturnSummary {
     pub warehouse_name: String,
     pub purchase_order_id: Option<i64>,
     pub purchase_order_number: Option<String>,
+    pub receipt_document_id: Option<i64>,
+    pub receipt_document_number: Option<String>,
     pub status: String,
     pub reason_code: String,
     pub journal_document_id: Option<i64>,
@@ -438,8 +444,11 @@ impl AllocateLandedCostPayload {
 
 impl CreateSupplierInvoicePayload {
     pub fn validate(&self) -> Result<(), String> {
-        if self.supplier_id <= 0 || self.purchase_order_id.unwrap_or_default() <= 0 {
-            return Err("Supplier and purchase order are required.".to_string());
+        if self.supplier_id <= 0 {
+            return Err("Supplier is required.".to_string());
+        }
+        if matches!(self.purchase_order_id, Some(id) if id <= 0) {
+            return Err("Purchase order reference is invalid.".to_string());
         }
         if self.lines.is_empty() {
             return Err("Supplier invoice requires at least one receipt line.".to_string());
@@ -448,11 +457,17 @@ impl CreateSupplierInvoicePayload {
             return Err("Only DZD supplier invoices are enabled for the MVP.".to_string());
         }
         if let Some(rate) = self.exchange_rate_to_dzd.as_deref() {
-            positive_decimal(rate, "exchange rate")?;
+            let parsed = positive_decimal(rate, "exchange rate")?;
+            if parsed != Decimal::ONE {
+                return Err("DZD supplier invoice exchange rate must be 1.000000.".to_string());
+            }
         }
+
+        let is_purchase_order_invoice = self.purchase_order_id.is_some();
         for (index, line) in self.lines.iter().enumerate() {
+            let invalid_optional_po_line = matches!(line.po_line_id, Some(id) if id <= 0);
             if line.line_number <= 0
-                || line.po_line_id.unwrap_or_default() <= 0
+                || invalid_optional_po_line
                 || line.receipt_line_id.unwrap_or_default() <= 0
                 || line.variant_id <= 0
             {
@@ -461,6 +476,20 @@ impl CreateSupplierInvoicePayload {
                     index + 1
                 ));
             }
+
+            if is_purchase_order_invoice && line.po_line_id.is_none() {
+                return Err(format!(
+                    "Invoice line {} requires a Purchase Order line reference.",
+                    index + 1
+                ));
+            }
+            if !is_purchase_order_invoice && line.po_line_id.is_some() {
+                return Err(format!(
+                    "Direct Purchase invoice line {} must not contain a Purchase Order line reference.",
+                    index + 1
+                ));
+            }
+
             positive_decimal(&line.quantity, "invoice quantity")?;
             non_negative_decimal(&line.unit_cost, "invoice unit cost")?;
         }
@@ -479,11 +508,22 @@ impl ConfirmSupplierInvoicePayload {
 
 impl CreateSupplierReturnPayload {
     pub fn validate(&self) -> Result<(), String> {
-        if self.supplier_id <= 0
-            || self.warehouse_id <= 0
-            || self.purchase_order_id.unwrap_or_default() <= 0
-        {
-            return Err("Supplier, warehouse, and purchase order are required.".to_string());
+        if self.supplier_id <= 0 || self.warehouse_id <= 0 {
+            return Err("Supplier and warehouse are required.".to_string());
+        }
+
+        let has_purchase_order = matches!(self.purchase_order_id, Some(id) if id > 0);
+        let has_direct_receipt = matches!(self.receipt_document_id, Some(id) if id > 0);
+        if self.purchase_order_id.is_some() && !has_purchase_order {
+            return Err("Purchase order reference is invalid.".to_string());
+        }
+        if self.receipt_document_id.is_some() && !has_direct_receipt {
+            return Err("Purchase receipt reference is invalid.".to_string());
+        }
+        if has_purchase_order == has_direct_receipt {
+            return Err(
+                "Exactly one purchase source is required for a supplier return.".to_string(),
+            );
         }
         if self.lines.is_empty() {
             return Err("Supplier return requires at least one line.".to_string());
@@ -528,6 +568,149 @@ impl PostSupplierPaymentPayload {
             "CASH" | "BANK_TRANSFER" | "CHECK"
         ) {
             return Err("Unsupported supplier payment method.".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseAdditionalCostInput {
+    pub cost_type: String,
+    pub amount: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseTransactionLineInput {
+    pub variant_id: i64,
+    pub unit_id: i64,
+    pub quantity: String,
+    pub unit_cost: String,
+    pub tax_amount: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostPurchaseTransactionPayload {
+    pub request_id: String,
+    pub supplier_id: i64,
+    pub document_date: String,
+    pub external_supplier_document_number: Option<String>,
+    pub payment_status: String,
+    pub payment_method: Option<String>,
+    pub paid_amount: Option<String>,
+    pub print_after_confirmation: bool,
+    pub note: Option<String>,
+    pub lines: Vec<PurchaseTransactionLineInput>,
+    pub additional_costs: Option<Vec<PurchaseAdditionalCostInput>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseTransactionChildDocuments {
+    pub purchase_order_id: Option<i64>,
+    pub goods_receipt_id: i64,
+    pub supplier_invoice_id: i64,
+    pub supplier_payment_id: Option<i64>,
+    pub landed_cost_document_ids: Option<Vec<i64>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostPurchaseTransactionResult {
+    pub document_id: i64,
+    pub document_number: String,
+    pub status: String,
+    pub supplier_id: i64,
+    pub warehouse_id: i64,
+    pub gross_subtotal: String,
+    pub discount_amount: String,
+    pub tax_amount: String,
+    pub total_amount: String,
+    pub payment_status: String,
+    pub payment_method: Option<String>,
+    pub paid_amount: String,
+    pub outstanding_amount: String,
+    pub due_date: Option<String>,
+    pub child_documents: PurchaseTransactionChildDocuments,
+    pub generation_status: String,
+    pub print_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrandDto {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VariantAttributeDto {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlternateUnitOptionDto {
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub conversion_factor: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseProductOption {
+    pub product_id: i64,
+    pub variant_id: i64,
+    pub sku: String,
+    pub product_name: String,
+    pub variant_name: Option<String>,
+    pub primary_barcode: Option<String>,
+    pub brand: Option<BrandDto>,
+    pub default_unit_id: i64,
+    pub default_unit_code: String,
+    pub default_unit_name: Option<String>,
+    pub alternate_units: Vec<AlternateUnitOptionDto>,
+    pub attributes: Vec<VariantAttributeDto>,
+    pub is_active: bool,
+}
+
+impl PostPurchaseTransactionPayload {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.supplier_id <= 0 {
+            return Err("Supplier selection is required.".to_string());
+        }
+        if self.document_date.trim().is_empty() {
+            return Err("Document date is required.".to_string());
+        }
+        if !matches!(
+            self.payment_status.as_str(),
+            "PAID" | "PARTIALLY_PAID" | "UNPAID"
+        ) {
+            return Err("Invalid payment status.".to_string());
+        }
+        if matches!(self.payment_status.as_str(), "PAID" | "PARTIALLY_PAID") {
+            let method = self.payment_method.as_deref().unwrap_or("");
+            if !matches!(method, "CASH" | "BANK_TRANSFER") {
+                return Err(
+                    "Payment method must be Cash or Bank Transfer when paid or partially paid."
+                        .to_string(),
+                );
+            }
+        }
+        if self.lines.is_empty() {
+            return Err("Purchase transaction must contain at least one product line.".to_string());
+        }
+        for (idx, line) in self.lines.iter().enumerate() {
+            if line.variant_id <= 0 || line.unit_id <= 0 {
+                return Err(format!("Line {}: invalid variant or unit", idx + 1));
+            }
+            positive_decimal(&line.quantity, &format!("Line {} quantity", idx + 1))?;
+            non_negative_decimal(&line.unit_cost, &format!("Line {} unit cost", idx + 1))?;
+            if line.unit_id == 1 {
+                if let Ok(dec) = line.quantity.parse::<rust_decimal::Decimal>() {
+                    if dec.fract() != rust_decimal::Decimal::ZERO {
+                        return Err(format!(
+                            "Quantity for unit U on line {} must be a whole number.",
+                            idx + 1
+                        ));
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -590,5 +773,117 @@ mod tests {
             request_id: "00000000-0000-4000-8000-000000000002".to_string(),
         };
         assert!(payment.validate().is_err());
+    }
+
+    #[test]
+    fn supplier_invoice_accepts_direct_receipt_without_po_and_rejects_mixed_source() {
+        let direct = CreateSupplierInvoicePayload {
+            supplier_id: 1,
+            purchase_order_id: None,
+            currency_code: Some("DZD".to_string()),
+            exchange_rate_to_dzd: Some("1.000000".to_string()),
+            note: None,
+            lines: vec![CreateSupplierInvoiceLinePayload {
+                line_number: 1,
+                po_line_id: None,
+                receipt_line_id: Some(501),
+                variant_id: 7,
+                quantity: "2.000".to_string(),
+                unit_cost: "100.00".to_string(),
+            }],
+        };
+        assert!(direct.validate().is_ok());
+
+        let mixed = CreateSupplierInvoicePayload {
+            purchase_order_id: None,
+            lines: vec![CreateSupplierInvoiceLinePayload {
+                po_line_id: Some(101),
+                ..direct.lines[0].clone()
+            }],
+            ..direct
+        };
+        assert!(mixed.validate().is_err());
+    }
+
+    #[test]
+    fn supplier_return_accepts_exactly_one_purchase_source() {
+        let line = CreateSupplierReturnLinePayload {
+            variant_id: 7,
+            quantity: "1.000".to_string(),
+            unit_cost: "100.00".to_string(),
+        };
+
+        let po_return = CreateSupplierReturnPayload {
+            supplier_id: 1,
+            warehouse_id: 1,
+            purchase_order_id: Some(10),
+            receipt_document_id: None,
+            reason_code: Some("DEFECTIVE_GOODS".to_string()),
+            note: None,
+            lines: vec![line.clone()],
+        };
+        assert!(po_return.validate().is_ok());
+
+        let direct_return = CreateSupplierReturnPayload {
+            supplier_id: 1,
+            warehouse_id: 1,
+            purchase_order_id: None,
+            receipt_document_id: Some(20),
+            reason_code: Some("WRONG_ITEM".to_string()),
+            note: None,
+            lines: vec![line.clone()],
+        };
+        assert!(direct_return.validate().is_ok());
+
+        let ambiguous = CreateSupplierReturnPayload {
+            supplier_id: 1,
+            warehouse_id: 1,
+            purchase_order_id: Some(10),
+            receipt_document_id: Some(20),
+            reason_code: None,
+            note: None,
+            lines: vec![line],
+        };
+        assert!(ambiguous.validate().is_err());
+    }
+
+    #[test]
+    fn test_post_purchase_transaction_reproduction_case_valid() {
+        let payload = PostPurchaseTransactionPayload {
+            request_id: "00000000-0000-4000-8000-000000000099".to_string(),
+            supplier_id: 1,
+            external_supplier_document_number: Some("343754896".to_string()),
+            document_date: "2026-08-14".to_string(),
+            payment_status: "PARTIALLY_PAID".to_string(),
+            payment_method: Some("CASH".to_string()),
+            paid_amount: Some("20000".to_string()),
+            print_after_confirmation: false,
+            note: None,
+            lines: vec![
+                PurchaseTransactionLineInput {
+                    variant_id: 1,
+                    unit_id: 1,
+                    quantity: "10".to_string(),
+                    unit_cost: "1000".to_string(),
+                    tax_amount: None,
+                },
+                PurchaseTransactionLineInput {
+                    variant_id: 2,
+                    unit_id: 1,
+                    quantity: "10".to_string(),
+                    unit_cost: "1200".to_string(),
+                    tax_amount: None,
+                },
+                PurchaseTransactionLineInput {
+                    variant_id: 3,
+                    unit_id: 1,
+                    quantity: "10".to_string(),
+                    unit_cost: "800".to_string(),
+                    tax_amount: None,
+                },
+            ],
+            additional_costs: None,
+        };
+        assert!(payload.validate().is_ok());
     }
 }

@@ -1,5 +1,6 @@
 /**
  * Slice 2 — catalog gateway tests: command routing, payload shapes, error handling.
+ * Stockiha Product & Variant Architecture Redesign.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -13,16 +14,17 @@ import type { VariantInput } from '../src/shared/ipc/dto';
 beforeEach(() => { invokeMock.mockReset(); });
 
 describe('createProductWithVariants', () => {
-  it('sends the correct command with camelCase args and VariantInput array', async () => {
+  it('sends the correct command with product unitId and VariantInput array', async () => {
     invokeMock.mockResolvedValue({ product_id: 1, variant_ids: [10, 11] });
     const variants: VariantInput[] = [
-      { sku: 'TSH-S-W', sale_price: '10.00', is_active: true },
-      { sku: 'TSH-M-W', sale_price: '10.00', is_active: true },
+      { name_override: 'Red', sale_price: '10.00', is_active: true },
+      { sale_price: '12.00', is_active: true },
     ];
-    const result = await ipc.createProductWithVariants('tok', 'T-Shirt', true, variants);
+    const result = await ipc.createProductWithVariants('tok', 'T-Shirt', 2, true, variants);
     expect(invokeMock).toHaveBeenCalledWith(COMMANDS.CREATE_PRODUCT_WITH_VARIANTS, {
       sessionToken: 'tok',
       name: 'T-Shirt',
+      unitId: 2,
       isActive: true,
       variants,
     });
@@ -32,8 +34,8 @@ describe('createProductWithVariants', () => {
 
   it('keeps sale_price as a string (never a number)', async () => {
     invokeMock.mockResolvedValue({ product_id: 2, variant_ids: [12] });
-    const variants: VariantInput[] = [{ sku: 'A1', sale_price: '99.99', is_active: true }];
-    await ipc.createProductWithVariants('tok', 'Widget', false, variants);
+    const variants: VariantInput[] = [{ sale_price: '99.99', is_active: true }];
+    await ipc.createProductWithVariants('tok', 'Widget', 1, false, variants);
     const [, args] = invokeMock.mock.calls[0];
     expect(typeof args.variants[0].sale_price).toBe('string');
     expect(args.variants[0].sale_price).toBe('99.99');
@@ -44,12 +46,11 @@ describe('addVariant', () => {
   it('sends correct command with productId and variant payload', async () => {
     invokeMock.mockResolvedValue(42);
     const variant: VariantInput = {
-      sku: 'V-001',
+      name_override: 'Custom Variant',
       sale_price: '5.50',
       is_active: true,
       attribute_value_ids: [3, 7],
       barcodes: ['6001234'],
-      alternate_units: [{ unit_id: 2, conversion_factor: '12' }],
     };
     const result = await ipc.addVariant('tok', 99, variant);
     expect(invokeMock).toHaveBeenCalledWith(COMMANDS.ADD_VARIANT, {
@@ -58,9 +59,34 @@ describe('addVariant', () => {
       variant,
     });
     expect(result).toBe(42);
-    const [, args] = invokeMock.mock.calls[0];
-    // conversion_factor must be a string
-    expect(typeof args.variant.alternate_units[0].conversion_factor).toBe('string');
+  });
+});
+
+describe('updateProduct', () => {
+  it('sends product_id, name, unitId, and isActive', async () => {
+    invokeMock.mockResolvedValue(null);
+    await ipc.updateProduct('tok', 5, 'Pillow Cover', 3, true);
+    expect(invokeMock).toHaveBeenCalledWith(COMMANDS.UPDATE_PRODUCT, {
+      sessionToken: 'tok',
+      productId: 5,
+      name: 'Pillow Cover',
+      unitId: 3,
+      isActive: true,
+    });
+  });
+});
+
+describe('updateVariant', () => {
+  it('sends variant_id, nameOverride, salePrice, and isActive', async () => {
+    invokeMock.mockResolvedValue(null);
+    await ipc.updateVariant('tok', 10, 'Classic Red', '15.00', true);
+    expect(invokeMock).toHaveBeenCalledWith(COMMANDS.UPDATE_VARIANT, {
+      sessionToken: 'tok',
+      variantId: 10,
+      nameOverride: 'Classic Red',
+      salePrice: '15.00',
+      isActive: true,
+    });
   });
 });
 
@@ -97,16 +123,6 @@ describe('removeVariantBarcode', () => {
       sessionToken: 'tok',
       barcodeId: 77,
     });
-  });
-});
-
-describe('addVariantAltUnit', () => {
-  it('sends conversionFactor as a string', async () => {
-    invokeMock.mockResolvedValue(55);
-    await ipc.addVariantAltUnit('tok', 10, 2, '12');
-    const [, args] = invokeMock.mock.calls[0];
-    expect(typeof args.conversionFactor).toBe('string');
-    expect(args.conversionFactor).toBe('12');
   });
 });
 
@@ -196,8 +212,11 @@ describe('R8-D inventory gateway', () => {
 describe('resolveBarcode', () => {
   it('returns the resolved barcode object when backend returns one', async () => {
     const resolved = {
-      variant_id: 5, product_id: 1, sku: 'SKU-1', product_name: 'Shirt',
-      sale_price: '10.00', base_unit_id: 1, variant_is_active: true, product_is_active: true,
+      variant_id: 5, product_id: 1, sku: 'SKU-00000005', name_override: null,
+      effective_variant_name: 'Shirt · S', primary_barcode: '6001234',
+      operational_identifier: '6001234', identifier_type: 'BARCODE', product_name: 'Shirt',
+      sale_price: '10.00', unit_id: 1, unit_code: 'PC', unit_name: 'Piece',
+      variant_is_active: true, product_is_active: true,
     };
     invokeMock.mockResolvedValue(resolved);
     const result = await ipc.resolveBarcode('tok', '6001234');
@@ -218,7 +237,7 @@ describe('resolveBarcode', () => {
 describe('getProductDetail', () => {
   it('sends productId and returns detail', async () => {
     const detail = {
-      product_id: 1, name: 'Shirt', is_active: true,
+      product_id: 1, name: 'Shirt', unit_id: 1, unit_code: 'PC', unit_name: 'Piece', is_active: true,
       variants: [],
     };
     invokeMock.mockResolvedValue(detail);

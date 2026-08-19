@@ -33,7 +33,7 @@ import { OpeningStateApplicationScreen } from '../features/onboarding/OpeningSta
 import { DrawerPolicySettingsScreen } from '../features/settings/DrawerPolicySettingsScreen';
 import { RecoverySettingsScreen } from '../features/settings/RecoverySettingsScreen';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
-import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
+import PurchasesScreen from '../features/procurement/PurchasesScreen';
 import { SupplierInvoicesScreen } from '../features/procurement/SupplierInvoicesScreen';
 import { SupplierLiabilitiesScreen } from '../features/procurement/SupplierLiabilitiesScreen';
 import { SupplierReturnsScreen } from '../features/procurement/SupplierReturnsScreen';
@@ -333,11 +333,7 @@ function AuthenticatedApp() {
       {view === 'customers' && <CustomersScreen sessionToken={user?.token ?? ''} />}
       {view === 'suppliers' && <SuppliersScreen sessionToken={user?.token ?? ''} />}
       {view === 'purchase_orders' && procurementCapabilities && (
-        <PurchaseOrdersScreen
-          sessionToken={user?.token ?? ''}
-          capabilities={procurementCapabilities}
-          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
-        />
+        <PurchasesScreen sessionToken={user?.token ?? ''} />
       )}
       {view === 'supplier_invoices' && (
         <SupplierInvoicesScreen

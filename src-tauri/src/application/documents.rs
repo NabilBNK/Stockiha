@@ -364,30 +364,34 @@ pub(crate) async fn get_business_document_detail(
         .map_err(AppError::from_posting_error)
 }
 
+pub(crate) struct BusinessDocumentReportFilter<'a> {
+    pub date_from: Option<Date>,
+    pub date_to: Option<Date>,
+    pub document_type: Option<&'a str>,
+    pub status: Option<&'a str>,
+    pub search: Option<&'a str>,
+    pub has_journal: Option<bool>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
 pub(crate) async fn get_business_document_reports(
     pool: &PgPool,
     session_token: &str,
-    date_from: Option<Date>,
-    date_to: Option<Date>,
-    document_type: Option<&str>,
-    status: Option<&str>,
-    search: Option<&str>,
-    has_journal: Option<bool>,
-    limit: Option<i32>,
-    offset: Option<i32>,
+    filter: BusinessDocumentReportFilter<'_>,
 ) -> Result<Value, AppError> {
     sqlx::query_scalar::<_, Value>(
         "SELECT documents.get_business_document_reports($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(session_token)
-    .bind(date_from)
-    .bind(date_to)
-    .bind(document_type)
-    .bind(status)
-    .bind(search)
-    .bind(has_journal)
-    .bind(limit)
-    .bind(offset)
+    .bind(filter.date_from)
+    .bind(filter.date_to)
+    .bind(filter.document_type)
+    .bind(filter.status)
+    .bind(filter.search)
+    .bind(filter.has_journal)
+    .bind(filter.limit)
+    .bind(filter.offset)
     .fetch_one(pool)
     .await
     .map_err(AppError::from_posting_error)

@@ -5,6 +5,7 @@ pub(crate) mod canonical_json;
 pub(crate) mod cash_session;
 pub(crate) mod catalog;
 pub(crate) mod customer;
+pub(crate) mod direct_purchase;
 mod document_sequence;
 pub(crate) mod drawer;
 mod error;

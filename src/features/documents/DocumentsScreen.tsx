@@ -249,6 +249,7 @@ export const DocumentsScreen: React.FC = () => {
       return [
         'PURCHASE_ORDER',
         'PURCHASE_RECEIPT',
+        'PURCHASE_TRANSACTION',
         'SUPPLIER_INVOICE',
         'PURCHASE_RETURN',
         'SUPPLIER_PAYMENT',
@@ -412,7 +413,7 @@ export const DocumentsScreen: React.FC = () => {
                                   doc.document_type
                                 )
                               ) {
-                                setSelectedPrintable(doc as any);
+                                setSelectedPrintable(doc as unknown as import('../../shared/ipc/documentDto').PrintableDocument);
                               }
                             }}
                             data-testid={`view-doc-${doc.document_id}`}

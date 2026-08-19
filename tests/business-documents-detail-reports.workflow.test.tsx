@@ -6,6 +6,12 @@ import { SessionContext } from '../src/shared/session/SessionContext';
 import { I18nProvider } from '../src/shared/i18n';
 import * as documentGateway from '../src/shared/ipc/documentGateway';
 
+import type {
+  BusinessDocument,
+  BusinessDocumentDetail,
+  BusinessDocumentReportResult,
+} from '../src/shared/ipc/documentDto';
+
 vi.mock('../src/shared/ipc/documentGateway', () => ({
   listBusinessDocuments: vi.fn(),
   getBusinessDocumentDetail: vi.fn(),
@@ -18,7 +24,7 @@ describe('Business Documents Detail & Reports Workflow', () => {
     token: 'test-token',
   };
 
-  const mockDocs = [
+  const mockDocs: BusinessDocument[] = [
     {
       document_id: 101,
       document_number: 'PO-2026-000001',
@@ -47,7 +53,7 @@ describe('Business Documents Detail & Reports Workflow', () => {
     },
   ];
 
-  const mockDetail = {
+  const mockDetail: BusinessDocumentDetail = {
     header: {
       document_id: 101,
       document_type: 'PURCHASE_ORDER',
@@ -84,7 +90,7 @@ describe('Business Documents Detail & Reports Workflow', () => {
     },
   };
 
-  const mockReportsResult = {
+  const mockReportsResult: BusinessDocumentReportResult = {
     summary: {
       total_count: 2,
       posted_count: 2,
@@ -120,9 +126,9 @@ describe('Business Documents Detail & Reports Workflow', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(documentGateway.listBusinessDocuments).mockResolvedValue(mockDocs as any);
-    vi.mocked(documentGateway.getBusinessDocumentDetail).mockResolvedValue(mockDetail as any);
-    vi.mocked(documentGateway.getBusinessDocumentReports).mockResolvedValue(mockReportsResult as any);
+    vi.mocked(documentGateway.listBusinessDocuments).mockResolvedValue(mockDocs);
+    vi.mocked(documentGateway.getBusinessDocumentDetail).mockResolvedValue(mockDetail);
+    vi.mocked(documentGateway.getBusinessDocumentReports).mockResolvedValue(mockReportsResult);
   });
 
   const renderComponent = () =>

@@ -237,6 +237,7 @@ pub(crate) async fn get_business_document_detail(
         .map_err(IpcError::from)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub(crate) async fn get_business_document_reports(
     state: State<'_, DatabaseState>,
@@ -262,8 +263,8 @@ pub(crate) async fn get_business_document_reports(
                 parts[1].parse::<u8>(),
                 parts[2].parse::<u8>(),
             ) {
-                if let (Ok(month), Ok(day)) = (time::Month::try_from(m), d.try_into()) {
-                    if let Ok(date) = time::Date::from_calendar_date(y, month, day) {
+                if let Ok(month) = time::Month::try_from(m) {
+                    if let Ok(date) = time::Date::from_calendar_date(y, month, d) {
                         return Ok(date);
                     }
                 }
@@ -286,14 +287,16 @@ pub(crate) async fn get_business_document_reports(
     documents::get_business_document_reports(
         pool,
         &session_token,
-        df,
-        dt,
-        document_type.as_deref(),
-        status.as_deref(),
-        search.as_deref(),
-        has_journal,
-        limit,
-        offset,
+        documents::BusinessDocumentReportFilter {
+            date_from: df,
+            date_to: dt,
+            document_type: document_type.as_deref(),
+            status: status.as_deref(),
+            search: search.as_deref(),
+            has_journal,
+            limit,
+            offset,
+        },
     )
     .await
     .map_err(IpcError::from)

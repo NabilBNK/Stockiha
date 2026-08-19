@@ -95,22 +95,34 @@ BEGIN
     v_b := catalog.add_attribute_value('s2adj-admin-token', v_color, 'Black');
 
     v_product := catalog.create_product_with_variants(
-        's2adj-admin-token', 'S2 Adjustment Product', true,
+        's2adj-admin-token', 'S2 Adjustment Product', v_base_unit, true,
         jsonb_build_array(
             jsonb_build_object(
-                'sku', 'S2ADJ-ACTIVE', 'sale_price', '50.00', 'is_active', true,
-                'attribute_value_ids', jsonb_build_array(v_s, v_w),
-                'alternate_units', jsonb_build_array(
-                    jsonb_build_object('unit_id', v_pack, 'conversion_factor', '4.000000')
-                )
+                'sale_price', '50.00',
+                'is_active', true,
+                'attribute_value_ids', jsonb_build_array(v_s, v_w)
             ),
-            jsonb_build_object('sku', 'S2ADJ-ZERO', 'sale_price', '10.00', 'is_active', true, 'attribute_value_ids', jsonb_build_array(v_m, v_w)),
-            jsonb_build_object('sku', 'S2ADJ-INACTIVE', 'sale_price', '10.00', 'is_active', false, 'attribute_value_ids', jsonb_build_array(v_s, v_b))
+            jsonb_build_object(
+                'sale_price', '10.00',
+                'is_active', true,
+                'attribute_value_ids', jsonb_build_array(v_m, v_w)
+            ),
+            jsonb_build_object(
+                'sale_price', '10.00',
+                'is_active', false,
+                'attribute_value_ids', jsonb_build_array(v_s, v_b)
+            )
         )
     );
     v_variant := ((v_product -> 'variant_ids') ->> 0)::bigint;
     v_zero_variant := ((v_product -> 'variant_ids') ->> 1)::bigint;
     v_inactive_variant := ((v_product -> 'variant_ids') ->> 2)::bigint;
+    PERFORM catalog.add_variant_alt_unit(
+        's2adj-admin-token',
+        v_variant,
+        v_pack,
+        4.000000
+    );
 
     INSERT INTO inventory.positions (
         warehouse_id, variant_id, quantity_on_hand, total_value, last_known_wac
