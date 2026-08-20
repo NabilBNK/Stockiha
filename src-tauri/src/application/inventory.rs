@@ -23,7 +23,9 @@ pub(crate) struct InventoryCapabilities {
 pub(crate) struct InventorySnapshotItem {
     pub product_id: i64,
     pub variant_id: i64,
+    pub variant_name: String,
     pub product_name: String,
+    pub primary_barcode: Option<String>,
     pub sku: String,
     pub base_unit_code: String,
     pub product_is_active: bool,
@@ -68,6 +70,8 @@ pub(crate) async fn list_inventory_snapshot(
             i64,
             String,
             String,
+            Option<String>,
+            String,
             String,
             bool,
             bool,
@@ -76,9 +80,33 @@ pub(crate) async fn list_inventory_snapshot(
             Decimal,
         ),
     >(
-        "SELECT product_id, variant_id, product_name, sku, base_unit_code, \
-         product_is_active, variant_is_active, quantity_on_hand, last_known_wac, total_value \
-         FROM inventory.list_inventory_snapshot($1, $2, $3, $4)",
+        "SELECT \
+            l.product_id, \
+            l.variant_id, \
+            catalog._effective_variant_name(l.variant_id) AS variant_name, \
+            l.product_name, \
+            (SELECT barcode FROM catalog.variant_barcodes vb WHERE vb.variant_id = l.variant_id ORDER BY is_primary DESC, id ASC LIMIT 1) AS primary_barcode, \
+            l.sku, \
+            l.base_unit_code, \
+            l.product_is_active, \
+            l.variant_is_active, \
+            l.quantity_on_hand, \
+            l.last_known_wac, \
+            l.total_value \
+         FROM inventory.list_inventory_snapshot($1, $2, NULL, $4) l \
+         WHERE ($3::text IS NULL \
+            OR btrim($3::text) = '' \
+            OR l.sku ILIKE '%' || btrim($3::text) || '%' \
+            OR l.product_name ILIKE '%' || btrim($3::text) || '%' \
+            OR catalog._effective_variant_name(l.variant_id) ILIKE '%' || btrim($3::text) || '%' \
+            OR EXISTS (SELECT 1 FROM catalog.variant_barcodes vb WHERE vb.variant_id = l.variant_id AND vb.normalized_barcode ILIKE '%' || btrim($3::text) || '%') \
+            OR EXISTS ( \
+                SELECT 1 FROM catalog.variant_attribute_values vav \
+                JOIN catalog.attribute_values val ON val.id = vav.attribute_value_id \
+                WHERE vav.variant_id = l.variant_id AND val.value ILIKE '%' || btrim($3::text) || '%' \
+            ) \
+         ) \
+         ORDER BY lower(l.product_name), lower(l.sku), l.variant_id",
     )
     .bind(session_token)
     .bind(warehouse_id)
@@ -94,7 +122,9 @@ pub(crate) async fn list_inventory_snapshot(
             |(
                 product_id,
                 variant_id,
+                variant_name,
                 product_name,
+                primary_barcode,
                 sku,
                 base_unit_code,
                 product_is_active,
@@ -105,7 +135,9 @@ pub(crate) async fn list_inventory_snapshot(
             )| InventorySnapshotItem {
                 product_id,
                 variant_id,
+                variant_name,
                 product_name,
+                primary_barcode,
                 sku,
                 base_unit_code,
                 product_is_active,

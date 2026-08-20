@@ -25,6 +25,8 @@ pub enum ErrorCode {
     /// S4-001: customer inactive/not credit-enabled, credit limit exceeded,
     /// overdue policy blocks posting, or a required override is unusable.
     CreditPolicyBlocked,
+    InsufficientStock,
+    CorrectionsDisabled,
 }
 
 pub enum AppError {
@@ -68,6 +70,12 @@ pub enum AppError {
     CreditPolicyBlocked {
         diagnostic: String,
     },
+    InsufficientStock {
+        diagnostic: String,
+    },
+    CorrectionsDisabled {
+        diagnostic: String,
+    },
 }
 
 impl AppError {
@@ -108,8 +116,14 @@ impl AppError {
             Some("22023") => AppError::ValidationError {
                 diagnostic: message,
             },
-            Some("55000") => AppError::PreconditionFailed {
-                diagnostic: message,
+            Some("55000") => {
+                if message.contains("insufficient stock") {
+                    AppError::InsufficientStock { diagnostic: message }
+                } else if message.contains("disabled by policy") {
+                    AppError::CorrectionsDisabled { diagnostic: message }
+                } else {
+                    AppError::PreconditionFailed { diagnostic: message }
+                }
             },
             Some("23505") => AppError::IdempotencyConflict {
                 diagnostic: message,
@@ -166,6 +180,12 @@ impl fmt::Debug for AppError {
             AppError::CreditPolicyBlocked { .. } => {
                 f.write_str("AppError::CreditPolicyBlocked(<redacted>)")
             }
+            AppError::InsufficientStock { .. } => {
+                f.write_str("AppError::InsufficientStock(<redacted>)")
+            }
+            AppError::CorrectionsDisabled { .. } => {
+                f.write_str("AppError::CorrectionsDisabled(<redacted>)")
+            }
         }
     }
 }
@@ -186,6 +206,8 @@ impl fmt::Display for AppError {
             AppError::ImmutableRecord { .. } => f.write_str("record is immutable"),
             AppError::UnsafeZeroStockValuation { .. } => f.write_str("unsafe zero-stock valuation"),
             AppError::CreditPolicyBlocked { .. } => f.write_str("credit policy blocked"),
+            AppError::InsufficientStock { .. } => f.write_str("insufficient stock"),
+            AppError::CorrectionsDisabled { .. } => f.write_str("inventory corrections disabled by policy"),
         }
     }
 }
@@ -223,6 +245,8 @@ impl From<AppError> for IpcError {
                 IpcError::new(ErrorCode::UnsafeZeroStockValuation)
             }
             AppError::CreditPolicyBlocked { .. } => IpcError::new(ErrorCode::CreditPolicyBlocked),
+            AppError::InsufficientStock { .. } => IpcError::new(ErrorCode::InsufficientStock),
+            AppError::CorrectionsDisabled { .. } => IpcError::new(ErrorCode::CorrectionsDisabled),
         }
     }
 }

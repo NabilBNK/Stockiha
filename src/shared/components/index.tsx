@@ -130,3 +130,5 @@ export function ConfirmDialog({
     </div>
   );
 }
+
+export * from "./ItemSearchModal";

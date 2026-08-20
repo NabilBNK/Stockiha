@@ -16,6 +16,8 @@ export const BACKEND_ERROR_CODES = [
   'IMMUTABLE_RECORD',
   'UNSAFE_ZERO_STOCK_VALUATION',
   'CREDIT_POLICY_BLOCKED',
+  'INSUFFICIENT_STOCK',
+  'CORRECTIONS_DISABLED',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -38,6 +40,8 @@ export const ERROR_MESSAGE_KEYS = {
   // POS intercepts this code to provide customer-credit specific localized copy.
   // Generic consumers intentionally fall back to the stable precondition message.
   CREDIT_POLICY_BLOCKED: 'errors.preconditionFailed',
+  INSUFFICIENT_STOCK: 'adjustment.insufficientStock',
+  CORRECTIONS_DISABLED: 'adjustment.disabledPolicy',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 

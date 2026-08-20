@@ -16,6 +16,9 @@ pub(crate) struct ProductListItem {
     pub variant_id: i64,
     pub sku: String,
     pub name: String,
+    pub product_name: Option<String>,
+    pub primary_barcode: Option<String>,
+    pub attributes: Option<JsonValue>,
     pub sale_price: String,
     pub is_active: bool,
     pub quantity_on_hand: String,
@@ -60,26 +63,86 @@ pub(crate) async fn list_products(
     warehouse_id: i64,
     search: Option<&str>,
 ) -> Result<Vec<ProductListItem>, AppError> {
-    let rows = sqlx::query_as::<_, (i64, i64, String, String, Decimal, bool, Decimal, Decimal)>(
-        "SELECT product_id, variant_id, sku, name, sale_price, is_active, \
-         quantity_on_hand, last_known_wac FROM catalog.list_products($1, $2, $3)",
+    let rows = sqlx::query_as::<
+        _,
+        (
+            i64,
+            i64,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<JsonValue>,
+            Decimal,
+            bool,
+            Decimal,
+            Decimal,
+        ),
+    >(
+        "SELECT \
+            l.product_id, \
+            l.variant_id, \
+            l.sku, \
+            catalog._effective_variant_name(l.variant_id) AS name, \
+            l.name AS product_name, \
+            (SELECT barcode FROM catalog.variant_barcodes vb WHERE vb.variant_id = l.variant_id ORDER BY is_primary DESC, id ASC LIMIT 1) AS primary_barcode, \
+            ( \
+                SELECT coalesce(jsonb_agg(jsonb_build_object('name', a.name, 'value', val.value)), '[]'::jsonb) \
+                FROM catalog.variant_attribute_values vav \
+                JOIN catalog.attribute_values val ON val.id = vav.attribute_value_id \
+                JOIN catalog.attributes a ON a.id = val.attribute_id \
+                WHERE vav.variant_id = l.variant_id \
+            ) AS attributes, \
+            l.sale_price, \
+            l.is_active, \
+            l.quantity_on_hand, \
+            l.last_known_wac \
+         FROM catalog.list_products($1, $2, NULL) l \
+         WHERE ($3::text IS NULL \
+            OR btrim($3::text) = '' \
+            OR l.sku ILIKE '%' || btrim($3::text) || '%' \
+            OR l.name ILIKE '%' || btrim($3::text) || '%' \
+            OR catalog._effective_variant_name(l.variant_id) ILIKE '%' || btrim($3::text) || '%' \
+            OR EXISTS (SELECT 1 FROM catalog.variant_barcodes vb WHERE vb.variant_id = l.variant_id AND vb.normalized_barcode ILIKE '%' || btrim($3::text) || '%') \
+            OR EXISTS ( \
+                SELECT 1 FROM catalog.variant_attribute_values vav \
+                JOIN catalog.attribute_values val ON val.id = vav.attribute_value_id \
+                WHERE vav.variant_id = l.variant_id AND val.value ILIKE '%' || btrim($3::text) || '%' \
+            ) \
+         ) \
+         ORDER BY lower(l.name), lower(l.sku), l.variant_id",
     )
     .bind(session_token)
     .bind(warehouse_id)
     .bind(search)
     .fetch_all(pool)
     .await
-    .map_err(AppError::from_posting_error)?;
+    .map_err(|e| AppError::internal(e.to_string()))?;
 
     Ok(rows
         .into_iter()
         .map(
-            |(product_id, variant_id, sku, name, sale_price, is_active, qty, wac)| {
+            |(
+                product_id,
+                variant_id,
+                sku,
+                name,
+                product_name,
+                primary_barcode,
+                attributes,
+                sale_price,
+                is_active,
+                qty,
+                wac,
+            )| {
                 ProductListItem {
                     product_id,
                     variant_id,
                     sku,
                     name,
+                    product_name,
+                    primary_barcode,
+                    attributes,
                     sale_price: sale_price.to_string(),
                     is_active,
                     quantity_on_hand: qty.to_string(),

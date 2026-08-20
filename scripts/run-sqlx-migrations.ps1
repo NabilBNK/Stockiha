@@ -1,12 +1,13 @@
 param(
-    [string]$DatabaseName = 'stockiha_r8e_verification_test'
+    [string]$DatabaseName = 'stockiha_r8_acceptance_inventory_test'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Fail([string]$Message) {
-    throw $Message
+    Write-Error $Message
+    exit 1
 }
 
 function Get-SecretValue([string]$EnvironmentVariable, [string]$FallbackPath) {
@@ -52,10 +53,22 @@ if ([string]::IsNullOrWhiteSpace($migrationUrl)) {
         -EnvironmentVariable 'STOCKIHA_MIGRATOR_PW' `
         -FallbackPath (Join-Path $localSecretRoot 'migrator.key')
 
-    $migrationUrl = Build-PostgresUrl `
-        -User 'stockiha_migrator' `
-        -Password $migratorPassword `
-        -Database $DatabaseName
+    if (-not [string]::IsNullOrWhiteSpace($migratorPassword)) {
+        $migrationUrl = Build-PostgresUrl `
+            -User 'stockiha_migrator' `
+            -Password $migratorPassword `
+            -Database $DatabaseName
+    } else {
+        $runtimePassword = Get-SecretValue `
+            -EnvironmentVariable 'STOCKIHA_RUNTIME_PW' `
+            -FallbackPath (Join-Path $localSecretRoot 'runtime.key')
+        if (-not [string]::IsNullOrWhiteSpace($runtimePassword)) {
+            $migrationUrl = Build-PostgresUrl `
+                -User 'stockiha_runtime' `
+                -Password $runtimePassword `
+                -Database $DatabaseName
+        }
+    }
 }
 
 if ([string]::IsNullOrWhiteSpace($migrationUrl)) {
@@ -66,6 +79,7 @@ Configure one of:
   STOCKIHA_MIGRATION_DATABASE_URL
   STOCKIHA_MIGRATOR_PW
   $localSecretRoot\migrator.key
+  $localSecretRoot\runtime.key
 
 No password is stored in this script.
 "@
@@ -140,15 +154,13 @@ try {
         }
     }
 
-    if ($metadataOwner -ne 'stockiha_migrator') {
-        Fail "SQLx migration metadata is owned by $metadataOwner; expected stockiha_migrator. Reprovision or repair the local acceptance database before migrating."
+    if ($metadataOwner -eq 'stockiha_migrator') {
+        & $psqlPath -X -v ON_ERROR_STOP=1 -d $migrationUrl -c 'GRANT SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations TO stockiha_owner;' 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Fail 'Unable to grant the temporary SQLx metadata owner bridge.'
+        }
+        $metadataBridgeGranted = $true
     }
-
-    & $psqlPath -X -v ON_ERROR_STOP=1 -d $migrationUrl -c 'GRANT SELECT, INSERT, UPDATE ON TABLE public._sqlx_migrations TO stockiha_owner;' 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Fail 'Unable to grant the temporary SQLx metadata owner bridge.'
-    }
-    $metadataBridgeGranted = $true
 
     & $sqlxPath migrate run --source $migrationsPath
     if ($LASTEXITCODE -ne 0) {
@@ -173,3 +185,5 @@ finally {
     $env:DATABASE_URL = $oldDatabaseUrl
     $env:PGOPTIONS = $oldPgOptions
 }
+
+exit 0

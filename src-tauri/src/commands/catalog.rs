@@ -3,6 +3,7 @@
 
 use rust_decimal::Decimal;
 use serde::Serialize;
+use serde_json::Value as JsonValue;
 use tauri::State;
 
 use crate::application::catalog;
@@ -25,6 +26,9 @@ pub(crate) struct ProductListItemResponse {
     pub variant_id: i64,
     pub sku: String,
     pub name: String,
+    pub product_name: Option<String>,
+    pub primary_barcode: Option<String>,
+    pub attributes: Option<JsonValue>,
     pub sale_price: String,
     pub is_active: bool,
     pub quantity_on_hand: String,
@@ -68,6 +72,9 @@ pub(crate) async fn list_products(
                     variant_id: i.variant_id,
                     sku: i.sku,
                     name: i.name,
+                    product_name: i.product_name,
+                    primary_barcode: i.primary_barcode,
+                    attributes: i.attributes,
                     sale_price: i.sale_price,
                     is_active: i.is_active,
                     quantity_on_hand: i.quantity_on_hand,

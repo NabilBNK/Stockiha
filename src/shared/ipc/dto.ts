@@ -25,6 +25,9 @@ export interface ProductListItem {
   variant_id: number;
   sku: string;
   name: string;
+  product_name?: string;
+  primary_barcode?: string | null;
+  attributes?: { name: string; value: string }[];
   sale_price: string;
   is_active: boolean;
   quantity_on_hand: string;
@@ -54,7 +57,9 @@ export interface ProcurementCapabilities {
 export interface InventorySnapshotItem {
   product_id: number;
   variant_id: number;
+  variant_name: string;
   product_name: string;
+  primary_barcode?: string | null;
   sku: string;
   base_unit_code: string;
   product_is_active: boolean;

@@ -49,14 +49,16 @@ export function InventoryScreen() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAppliedSearch(search.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   function submitSearch(event: FormEvent) {
     event.preventDefault();
-    const next = search.trim();
-    if (next === appliedSearch) {
-      void load();
-    } else {
-      setAppliedSearch(next);
-    }
+    setAppliedSearch(search.trim());
   }
 
   return (
@@ -107,9 +109,6 @@ export function InventoryScreen() {
           </label>
         </div>
 
-        <div className="sk-form-actions">
-          <Button type="submit" loading={loading}>{t('common.search')}</Button>
-        </div>
       </form>
 
       {error ? (
@@ -127,8 +126,8 @@ export function InventoryScreen() {
           <table className="sk-table" data-testid="inventory-table">
             <thead>
               <tr>
-                <th>{t('inventory.product')}</th>
-                <th>{t('inventory.sku')}</th>
+                <th>{t('adjustment.variant')}</th>
+                <th>{t('inventory.sku_barcode', 'SKU / Barcode')}</th>
                 <th>{t('inventory.unit')}</th>
                 <th>{t('inventory.status')}</th>
                 <th className="sk-num">{t('inventory.quantity')}</th>
@@ -145,8 +144,17 @@ export function InventoryScreen() {
                 const active = item.product_is_active && item.variant_is_active;
                 return (
                   <tr key={item.variant_id} className={active ? undefined : 'sk-row--inactive'}>
-                    <td>{item.product_name}</td>
-                    <td>{item.sku}</td>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>{item.variant_name}</div>
+                      {item.variant_name !== item.product_name && (
+                        <div className="sk-muted" style={{ fontSize: '0.85em', marginTop: 2 }}>
+                          {item.product_name}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ fontFamily: 'var(--sk-font-mono, monospace)', fontSize: '0.9em' }}>
+                      {item.primary_barcode || item.sku}
+                    </td>
                     <td>{item.base_unit_code}</td>
                     <td>
                       <span className={`sk-badge ${active ? 'sk-badge--success' : 'sk-badge--danger'}`}>

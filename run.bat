@@ -2,75 +2,143 @@
 title Stockiha Development Runner
 setlocal enabledelayedexpansion
 
-set "STOCKIHA_DEV_DATABASE_URL="
-powershell -NoProfile -Command "Remove-Item Env:STOCKIHA_DEV_DATABASE_URL -ErrorAction SilentlyContinue"
+REM ============================================================
+REM  Stockiha - Deterministic & Safe Development Runner
+REM  Double-click or run from any terminal in the repo root.
+REM ============================================================
 
 echo ========================================================
-echo Starting Stockiha Development Environment
+echo  Stockiha Development Runner
 echo ========================================================
 
-echo Terminating any existing running Stockiha / Node / Cargo instances and freeing port 1420...
-taskkill /F /IM stockiha.exe /IM stockiha-backend.exe /IM tauri.exe /IM cargo.exe /IM node.exe 2>nul
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr :1420') do taskkill /F /PID %%a 2>nul
-ping 127.0.0.1 -n 2 >nul
+REM ---- Step 1: Clean up previous dev processes for this worktree ----
+echo Stopping previous dev processes associated with this worktree...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\cleanup-dev-processes.ps1"
+if errorlevel 1 (
+    echo.
+    echo  ERROR: cleanup-dev-processes.ps1 failed.
+    echo.
+    pause
+    exit /b 1
+)
 
+REM ---- Build-tool environment paths ----
 set "CARGO_BIN=%USERPROFILE%\.cargo\bin"
 set "PATH=C:\Program Files\PostgreSQL\18\bin;C:\BuildTools\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64;C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64;%CARGO_BIN%;%PATH%"
 set "INCLUDE=C:\BuildTools\VC\Tools\MSVC\14.44.35207\include;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\ucrt;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\um;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\winrt;C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\cppwinrt"
 set "LIB=C:\BuildTools\VC\Tools\MSVC\14.44.35207\lib\x64;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt\x64;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\um\x64;%LIB%"
 
-set "STOCKIHA_LOCAL_SECRET_ROOT=%LOCALAPPDATA%\Stockiha\r8-acceptance"
+set "SECRET_ROOT=%LOCALAPPDATA%\Stockiha\r8-acceptance"
 
-if not defined STOCKIHA_DEV_DATABASE_URL (
-    if exist "%STOCKIHA_LOCAL_SECRET_ROOT%\runtime.key" (
-        for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "$p=(Get-Content -LiteralPath '%STOCKIHA_LOCAL_SECRET_ROOT%\runtime.key' -Raw).Trim(); $e=[System.Uri]::EscapeDataString($p); Write-Output ('postgres://stockiha_runtime:' + $e + '@127.0.0.1:5433/stockiha_r8e_verification_test?sslmode=disable')"`) do set "STOCKIHA_DEV_DATABASE_URL=%%U"
-    )
-)
+REM ---- Step 2: Read database credentials and build DB URL ----
+echo.
+echo [1/5] Checking database credentials...
 
-if not defined STOCKIHA_DEV_DATABASE_URL (
-    echo ERROR: STOCKIHA_DEV_DATABASE_URL is not configured.
-    echo Configure it in the Windows user environment or provide:
-    echo   %STOCKIHA_LOCAL_SECRET_ROOT%\runtime.key
+if not exist "%SECRET_ROOT%\runtime.key" (
+    echo.
+    echo  ERROR: runtime.key not found.
+    echo.
+    echo  Expected location: %SECRET_ROOT%\runtime.key
+    echo  This file must contain the password for the stockiha_runtime
+    echo  PostgreSQL role on port 5433.
+    echo.
+    pause
     exit /b 1
 )
 
-echo Ensuring PostgreSQL service is active on port 5433...
-powershell -NoProfile -Command "$ready = & 'C:\Program Files\PostgreSQL\18\bin\pg_isready.exe' -h 127.0.0.1 -p 5433 2>&1; if ($ready -notlike '*accepting connections*') { $dataDir = (Get-ChildItem -Directory ($env:LOCALAPPDATA + '\Stockiha\r8-acceptance\data*') -ErrorAction SilentlyContinue | Select-Object -First 1).FullName; if (-not $dataDir) { $dataDir = $env:LOCALAPPDATA + '\Stockiha\r8-acceptance\data-5433' }; Start-Process -FilePath 'C:\Program Files\PostgreSQL\18\bin\postgres.exe' -ArgumentList '-D', ('\"' + $dataDir + '\"'), '-p', '5433' -WindowStyle Hidden; for ($i = 0; $i -lt 10; $i++) { Start-Sleep -Milliseconds 500; $ready = & 'C:\Program Files\PostgreSQL\18\bin\pg_isready.exe' -h 127.0.0.1 -p 5433 2>&1; if ($ready -like '*accepting connections*') { break } } }; if ($ready -notlike '*accepting connections*') { Write-Error 'PostgreSQL did not become ready on port 5433.'; exit 1 }"
+for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "(Get-Content -LiteralPath '%SECRET_ROOT%\runtime.key' -Raw).Trim()"`) do set "STOCKIHA_RUNTIME_PW=%%V"
+
+if not defined STOCKIHA_RUNTIME_PW (
+    echo.
+    echo  ERROR: runtime.key exists but is empty.
+    echo.
+    pause
+    exit /b 1
+)
+
+for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "$pw = (Get-Content -LiteralPath '%SECRET_ROOT%\runtime.key' -Raw).Trim(); $enc = [System.Uri]::EscapeDataString($pw); Write-Output ('postgres://stockiha_runtime:' + $enc + '@127.0.0.1:5433/stockiha_r8_acceptance_inventory_test?sslmode=disable')"`) do set "STOCKIHA_DEV_DATABASE_URL=%%U"
+
+if not defined STOCKIHA_DEV_DATABASE_URL (
+    echo.
+    echo  ERROR: Failed to build database URL from runtime.key.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo  [OK] Credentials loaded.
+
+REM ---- Step 3: Ensure PostgreSQL is running on port 5433 ----
+echo.
+echo [2/5] Ensuring PostgreSQL is accepting connections on port 5433...
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-postgres.ps1"
 if errorlevel 1 (
-    echo ERROR: PostgreSQL is not available on port 5433.
+    echo.
+    echo  ERROR: Failed to ensure PostgreSQL is running on port 5433.
+    echo.
+    pause
     exit /b 1
 )
 
-echo Applying database migrations via SQLx runner...
+REM ---- Step 4: Run SQLx migrations ----
+echo.
+echo ========================================================
+echo  [3/5] Running SQLx migrations...
+echo ========================================================
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-sqlx-migrations.ps1"
 if errorlevel 1 (
-    echo ERROR: Database migration failed. Halting application launch.
+    echo.
+    echo  ERROR: Database migrations failed.
+    echo.
+    pause
     exit /b 1
 )
 
 if not defined STOCKIHA_BACKUP_ROOT set "STOCKIHA_BACKUP_ROOT=C:\Stockiha-R6-SQLx-Final-Acceptance"
 if not defined STOCKIHA_PG_DUMP_PATH set "STOCKIHA_PG_DUMP_PATH=C:\Program Files\PostgreSQL\18\bin\pg_dump.exe"
 
+REM ---- Step 5: Build frontend and backend, then launch Tauri dev ----
+echo.
 echo ========================================================
-echo Compiling Stockiha (Tauri v2 + React 19)
+echo  [4/5] Compiling Stockiha (Tauri v2 + React 19)
 echo ========================================================
-echo Database URL: Configured (Port 5433)
-echo Backup Root: %STOCKIHA_BACKUP_ROOT%
+echo  Backup Root : %STOCKIHA_BACKUP_ROOT%
 echo ========================================================
 
-echo Compiling frontend production bundle...
+echo  Building frontend production bundle...
 call npm run build
 if errorlevel 1 (
-    echo Frontend compilation failed!
+    echo.
+    echo  ERROR: Frontend build failed. See output above for details.
+    echo.
+    pause
     exit /b 1
 )
 
+echo  Building Rust backend binary...
+call cargo build --manifest-path src-tauri/Cargo.toml
+if errorlevel 1 (
+    echo.
+    echo  ERROR: Rust backend build failed. See output above for details.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo.
 echo ========================================================
-echo Stockiha compiled successfully. Launching Tauri dev...
+echo  [5/5] Launching Tauri dev window...
 echo ========================================================
+echo  Database: postgres://stockiha_runtime@127.0.0.1:5433/stockiha_r8_acceptance_inventory_test
+echo ========================================================
+echo.
 
 call npm run tauri dev
 if errorlevel 1 (
-    echo Stockiha Tauri launch failed!
+    echo.
+    echo  ERROR: Tauri dev launch exited with an error. See output above.
+    echo.
+    pause
     exit /b 1
 )

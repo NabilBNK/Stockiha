@@ -49,6 +49,9 @@ export function DashboardScreen() {
       <div className="sk-dashboard__header">
         <div>
           <h1>{t('dashboard.title')}</h1>
+          <div className="sk-muted" style={{ fontSize: '0.8rem', fontWeight: 500, marginBlock: '2px 4px' }}>
+            [ version = sub-plan-03-darkmode ]
+          </div>
           <p>{t('dashboard.subtitle')}</p>
         </div>
         <Button variant="secondary" onClick={() => void load()}>

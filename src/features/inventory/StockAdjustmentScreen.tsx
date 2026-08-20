@@ -6,12 +6,13 @@ import {
   type FormEvent,
 } from "react";
 
-import { Banner, Button, Spinner, TextField } from "../../shared/components";
+import { Banner, Button, ItemSearchModal, Spinner, TextField } from "../../shared/components";
 import { useI18n, type MessageKey } from "../../shared/i18n";
 import { codeForError, useErrorText } from "../../shared/hooks/useErrorText";
 import { useSession } from "../../shared/session/SessionContext";
 import { useAppData } from "../../app/AppDataContext";
 import * as ipc from "../../shared/ipc/gateway";
+import { getInventoryCorrectionsSetting } from "../../shared/ipc/inventoryCorrectionsGateway";
 import { ZeroQuantityWarning } from "./ZeroQuantityWarning";
 import type {
   ProductListItem,
@@ -36,9 +37,9 @@ const REASONS: { code: StockAdjustmentReasonCode; label: MessageKey }[] = [
   { code: "RECORDING_ERROR", label: "adjustment.reason.recordingError" },
   { code: "OTHER", label: "adjustment.reason.other" },
 ];
-const EXACT_QUANTITY = /^\d+(\.\d{1,3})?$/;
+const EXACT_NATURAL_QUANTITY = /^[1-9]\d*$/;
 export function isPositiveExactQuantity(value: string): boolean {
-  return EXACT_QUANTITY.test(value) && isExactDecimalPositive(value);
+  return EXACT_NATURAL_QUANTITY.test(value);
 }
 export function signedQuantityDelta(
   direction: Direction,
@@ -72,6 +73,7 @@ export function StockAdjustmentScreen() {
   const [variantsError, setVariantsError] = useState<string | null>(null);
   const [variantSearch, setVariantSearch] = useState("");
   const [variantId, setVariantId] = useState<number | null>(null);
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [units, setUnits] = useState<StockAdjustmentUnit[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [unitsError, setUnitsError] = useState<string | null>(null);
@@ -88,11 +90,31 @@ export function StockAdjustmentScreen() {
   const [resultVariant, setResultVariant] = useState<ProductListItem | null>(
     null,
   );
+  const [policyEnabled, setPolicyEnabled] = useState<boolean | null>(null);
   const [banner, setBanner] = useState<{
     tone: "success" | "error" | "warning";
     text: string;
   } | null>(null);
   const invalidateRequest = useCallback(() => setRequestId(null), []);
+
+  useEffect(() => {
+    if (!token) {
+      setPolicyEnabled(null);
+      return;
+    }
+    let active = true;
+    void getInventoryCorrectionsSetting(token)
+      .then((setting) => {
+        if (active) setPolicyEnabled(setting.enabled);
+      })
+      .catch(() => {
+        if (active) setPolicyEnabled(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
   const loadVariants = useCallback(async () => {
     if (!token || selectedWarehouseId == null) return;
     setVariantsLoading(true);
@@ -184,7 +206,8 @@ export function StockAdjustmentScreen() {
     unitId != null &&
     quantityValid &&
     noteValid &&
-    dateValid;
+    dateValid &&
+    policyEnabled !== false;
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (
@@ -225,11 +248,17 @@ export function StockAdjustmentScreen() {
       setNote("");
       void loadVariants();
     } catch (reason) {
-      setBanner(
-        codeForError(reason) === "UNKNOWN_ERROR"
-          ? { tone: "warning", text: t("adjustment.retryPrompt") }
-          : { tone: "error", text: errorText(reason) },
-      );
+      const code = codeForError(reason);
+      if (code === "UNKNOWN_ERROR") {
+        setBanner({ tone: "warning", text: t("adjustment.retryPrompt") });
+      } else if (code === "UNSAFE_ZERO_STOCK_VALUATION") {
+        setBanner({
+          tone: "error",
+          text: t("errors.unsafeZeroStockValuation"),
+        });
+      } else {
+        setBanner({ tone: "error", text: errorText(reason) });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -243,6 +272,11 @@ export function StockAdjustmentScreen() {
         </div>
       </div>
       <Banner tone="info">{t("adjustment.notPurchase")}</Banner>
+      {policyEnabled === false ? (
+        <Banner tone="warning" testId="corrections-disabled-banner">
+          {t("adjustment.disabledPolicy")}
+        </Banner>
+      ) : null}
       {openFiscalPeriod == null ? (
         <Banner tone="warning">{t("errors.preconditionFailed")}</Banner>
       ) : null}
@@ -297,12 +331,41 @@ export function StockAdjustmentScreen() {
           />
         </div>
         <div className="sk-field">
-          <TextField
-            label={t("adjustment.variantSearch")}
-            value={variantSearch}
-            onChange={(event) => setVariantSearch(event.target.value)}
-            placeholder={t("adjustment.variantSearchPlaceholder")}
-          />
+          <label className="sk-field__label" htmlFor="adjustment-variant">
+            {t("adjustment.variant")}
+          </label>
+          <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="sk-btn sk-btn--secondary"
+              onClick={() => setSearchModalOpen(true)}
+              data-testid="adjustment-open-search-modal"
+              style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
+            >
+              🔍 {t("adjustment.openSearchModal")}
+            </button>
+            <select
+              id="adjustment-variant"
+              className="sk-field__input"
+              style={{ flex: "1 1 240px" }}
+              value={variantId ?? ""}
+              onChange={(event) => {
+                setVariantId(
+                  event.target.value ? Number(event.target.value) : null,
+                );
+                setUnitId(null);
+                invalidateRequest();
+              }}
+              data-testid="adjustment-variant-select"
+            >
+              <option value="">{t("adjustment.variantPlaceholder")}</option>
+              {variants.map((variant) => (
+                <option key={variant.variant_id} value={variant.variant_id}>
+                  {variant.sku} — {variant.name}
+                </option>
+              ))}
+            </select>
+          </div>
           {variantsLoading ? (
             <Spinner />
           ) : variantsError ? (
@@ -316,41 +379,15 @@ export function StockAdjustmentScreen() {
                 {t("common.retry")}
               </Button>
             </Banner>
-          ) : (
-            <>
-              <label className="sk-field__label" htmlFor="adjustment-variant">
-                {t("adjustment.variant")}
-              </label>
-              <select
-                id="adjustment-variant"
-                className="sk-field__input"
-                value={variantId ?? ""}
-                onChange={(event) => {
-                  setVariantId(
-                    event.target.value ? Number(event.target.value) : null,
-                  );
-                  setUnitId(null);
-                  invalidateRequest();
-                }}
-              >
-                <option value="">{t("adjustment.variantPlaceholder")}</option>
-                {visibleVariants.map((variant) => (
-                  <option key={variant.variant_id} value={variant.variant_id}>
-                    {variant.sku} — {variant.name}
-                  </option>
-                ))}
-              </select>
-              {visibleVariants.length === 0 ? (
-                <p className="sk-field-help">{t("adjustment.variantEmpty")}</p>
-              ) : null}
-            </>
-          )}
+          ) : variants.length === 0 ? (
+            <p className="sk-field-help">{t("adjustment.variantEmpty")}</p>
+          ) : null}
         </div>
         {selectedVariant ? (
           <div className="sk-card sk-adjustment-context">
             <strong>{t("adjustment.currentContext")}</strong>
             <span>
-              {selectedVariant.sku} — {selectedVariant.name}
+              {selectedVariant.primary_barcode || selectedVariant.sku} — {selectedVariant.name}
             </span>
             <span>
               {t("adjustment.currentQuantity")}:{" "}
@@ -507,7 +544,7 @@ export function StockAdjustmentScreen() {
           <h2 id="adjustment-result-title">{t("adjustment.resultTitle")}</h2>
           {resultVariant ? (
             <p>
-              {resultVariant.sku} — {resultVariant.name}
+              {resultVariant.primary_barcode || resultVariant.sku} — {resultVariant.name}
             </p>
           ) : null}
           <div className="sk-table-wrap sk-table-wrap--flat">
@@ -544,6 +581,19 @@ export function StockAdjustmentScreen() {
           </div>
         </section>
       ) : null}
+      <ItemSearchModal
+        isOpen={searchModalOpen}
+        onClose={() => setSearchModalOpen(false)}
+        onSelect={(item) => {
+          setVariantId(item.variant_id);
+          setUnitId(null);
+          invalidateRequest();
+        }}
+        items={variants}
+        loading={variantsLoading}
+        error={variantsError}
+        selectedVariantId={variantId}
+      />
     </section>
   );
 }

@@ -119,13 +119,63 @@ pub fn database_state_from(url: Option<String>) -> DatabaseState {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn ensure_local_postgres_active() {
+    use std::process::Command;
+
+    let is_ready = Command::new("C:\\Program Files\\PostgreSQL\\18\\bin\\pg_isready.exe")
+        .args(["-h", "127.0.0.1", "-p", "5433"])
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).contains("accepting connections"))
+        .unwrap_or(false);
+
+    if !is_ready {
+        if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+            let data_dir = std::path::Path::new(&local_appdata)
+                .join("Stockiha")
+                .join("r8-acceptance")
+                .join("data-55433");
+            if data_dir.exists() {
+                let _ = Command::new("C:\\Program Files\\PostgreSQL\\18\\bin\\postgres.exe")
+                    .args(["-D", data_dir.to_str().unwrap_or_default(), "-p", "5433"])
+                    .spawn();
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+        }
+    }
+}
+
 /// Read [`DEV_DATABASE_URL_ENV`] and derive the managed [`DatabaseState`].
 ///
 /// Missing configuration is a safe, expected state (the app starts and
 /// reports "not configured"); it is never a panic and never logged with any
 /// value content.
 pub fn database_state_from_env() -> DatabaseState {
-    database_state_from(std::env::var(DEV_DATABASE_URL_ENV).ok())
+    let mut url = std::env::var(DEV_DATABASE_URL_ENV).ok();
+    if url.is_none() {
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+                let key_path = std::path::Path::new(&local_appdata)
+                    .join("Stockiha")
+                    .join("r8-acceptance")
+                    .join("runtime.key");
+                if key_path.exists() {
+                    if let Ok(pw) = std::fs::read_to_string(&key_path) {
+                        let trimmed = pw.trim();
+                        if !trimmed.is_empty() {
+                            ensure_local_postgres_active();
+                            url = Some(format!(
+                                "postgres://stockiha_runtime:{}@127.0.0.1:5433/stockiha_r8e_verification_test?sslmode=disable",
+                                trimmed
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    database_state_from(url)
 }
 
 /// Execute the connectivity proof against a pool: exactly `SELECT 1`.

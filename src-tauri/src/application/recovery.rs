@@ -604,6 +604,8 @@ pub(crate) fn stable_error_code(error: &AppError) -> &'static str {
         AppError::ImmutableRecord { .. } => "IMMUTABLE_RECORD",
         AppError::UnsafeZeroStockValuation { .. } => "UNSAFE_ZERO_STOCK_VALUATION",
         AppError::CreditPolicyBlocked { .. } => "CREDIT_POLICY_BLOCKED",
+        AppError::InsufficientStock { .. } => "INSUFFICIENT_STOCK",
+        AppError::CorrectionsDisabled { .. } => "CORRECTIONS_DISABLED",
     }
 }
 
