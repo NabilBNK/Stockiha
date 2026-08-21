@@ -1,60 +1,82 @@
 # Stockiha — Execution Task Tracker
 
-> This file records task progress only. [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) is the single authority for target architecture, release scope, verified status classifications, and remaining work. A checked implementation task is not proof that the feature is production-correct or release-ready.
+> **Execution tracker only.** The only current product/roadmap ground-truth document is [`STOCKIHA_GROUND_TRUTH.md`](./STOCKIHA_GROUND_TRUTH.md). Use [`CURRENT_STEP.md`](./CURRENT_STEP.md) for the current execution position. A checked task is not proof that a feature is production-correct or release-ready.
+>
+> Historical PR/R/S numbering is retained below only as implementation history. Do **not** use it to define new work. New work must use the current `WS-A` through `WS-L` Workstream model.
 
-# Stockiha — Slice 0 Tasks
+## Current execution priorities
 
-# Cross-slice UI foundation
+- [ ] **WS-A — Foundation & Access:** User Management, Authentication, RBAC, role/access management, custom-user administration, permission enforcement.
+- [ ] **WS-B — Financial Core:** accounting correctness, journals/ledger integrity, AR/AP, cash/bank, inventory valuation and transaction-to-accounting integrity.
+- [ ] **WS-C — Settings & Policy Engine:** frontend/backend redesign, feature toggles, business policies, valuation policy, role/RBAC configuration and backend enforcement.
+- [ ] **WS-D — Product & Inventory Core:** product UI/backend revision, barcode-first global search, inventory MVP analytics, stock correction and serious transfer testing.
+- [ ] **WS-E — Procurement & Supplier Operations:** direct purchase refinement, history, returns/details and accounting integration.
+- [ ] **WS-F — POS, Sales & Cash Operations:** POS and cash-session revision/testing, payments, customers/credit and configurable discounts.
+- [ ] **WS-G — Historical Financial Import:** improve validation/reliability and complete representative testing; current condition 5/10.
+- [ ] **WS-H — Backup & Recovery:** repair backup, restore, validation, consistency and database-health workflows.
+- [ ] **WS-I — Reporting & Analytics:** complete/repair reporting after pillar features stabilize.
+- [ ] **WS-J — Dashboard & Application UX:** redesign dashboard, sidebar, topbar and element placement after pillar features stabilize.
+- [ ] **WS-K — Windows/Tauri Acceptance & Release:** release-critical end-to-end Windows/Tauri verification.
+- [ ] **WS-L — Audit & Compliance:** implement late, after most pillar features are stable.
 
-- [x] UI-001 Frontend foundation overhaul: coherent shell, reusable visual system, responsive operational screens
+## Historical implementation record
+
+The sections below preserve what was previously completed under the old Slice/R roadmap. They are historical records, not current roadmap authority.
+
+### Slice 0 — Technical foundation proofs
 
 - [x] S0-001 Repository foundation and Tauri scaffold
 - [x] S0-002 Development configuration and typed error foundation
-  - [x] S0-002a Configure restrictive Tauri v2 Content Security Policy (CSP hardening — deferred from S0-001)
+- [x] S0-002a Configure restrictive Tauri v2 Content Security Policy
 - [x] S0-003 Local PostgreSQL and SQLx connectivity proof
 - [x] S0-004 Database-role bootstrap proof
 - [x] S0-005 Windows Credential Manager proof
 - [x] S0-006 SECURITY DEFINER and session-token proof
 - [x] S0-007 Typst French/Arabic PDF proof
-- [x] S0-008 ESC/POS Windows RAW spooler proof (software verified; physical printer validation deferred)
+- [x] S0-008 ESC/POS Windows RAW spooler proof
 - [x] S0-009 Backup bundle creation proof
 - [x] S0-010 Temporary-database restore and reconciliation proof
 
-# Stockiha — Slice 1 Tasks
+### Slice 1 — Core transaction implementation
 
-- [x] S1-001a Implement backend MVP transaction engine (Golden Transaction Chain: product, stock receipt, WAC, cash session, cash sale, stock issue, cash movement, double-entry journal, print queue, drawer pulse)
-- [x] S1-001b Implement core request idempotency and session validation
-- [x] S1-001c Implement backup/restore database reconciliation for the Golden Chain
-- [x] S1-002 Implement Slice 1 MVP frontend batch (User-facing setup, login, product, stock receipt, cash-session, POS, and receipt workflows)
+- [x] S1-001a Backend MVP transaction engine / Golden Transaction Chain
+- [x] S1-001b Core request idempotency and session validation
+- [x] S1-001c Backup/restore database reconciliation for the Golden Chain
+- [x] S1-002 MVP frontend batch for setup, login, product, receipt, cash-session, POS and receipt workflows
 
-# Stockiha — Slice 2 Tasks: Catalog & Advanced Inventory
+### Slice 2 — Catalog & inventory history
 
-- [x] S2-001 Implement variant catalog, attributes, units, and barcodes
-- [x] S2-002 Implement advanced posting handler `inventory.confirm_stock_adjustment`
-- [x] S2-003 Implement zero-quantity safeguards and rounding residual handlers
+- [x] S2-001 Variant catalog, attributes, units and barcodes
+- [x] S2-002 Advanced posting handler `inventory.confirm_stock_adjustment`
+- [x] S2-003 Zero-quantity safeguards and rounding residual handlers
 
-# Stockiha — Slice 3 Tasks: Procurement & Supplier Purchasing
+### Slice 3 — Procurement history
 
-> **Release blocker:** S3 code exists, but the authoritative audit classifies its supplier accounting as implemented incorrectly. Treat all three checked items below as historical implementation completion, not production acceptance. Roadmap step R2 must repair and regression-test the postings before real financial use.
+- [x] S3-001 Supplier master, purchase order workflow and goods receipt posting
+- [x] S3-002 Landed cost allocation, supplier invoices, three-way match and payables ledger
+- [x] S3-003 Supplier returns, debit notes and payables settlement postings
 
-- [x] S3-001 Implement supplier master, purchase order workflow, and goods receipt posting
-- [x] S3-002 Implement landed cost allocation, supplier invoices, three-way match, and payables ledger
-- [x] S3-003 Implement supplier returns, debit notes, and payables settlement postings
+> Historical note: the old procurement slice was later found to contain supplier-accounting correctness issues. Do not treat these checkmarks as current production acceptance. Current procurement scope is governed by **WS-E** and the current ground truth.
 
-# Stockiha — Slice 4 Tasks: Customers, Receivables & Cash Controls
+### Slice 4 — Customers, receivables & cash controls
 
-- [x] S4-001 Implement customer master, customer credit state, customer ledger, credit-limit/overdue enforcement, receivables, and customer document pipeline
-- [x] S4-002 Implement full cashier-session lifecycle: blind denomination counts, variance approval, suspension, and handover
-- [x] S4-003 Implement extended drawer eligibility and customer cash-payment/refund integration
-- [x] R2 Repair supplier-accounting financial semantics with forward-only migrations and regression coverage
-- [x] R4 Prove spreadsheet parser and mapping against representative anonymized source files
-- [x] R5 Implement reconciled opening-state import
-- [x] R6 Implement and prove an operator-facing pilot backup/restore workflow
+- [x] S4-001 Customer master, customer credit state, customer ledger, credit-limit/overdue enforcement, receivables and customer document pipeline
+- [x] S4-002 Cashier-session lifecycle, denomination counts, variance approval, suspension and handover
+- [x] S4-003 Drawer eligibility and customer cash-payment/refund integration
 
-> The legacy S4-004 label is superseded by the integrated pilot release gate in the authoritative roadmap.
+### Historical R-series records
 
-# Stockiha — R8 Pilot Acceptance Tasks
+- [x] R2 Supplier-accounting financial-semantics repair with forward-only migrations and regression coverage
+- [x] R4 Spreadsheet parser and mapping proof against representative anonymized source files
+- [x] R5 Reconciled opening-state import
+- [x] R6 Pilot backup/restore workflow proof
+- [x] R8-D Catalog & Inventory acceptance on the historical exact candidate
+- [ ] R8-E Procurement acceptance — historical candidate gate
 
-- [x] R8-B/R8-C entry dependencies (user-confirmed complete before R8-D)
-- [x] R8-D Catalog & Inventory acceptance — focused confirmation passed on exact candidate `27e8ad1`; merged through PR #21
-- [ ] R8-E Procurement acceptance — implementation candidate requires exact-head PostgreSQL 18/Rust CI and focused Windows/Tauri confirmation
+> These R-series entries are preserved for traceability only. They do not define the current roadmap, priorities, MVP boundary, or release status.
+
+## Task status policy
+
+- A checked historical task means the implementation work was recorded as completed at that time; it does not guarantee current production readiness.
+- Current completion must be established against `STOCKIHA_GROUND_TRUTH.md`, `CURRENT_STEP.md`, executable behavior, tests, migrations, and Windows/Tauri acceptance where applicable.
+- Do not create new `S*`, `R*`, or legacy slice labels for future work. Use `WS-A` through `WS-L` and, where useful, sub-items such as `A.1`, `A.2`, `B.1`.
