@@ -1,122 +1,99 @@
 # Stockiha — AI Engineering Rules
 
 ## Purpose
-Work only on Stockiha and only on the explicitly assigned task. Prefer the smallest complete, testable change. Do not work ahead.
 
-## Sources of truth
+Work only on the explicitly assigned Stockiha task. Prefer the smallest complete, production-correct, testable change. Do not work ahead or create speculative parallel architectures.
 
-Before work, read in this order:
+## Current source-of-truth hierarchy
 
-1. `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`
-2. `AGENTS.md`
-3. `CURRENT_SLICE.md`
-4. `TASKS.md`
-5. Relevant companion specs under `docs/`
-6. Accepted ADRs under `docs/decisions/`
-7. Existing code, migrations, and tests relevant to the task
+Before implementation, establish current state from:
 
-Authority rules:
+1. Reproducible running/tested behavior.
+2. Automated tests and applied database migrations.
+3. Current source code.
+4. **`STOCKIHA_GROUND_TRUTH.md` — the only current product/roadmap ground-truth document.**
+5. `CURRENT_STEP.md` — current execution position.
+6. `TASKS.md` — execution/task history and current task tracking.
+7. Relevant specifications under `docs/`.
+8. Accepted ADRs under `docs/decisions/`.
 
-- Running and tested behavior, automated tests, current code, and applied migrations determine actual implementation state.
-- `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` is the single authority for target architecture, release scope, and the remaining roadmap.
-- `CURRENT_SLICE.md` and `TASKS.md` are execution trackers; they cannot override stronger implementation evidence or the ground-truth roadmap.
-- Repository documents override conversation memory and agent summaries.
+> **Historical-document rule:** Everything under `old-documents/` is historical reference only. It must not be used to determine current MVP scope, priorities, roadmap, or implementation status.
 
-Do not modify the ground-truth roadmap without explicit user approval. Architecture changes also require an accepted ADR documenting alternatives and risks.
+Repository evidence overrides conversation summaries and roadmap prose when determining what actually works. Do not claim a feature exists merely because a task or roadmap says it should exist.
 
-## Slice implementation boundary
+Use the current **WS-A through WS-L** Workstream model for all new planning. Do not create new PR/R/S/Slice numbering.
 
-Slice 0 consists of isolated technical feasibility proofs.
+Do not modify `STOCKIHA_GROUND_TRUTH.md` unless the assigned task explicitly requires a ground-truth update or the user explicitly requests one. Architecture changes require an ADR documenting alternatives, risks, and the chosen decision.
 
-Slices 1 through 9 are production vertical implementation slices. Work must use
-the intended production architecture, migrations, domain models, application
-services, database posting functions, IPC boundaries, frontend workflows and
-end-to-end tests.
+## Current project priorities
 
-Do not create proof-only modules, toy implementations, placeholder workflows
-or temporary parallel architectures for Slices 1 through 9.
+The current MVP direction and priority order are defined exclusively by `STOCKIHA_GROUND_TRUTH.md`. In particular:
 
-## Quota and cost discipline
-- Keep planning responses under 700 words unless a blocker requires more.
-- Do not repeat large repository sections.
-- Search within files before reading long files in full.
-- Read only files relevant to the task.
-- Do not browse unless current official documentation is necessary.
-- In plan-only mode, do not install dependencies or run builds.
-- During implementation, install dependencies once.
-- Run targeted tests while developing and the applicable full verification set once at the end.
-- Do not run Tauri packaging unless the task affects packaging, capabilities, configuration, or releases.
-- Do not create speculative code, placeholders, unused abstractions, or future-slice scaffolding.
-- Ask at most one consolidated clarification question when blocked.
+- User Management + RBAC are critical and high priority.
+- Financial Core is critical.
+- Settings is a core policy/configuration engine, not merely a preferences page.
+- Settings controls optional feature enablement/configuration; RBAC controls user access.
+- Product and inventory reliability are core MVP concerns.
+- Barcode-first search must become global.
+- Direct Purchase is the current MVP procurement workflow; broader procurement policies are future scope.
+- POS and Cash Sessions require serious revision/testing.
+- Historical Financial Import requires further work/testing.
+- Backup/Recovery currently requires repair and validation.
+- Reporting follows pillar-feature stabilization.
+- Dashboard/sidebar/topbar redesign follows the pillar features unless UI work blocks a pillar.
+- Windows/Tauri acceptance is a release-critical gate.
+- Audit Trail is intentionally late.
+- Payroll, TVA/tax implementation, product images, and other explicitly deferred scope must not be pulled forward without an explicit scope decision.
 
-## Deadline Mode Execution Rules
-For every remaining task:
-1. **One implementation plan only**: Do not repeatedly revise plans; incorporate essential requirements in the initial proposal.
-2. **One implementation pass**: Build the feature cleanly in a single targeted effort.
-3. **One blocker-focused review**: Review strictly for correctness, security, or blocking bugs. Do not review harmless naming or visibility preferences.
-4. **One Windows verification pass**: Execute applicable checks once at the end of implementation.
-   - **No frontend tests** when no frontend files changed.
-   - **No repeated full test suites** after documentation-only or comment edits.
-   - **No extra tests** beyond essential acceptance criteria.
-5. **Commit and continue**: Upon passing verification, commit immediately and advance. Useful but nonessential improvements go into a backlog.
+## Settings + RBAC policy
 
-## MVP Batch Execution Rule
-For an explicitly approved multi-task MVP batch spanning an entire vertical slice or major subsystem (e.g. "implement the complete backend transaction chain for Slice 1"):
-1. **Treat the batch as one unit of work.** Do not pause for per-task plan approval between the individual tasks that make up an approved batch.
-2. **Fix ordinary implementation problems autonomously.** Bugs, missing grants, naming corrections, failing tests, and similar routine issues discovered during the batch are corrected in place without stopping to ask.
-3. **Stop only for a genuine blocker**: an architecture conflict, an accounting-integrity conflict, a security conflict, a data-loss risk, a credential requirement, or an environment limitation that has no safe workaround. Routine implementation decisions are not blockers.
-4. **Preserve and correct useful existing work** already staged for the batch rather than discarding and restarting it.
-5. **Batch mode does not waive Git safety or any other non-negotiable confirmation gate.** The full workflow, verification, and diff are still reported at the end of the batch, and explicit approval is still required before any commit, push, merge, PR, or destructive operation, exactly as in the Git safety section below.
+All possible optional business features must be configurable/toggleable through Settings where applicable, including business policies such as tax enablement, stock transfers, discounts, valuation policy, feature availability, roles, and RBAC management.
 
-## Workflow
+Settings determines whether/how a capability is enabled. RBAC determines which users/roles can use it. Both frontend visibility and backend authorization must respect these policies.
 
-### Before editing
-Report:
-- interpretation
-- in-scope and out-of-scope work
-- exact files expected to change
-- database and security impact
-- tests to add
-- unresolved blockers
+Default roles are SuperAdmin, Admin, Manager, and Cashier. Custom users can be created by SuperAdmin. Admins may modify role access according to the permission model.
 
-Do not edit until the user approves the plan. Under an approved MVP Batch (see above), this plan-approval step applies once, to the batch as a whole, not to each task inside it.
+## Deadline mode
 
-### During implementation
-- Use a dedicated `task/...` branch after approval.
+Stockiha is deadline-constrained. Prefer small, complete, testable increments and avoid speculative work.
+
+For each task:
+1. Establish objective, scope, affected boundaries, invariants, and acceptance criteria.
+2. Implement one coherent solution.
+3. Fix ordinary implementation problems autonomously.
+4. Stop only for genuine architecture, accounting-integrity, security, data-loss, credential, or environment blockers with no safe workaround.
+5. Run the applicable deterministic verification.
+6. Inspect the final diff and status.
+7. Report actual results and remaining manual Windows/Tauri checks.
+
+Do not repeatedly rediscover repository context across agents.
+
+## Implementation rules
+
+- Use a dedicated `task/...` or `fix/...` branch unless explicitly directed otherwise.
 - Modify only task-related files.
+- Preserve useful existing work.
 - Do not silently upgrade major dependencies.
-- Add no dependency without justification.
-- Keep Tauri commands thin and reusable logic testable.
-- Keep authoritative business logic out of React.
-
-### After implementation
-Report concisely:
-- files changed
-- design decisions
-- commands and actual results
-- tests
-- security/database impact
-- Linux limitations
-- Windows/manual checks
-- `git diff --stat`
-- `git status --short`
-- verdict: `PASS`, `PASS WITH MANUAL CHECKS`, or `BLOCKED`
-
-Do not commit or push until the user approves the report.
+- Add no dependency without a concrete need.
+- Keep Tauri commands thin and reusable domain/application logic testable.
+- Keep authoritative financial, inventory, permission, and posting logic out of React.
+- Fix root causes rather than hiding errors or weakening validation.
+- Do not create placeholders, fake persistence, mock success paths, disabled tests, unused abstractions, or future-work scaffolding merely to appear complete.
 
 ## Git safety
-- Never commit directly to `main`.
-- Never force-push or merge.
-- Stop for unexpected working-tree changes.
-- Show the diff before commit approval.
-- Preserve `package-lock.json` and `src-tauri/Cargo.lock`.
-- Never commit build outputs, secrets, `.env` files, dumps, or machine paths.
 
-Confirmation is required before commit, push, PR creation, destructive Git operations, releases, or tags.
+- Never silently overwrite unrelated local changes.
+- Never use destructive reset/clean operations to discard work.
+- Never force-push unless explicitly authorized.
+- Never rewrite published history without explicit authorization.
+- Inspect the final diff before commit.
+- Preserve lockfiles when dependency state requires them.
+- Never commit secrets, `.env` files, credentials, database dumps, build outputs, or machine-specific temporary paths.
 
-## Stockiha constraints
+## Stockiha non-negotiable invariants
+
 - Stack: Tauri v2, React 19, TypeScript, Vite, Rust, PostgreSQL 18.x, SQLx, Typst, ESC/POS.
-- Windows is the primary target.
+- Windows is the primary runtime target.
 - Never use floating point for authoritative money, tax, quantity, WAC, inventory value, or journals.
 - React is not authoritative for financial, inventory, permission, or posting decisions.
 - Posted ledgers are immutable.
@@ -124,78 +101,58 @@ Confirmation is required before commit, push, PR creation, destructive Git opera
 - Financial operations must be atomic and idempotent.
 - Protected operations validate sessions and permissions.
 - Journals must balance.
-- Corrections use linked reversals or adjustments.
-- Printing failure must not roll back a confirmed document.
-- Historical imports must not silently affect live ledgers.
-- Do not weaken DB roles, posting functions, or `SECURITY DEFINER`.
+- Corrections use linked reversals or explicit adjustments; do not mutate posted history.
+- Printing failure must not roll back an already confirmed business document.
+- Historical imports must not silently affect live operational ledgers.
+- Do not weaken database roles, posting functions, grants, or `SECURITY DEFINER` boundaries to bypass failures.
 - Never expose or log passwords, PINs, raw tokens, hashes, credentials, or sensitive internal errors.
-
-Architecture changes require an ADR, alternatives and risks, explicit approval, then an approved architecture update.
+- Preserve the product → variant model and authoritative identifiers defined by current catalog contracts.
 
 ## Verification
-Run only checks applicable to changed areas.
+
+Run checks applicable to the changed surface.
 
 Frontend:
-
+```bash
 npm run typecheck
 npm run lint
 npm test
 npm run build
-
+```
 
 Rust:
-
+```bash
 cargo fmt --check
 cargo check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
+```
 
+Run relevant integration, migration, posting, security, concurrency, rollback, document-generation, or end-to-end tests when applicable.
 
-Run relevant integration, migration, security, concurrency, rollback, or document tests when applicable.
+Do not claim Windows-specific behavior from Linux. Windows/Tauri, WebView2, Credential Manager, Windows services, installers, print spooler, physical ESC/POS, Arabic thermal output, and cash-drawer behavior require Windows/manual acceptance where applicable.
 
-A Linux sandbox cannot prove Windows runtime, WebView2, Credential Manager, Windows Service, MSI/NSIS, Windows spooler, physical ESC/POS output, Arabic thermal output, or cash-drawer behavior. Mark these for Windows or hardware verification.
-# MVP Batch Execution Rule
+## Completion standard
 
-## Authority
+A task is complete only when:
 
-This rule applies to Slice 1 and to any later slice explicitly placed in MVP
-batch mode.
+1. Requested behavior is implemented at the authoritative layer.
+2. Relevant regressions are covered or explicitly justified.
+3. Applicable deterministic checks pass, or pre-existing failures are clearly separated.
+4. Final diff contains no unrelated changes.
+5. Required Windows/manual acceptance is identified or completed.
+6. Commit/push behavior follows the user's explicit Git instruction.
 
-It overrides the previous one-task-at-a-time workflow for the affected slice.
+## Documentation authority reminder
 
-`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` remains the authoritative source for technical,
-financial, security, and data-integrity decisions.
+`STOCKIHA_GROUND_TRUTH.md` is the current ground truth.
 
-## Primary objective
+`CURRENT_STEP.md` is the current execution tracker.
 
-Deliver a complete, usable MVP as quickly as possible without creating
-temporary, fake, or structurally incorrect implementations.
+`TASKS.md` is the execution/history tracker.
 
-Prefer a coherent production implementation of the main business workflow over
-perfect completion of every optional feature.
+`README.md` is the repository entry point.
 
-Optional features may be deferred, but they must be cleanly omitted. Do not
-replace deferred features with placeholders, mock workflows, fake persistence,
-temporary schemas, or parallel architectures.
+`DESIGN.md` is design-system guidance, not roadmap authority.
 
-## Slice 1 execution structure
-
-Slice 1 must be completed in no more than two major implementation batches.
-
-### Batch A — Production backend transaction engine
-
-Build the complete backend foundation and transaction chain:
-
-
-Product
-→ Stock receipt
-→ Warehouse-specific WAC update
-→ Cash-session opening
-→ Cash sale
-→ Stock issue
-→ Cash movement
-→ Balanced accounting journal
-→ Official document number
-→ Document generation job
-→ Print job
-→ Drawer-pulse job
+`old-documents/` contains obsolete historical documents and must not be treated as current truth.
