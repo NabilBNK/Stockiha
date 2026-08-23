@@ -129,10 +129,12 @@ describe('exact inventory presentation', () => {
     expect(table).toHaveTextContent('110 DZD');
     expect(table).toHaveTextContent('2200 DZD');
 
+    // Search is applied by a debounce on the input, not by a submit button:
+    // there is deliberately no "Search" control to click any more.
+    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Search by product, SKU or barcode'), {
       target: { value: '613000000001' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     await waitFor(() => expect(calls[calls.length - 1]?.search).toBe('613000000001'));
 
     fireEvent.click(screen.getByLabelText('Include inactive products and variants'));

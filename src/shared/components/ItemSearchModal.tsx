@@ -269,11 +269,19 @@ export function ItemSearchModal({
                         {t("inventory.product")}: <strong style={{ color: "var(--sk-text)" }}>{item.product_name}</strong>
                       </span>
                     )}
-                    {barcode ? (
+                    {/* Both identifiers are shown, barcode first. This modal
+                        already matches the typed query against the SKU *and*
+                        the primary barcode, so displaying only one of them let
+                        an operator search by SKU, get a hit, and never see the
+                        identifier that matched. Barcode keeps precedence in the
+                        ordering; the narrow inventory table column is where it
+                        replaces the SKU outright. */}
+                    {barcode && (
                       <span style={{ background: "var(--sk-surface-soft)", padding: "2px 6px", borderRadius: 4, color: "var(--sk-text-soft)" }}>
                         {t("barcodes.barcode")}: <code className="sk-num" style={{ color: "var(--sk-text)" }}>{barcode}</code>
                       </span>
-                    ) : (
+                    )}
+                    {item.sku && (
                       <span style={{ background: "var(--sk-surface-soft)", padding: "2px 6px", borderRadius: 4, color: "var(--sk-text-soft)" }}>
                         {t("inventory.sku")}: <code className="sk-num" style={{ color: "var(--sk-text)" }}>{item.sku}</code>
                       </span>

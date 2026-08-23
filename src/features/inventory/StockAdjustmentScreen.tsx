@@ -36,6 +36,22 @@ const REASONS: { code: StockAdjustmentReasonCode; label: MessageKey }[] = [
   { code: "RECORDING_ERROR", label: "adjustment.reason.recordingError" },
   { code: "OTHER", label: "adjustment.reason.other" },
 ];
+/**
+ * Renders every identifier an operator needs to confirm they are adjusting the
+ * right item, barcode first.
+ *
+ * The narrow inventory table column deliberately shows barcode *instead of* SKU
+ * to save width. These adjustment surfaces are the confirm-before-posting and
+ * posted-result cards, where hiding the authoritative SKU behind a scanning
+ * convenience makes the item harder to verify, not easier — so both are shown
+ * when both exist.
+ */
+function itemIdentifiers(item: { primary_barcode?: string | null; sku: string }): string {
+  const barcode = item.primary_barcode;
+  if (barcode && barcode !== item.sku) return `${barcode} · ${item.sku}`;
+  return barcode ?? item.sku;
+}
+
 const EXACT_NATURAL_QUANTITY = /^[1-9]\d*$/;
 export function isPositiveExactQuantity(value: string): boolean {
   return EXACT_NATURAL_QUANTITY.test(value);
@@ -376,7 +392,7 @@ export function StockAdjustmentScreen() {
           <div className="sk-card sk-adjustment-context">
             <strong>{t("adjustment.currentContext")}</strong>
             <span>
-              {selectedVariant.primary_barcode || selectedVariant.sku} — {selectedVariant.name}
+              {itemIdentifiers(selectedVariant)} — {selectedVariant.name}
             </span>
             <span>
               {t("adjustment.currentQuantity")}:{" "}
@@ -533,7 +549,7 @@ export function StockAdjustmentScreen() {
           <h2 id="adjustment-result-title">{t("adjustment.resultTitle")}</h2>
           {resultVariant ? (
             <p>
-              {resultVariant.primary_barcode || resultVariant.sku} — {resultVariant.name}
+              {itemIdentifiers(resultVariant)} — {resultVariant.name}
             </p>
           ) : null}
           <div className="sk-table-wrap sk-table-wrap--flat">

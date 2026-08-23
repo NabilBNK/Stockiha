@@ -297,7 +297,14 @@ describe('stock adjustment workflow', () => {
     wireInvoke(
       handlers({
         confirm_stock_adjustment: () => {
-          throw { code: 'PRECONDITION_FAILED', message: 'insufficient stock for stock adjustment' };
+          // The Rust boundary classifies SQLSTATE 55000 whose message contains
+          // "insufficient stock" into its own `INSUFFICIENT_STOCK` code, and
+          // `IpcError` then drops the diagnostic entirely — only the code
+          // crosses IPC. So this is the shape the frontend can actually
+          // receive; a bare PRECONDITION_FAILED carrying a readable database
+          // message is not reachable, and the frontend must never have to
+          // substring-match one.
+          throw { code: 'INSUFFICIENT_STOCK', message: 'DO_NOT_LEAK' };
         },
       }),
     );
@@ -310,6 +317,7 @@ describe('stock adjustment workflow', () => {
     expect(banner).toHaveTextContent(
       'This adjustment cannot be completed because the decrease exceeds the available stock.',
     );
+    expect(banner).not.toHaveTextContent('DO_NOT_LEAK');
   });
 
   it('shows clear error when inventory corrections are disabled', async () => {

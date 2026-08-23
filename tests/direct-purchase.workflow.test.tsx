@@ -196,7 +196,9 @@ describe('Direct Purchasing Workflow (Part 1)', () => {
 
     // Click "+ New purchase"
     fireEvent.click(screen.getByTestId('create-po-btn'));
-    expect(screen.getByTestId('create-po-form')).toBeInTheDocument();
+    // The purchase-order creation form became the Direct Purchase form and was
+    // renamed with it; the trigger button kept its original `create-po-btn` id.
+    expect(screen.getByTestId('direct-purchase-form')).toBeInTheDocument();
 
     // Select Supplier, Warehouse, Date, and line item
     fireEvent.change(screen.getByTestId('po-supplier-select'), { target: { value: '1' } });
