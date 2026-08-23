@@ -687,7 +687,21 @@ mod tests {
     }
 
     /// Regression coverage for the WS-A administration-safety guards installed by
-    /// migration `20260822190000_iam_admin_safety_hardening.sql`.
+    /// migration `20260822190000_iam_admin_safety_hardening.sql`, plus the
+    /// SUPER_ADMIN-specific guard added by
+    /// `20260823210000_pre_ws_b_superadmin_bootstrap.sql`.
+    ///
+    /// The bootstrapped root account now holds SUPER_ADMIN, not ADMIN (see
+    /// `core.bootstrap_first_admin`). Because SUPER_ADMIN always holds
+    /// MANAGE_USERS and root can never be deactivated or reassigned away from
+    /// SUPER_ADMIN while it is the last holder, an ordinary ADMIN peer can no
+    /// longer be driven into the MANAGE_USERS lockout scenario through the
+    /// sanctioned API — root always remains as another active administrator.
+    /// That branch of coverage is replaced with an assertion that the demotion
+    /// now correctly succeeds. This test must never call
+    /// `set_role_permissions` on the shared `ADMIN` role: doing so would
+    /// permanently strip every permission from the ADMIN role definition used
+    /// by every other fixture in this database.
     #[tokio::test]
     #[ignore = "requires a live PostgreSQL server, STOCKIHA_TEST_DATABASE_URL"]
     async fn iam_admin_safety_guards() {
@@ -700,7 +714,7 @@ mod tests {
             .unwrap()
             .as_millis();
 
-        let (admin_id, admin_token) = root_admin_session(&pool).await;
+        let (root_id, root_token) = root_admin_session(&pool).await;
 
         // --- list_users returns exactly one row per user ---
         // The original implementation inner-joined iam.user_roles without
@@ -709,7 +723,7 @@ mod tests {
         // replaces every assignment), so the invariant is asserted structurally:
         // the projection must have the same cardinality as iam.users, and roles
         // must arrive as arrays rather than as repeated rows.
-        let users = list_users(&pool, &admin_token).await.unwrap();
+        let users = list_users(&pool, &root_token).await.unwrap();
         let (user_count,): (i64,) = sqlx::query_as("SELECT count(*) FROM iam.users")
             .fetch_one(&pool)
             .await
@@ -728,12 +742,18 @@ mod tests {
             "iam.list_users must not repeat a user id"
         );
 
-        let admin_row = users
+        let root_row = users
             .iter()
-            .find(|user| user.user_id == admin_id)
+            .find(|user| user.user_id == root_id)
             .expect("the acting administrator must appear in its own listing");
-        assert_eq!(admin_row.role_codes, vec!["ADMIN".to_string()]);
-        assert_eq!(admin_row.role_names.len(), admin_row.role_codes.len());
+        assert_eq!(root_row.role_codes, vec!["SUPER_ADMIN".to_string()]);
+        assert_eq!(root_row.role_names.len(), root_row.role_codes.len());
+
+        // Derive an ordinary ADMIN account through root: the escalation check
+        // below only means something for an actor that does not already hold
+        // SUPER_ADMIN.
+        let (admin_id, admin_token) =
+            seed_user_via_admin(&pool, &root_token, &format!("admin_ops_{suffix}"), "ADMIN").await;
 
         // --- create_user must not be an escalation path to SUPER_ADMIN ---
         let err = create_user(
@@ -751,7 +771,31 @@ mod tests {
             "an ADMIN must not be able to create a SUPER_ADMIN account"
         );
 
-        // --- the final administrator cannot be stripped of MANAGE_USERS ---
+        // --- the last active SUPER_ADMIN can never be deactivated or
+        //     reassigned away, even by another MANAGE_USERS holder (Pre-WS-B
+        //     guard: role-code-specific, independent of the ADMIN peer above
+        //     also holding MANAGE_USERS). ---
+        let err = set_user_active(&pool, &admin_token, root_id, false)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, AppError::PreconditionFailed { diagnostic }
+                if diagnostic.contains("last active SUPER_ADMIN")),
+            "the last active SUPER_ADMIN must never be deactivatable"
+        );
+
+        let err = assign_user_role(&pool, &admin_token, root_id, "ADMIN")
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, AppError::PreconditionFailed { diagnostic }
+                if diagnostic.contains("last active SUPER_ADMIN")),
+            "the last active SUPER_ADMIN must never be reassigned away from SUPER_ADMIN"
+        );
+
+        // --- a non-SUPER_ADMIN administrator CAN be demoted while SUPER_ADMIN
+        //     remains active — MANAGE_USERS is never actually stranded as
+        //     long as the permanent owner exists. ---
         let (peer_id, peer_token) = seed_user_via_admin(
             &pool,
             &admin_token,
@@ -773,57 +817,19 @@ mod tests {
             "the demoted peer's existing session must lose MANAGE_USERS immediately"
         );
 
-        // Make the acting administrator the only remaining one, so the guard is
-        // exercised deterministically regardless of what other tests left behind.
-        let other_admin_ids: Vec<(i64,)> = sqlx::query_as(
-            "SELECT DISTINCT u.id              FROM iam.users u              JOIN iam.user_roles ur ON ur.user_id = u.id              JOIN iam.role_permissions rp ON rp.role_id = ur.role_id              JOIN iam.permissions p ON p.id = rp.permission_id              WHERE u.is_active AND u.id <> $1 AND p.code = 'MANAGE_USERS'",
-        )
-        .bind(admin_id)
-        .fetch_all(&pool)
-        .await
-        .unwrap();
-
-        for (other_id,) in &other_admin_ids {
-            set_user_active(&pool, &admin_token, *other_id, false)
-                .await
-                .expect("deactivating a non-final administrator must succeed");
-        }
-
-        // 1. Self-demotion out of MANAGE_USERS is refused.
-        let err = assign_user_role(&pool, &admin_token, admin_id, "CASHIER")
+        // Demoting the last ADMIN itself now succeeds too: SUPER_ADMIN root is
+        // still active and still holds MANAGE_USERS, so the generic
+        // last-administrator guard does not fire. This is the correct,
+        // intended interaction between the two guards, not a regression.
+        assign_user_role(&pool, &root_token, admin_id, "CASHIER")
             .await
-            .unwrap_err();
-        assert!(
-            matches!(err, AppError::PreconditionFailed { diagnostic }
-                if diagnostic.contains("last active user administrator")),
-            "the final administrator must not be able to demote itself"
-        );
+            .expect("demoting the last ADMIN must succeed while SUPER_ADMIN remains active");
 
-        // 2. Revoking MANAGE_USERS from the last role that grants it is refused.
-        //    This is the second lockout vector: the user keeps its role, but the
-        //    role stops granting administration.
-        let err = set_role_permissions(&pool, &admin_token, "ADMIN", &[])
+        // The acting root must still hold SUPER_ADMIN throughout.
+        let users = list_users(&pool, &root_token)
             .await
-            .unwrap_err();
-        assert!(
-            matches!(err, AppError::PreconditionFailed { diagnostic }
-                if diagnostic.contains("last role that grants user administration")),
-            "stripping MANAGE_USERS from the last granting role must be refused"
-        );
-
-        // The refusals must be atomic — the administrator is still an administrator.
-        let users = list_users(&pool, &admin_token)
-            .await
-            .expect("the acting administrator must still hold MANAGE_USERS");
-        let admin_row = users.iter().find(|user| user.user_id == admin_id).unwrap();
-        assert_eq!(admin_row.role_codes, vec!["ADMIN".to_string()]);
-
-        // Restore the administrators this test deactivated so the fixture
-        // database stays usable for repeated runs.
-        for (other_id,) in &other_admin_ids {
-            set_user_active(&pool, &admin_token, *other_id, true)
-                .await
-                .unwrap();
-        }
+            .expect("root must still hold MANAGE_USERS");
+        let root_row = users.iter().find(|user| user.user_id == root_id).unwrap();
+        assert_eq!(root_row.role_codes, vec!["SUPER_ADMIN".to_string()]);
     }
 }
