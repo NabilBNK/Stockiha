@@ -46,7 +46,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
   const [selectedDetail, setSelectedDetail] = useState<PurchaseOrderDetailDto | null>(null);
   const [receiptPoDetail, setReceiptPoDetail] = useState<PurchaseOrderDetailDto | null>(null);
   const [landedCostReceipt, setLandedCostReceipt] = useState<PurchaseReceiptSummary | null>(null);
-  const [landedCostResult] = useState<AllocateLandedCostResult | null>(null);
+  const [landedCostResult, setLandedCostResult] = useState<AllocateLandedCostResult | null>(null);
   const [receipts, setReceipts] = useState<PurchaseReceiptSummary[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -232,7 +232,19 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
   const openReceiptModal = (_id: number) => undefined;
   const handleCancelOrder = (_id: number) => undefined;
   const handleReceiptSuccess = (_result: ConfirmPurchaseReceiptResult) => undefined;
-  const handleLandedCostSuccess = (_result: AllocateLandedCostResult) => undefined;
+  /**
+   * `inventory.allocate_landed_cost` has already posted by the time this runs.
+   * The result is displayed exactly as the database returned it — no arithmetic
+   * here — and `loadData()` re-reads the receipt list so the row's landed cost,
+   * quantity, WAC and inventory value come back from the backend rather than
+   * being patched locally.
+   */
+  const handleLandedCostSuccess = async (result: AllocateLandedCostResult) => {
+    setLandedCostReceipt(null);
+    setLandedCostResult(result);
+    setError(null);
+    await loadData();
+  };
 
   // Filtered receipts calculation
   const filteredReceipts = useMemo(() => {
@@ -533,7 +545,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       </div>
 
       {/* Landed Cost Result Highlight */}
-      {landedCostResult && landedCostResult.receipt_id === -1 ? (
+      {landedCostResult ? (
         <section className="sk-card" data-testid="landed-cost-result" style={{ marginBottom: '18px' }}>
           <h2>{text.landedCostPosted}</h2>
           <div className="sk-cards" style={{ marginTop: '10px' }}>
@@ -694,7 +706,7 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
                           >
                             {text.viewDetails}
                           </button>
-                          {false && capabilities.can_post_supplier_invoice && openFiscalPeriodId && !receipt.landed_cost_amount && (
+                          {capabilities.can_post_supplier_invoice && openFiscalPeriodId && !receipt.landed_cost_amount && (
                             <button
                               type="button"
                               className="sk-button sk-button--small sk-button--secondary"
@@ -997,13 +1009,13 @@ export default function PurchaseOrdersScreen({ sessionToken, capabilities, openF
       )}
 
       {/* Landed Cost Modal */}
-      {landedCostReceipt && landedCostReceipt.document_id === -1 && (
+      {landedCostReceipt && (
         <LandedCostModal
           receipt={landedCostReceipt}
           sessionToken={sessionToken}
           fiscalPeriodId={openFiscalPeriodId ?? 0}
           onClose={() => setLandedCostReceipt(null)}
-          onSuccess={handleLandedCostSuccess}
+          onSuccess={(result) => void handleLandedCostSuccess(result)}
         />
       )}
     </div>
