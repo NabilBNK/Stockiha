@@ -166,7 +166,7 @@ pub fn database_state_from_env() -> DatabaseState {
                         if !trimmed.is_empty() {
                             ensure_local_postgres_active();
                             url = Some(format!(
-                                "postgres://stockiha_runtime:{}@127.0.0.1:5433/stockiha_r8e_verification_test?sslmode=disable",
+                                "postgres://stockiha_runtime:{}@127.0.0.1:5433/stockiha_acceptance?sslmode=disable",
                                 trimmed
                             ));
                         }
@@ -239,6 +239,35 @@ mod tests {
     fn parse_valid_url_extracts_typed_options() {
         let options = parse_connect_options(UNIT_TEST_URL).expect("valid URL must parse");
         assert_eq!(options.get_database(), Some("unit_db"));
+    }
+
+    #[test]
+    fn acceptance_fallback_points_to_canonical_database() {
+        // Prove the hardcoded fallback URL targets the canonical database
+        let fallback_url =
+            "postgres://stockiha_runtime:dummy@127.0.0.1:5433/stockiha_acceptance?sslmode=disable";
+        let options = parse_connect_options(fallback_url).expect("fallback URL must parse");
+        assert_eq!(options.get_database(), Some("stockiha_acceptance"));
+    }
+
+    #[test]
+    fn database_naming_guard() {
+        // Prevent accidental reintroduction of obsolete database names
+        let fallback_url =
+            "postgres://stockiha_runtime:dummy@127.0.0.1:5433/stockiha_acceptance?sslmode=disable";
+        let obsolete_names = [
+            "stockiha_r8e_verification_test",
+            "stockiha_r8_acceptance_inventory_test",
+            "stockiha_r8-acceptance_inventory_test",
+        ];
+
+        for name in obsolete_names {
+            assert!(
+                !fallback_url.contains(name),
+                "Fallback URL must not contain obsolete database identifier: {}",
+                name
+            );
+        }
     }
 
     #[test]

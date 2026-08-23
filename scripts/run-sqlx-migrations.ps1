@@ -1,5 +1,5 @@
 param(
-    [string]$DatabaseName = 'stockiha_r8_acceptance_inventory_test'
+    [string]$DatabaseName = 'stockiha_acceptance'
 )
 
 Set-StrictMode -Version Latest
@@ -137,6 +137,28 @@ try {
     Write-Host "Database: $DatabaseName"
     Write-Host 'Applying pending SQLx migrations...'
 
+    # Read admin password from admin.key for administrative connections
+    $adminKeyPath = Join-Path $localSecretRoot 'admin.key'
+    if (-not (Test-Path -LiteralPath $adminKeyPath)) {
+        Fail "Admin key not found at $adminKeyPath"
+    }
+    $adminPassword = (Get-Content -LiteralPath $adminKeyPath -Raw).Trim()
+    $env:PGPASSWORD = $adminPassword
+
+    # Auto-create the target database if it does not exist
+    $dbExists = (& $psqlPath -h 127.0.0.1 -p 5433 -U stockiha_admin -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$DatabaseName';" 2>&1 | Out-String).Trim()
+    if ($dbExists -ne '1') {
+        Write-Host "Database '$DatabaseName' does not exist. Creating..."
+        & $psqlPath -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5433 -U stockiha_admin -d postgres -c "CREATE DATABASE `"$DatabaseName`" WITH OWNER stockiha_owner;" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { Fail "Failed to create database $DatabaseName" }
+
+        & $psqlPath -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5433 -U stockiha_admin -d $DatabaseName -c "GRANT ALL ON SCHEMA public TO stockiha_owner; GRANT USAGE, CREATE ON SCHEMA public TO stockiha_migrator; ALTER SCHEMA public OWNER TO stockiha_owner; ALTER ROLE stockiha_migrator IN DATABASE `"$DatabaseName`" SET role = 'stockiha_owner';" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { Fail "Failed to grant privileges on $DatabaseName" }
+        Write-Host "Database '$DatabaseName' created with owner stockiha_owner."
+    }
+
+    Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+
     $metadataOwner = (& $psqlPath -X -v ON_ERROR_STOP=1 -d $migrationUrl -Atc "SELECT COALESCE((SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid=to_regclass('public._sqlx_migrations')), '<missing>');" 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) {
         Fail 'Unable to inspect SQLx migration metadata ownership.'
@@ -168,6 +190,24 @@ try {
     }
 
     Write-Host 'Database migrations: PASS'
+
+    # Post-migration verification
+    $env:PGPASSWORD = $adminPassword
+    
+    $migrationCount = (& $psqlPath -h 127.0.0.1 -p 5433 -U stockiha_admin -d $DatabaseName -Atc "SELECT COUNT(*) FROM _sqlx_migrations;" 2>&1 | Out-String).Trim()
+    Write-Host "Total migrations applied: $migrationCount"
+
+    $funcCheckQuery = "SELECT n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'iam' AND p.proname IN ('list_users','list_roles') ORDER BY p.proname;"
+    $functions = (& $psqlPath -h 127.0.0.1 -p 5433 -U stockiha_admin -d $DatabaseName -Atc $funcCheckQuery 2>&1 | Out-String).Trim()
+    
+    Write-Host "IAM Functions Found:"
+    Write-Host $functions
+
+    if (($functions -notmatch 'iam\.list_roles\([^)]*text\)') -or ($functions -notmatch 'iam\.list_users\([^)]*text\)')) {
+        Fail "Migration failed to install required IAM functions."
+    }
+
+    Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
 }
 finally {
     if ($metadataBridgeGranted) {

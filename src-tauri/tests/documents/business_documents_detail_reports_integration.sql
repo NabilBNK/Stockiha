@@ -1,5 +1,5 @@
 -- Integration assertion script for Business Documents Detail & Reports
--- Run against stockiha_r8e_verification_test
+-- Run against stockiha_acceptance
 
 BEGIN;
 
