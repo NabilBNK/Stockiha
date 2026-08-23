@@ -26,7 +26,10 @@ export type AppView =
   | 'journals'
   | 'customers'
   | 'suppliers'
-  | 'purchases';
+  | 'purchases'
+  | 'supplier_invoices'
+  | 'supplier_liabilities'
+  | 'supplier_returns';
 
 type NavGroup = 'main' | 'stock' | 'buy' | 'sales';
 type NavItem = {
@@ -48,6 +51,9 @@ const NAV: NavItem[] = [
   { view: 'adjustment', labelKey: 'nav.stockAdjustment', group: 'stock', icon: '±' },
   { view: 'suppliers', labelKey: 'nav.suppliers', group: 'buy', icon: '◎' },
   { view: 'purchases', labels: { en: 'Purchases', fr: 'Achats', ar: 'المشتريات' }, group: 'buy', icon: '≡' },
+  { view: 'supplier_invoices', labelKey: 'nav.supplierInvoices', group: 'buy', icon: '▤' },
+  { view: 'supplier_liabilities', labelKey: 'nav.supplierLiabilities', group: 'buy', icon: '₫' },
+  { view: 'supplier_returns', labelKey: 'nav.supplierReturns', group: 'buy', icon: '↩' },
   { view: 'customers', labels: { fr: 'Clients', ar: 'العملاء', en: 'Customers' }, group: 'sales', icon: '♙' },
   { view: 'pos', labelKey: 'nav.pos', group: 'sales', icon: '▦' },
   { view: 'session', labelKey: 'nav.cashSession', group: 'sales', icon: '◉' },
@@ -160,6 +166,9 @@ export function AppShell({
         return (inventoryCapabilities?.can_manage_inventory ?? false) && inventoryCorrectionsEnabled === true;
       case 'suppliers':
       case 'purchases':
+      case 'supplier_invoices':
+      case 'supplier_liabilities':
+      case 'supplier_returns':
         return procurementCapabilities?.can_manage_procurement ?? false;
       default:
         return true;

@@ -37,6 +37,9 @@ import { UserManagementSettingsScreen } from '../features/settings/UserManagemen
 import { getInventoryCorrectionsSetting } from '../shared/ipc/inventoryCorrectionsGateway';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
 import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
+import { SupplierInvoicesScreen } from '../features/procurement/SupplierInvoicesScreen';
+import { SupplierLiabilitiesScreen } from '../features/procurement/SupplierLiabilitiesScreen';
+import { SupplierReturnsScreen } from '../features/procurement/SupplierReturnsScreen';
 import type { InventoryCapabilities, ProcurementCapabilities } from '../shared/ipc/dto';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
@@ -266,7 +269,7 @@ function AuthenticatedApp() {
     if (!procurementCapabilities) return;
     const procurementView = [
       'suppliers',
-      'purchase_orders',
+      'purchases',
       'supplier_invoices',
       'supplier_liabilities',
       'supplier_returns',
@@ -349,6 +352,27 @@ function AuthenticatedApp() {
           sessionToken={user?.token ?? ''}
           capabilities={procurementCapabilities}
           openFiscalPeriodId={openFiscalPeriod?.id ?? null}
+        />
+      )}
+      {view === 'supplier_invoices' && (
+        <SupplierInvoicesScreen
+          sessionToken={user?.token ?? ''}
+          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
+          capabilities={procurementCapabilities}
+        />
+      )}
+      {view === 'supplier_liabilities' && (
+        <SupplierLiabilitiesScreen
+          sessionToken={user?.token ?? ''}
+          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
+          capabilities={procurementCapabilities}
+        />
+      )}
+      {view === 'supplier_returns' && (
+        <SupplierReturnsScreen
+          sessionToken={user?.token ?? ''}
+          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
+          capabilities={procurementCapabilities}
         />
       )}
     </AppShell>
