@@ -26,6 +26,7 @@ pub(crate) mod documents;
 pub(crate) mod drawer;
 pub(crate) mod finance_service;
 pub(crate) mod fiscal;
+pub(crate) mod iam;
 pub(crate) mod inventory;
 pub(crate) mod onboarding;
 pub(crate) mod opening_state;
@@ -38,6 +39,8 @@ pub(crate) mod recovery_creation;
 pub(crate) mod setup;
 pub(crate) mod stock_adjustment;
 pub(crate) mod stock_receipt;
+#[cfg(test)]
+pub(crate) mod test_fixtures;
 pub(crate) mod warehouse;
 
 use time::Date;

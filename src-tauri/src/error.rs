@@ -118,13 +118,19 @@ impl AppError {
             },
             Some("55000") => {
                 if message.contains("insufficient stock") {
-                    AppError::InsufficientStock { diagnostic: message }
+                    AppError::InsufficientStock {
+                        diagnostic: message,
+                    }
                 } else if message.contains("disabled by policy") {
-                    AppError::CorrectionsDisabled { diagnostic: message }
+                    AppError::CorrectionsDisabled {
+                        diagnostic: message,
+                    }
                 } else {
-                    AppError::PreconditionFailed { diagnostic: message }
+                    AppError::PreconditionFailed {
+                        diagnostic: message,
+                    }
                 }
-            },
+            }
             Some("23505") => AppError::IdempotencyConflict {
                 diagnostic: message,
             },
@@ -207,7 +213,9 @@ impl fmt::Display for AppError {
             AppError::UnsafeZeroStockValuation { .. } => f.write_str("unsafe zero-stock valuation"),
             AppError::CreditPolicyBlocked { .. } => f.write_str("credit policy blocked"),
             AppError::InsufficientStock { .. } => f.write_str("insufficient stock"),
-            AppError::CorrectionsDisabled { .. } => f.write_str("inventory corrections disabled by policy"),
+            AppError::CorrectionsDisabled { .. } => {
+                f.write_str("inventory corrections disabled by policy")
+            }
         }
     }
 }
