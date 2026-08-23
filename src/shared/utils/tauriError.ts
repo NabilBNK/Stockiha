@@ -45,6 +45,8 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   IMMUTABLE_RECORD: 'This record has been finalized and cannot be changed.',
   UNSAFE_ZERO_STOCK_VALUATION: 'This increase cannot be valued because the item has no usable WAC.',
   CREDIT_POLICY_BLOCKED: 'Customer credit policy blocks this sale.',
+  INSUFFICIENT_STOCK: 'There is not enough stock on hand for this operation.',
+  CORRECTIONS_DISABLED: 'Inventory corrections are disabled by the current policy.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

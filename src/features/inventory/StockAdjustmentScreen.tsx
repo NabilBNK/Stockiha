@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type FormEvent,
 } from "react";
@@ -71,7 +70,6 @@ export function StockAdjustmentScreen() {
   const [variants, setVariants] = useState<ProductListItem[]>([]);
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [variantsError, setVariantsError] = useState<string | null>(null);
-  const [variantSearch, setVariantSearch] = useState("");
   const [variantId, setVariantId] = useState<number | null>(null);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [units, setUnits] = useState<StockAdjustmentUnit[]>([]);
@@ -177,14 +175,6 @@ export function StockAdjustmentScreen() {
   ]);
   const selectedVariant =
     variants.find((item) => item.variant_id === variantId) ?? null;
-  const visibleVariants = useMemo(() => {
-    const query = variantSearch.trim().toLocaleLowerCase();
-    return query
-      ? variants.filter((item) =>
-          `${item.sku} ${item.name}`.toLocaleLowerCase().includes(query),
-        )
-      : variants;
-  }, [variantSearch, variants]);
   const isZeroQty =
     selectedVariant != null &&
     isExactDecimalZero(selectedVariant.quantity_on_hand);
@@ -301,7 +291,6 @@ export function StockAdjustmentScreen() {
               value={selectedWarehouseId ?? ""}
               onChange={(event) => {
                 selectWarehouse(Number(event.target.value));
-                setVariantSearch("");
                 invalidateRequest();
               }}
             >

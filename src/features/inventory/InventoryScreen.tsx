@@ -127,7 +127,7 @@ export function InventoryScreen() {
             <thead>
               <tr>
                 <th>{t('adjustment.variant')}</th>
-                <th>{t('inventory.sku_barcode', 'SKU / Barcode')}</th>
+                <th>{t('inventory.skuBarcode')}</th>
                 <th>{t('inventory.unit')}</th>
                 <th>{t('inventory.status')}</th>
                 <th className="sk-num">{t('inventory.quantity')}</th>
