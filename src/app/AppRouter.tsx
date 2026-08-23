@@ -33,6 +33,7 @@ import { OpeningStateApplicationScreen } from '../features/onboarding/OpeningSta
 import { DrawerPolicySettingsScreen } from '../features/settings/DrawerPolicySettingsScreen';
 import { RecoverySettingsScreen } from '../features/settings/RecoverySettingsScreen';
 import { InventoryCorrectionsSettingsScreen } from '../features/settings/InventoryCorrectionsSettingsScreen';
+import { UserManagementSettingsScreen } from '../features/settings/UserManagementSettingsScreen';
 import { getInventoryCorrectionsSetting } from '../shared/ipc/inventoryCorrectionsGateway';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
 import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
@@ -330,6 +331,7 @@ function AuthenticatedApp() {
           <DrawerPolicySettingsScreen sessionToken={user?.token ?? ''} />
           <InventoryCorrectionsSettingsScreen sessionToken={user?.token ?? ''} />
           <RecoverySettingsScreen sessionToken={user?.token ?? ''} />
+          <UserManagementSettingsScreen sessionToken={user?.token ?? ''} />
         </>
       )}
       {view === 'products' && <ProductsScreen />}

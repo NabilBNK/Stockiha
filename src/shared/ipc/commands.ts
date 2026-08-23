@@ -147,6 +147,16 @@ export const COMMANDS = {
   POST_CUSTOMER_REFUND: 'post_customer_refund',
   CONFIRM_CREDIT_SALE: 'confirm_credit_sale',
   AUTHORIZE_CREDIT_OVERRIDE: 'authorize_credit_override',
+  
+  // WS-A-2 / WS-A-3 IAM
+  CREATE_USER: 'create_user',
+  LIST_USERS: 'list_users',
+  SET_USER_ACTIVE: 'set_user_active',
+  ASSIGN_USER_ROLE: 'assign_user_role',
+  CREATE_ROLE: 'create_role',
+  LIST_PERMISSIONS: 'list_permissions',
+  LIST_ROLES: 'list_roles',
+  SET_ROLE_PERMISSIONS: 'set_role_permissions',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];
