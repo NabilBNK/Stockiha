@@ -98,6 +98,23 @@ pub(crate) async fn list_roles(
         .map_err(IpcError::from)
 }
 
+/// Read the permissions a single role currently grants.
+///
+/// The permission editor must load this before it may write: `set_role_permissions`
+/// replaces a role's grants wholesale, so submitting a set assembled from an
+/// unloaded editor deletes everything it did not know about.
+#[tauri::command]
+pub(crate) async fn list_role_permissions(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    role_code: String,
+) -> Result<Vec<String>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    iam::list_role_permissions(pool, &session_token, &role_code)
+        .await
+        .map_err(IpcError::from)
+}
+
 #[tauri::command]
 pub(crate) async fn set_role_permissions(
     state: State<'_, DatabaseState>,

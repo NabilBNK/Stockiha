@@ -156,6 +156,7 @@ export const COMMANDS = {
   CREATE_ROLE: 'create_role',
   LIST_PERMISSIONS: 'list_permissions',
   LIST_ROLES: 'list_roles',
+  LIST_ROLE_PERMISSIONS: 'list_role_permissions',
   SET_ROLE_PERMISSIONS: 'set_role_permissions',
 } as const;
 

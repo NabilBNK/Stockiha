@@ -82,6 +82,20 @@ export function listRoles(sessionToken: string): Promise<RoleSnapshot[]> {
   return call<RoleSnapshot[]>(COMMANDS.LIST_ROLES, { sessionToken });
 }
 
+/**
+ * The permission codes a role currently grants.
+ *
+ * Must be awaited before {@link setRolePermissions} may be called for that
+ * role: the backend replaces a role's grants wholesale, so a set assembled
+ * without knowing the current state silently drops everything omitted from it.
+ */
+export function listRolePermissions(
+  sessionToken: string,
+  roleCode: string,
+): Promise<string[]> {
+  return call<string[]>(COMMANDS.LIST_ROLE_PERMISSIONS, { sessionToken, roleCode });
+}
+
 export function setRolePermissions(
   sessionToken: string,
   roleCode: string,
