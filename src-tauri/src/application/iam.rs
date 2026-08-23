@@ -176,6 +176,31 @@ pub(crate) async fn list_roles(pool: &PgPool, token: &str) -> Result<Vec<RoleSna
     Ok(roles)
 }
 
+/// Read the permission codes a single role currently grants.
+///
+/// The counterpart to [`set_role_permissions`], which replaces a role's grants
+/// wholesale. Without this read the editor could not know what it was about to
+/// overwrite, so it opened empty and every save submitted a set that dropped
+/// whatever the role already held.
+pub(crate) async fn list_role_permissions(
+    pool: &PgPool,
+    token: &str,
+    role_code: &str,
+) -> Result<Vec<String>, AppError> {
+    let codes =
+        sqlx::query_as::<_, (String,)>("SELECT code FROM iam.list_role_permissions($1, $2)")
+            .bind(token)
+            .bind(role_code)
+            .fetch_all(pool)
+            .await
+            .map_err(map_iam_error)?
+            .into_iter()
+            .map(|row| row.0)
+            .collect();
+
+    Ok(codes)
+}
+
 pub(crate) async fn set_role_permissions(
     pool: &PgPool,
     token: &str,
@@ -200,6 +225,156 @@ mod tests {
     use crate::application::test_fixtures::{
         require_test_pool_url, root_admin_session, seed_user_via_admin,
     };
+
+    /// WS-A-4 regression: the permission editor must be able to read a role's
+    /// current grants, and a save must replace exactly the submitted set.
+    ///
+    /// Before `iam.list_role_permissions` existed the editor had no way to load
+    /// current state, so it opened every box unchecked and a save submitted a
+    /// set that omitted everything the role already held. On a role without
+    /// `MANAGE_USERS` the wholesale replace then deleted those grants silently.
+    /// Every assertion here is against the database, never the UI.
+    #[tokio::test]
+    #[ignore = "requires a live PostgreSQL server, STOCKIHA_TEST_DATABASE_URL"]
+    async fn role_permissions_round_trip_reads_and_persists_exactly() {
+        let pool = sqlx::PgPool::connect(&require_test_pool_url())
+            .await
+            .expect("failed to connect to the integration test database");
+
+        let suffix = crate::application::test_fixtures::unique_suffix();
+        let (_root_id, root_token) = root_admin_session(&pool).await;
+
+        let cashier_user = format!("cashier_rp_{suffix}");
+        let (_cashier_id, cashier_token) =
+            seed_user_via_admin(&pool, &root_token, &cashier_user, "CASHIER").await;
+
+        // A throwaway role, so no seeded role's grants are disturbed.
+        let role_code = format!("PERMRT_{suffix}");
+        create_role(&pool, &root_token, &role_code, "Permission round trip")
+            .await
+            .expect("role creation must succeed");
+
+        // A brand-new role holds nothing, and the reader must say so.
+        let initial = list_role_permissions(&pool, &root_token, &role_code)
+            .await
+            .expect("reading a new role must succeed");
+        assert!(
+            initial.is_empty(),
+            "a newly created role must hold no permissions, got {initial:?}"
+        );
+
+        // Grant three, then prove the reader returns exactly those three.
+        let granted = vec![
+            "VIEW_CUSTOMERS".to_owned(),
+            "MANAGE_INVENTORY".to_owned(),
+            "MANAGE_CATALOG".to_owned(),
+        ];
+        set_role_permissions(&pool, &root_token, &role_code, &granted)
+            .await
+            .expect("granting must succeed");
+
+        let mut after_grant = list_role_permissions(&pool, &root_token, &role_code)
+            .await
+            .expect("reading after a grant must succeed");
+        after_grant.sort();
+        let mut expected = granted.clone();
+        expected.sort();
+        assert_eq!(
+            after_grant, expected,
+            "the reader must return exactly the persisted grants"
+        );
+
+        // The reader must agree with the table itself, not merely with itself.
+        let direct: Vec<String> = sqlx::query_as::<_, (String,)>(
+            "SELECT p.code FROM iam.role_permissions rp \
+             JOIN iam.roles r ON r.id = rp.role_id \
+             JOIN iam.permissions p ON p.id = rp.permission_id \
+             WHERE r.code = $1 ORDER BY p.code",
+        )
+        .bind(&role_code)
+        .fetch_all(&pool)
+        .await
+        .expect("direct read must succeed")
+        .into_iter()
+        .map(|row| row.0)
+        .collect();
+        assert_eq!(
+            after_grant, direct,
+            "iam.list_role_permissions must match iam.role_permissions exactly"
+        );
+
+        // Removing one permission must remove only that one — the defect this
+        // whole change exists to prevent is the other two vanishing too.
+        let reduced = vec!["VIEW_CUSTOMERS".to_owned(), "MANAGE_CATALOG".to_owned()];
+        set_role_permissions(&pool, &root_token, &role_code, &reduced)
+            .await
+            .expect("revoking one permission must succeed");
+
+        let mut after_revoke = list_role_permissions(&pool, &root_token, &role_code)
+            .await
+            .expect("reading after a revoke must succeed");
+        after_revoke.sort();
+        let mut expected_reduced = reduced.clone();
+        expected_reduced.sort();
+        assert_eq!(
+            after_revoke, expected_reduced,
+            "revoking MANAGE_INVENTORY must leave the other two grants intact"
+        );
+
+        // Authorization is the database's job: a CASHIER holds neither
+        // MANAGE_ROLES nor the right to read or rewrite a role's grants.
+        let read_denied = list_role_permissions(&pool, &cashier_token, &role_code)
+            .await
+            .expect_err("a cashier must not read role permissions");
+        assert!(
+            matches!(read_denied, AppError::PermissionDenied { .. }),
+            "expected PermissionDenied on read, got {read_denied:?}"
+        );
+
+        let write_denied = set_role_permissions(&pool, &cashier_token, &role_code, &[])
+            .await
+            .expect_err("a cashier must not rewrite role permissions");
+        assert!(
+            matches!(write_denied, AppError::PermissionDenied { .. }),
+            "expected PermissionDenied on write, got {write_denied:?}"
+        );
+
+        // An invalid session is rejected before any permission test.
+        let invalid = list_role_permissions(&pool, "not-a-real-token", &role_code)
+            .await
+            .expect_err("an invalid session must be rejected");
+        assert!(
+            matches!(invalid, AppError::SessionInvalid { .. }),
+            "expected SessionInvalid, got {invalid:?}"
+        );
+
+        // An unknown role is a precondition failure, not an empty result — an
+        // empty list would let the editor open on a role that does not exist.
+        let unknown = list_role_permissions(&pool, &root_token, "NO_SUCH_ROLE_XYZ")
+            .await
+            .expect_err("an unknown role must be rejected");
+        assert!(
+            matches!(unknown, AppError::PreconditionFailed { .. }),
+            "expected PreconditionFailed, got {unknown:?}"
+        );
+
+        // SUPER_ADMIN stays readable so the editor can display it, while the
+        // write path keeps refusing it.
+        let super_admin = list_role_permissions(&pool, &root_token, "SUPER_ADMIN")
+            .await
+            .expect("SUPER_ADMIN must be readable");
+        assert!(
+            !super_admin.is_empty(),
+            "SUPER_ADMIN must report the permissions it holds"
+        );
+        let super_admin_write = set_role_permissions(&pool, &root_token, "SUPER_ADMIN", &[])
+            .await
+            .expect_err("SUPER_ADMIN must not be writable");
+        assert!(
+            matches!(super_admin_write, AppError::PreconditionFailed { .. }),
+            "expected PreconditionFailed for SUPER_ADMIN write, got {super_admin_write:?}"
+        );
+    }
 
     #[tokio::test]
     #[ignore = "requires a live PostgreSQL server, STOCKIHA_TEST_DATABASE_URL"]

@@ -59,6 +59,7 @@ pub fn run() {
             commands::iam::create_role,
             commands::iam::list_permissions,
             commands::iam::list_roles,
+            commands::iam::list_role_permissions,
             commands::iam::set_role_permissions,
             commands::stock_receipt::post_stock_receipt,
             commands::stock_adjustment::confirm_stock_adjustment,

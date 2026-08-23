@@ -24,6 +24,7 @@ import {
   assignUserRole,
   listRoles,
   listPermissions,
+  listRolePermissions,
   createRole,
   setRolePermissions,
 } from '../../shared/ipc/iamGateway';
@@ -67,6 +68,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     editPermissions: 'Edit permissions',
     roleCreated: 'Role created.',
     permissionsUpdated: 'Role permissions updated.',
+    permissionsLoading: 'Loading current permissions...',
+    permissionsLoadFailed:
+      'Could not load the permissions this role currently holds. Saving is disabled, because saving now would remove them.',
     permissionCount: 'permissions',
     superAdminLocked: 'The SUPER_ADMIN role always holds every permission and cannot be edited.',
   },
@@ -104,6 +108,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     editPermissions: 'Modifier les permissions',
     roleCreated: 'Rôle créé.',
     permissionsUpdated: 'Permissions du rôle mises à jour.',
+    permissionsLoading: 'Chargement des permissions actuelles...',
+    permissionsLoadFailed:
+      'Impossible de charger les permissions actuelles de ce rôle. L’enregistrement est désactivé, car il les supprimerait.',
     permissionCount: 'permissions',
     superAdminLocked:
       'Le rôle SUPER_ADMIN détient toujours toutes les permissions et n’est pas modifiable.',
@@ -142,6 +149,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     editPermissions: 'تعديل الصلاحيات',
     roleCreated: 'تم إنشاء الدور.',
     permissionsUpdated: 'تم تحديث صلاحيات الدور.',
+    permissionsLoading: 'جارٍ تحميل الصلاحيات الحالية...',
+    permissionsLoadFailed:
+      'تعذر تحميل الصلاحيات الحالية لهذا الدور. تم تعطيل الحفظ لأنه سيؤدي إلى حذفها.',
     permissionCount: 'صلاحية',
     superAdminLocked: 'دور SUPER_ADMIN يملك جميع الصلاحيات دائماً ولا يمكن تعديله.',
   },
@@ -166,7 +176,11 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
   const [users, setUsers] = useState<UserSnapshot[]>([]);
   const [roles, setRoles] = useState<RoleSnapshot[]>([]);
   const [permissions, setPermissions] = useState<PermissionSnapshot[] | null>(null);
-  const [rolePermissionMap, setRolePermissionMap] = useState<Record<string, string[]>>({});
+  // The editor replaces a role's grants wholesale, so it must know the current
+  // set before it may submit one. These two track that load; until it succeeds
+  // the draft is not a faithful picture of the role and must not be saved.
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [permissionsLoadFailed, setPermissionsLoadFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -302,18 +316,34 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
 
   function openPermissionEditor(role: RoleSnapshot) {
     setEditingRole(role);
-    setDraftPermissions(rolePermissionMap[role.code] ?? []);
+    // Open with an empty draft but flagged as loading, never as a real answer:
+    // an unloaded editor previously rendered every box unchecked and looked
+    // identical to a role that genuinely holds nothing.
+    setDraftPermissions([]);
+    setPermissionsLoadFailed(false);
+    setPermissionsLoading(true);
+    void listRolePermissions(sessionToken, role.code)
+      .then((current) => {
+        setDraftPermissions(current);
+        setPermissionsLoading(false);
+      })
+      .catch((err) => {
+        // Deliberately not a silent empty draft. Saving from a failed load
+        // would submit an empty set and delete every grant the role holds.
+        setPermissionsLoading(false);
+        setPermissionsLoadFailed(true);
+        if (codeForError(err) !== 'PERMISSION_DENIED') setError(errorText(err));
+      });
   }
 
   function handleSavePermissions(event: React.FormEvent) {
     event.preventDefault();
     if (!editingRole) return;
+    // Belt and braces: the submit control is already disabled in both states.
+    if (permissionsLoading || permissionsLoadFailed) return;
     const role = editingRole;
     void run(async () => {
       await setRolePermissions(sessionToken, role.code, draftPermissions);
-      // The database owns role_permissions and exposes no per-role read, so the
-      // accepted selection is cached locally purely to prefill the editor.
-      setRolePermissionMap((previous) => ({ ...previous, [role.code]: draftPermissions }));
       setEditingRole(null);
       setFeedback(text.permissionsUpdated);
     });
@@ -700,26 +730,41 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
             </h2>
             <form onSubmit={handleSavePermissions}>
               <div className="sk-modal__body">
-                <div style={PERMISSION_GRID} data-testid="permission-grid">
-                  {permissions.map((permission) => (
-                    <label key={permission.code} className="sk-checkbox-row" title={permission.name}>
-                      <input
-                        type="checkbox"
-                        data-testid={`permission-${permission.code}`}
-                        checked={draftPermissions.includes(permission.code)}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setDraftPermissions((previous) =>
-                            event.target.checked
-                              ? [...previous, permission.code]
-                              : previous.filter((code) => code !== permission.code),
-                          )
-                        }
-                      />
-                      <span>{permission.code}</span>
-                    </label>
-                  ))}
-                </div>
+                {permissionsLoading ? (
+                  <div data-testid="permission-grid-loading">
+                    <Spinner />
+                    <p>{text.permissionsLoading}</p>
+                  </div>
+                ) : permissionsLoadFailed ? (
+                  <Banner tone="error" testId="permission-load-failed">
+                    {text.permissionsLoadFailed}
+                  </Banner>
+                ) : (
+                  <div style={PERMISSION_GRID} data-testid="permission-grid">
+                    {permissions.map((permission) => (
+                      <label
+                        key={permission.code}
+                        className="sk-checkbox-row"
+                        title={permission.name}
+                      >
+                        <input
+                          type="checkbox"
+                          data-testid={`permission-${permission.code}`}
+                          checked={draftPermissions.includes(permission.code)}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setDraftPermissions((previous) =>
+                              event.target.checked
+                                ? [...previous, permission.code]
+                                : previous.filter((code) => code !== permission.code),
+                            )
+                          }
+                        />
+                        <span>{permission.code}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="sk-modal__actions">
                 <Button
@@ -730,7 +775,12 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
                 >
                   {text.cancel}
                 </Button>
-                <Button type="submit" data-testid="submit-role-permissions" loading={busy}>
+                <Button
+                  type="submit"
+                  data-testid="submit-role-permissions"
+                  loading={busy}
+                  disabled={permissionsLoading || permissionsLoadFailed}
+                >
                   {text.save}
                 </Button>
               </div>
