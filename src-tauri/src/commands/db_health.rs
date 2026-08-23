@@ -44,6 +44,26 @@ pub(crate) async fn check_db_health(
         .map_err(IpcError::from)
 }
 
+/// Report the current, credential-free reason the database is unreachable.
+///
+/// A deliberate exception to the rule that failures carry no detail through
+/// IPC — and the reason it is safe: [`db::DbDiagnostic`] is assembled in
+/// `infrastructure::db` from a closed set of reason codes plus a
+/// [`ConnectionTarget`](db::ConnectionTarget) that structurally cannot hold a
+/// password, never from the connection URL. The `IpcError` channel is
+/// unchanged and still detail-free; this is a separate, explicitly redacted
+/// channel the "Service unavailable" screen calls only when it is already
+/// showing an error, so the Project Owner can report a reason code without
+/// reading logs.
+///
+/// Infallible by design: a diagnostic must never itself fail to be reported.
+#[tauri::command]
+pub(crate) async fn get_db_diagnostic(
+    state: State<'_, DatabaseState>,
+) -> Result<db::DbDiagnostic, IpcError> {
+    Ok(db::diagnose(state.inner()).await)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

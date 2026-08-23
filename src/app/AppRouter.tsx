@@ -84,13 +84,24 @@ export function AppRouter() {
   const { t } = useI18n();
   const { user } = useSession();
   const [route, setRoute] = useState<RouteState>('loading');
+  // Credential-free reason for the unavailable state, so the screen can name
+  // the real cause instead of showing a generic message for every failure.
+  const [reason, setReason] = useState<ipc.DbDiagnostic | null>(null);
 
   const refresh = useCallback(async () => {
     setRoute('loading');
     try {
       const status = await ipc.getSetupStatus();
+      setReason(null);
       setRoute(status.initialized ? 'ready' : 'setup');
     } catch {
+      // Best-effort: the diagnostic command is infallible in Rust, but a
+      // failure to fetch it must never replace the unavailable screen.
+      try {
+        setReason(await ipc.getDbDiagnostic());
+      } catch {
+        setReason(null);
+      }
       setRoute('unavailable');
     }
   }, []);
@@ -113,6 +124,11 @@ export function AppRouter() {
         <div className="sk-card" role="alert" data-testid="backend-unavailable">
           <h1>{t('backend.unavailable.title')}</h1>
           <p>{t('backend.unavailable.body')}</p>
+          {reason ? (
+            <p className="sk-muted" data-testid="backend-unavailable-reason">
+              <code>{reason.code}</code> — {reason.detail}
+            </p>
+          ) : null}
           <Button onClick={() => void refresh()}>{t('common.retry')}</Button>
         </div>
       </div>

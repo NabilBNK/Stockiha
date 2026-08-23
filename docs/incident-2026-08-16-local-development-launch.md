@@ -139,3 +139,191 @@ The completed recovery produced the following evidence:
 This report documents a local acceptance-environment recovery. It does not
 replace the required review of the source diff, a commit approval, or the
 broader procurement acceptance gate.
+
+## Recurrence: 23 August 2026
+
+The same launch failure returned on 23 August 2026, on branch
+`fix/db-pool-acquire-timeout`. Every `npm run tauri dev` launch printed
+`[DB_POSTING_ERROR] pool timed out while waiting for an open connection`
+twice and the frontend rendered **Service unavailable**. Reproduction was
+5 of 5; retrying did not help.
+
+The cause was the same stale development URL recorded under *Verified
+Causes* above. It was never removed from the machine.
+
+### Resolved target
+
+| Item | Value |
+|---|---|
+| Target the application dialled | `127.0.0.1:55432/stockiha_r8_acceptance_v4_test` |
+| Canonical target | `127.0.0.1:5433/stockiha_acceptance` |
+| Listening on `55432` | Nothing |
+| Source of the wrong value | Windows **User**-scope `STOCKIHA_DEV_DATABASE_URL` |
+| Machine scope | Not set |
+| Process scope | Inherited from User scope |
+
+`database_state_from_env()` in `src-tauri/src/infrastructure/db.rs` reads
+`STOCKIHA_DEV_DATABASE_URL` first and falls back to
+`%LOCALAPPDATA%\Stockiha\r8-acceptance\runtime.key` — which correctly targets
+`127.0.0.1:5433/stockiha_acceptance` — only when the variable is absent. The
+stale value therefore always won. That precedence is the intended contract and
+was left unchanged.
+
+`run.bat` line 92 `set`s the variable inside its own `cmd.exe` process, which
+overrode the User-scope value for that process tree. This is why the launcher
+worked while `npm run tauri dev` did not, and why the fault looked
+intermittent rather than constant.
+
+### Why the 16 August resolution was incomplete
+
+1. **The persisted User-scope variable was never removed from the machine.**
+   It lives in the Windows user environment, not in the working tree, so it
+   survived every clean rebuild, every branch switch, and every reinstall.
+   The operating procedure added at the time —
+   `Remove-Item Env:STOCKIHA_DEV_DATABASE_URL` — clears only the current
+   process. It removes nothing persisted, and the User-scope value was
+   reloaded into every new shell.
+
+2. **No code-level detection existed.** The application read the variable
+   silently. It never stated which configuration source won, and never stated
+   which host, port, and database it resolved to. Nothing in the console
+   distinguished a correct launch from a launch against a dead target.
+
+### Checking for the variable
+
+Check all three scopes. This helper prints only host, port, and database, and
+withholds any value it cannot parse:
+
+```powershell
+function Get-StockihaDbTarget {
+    param([ValidateSet('Process','User','Machine')][string]$Scope)
+    $value = [Environment]::GetEnvironmentVariable('STOCKIHA_DEV_DATABASE_URL', $Scope)
+    if ([string]::IsNullOrWhiteSpace($value)) { return "${Scope}: (not set)" }
+    try {
+        $u = [uri]$value
+        if (-not $u.IsAbsoluteUri -or [string]::IsNullOrEmpty($u.Host)) { throw 'unparseable' }
+        return "${Scope}: $($u.Host):$($u.Port)$($u.AbsolutePath)"
+    } catch {
+        return "${Scope}: (set, but unparseable - value withheld)"
+    }
+}
+'Process','User','Machine' | ForEach-Object { Get-StockihaDbTarget $_ }
+```
+
+Reading Machine scope requires no elevation.
+
+Do not redact by regex over the whole value. A pattern such as
+`'(?<=://)[^@]*(?=@)'` fails open: a libpq keyword/value DSN
+(`host=... password=...`) or a scheme-less value contains no `://...@`, so the
+password is printed in full. Parse, then print only the fields you want.
+
+Never name the helper `R` or `r`. `r` is a built-in alias for `Invoke-History`
+carrying the `AllScope` option, and PowerShell resolves aliases before
+functions. `R $value` therefore runs `Invoke-History`, which echoes the raw
+argument — the full connection string, password included — in its error text.
+That is a live credential-disclosure path, not a theoretical one.
+
+### Removing the variable
+
+User scope, then the current process, then read back as booleans:
+
+```powershell
+[Environment]::SetEnvironmentVariable('STOCKIHA_DEV_DATABASE_URL', $null, 'User')
+Remove-Item Env:STOCKIHA_DEV_DATABASE_URL -ErrorAction SilentlyContinue
+[string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('STOCKIHA_DEV_DATABASE_URL','User'))
+Test-Path Env:STOCKIHA_DEV_DATABASE_URL
+```
+
+The two read-backs must print `True` and `False`. Use the booleans rather than
+printing the variable: a plain read prints nothing on success and the full
+credentialed connection string on failure, which is exactly the case being
+checked.
+
+Only if the check reported a value at Machine scope, remove it there from an
+elevated PowerShell. A non-elevated write throws
+`System.Security.SecurityException`; it does not fail silently:
+
+```powershell
+$principal = New-Object Security.Principal.WindowsPrincipal(
+    [Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw 'Machine scope requires an elevated PowerShell.'
+}
+[Environment]::SetEnvironmentVariable('STOCKIHA_DEV_DATABASE_URL', $null, 'Machine')
+```
+
+If the literal value is needed before deletion, write it to a file outside the
+repository rather than to the console, and delete that file once the incident
+is closed. `Set-Content` defaults to the ANSI codepage in Windows PowerShell
+5.1, so pass `-Encoding utf8`. The password is not unique information in any
+case: `run.bat` re-derives it from `runtime.key` on every launch.
+
+### A fresh shell is required
+
+Environment changes do not propagate to already-running processes. Any
+terminal, editor, IDE, or agent session opened **before** the removal still
+holds the stale value in its own process environment and will keep dialling
+the dead target. Every such process must be restarted; a reboot is the
+reliable option when the parent is not obvious.
+
+This was observed twice during this recurrence. The first application run
+after the removal still resolved `127.0.0.1:55432/...`, and a helper process
+started before the removal still reported the stale value at Process scope
+long afterwards. Neither was evidence that the removal had failed.
+
+A console started by `run.bat` is the exception: it sets the variable at
+Process scope deliberately, for its own process tree.
+
+### How to recognise this failure
+
+**A bare `pool timed out while waiting for an open connection`, combined with
+zero connection attempts arriving at the server, means the application is
+dialling the wrong target.** Check the resolved connection target first,
+before investigating PostgreSQL health, migrations, roles, grants, or IAM.
+
+The message is uninformative by construction. SQLx retries connection
+establishment internally for the whole `acquire_timeout` window and discards
+every per-attempt error, returning only `PoolTimedOut`. That text names
+neither the cause nor the target, so it reads as a server or pool problem when
+it is in fact a configuration problem. Confirm the direction of the fault with
+`pg_stat_activity`: if no connection from `stockiha_runtime` ever reaches the
+cluster, nothing on the server side can be responsible.
+
+Since 23 August 2026 this check is the first line of the console:
+
+```text
+WARN stockiha_lib::infrastructure::db: STOCKIHA_DEV_DATABASE_URL is set and overrides the local runtime.key - the application will use this target. If it is not the one you expect, that environment variable is stale; remove it and restart from a fresh shell target=127.0.0.1:55432/stockiha_r8_acceptance_v4_test
+```
+
+A healthy launch resolves the fallback and proves connectivity instead:
+
+```text
+INFO stockiha_lib::infrastructure::db: database configuration resolved source="LOCALAPPDATA runtime.key" target=127.0.0.1:5433/stockiha_acceptance
+INFO stockiha_lib::infrastructure::db: connected to 127.0.0.1:5433/stockiha_acceptance (pool size=0, idle=0) code=Ok
+```
+
+An unreachable target now names itself, on stderr:
+
+```text
+[DB_STARTUP] ConnectRefused: nothing is listening at 127.0.0.1:55432/stockiha_acceptance - the configured host, port or database is wrong, or PostgreSQL is not running (No connection could be made because the target machine actively refused it. (os error 10061))
+```
+
+### Code changes on 23 August 2026
+
+- An eager startup connectivity check opens one real connection, so the true
+  underlying error is reported instead of a generic pool timeout. The
+  credential-free `host:port/database` is named in every connectivity message.
+- A `WARN` is emitted whenever `STOCKIHA_DEV_DATABASE_URL` overrides the local
+  `runtime.key`. It is mirrored to stderr as `[DB_CONFIG_OVERRIDE]` only when
+  the active log filter would suppress it. This matters: `RUST_LOG=sqlx=debug`
+  installs an `EnvFilter` with no global directive, which turns every
+  non-`sqlx` target off entirely, so a `WARN` alone would vanish under exactly
+  the setting a developer reaches for when chasing this fault.
+- `sqlx::Error::PoolTimedOut` is classified as `DatabaseUnavailable` rather
+  than `InternalError`. It previously had no SQLSTATE, fell through to the
+  internal-error arm, and surfaced as an opaque `INTERNAL_ERROR`.
+- The **Service unavailable** screen displays the reason code and the
+  credential-free detail, so the fault can be reported without reading logs.
+
+Nothing in this change touched a migration, a database object, a role, a
+grant, `run.bat`, or `pg_hba.conf`.

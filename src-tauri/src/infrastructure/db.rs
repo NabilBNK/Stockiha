@@ -17,8 +17,10 @@
 //!   no schema objects, no writes, no transactions, no SQLx macros.
 
 use crate::error::AppError;
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use sqlx::PgPool;
+use serde::Serialize;
+use sqlx::postgres::{PgConnectOptions, PgConnection, PgPoolOptions};
+use sqlx::{Connection, PgPool};
+use std::fmt;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -39,12 +41,41 @@ pub const DEV_DATABASE_URL_ENV: &str = "STOCKIHA_DEV_DATABASE_URL";
 const TEST_DATABASE_URL_ENV: &str = "STOCKIHA_TEST_DATABASE_URL";
 
 /// Maximum pool connections for the application pool.
+///
+/// Justification: a single-workstation desktop client. 25 is comfortably above
+/// the peak concurrent IPC command count (a POS screen issues single-digit
+/// concurrent queries) and comfortably below the cluster's `max_connections`,
+/// so the pool is never the scarce resource and saturation here always means a
+/// leaked connection rather than genuine load.
 pub const MAX_CONNECTIONS: u32 = 25;
 
+/// Minimum idle connections held open by the pool.
+///
+/// Justification: deliberately `0`. A non-zero floor would make SQLx spawn an
+/// eager maintenance task that dials PostgreSQL at construction time, which
+/// would make `run()` fail or block when the cluster is briefly unavailable.
+/// Startup readiness is instead proven explicitly and once by
+/// [`startup_diagnostic`], which reports the *underlying* error rather than a
+/// generic timeout.
+pub const MIN_CONNECTIONS: u32 = 0;
+
 /// How long an acquire (including the lazy initial connect) may take before
-/// failing. This bounds the health check without any
-/// `tokio::time::timeout` in production code.
+/// failing.
+///
+/// Justification: 15s is long enough to absorb a cold cluster accepting its
+/// first connection and short enough that a genuinely unreachable server is
+/// reported well inside a user's patience. It is a bound, not a retry budget —
+/// raising it would only delay the same failure, so it must never be used to
+/// "fix" a connectivity problem.
 pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Bound for the one-shot diagnostic probe in [`diagnose`].
+///
+/// This is *not* a retry and *not* part of any production query path: it runs
+/// only when connectivity is already being reported, to recover the per-attempt
+/// error that SQLx discards behind `PoolTimedOut`. Kept short so an error
+/// report is never slower than the failure it explains.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Fixed diagnostic for a configuration value that could not be parsed.
 ///
@@ -59,10 +90,41 @@ const DIAGNOSTIC_NOT_CONFIGURED: &str = "database connection configuration is no
 /// Fixed diagnostic for a configuration value that failed to parse at startup.
 const DIAGNOSTIC_INVALID: &str = "database connection configuration is invalid";
 
+/// The non-secret coordinates the pool dials: host, port, database.
+///
+/// Deliberately excludes the username and password. This exists so a
+/// connectivity failure can say *where* the application actually tried to
+/// connect — the single fact whose absence has caused this failure class to be
+/// misdiagnosed as a server, migration, or IAM problem more than once.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConnectionTarget {
+    host: String,
+    port: u16,
+    database: String,
+}
+
+impl ConnectionTarget {
+    /// Extract the target from parsed options. No credential field is read.
+    fn from_options(options: &PgConnectOptions) -> Self {
+        Self {
+            host: options.get_host().to_owned(),
+            port: options.get_port(),
+            database: options.get_database().unwrap_or("<default>").to_owned(),
+        }
+    }
+}
+
+impl fmt::Display for ConnectionTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}/{}", self.host, self.port, self.database)
+    }
+}
+
 /// Database connectivity state managed by Tauri.
 ///
 /// Holds either a ready (lazily connecting) pool or a payload-free marker of
-/// why no pool exists. Never stores raw URLs, credentials, or SQLx errors.
+/// why no pool exists. Never stores raw URLs, credentials, or SQLx errors —
+/// [`ConnectionTarget`] carries only host/port/database.
 /// `PgPool` is internally reference-counted and thread-safe; it is managed
 /// directly, without any mutex.
 pub enum DatabaseState {
@@ -74,7 +136,10 @@ pub enum DatabaseState {
     InvalidConfiguration,
     /// A lazily-connecting pool built from valid configuration. No network
     /// activity has necessarily occurred yet.
-    Configured(PgPool),
+    Configured {
+        pool: PgPool,
+        target: ConnectionTarget,
+    },
 }
 
 /// Parse a connection URL into typed [`PgConnectOptions`].
@@ -101,6 +166,7 @@ pub fn parse_connect_options(url: &str) -> Result<PgConnectOptions, AppError> {
 pub fn build_pool(options: PgConnectOptions) -> PgPool {
     PgPoolOptions::new()
         .max_connections(MAX_CONNECTIONS)
+        .min_connections(MIN_CONNECTIONS)
         .acquire_timeout(ACQUIRE_TIMEOUT)
         .connect_lazy_with(options)
 }
@@ -113,7 +179,13 @@ pub fn database_state_from(url: Option<String>) -> DatabaseState {
     match url {
         None => DatabaseState::Unconfigured,
         Some(value) => match parse_connect_options(&value) {
-            Ok(options) => DatabaseState::Configured(build_pool(options)),
+            Ok(options) => {
+                let target = ConnectionTarget::from_options(&options);
+                DatabaseState::Configured {
+                    pool: build_pool(options),
+                    target,
+                }
+            }
             Err(_) => DatabaseState::InvalidConfiguration,
         },
     }
@@ -151,31 +223,100 @@ fn ensure_local_postgres_active() {
 /// reports "not configured"); it is never a panic and never logged with any
 /// value content.
 pub fn database_state_from_env() -> DatabaseState {
+    let mut source = "none";
     let mut url = std::env::var(DEV_DATABASE_URL_ENV).ok();
+    if url.is_some() {
+        source = DEV_DATABASE_URL_ENV;
+    }
+
     if url.is_none() {
         #[cfg(target_os = "windows")]
-        {
-            if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
-                let key_path = std::path::Path::new(&local_appdata)
-                    .join("Stockiha")
-                    .join("r8-acceptance")
-                    .join("runtime.key");
-                if key_path.exists() {
-                    if let Ok(pw) = std::fs::read_to_string(&key_path) {
-                        let trimmed = pw.trim();
-                        if !trimmed.is_empty() {
-                            ensure_local_postgres_active();
-                            url = Some(format!(
-                                "postgres://stockiha_runtime:{}@127.0.0.1:5433/stockiha_acceptance?sslmode=disable",
-                                trimmed
-                            ));
-                        }
-                    }
+        if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+            let key_path = std::path::Path::new(&local_appdata)
+                .join("Stockiha")
+                .join("r8-acceptance")
+                .join("runtime.key");
+            if let Ok(password) = std::fs::read_to_string(&key_path) {
+                let password = password.trim();
+                if !password.is_empty() {
+                    url = Some(format!(
+                        "postgres://stockiha_runtime:{password}\
+                         @127.0.0.1:5433/stockiha_acceptance?sslmode=disable"
+                    ));
+                    source = "LOCALAPPDATA runtime.key";
                 }
             }
         }
     }
-    database_state_from(url)
+
+    let state = database_state_from(url);
+
+    // Did the environment variable win over the local `runtime.key` fallback?
+    // The precedence itself is the documented contract and is deliberately
+    // unchanged; only its visibility changes below.
+    let env_override = source == DEV_DATABASE_URL_ENV;
+
+    // The one line whose absence let a stale `STOCKIHA_DEV_DATABASE_URL`
+    // masquerade as a server, migration, and IAM fault across several
+    // investigations: say out loud, at every startup, which configuration
+    // source won and which host/port/database it resolved to. Credential-free
+    // by construction — `ConnectionTarget` cannot hold a password.
+    match &state {
+        DatabaseState::Configured { target, .. } => {
+            tracing::info!(source, target = %target, "database configuration resolved");
+
+            if env_override {
+                // WARN rather than INFO on purpose. `init_dev_tracing` installs
+                // an `EnvFilter` whose floor is `warn` when `RUST_LOG` is unset,
+                // so this is the one configuration line that appears in a plain
+                // `npm run tauri dev` console with no environment tuning at all.
+                //
+                // An environment variable silently outranking the local
+                // `runtime.key` is precisely how a stale target left over from a
+                // retired acceptance environment survived clean rebuilds and was
+                // misdiagnosed as a PostgreSQL, migration, and IAM fault — twice.
+                // See docs/incident-2026-08-16-local-development-launch.md.
+                //
+                // Pure ASCII: this reaches a Windows console, where a UTF-8
+                // em dash renders as mojibake.
+                tracing::warn!(
+                    target = %target,
+                    "{DEV_DATABASE_URL_ENV} is set and overrides the local runtime.key - \
+                     the application will use this target. If it is not the one you expect, \
+                     that environment variable is stale; remove it and restart from a fresh shell"
+                );
+
+                // A `WARN` alone is not actually a visibility guarantee, which
+                // is the whole point of this line. Measured on Windows: with
+                // `RUST_LOG=sqlx=debug` — the exact command the previous
+                // investigation was told to run — the `EnvFilter` has no global
+                // directive, so every `stockiha_lib` event is filtered out and
+                // this warning disappears. It is also absent from release
+                // builds, where `init_dev_tracing` is compiled out entirely.
+                //
+                // So mirror it to stderr, but only when the tracing path would
+                // genuinely swallow it: `enabled!` answers for this callsite's
+                // target and level against whatever subscriber is actually
+                // installed, so the common case prints exactly once.
+                if !tracing::enabled!(tracing::Level::WARN) {
+                    eprintln!(
+                        "[DB_CONFIG_OVERRIDE] {DEV_DATABASE_URL_ENV} is set and overrides \
+                         the local runtime.key - using target {target}. If that is not the \
+                         target you expect, the variable is stale; remove it and restart \
+                         from a fresh shell."
+                    );
+                }
+            }
+        }
+        DatabaseState::InvalidConfiguration => {
+            tracing::error!(source, "{DIAGNOSTIC_INVALID}");
+        }
+        DatabaseState::Unconfigured => {
+            tracing::error!("{DIAGNOSTIC_NOT_CONFIGURED}");
+        }
+    }
+
+    state
 }
 
 /// Execute the connectivity proof against a pool: exactly `SELECT 1`.
@@ -205,7 +346,14 @@ pub async fn health_check_state(state: &DatabaseState) -> Result<(), AppError> {
         DatabaseState::InvalidConfiguration => {
             Err(AppError::database_configuration(DIAGNOSTIC_INVALID))
         }
-        DatabaseState::Configured(pool) => health_check(pool).await,
+        DatabaseState::Configured { pool, target } => match health_check(pool).await {
+            Ok(()) => Ok(()),
+            // Replace SQLx's evidence-free `PoolTimedOut` text with the real
+            // reason and the real target before it reaches any log or the UI.
+            Err(_) => Err(AppError::database_unavailable(
+                diagnose_configured(pool, target).await.to_string(),
+            )),
+        },
     }
 }
 
@@ -221,8 +369,200 @@ pub fn pool_or_unavailable(state: &DatabaseState) -> Result<&PgPool, AppError> {
         DatabaseState::InvalidConfiguration => {
             Err(AppError::database_configuration(DIAGNOSTIC_INVALID))
         }
-        DatabaseState::Configured(pool) => Ok(pool),
+        DatabaseState::Configured { pool, .. } => Ok(pool),
     }
+}
+
+// ——— Self-diagnosing connectivity reporting ———
+//
+// SQLx reports `PoolTimedOut` ("pool timed out while waiting for an open
+// connection") when `acquire()` exhausts `ACQUIRE_TIMEOUT`, and discards every
+// per-attempt connect error it made in the meantime. That single lossy
+// conversion is why this failure class has repeatedly been misread as a
+// PostgreSQL, migration, or IAM fault: the message names neither the cause nor
+// the target. Everything below exists to put both back.
+
+/// Stable, non-sensitive reason code shown in logs and in the UI.
+///
+/// Codes are a closed set of fixed strings — never derived from configuration
+/// — so they are safe to display verbatim and stable enough to quote in a bug
+/// report.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DbReasonCode {
+    /// Connectivity proven: a real connection completed `SELECT 1`.
+    Ok,
+    /// No connection URL is configured.
+    NotConfigured,
+    /// A URL is configured but is not a parseable PostgreSQL URL.
+    InvalidConfiguration,
+    /// Nothing is listening at the configured host and port.
+    ConnectRefused,
+    /// The connection attempt failed for some other transport reason.
+    ConnectFailed,
+    /// The server answered and rejected the credentials.
+    AuthFailed,
+    /// The server answered; the configured database does not exist.
+    DatabaseMissing,
+    /// A connection *can* be established — the pool itself is exhausted.
+    PoolSaturated,
+}
+
+/// A connectivity verdict: a stable code plus a credential-free explanation.
+///
+/// `detail` is assembled only from a fixed sentence, the [`ConnectionTarget`]
+/// (host/port/database), pool counters, and the operating-system or PostgreSQL
+/// error text. It never contains the password, the username, the connection
+/// string, a token, or a hash.
+#[derive(Clone, Debug, Serialize)]
+pub struct DbDiagnostic {
+    pub code: DbReasonCode,
+    pub detail: String,
+}
+
+impl fmt::Display for DbDiagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}: {}", self.code, self.detail)
+    }
+}
+
+impl DbDiagnostic {
+    fn new(code: DbReasonCode, detail: impl Into<String>) -> Self {
+        Self {
+            code,
+            detail: detail.into(),
+        }
+    }
+
+    /// True when connectivity is proven, i.e. nothing needs reporting.
+    pub fn is_ok(&self) -> bool {
+        self.code == DbReasonCode::Ok
+    }
+}
+
+/// Classify a raw SQLx connect failure against a known target.
+///
+/// Only the OS/PostgreSQL message is carried through; the URL never is.
+fn classify_connect_error(error: &sqlx::Error, target: &ConnectionTarget) -> DbDiagnostic {
+    match error {
+        sqlx::Error::Io(io) if io.kind() == std::io::ErrorKind::ConnectionRefused => {
+            DbDiagnostic::new(
+                DbReasonCode::ConnectRefused,
+                format!(
+                    "nothing is listening at {target} - the configured host, \
+                     port or database is wrong, or PostgreSQL is not running \
+                     ({io})"
+                ),
+            )
+        }
+        sqlx::Error::Io(io) => DbDiagnostic::new(
+            DbReasonCode::ConnectFailed,
+            format!("could not reach {target} ({io})"),
+        ),
+        other => match other.as_database_error().and_then(|e| e.code()).as_deref() {
+            Some("28P01" | "28000") => DbDiagnostic::new(
+                DbReasonCode::AuthFailed,
+                format!("{target} rejected the configured credentials"),
+            ),
+            Some("3D000") => DbDiagnostic::new(
+                DbReasonCode::DatabaseMissing,
+                format!("{target} does not exist on that server"),
+            ),
+            _ => DbDiagnostic::new(
+                DbReasonCode::ConnectFailed,
+                format!("could not establish a connection to {target} ({other})"),
+            ),
+        },
+    }
+}
+
+/// Probe a configured pool and return the true reason it is or is not usable.
+///
+/// Deliberately bypasses the pool for the probe: a pooled `acquire()` is
+/// exactly what erases the underlying error. One direct connection, bounded by
+/// [`PROBE_TIMEOUT`], recovers it. This runs only on an already-failing path
+/// and at startup — never inside a query path, and never as a retry.
+async fn diagnose_configured(pool: &PgPool, target: &ConnectionTarget) -> DbDiagnostic {
+    let options = pool.connect_options();
+    let probe = tokio::time::timeout(PROBE_TIMEOUT, PgConnection::connect_with(&options)).await;
+
+    match probe {
+        Err(_elapsed) => DbDiagnostic::new(
+            DbReasonCode::ConnectFailed,
+            format!(
+                "no response from {target} within {}s - the address is \
+                 reachable but nothing completed a PostgreSQL handshake",
+                PROBE_TIMEOUT.as_secs()
+            ),
+        ),
+        Ok(Err(error)) => classify_connect_error(&error, target),
+        Ok(Ok(connection)) => {
+            // A direct connection succeeds, so the transport and credentials
+            // are fine. If acquiring from the pool still failed, the pool
+            // itself is the constraint — report its counters, which is the
+            // only case where "pool timed out" was ever the honest message.
+            let _ = connection.close().await;
+            if pool.size() >= MAX_CONNECTIONS && pool.num_idle() == 0 {
+                DbDiagnostic::new(
+                    DbReasonCode::PoolSaturated,
+                    format!(
+                        "all {} pooled connections to {target} are in use and \
+                         none became free within {}s - a connection is being \
+                         leaked or held too long (size={}, idle={})",
+                        MAX_CONNECTIONS,
+                        ACQUIRE_TIMEOUT.as_secs(),
+                        pool.size(),
+                        pool.num_idle()
+                    ),
+                )
+            } else {
+                DbDiagnostic::new(
+                    DbReasonCode::Ok,
+                    format!(
+                        "connected to {target} (pool size={}, idle={})",
+                        pool.size(),
+                        pool.num_idle()
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/// Full connectivity verdict for the managed state.
+///
+/// The single source of truth behind both the startup check and the IPC
+/// diagnostic command, so logs and the UI can never disagree.
+pub async fn diagnose(state: &DatabaseState) -> DbDiagnostic {
+    match state {
+        DatabaseState::Unconfigured => {
+            DbDiagnostic::new(DbReasonCode::NotConfigured, DIAGNOSTIC_NOT_CONFIGURED)
+        }
+        DatabaseState::InvalidConfiguration => {
+            DbDiagnostic::new(DbReasonCode::InvalidConfiguration, DIAGNOSTIC_INVALID)
+        }
+        DatabaseState::Configured { pool, target } => diagnose_configured(pool, target).await,
+    }
+}
+
+/// Eager startup readiness check: prove connectivity once, loudly.
+///
+/// Returns the verdict so the caller can decide what to do with it; startup
+/// itself is not aborted, because the "Service unavailable" screen with its
+/// Retry button is a more useful outcome for an operator than a process that
+/// refuses to launch. The point is that the *reason* is now stated at startup
+/// instead of degrading silently.
+pub async fn startup_diagnostic(state: &DatabaseState) -> DbDiagnostic {
+    let diagnostic = diagnose(state).await;
+    if diagnostic.is_ok() {
+        tracing::info!(code = ?diagnostic.code, "{}", diagnostic.detail);
+    } else {
+        tracing::error!(code = ?diagnostic.code, "{}", diagnostic.detail);
+        // Mirrored to stderr: `tracing` is debug-build only, and this is the
+        // one message an operator must never miss.
+        eprintln!("[DB_STARTUP] {diagnostic}");
+    }
+    diagnostic
 }
 
 #[cfg(test)]
@@ -329,8 +669,65 @@ mod tests {
         // maintenance task at construction.
         assert!(matches!(
             database_state_from(Some(UNIT_TEST_URL.to_owned())),
-            DatabaseState::Configured(_)
+            DatabaseState::Configured { .. }
         ));
+    }
+
+    /// The regression this whole change exists to prevent.
+    ///
+    /// A pool pointed at a port where nothing listens must report *why* and
+    /// *where* — never SQLx's evidence-free "pool timed out while waiting for
+    /// an open connection". Needs no server: the proof is that nothing is
+    /// listening. Port 1 is reserved and never carries PostgreSQL.
+    #[tokio::test]
+    async fn unreachable_target_reports_the_real_cause_and_the_target() {
+        let options = parse_connect_options(
+            "postgres://unit_user:unit_placeholder@127.0.0.1:1/stockiha_unreachable_db",
+        )
+        .expect("valid URL must parse");
+        let target = ConnectionTarget::from_options(&options);
+        let state = DatabaseState::Configured {
+            pool: build_pool(options),
+            target,
+        };
+
+        let diagnostic = diagnose(&state).await;
+
+        assert_eq!(diagnostic.code, DbReasonCode::ConnectRefused);
+        // Names the exact host, port and database actually dialled — the fact
+        // whose absence caused this failure to be misread as a server,
+        // migration, and IAM fault across separate investigations.
+        assert!(
+            diagnostic
+                .detail
+                .contains("127.0.0.1:1/stockiha_unreachable_db"),
+            "diagnostic must name the target it dialled, got: {}",
+            diagnostic.detail
+        );
+        // And never regress to the message that started all of this.
+        assert!(
+            !diagnostic.detail.contains("pool timed out"),
+            "diagnostic must not surface a bare pool timeout, got: {}",
+            diagnostic.detail
+        );
+        // Credential-free: the placeholder password must never appear.
+        assert!(
+            !diagnostic.detail.contains("unit_placeholder"),
+            "diagnostic leaked a credential: {}",
+            diagnostic.detail
+        );
+    }
+
+    /// `DatabaseState` and its diagnostics can never carry the password: the
+    /// only configuration-derived value they retain is [`ConnectionTarget`],
+    /// which has no credential field.
+    #[test]
+    fn connection_target_display_is_credential_free() {
+        let options = parse_connect_options(UNIT_TEST_URL).expect("valid URL must parse");
+        let rendered = ConnectionTarget::from_options(&options).to_string();
+        assert_eq!(rendered, "127.0.0.1:5432/unit_db");
+        assert!(!rendered.contains("unit_placeholder"));
+        assert!(!rendered.contains("unit_user"));
     }
 
     #[tokio::test]
@@ -411,7 +808,12 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires a live PostgreSQL server and STOCKIHA_TEST_DATABASE_URL"]
     async fn health_check_state_reports_connected_for_configured_pool() {
-        let state = DatabaseState::Configured(build_pool(require_test_options()));
+        let options = require_test_options();
+        let target = ConnectionTarget::from_options(&options);
+        let state = DatabaseState::Configured {
+            pool: build_pool(options),
+            target,
+        };
         health_check_state(&state)
             .await
             .expect("configured state must report healthy against the test database");

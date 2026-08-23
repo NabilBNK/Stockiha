@@ -99,6 +99,21 @@ impl AppError {
     /// Translate database SQLSTATE into a stable internal class. Full database
     /// text remains private in `diagnostic` and is dropped at IPC conversion.
     pub fn from_posting_error(err: sqlx::Error) -> Self {
+        // A pool-acquire timeout is a connectivity fault, not a posting fault.
+        // Classifying it as `Internal` (the old behaviour, via the
+        // `as_database_error() == None` arm below) is what made it surface as
+        // an opaque `INTERNAL_ERROR` with the evidence-free SQLx text
+        // "pool timed out while waiting for an open connection". Route it to
+        // `DatabaseUnavailable` so the frontend asks
+        // `get_db_diagnostic` for the real, credential-free cause.
+        if matches!(err, sqlx::Error::PoolTimedOut) {
+            return AppError::DatabaseUnavailable {
+                diagnostic: "could not acquire a database connection; \
+                             see the DB_STARTUP diagnostic for the real cause"
+                    .to_owned(),
+            };
+        }
+
         let message = err.to_string();
         if cfg!(debug_assertions) {
             eprintln!("[DB_POSTING_ERROR] {}", message);

@@ -7,18 +7,49 @@ mod error;
 mod infrastructure;
 pub mod state;
 
+/// Installs a `tracing` subscriber so `RUST_LOG` (e.g. `RUST_LOG=sqlx=debug`)
+/// actually produces output. Debug builds only: `tracing`/`tracing-core` were
+/// already pulled in transitively by SQLx and Tauri, but nothing in this
+/// binary ever installed a subscriber to consume their events, so every
+/// SQLx-level connection diagnostic — including the specific error underneath
+/// a `PoolTimedOut` — was silently discarded rather than merely filtered.
+/// `try_init` rather than `init`: never panics if a subscriber is already set
+/// (relevant for `cargo test`, where multiple test binaries can race).
+#[cfg(debug_assertions)]
+fn init_dev_tracing() {
+    use tracing_subscriber::EnvFilter;
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
+    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(debug_assertions)]
+    init_dev_tracing();
+
     tauri::Builder::default()
         .manage(state::AppState {
             stage: "Slice 4".to_string(),
         })
+        // The single, application-wide pool. `tauri::async_runtime::block_on`
+        // runs this on Tauri's own process-global runtime — a `static
+        // OnceLock<GlobalRuntime>` (tauri 2.11.5 `async_runtime.rs:29`) that is
+        // never dropped and is the same runtime every `#[tauri::command]` is
+        // spawned onto. No temporary `Runtime::new()` is involved, so the pool
+        // can never outlive the reactor its sockets are bound to.
         .manage(tauri::async_runtime::block_on(async {
-            infrastructure::db::database_state_from_env()
+            let state = infrastructure::db::database_state_from_env();
+            // Eager readiness proof: one real connection and `SELECT 1`, so a
+            // broken configuration announces its true cause at startup instead
+            // of degrading silently into "Service unavailable" fifteen seconds
+            // later with an evidence-free pool timeout.
+            infrastructure::db::startup_diagnostic(&state).await;
+            state
         }))
         .invoke_handler(tauri::generate_handler![
             commands::app_info::get_app_info,
             commands::db_health::check_db_health,
+            commands::db_health::get_db_diagnostic,
             commands::auth::login,
             commands::auth::logout,
             commands::iam::create_user,

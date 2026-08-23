@@ -55,7 +55,23 @@ sqlx = { version = "0.8.6", default-features = false, features = [
 # child process while keeping database creation, reconciliation, and cleanup
 # asynchronous. This is the same runtime selected by SQLx/Tauri; promoting the
 # already-resolved crate adds no second runtime.
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["rt", "time"] }
+# fix/db-pool-acquire-timeout: `tracing` is used directly by
+# `infrastructure::db` to state the resolved (credential-free) database target
+# and the true connectivity verdict at startup. It was already in the graph
+# transitively via SQLx and Tauri; this makes the dependency honest.
+tracing = "0.1"
+# fix/db-pool-acquire-timeout: `tracing` and `tracing-core` were already
+# present transitively (sqlx and Tauri both emit spans/events through them),
+# but nothing in the binary ever installed a subscriber, so `RUST_LOG` did
+# nothing and every SQLx-level connection diagnostic was silently discarded.
+# `tracing-subscriber` is the missing piece; installed only in debug builds
+# (see `infrastructure::diagnostics`), so release binaries pay no cost and
+# never emit anything to a console the packaged app doesn't have.
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "fmt",
+    "env-filter",
+] }
 # S1-001: exact decimal type for every authoritative money/quantity/cost/
 # debit/credit value (final-architecture.md section 3.D-ter — never f32/f64).
 # `serde` support is enabled because the domain value types derive

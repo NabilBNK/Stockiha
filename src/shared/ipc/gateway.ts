@@ -73,6 +73,36 @@ export function getSetupStatus(): Promise<SetupStatus> {
   return call<SetupStatus>(COMMANDS.GET_SETUP_STATUS);
 }
 
+/**
+ * Stable reason codes for a database-connectivity failure. Mirrors
+ * `infrastructure::db::DbReasonCode`; every value is a fixed string chosen in
+ * Rust, never derived from configuration, so it is safe to display verbatim.
+ */
+export type DbReasonCode =
+  | 'OK'
+  | 'NOT_CONFIGURED'
+  | 'INVALID_CONFIGURATION'
+  | 'CONNECT_REFUSED'
+  | 'CONNECT_FAILED'
+  | 'AUTH_FAILED'
+  | 'DATABASE_MISSING'
+  | 'POOL_SATURATED';
+
+export interface DbDiagnostic {
+  code: DbReasonCode;
+  /** Credential-free explanation naming the host:port/database actually dialled. */
+  detail: string;
+}
+
+/**
+ * Ask the backend why the database is unreachable. Called only from the
+ * "Service unavailable" screen, so the Project Owner can quote a reason code
+ * instead of reading logs.
+ */
+export function getDbDiagnostic(): Promise<DbDiagnostic> {
+  return call<DbDiagnostic>(COMMANDS.GET_DB_DIAGNOSTIC);
+}
+
 export interface BootstrapAdminInput {
   username: string;
   password: string;

@@ -4,6 +4,7 @@
 export const COMMANDS = {
   GET_APP_INFO: 'get_app_info',
   CHECK_DB_HEALTH: 'check_db_health',
+  GET_DB_DIAGNOSTIC: 'get_db_diagnostic',
   GET_SETUP_STATUS: 'get_setup_status',
   BOOTSTRAP_FIRST_ADMIN: 'bootstrap_first_admin',
   LOGIN: 'login',
