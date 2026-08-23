@@ -50,4 +50,4 @@ cmd.exe /c "call C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat && cargo test"
 - The next critical path is representative spreadsheet parsing, reconciled opening-state import, and a proven pilot backup/restore workflow.
 - Stale S5–S7 branches are not valid future-work bases.
 
-See [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) for the target architecture and release scope.
+See [`STOCKIHA_GROUND_TRUTH.md`](./STOCKIHA_GROUND_TRUTH.md) for the authoritative product roadmap and release scope. Active execution status is tracked in [`CURRENT_STEP.md`](./CURRENT_STEP.md).

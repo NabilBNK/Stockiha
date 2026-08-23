@@ -1,9 +1,9 @@
 You are implementing one task in Stockiha.
 
 Read these files first:
-- Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md
+- STOCKIHA_GROUND_TRUTH.md
 - AGENTS.md
-- CURRENT_SLICE.md
+- CURRENT_STEP.md
 - TASKS.md
 - the issue-specific companion documents
 
@@ -14,7 +14,7 @@ Acceptance criteria:
 [PASTE TESTABLE CRITERIA]
 
 Authority:
-- Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md is the single authority for target architecture, release scope, and remaining roadmap.
+- STOCKIHA_GROUND_TRUTH.md is the single authority for target architecture, release scope, and remaining roadmap.
 - Running/tested behavior, current code, applied migrations, and automated tests determine actual implementation state.
 - Older architecture claims and conversation summaries are non-authoritative.
 

@@ -19,7 +19,7 @@ This is the repository-grade architecture reference for Stockiha. It is for engi
 - `[RECOMMENDED]` — a next action derived from recorded gaps; it does not change the architecture.
 - `[UNKNOWN]` — cannot be reliably determined from this workspace.
 
-Source-of-truth order is: running/tested behavior and applied migrations; current code/configuration; then `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` for target architecture and remaining scope. `CURRENT_SLICE.md` and `TASKS.md` are execution trackers, not stronger evidence.
+Source-of-truth order is: running/tested behavior and applied migrations; current code/configuration; then `STOCKIHA_GROUND_TRUTH.md` for target architecture and remaining scope. `CURRENT_STEP.md` and `TASKS.md` are execution trackers, not stronger evidence.
 
 ## 2. Executive architecture summary
 
@@ -182,7 +182,7 @@ flowchart LR
 
 [PARTIAL] The historical roadmap recorded serious S3 supplier-accounting defects and a subsequent R2 forward-only repair using GRNI/AP semantics. Current migrations include `20260803130000_r2_financial_semantics_foundation.sql` through `20260803131300_r2_supplier_return_and_payment.sql`, with regression evidence in `src-tauri/tests/procurement/r2_financial_semantics_integration.sql`. This document does not treat old migrations as proof that the original semantics remain correct; the repaired, later migrations are the operative candidate.
 
-[PARTIAL] The active branch contains additional purchase/catalogue repair migrations and `20260816150000_direct_purchase_foundation.sql`. It is a recovery candidate, not an accepted pilot release. `docs/slices/R8-E-procurement.md` and `CURRENT_SLICE.md` retain the required Windows/Tauri procurement acceptance gate.
+[PARTIAL] The active branch contains additional purchase/catalogue repair migrations and `20260816150000_direct_purchase_foundation.sql`. It is a recovery candidate, not an accepted pilot release. `docs/slices/R8-E-procurement.md` and `CURRENT_STEP.md` retain the required Windows/Tauri procurement acceptance gate.
 
 ## 8. Persistence, data quality, and onboarding
 
@@ -272,7 +272,7 @@ flowchart LR
 | Historical onboarding/opening state | `[PARTIAL]` staged and controlled; not live-ledger replay | onboarding migrations/tests, `src/features/onboarding` |
 | Backup/restore | `[PARTIAL]` command/validation/temporary restore proof; no complete retention/disaster workflow | recovery modules/tests |
 | Documents/hardware | `[PARTIAL]` durable queues and PDF/spooler proof, not physical worker validation | document migrations, infrastructure modules |
-| Pilot acceptance | `[PARTIAL]` R8-D recorded accepted; R8-E requires focused Windows/Tauri confirmation | `CURRENT_SLICE.md`, `docs/slices/R8-E-procurement.md` |
+| Pilot acceptance | `[PARTIAL]` R8-D recorded accepted; R8-E requires focused Windows/Tauri confirmation | `CURRENT_STEP.md`, `docs/slices/R8-E-procurement.md` |
 
 Recent Git history shows ongoing recovery work after the R8-E candidate: procurement transaction implementation, document-report boundary repairs, complete purchase line fixtures, legacy catalogue contract repairs, and direct purchase foundation. This establishes a live repair branch, not an immutable release baseline.
 
@@ -297,6 +297,6 @@ Recent Git history shows ongoing recovery work after the R8-E candidate: procure
 
 [CONFIRMED] Development prerequisites and Windows setup are documented in `README.md`. Frontend commands are defined in `package.json`; Rust commands run against `src-tauri/Cargo.toml`. CI uses Node 22, stable Rust, and PostgreSQL 18.
 
-[CONFIRMED] Database URLs are environment-controlled for development/CI, while recovery code has fixed role/credential safeguards. Never place credentials in tracked scripts or reports. `CURRENT_SLICE.md` records that a previously committed local PostgreSQL credential must be treated as exposed and rotated/destroyed.
+[CONFIRMED] Database URLs are environment-controlled for development/CI, while recovery code has fixed role/credential safeguards. Never place credentials in tracked scripts or reports. `CURRENT_STEP.md` records that a previously committed local PostgreSQL credential must be treated as exposed and rotated/destroyed.
 
 [CONFIRMED] Contributors must preserve `package-lock.json` and `src-tauri/Cargo.lock`, use forward-only migrations, avoid floating point for authoritative values, keep React non-authoritative, and validate the applicable frontend/Rust/PostgreSQL checks. `AGENTS.md` is the operational engineering contract.

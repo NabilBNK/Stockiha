@@ -1,6 +1,6 @@
 # Stockiha — Execution Task Tracker
 
-> This file records task progress only. [`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`](./Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md) is the single authority for target architecture, release scope, verified status classifications, and remaining work. A checked implementation task is not proof that the feature is production-correct or release-ready.
+> This file records task progress only. [`STOCKIHA_GROUND_TRUTH.md`](./STOCKIHA_GROUND_TRUTH.md) is the single authority for target architecture, release scope, verified status classifications, and remaining work. Active execution status is tracked in [`CURRENT_STEP.md`](./CURRENT_STEP.md). A checked implementation task is not proof that the feature is production-correct or release-ready.
 
 # Stockiha — Slice 0 Tasks
 

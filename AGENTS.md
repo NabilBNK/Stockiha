@@ -7,9 +7,9 @@ Work only on Stockiha and only on the explicitly assigned task. Prefer the small
 
 Before work, read in this order:
 
-1. `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md`
+1. `STOCKIHA_GROUND_TRUTH.md`
 2. `AGENTS.md`
-3. `CURRENT_SLICE.md`
+3. `CURRENT_STEP.md`
 4. `TASKS.md`
 5. Relevant companion specs under `docs/`
 6. Accepted ADRs under `docs/decisions/`
@@ -18,8 +18,8 @@ Before work, read in this order:
 Authority rules:
 
 - Running and tested behavior, automated tests, current code, and applied migrations determine actual implementation state.
-- `Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` is the single authority for target architecture, release scope, and the remaining roadmap.
-- `CURRENT_SLICE.md` and `TASKS.md` are execution trackers; they cannot override stronger implementation evidence or the ground-truth roadmap.
+- `STOCKIHA_GROUND_TRUTH.md` is the single authority for target architecture, release scope, and the remaining roadmap.
+- `CURRENT_STEP.md` and `TASKS.md` are execution trackers; they cannot override stronger implementation evidence or the ground-truth roadmap.
 - Repository documents override conversation memory and agent summaries.
 
 Do not modify the ground-truth roadmap without explicit user approval. Architecture changes also require an accepted ADR documenting alternatives and risks.
@@ -84,6 +84,7 @@ Do not edit until the user approves the plan. Under an approved MVP Batch (see a
 ### During implementation
 - Use a dedicated `task/...` branch after approval.
 - Modify only task-related files.
+- Any single micro change on the code should be followed with version name changing on the dashboard.
 - Do not silently upgrade major dependencies.
 - Add no dependency without justification.
 - Keep Tauri commands thin and reusable logic testable.
@@ -163,7 +164,7 @@ batch mode.
 
 It overrides the previous one-task-at-a-time workflow for the affected slice.
 
-`Stockiha_Audit_Redesigned_Roadmap_2026-08-02.md` remains the authoritative source for technical,
+`STOCKIHA_GROUND_TRUTH.md` remains the authoritative source for technical,
 financial, security, and data-integrity decisions.
 
 ## Primary objective

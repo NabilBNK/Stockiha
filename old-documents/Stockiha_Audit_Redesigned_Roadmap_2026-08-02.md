@@ -1639,7 +1639,7 @@ The 2.5-week milestone may be called a production candidate when:
 The original S0–S9 vision remains a later boundary. It includes deferred returns/transfer breadth, payroll, full historical reconstruction if required, advanced analytics/multi-terminal behavior, encrypted off-device backup, and a signed update lifecycle. It is not the 2.5-week release contract.
 
 | Order | Step | Depends on | Primary outcome | Complexity | Main risk | Completion gate |
-|---:|---|---|---|---|---|---|
+|---:|---|---|---|---|---|---|---|
 | 0 | R0 **Must**: blocking contracts | None | Posting, tax, import and pilot scope fixed | Medium | Late decisions | Blocking items resolved; others deferred |
 | 1 | R1 **Must**: S4-003 merge | Current PR #9 | One verified baseline | Medium | Migration/runtime defect | Targeted CI/review + focused Windows pass |
 | 2 | R2 **Must or exclude**: financial repair | R0, R1 | Correct in-scope postings | Very high | False ledgers | Reconcile or disable affected workflow |
