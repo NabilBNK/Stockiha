@@ -283,10 +283,12 @@ pub(crate) async fn replace_historical_trade_batch_data(
                         "brand": line.brand.as_deref().map(str::trim),
                         "custom_details": line.custom_details.as_deref().map(str::trim),
                         "party_company": line.party_company.as_deref().map(str::trim),
-                        "manual_benefit_dzd": line.manual_benefit_dzd,
-                        "quantity": line.quantity,
-                        "unit_price_dzd": line.unit_price_dzd,
-                        "manual_line_total_dzd": line.manual_line_total_dzd,
+                        // Exact decimal strings. PostgreSQL casts them into
+                        // bigint/numeric; Rust never turns them into a float.
+                        "manual_benefit_dzd": line.manual_benefit_dzd.as_deref().map(str::trim),
+                        "quantity": line.quantity.as_deref().map(str::trim),
+                        "unit_price_dzd": line.unit_price_dzd.as_deref().map(str::trim),
+                        "manual_line_total_dzd": line.manual_line_total_dzd.as_deref().map(str::trim),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -299,8 +301,8 @@ pub(crate) async fn replace_historical_trade_batch_data(
                 "transaction_type": txn.transaction_type.trim().to_ascii_uppercase(),
                 "payment_status": txn.payment_status.trim().to_ascii_uppercase(),
                 "party_company": txn.party_company.as_deref().map(str::trim),
-                "manual_benefit_dzd": txn.manual_benefit_dzd,
-                "page_number": txn.page_number,
+                "manual_benefit_dzd": txn.manual_benefit_dzd.as_deref().map(str::trim),
+                "page_number": txn.page_number.as_deref().map(str::trim),
                 "lines": lines,
             })
         })
@@ -373,4 +375,76 @@ pub(crate) async fn get_historical_trade_analytics(
             .map_err(AppError::from_posting_error)?;
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod wsg_import_integration_tests {
+    use super::*;
+    use crate::application::test_fixtures;
+
+    /// Drives the WS-G historical import through the real authoritative path:
+    /// the same `application::onboarding` functions the Tauri commands call,
+    /// which hand the exact-decimal strings to the `SECURITY DEFINER` SQL.
+    ///
+    /// The payload is produced by the production TypeScript parser from the
+    /// CORRECTED oracle workbook (row 6 date fixed, row 83 future date fixed)
+    /// and written to the file named by `STOCKIHA_WSG_PAYLOAD`.
+    #[tokio::test]
+    #[ignore = "requires a live PostgreSQL server, STOCKIHA_TEST_DATABASE_URL and STOCKIHA_WSG_PAYLOAD"]
+    async fn stages_the_oracle_workbook_through_the_real_path() {
+        let pool = sqlx::PgPool::connect(&test_fixtures::require_test_pool_url())
+            .await
+            .expect("failed to connect to the integration test database");
+
+        let (_user_id, token) = test_fixtures::root_admin_session(&pool).await;
+
+        update_historical_finance_setting(
+            &pool,
+            &token,
+            UpdateHistoricalFinanceSettingRequest { enabled: true },
+        )
+        .await
+        .expect("enabling the historical finance import must succeed");
+
+        let payload_path =
+            std::env::var("STOCKIHA_WSG_PAYLOAD").expect("STOCKIHA_WSG_PAYLOAD must be set");
+        let payload_text =
+            std::fs::read_to_string(&payload_path).expect("payload file must be readable");
+
+        let batch = create_historical_trade_batch(
+            &pool,
+            &token,
+            CreateHistoricalTradeBatchRequest {
+                request_id: format!("wsg-oracle-{}", std::process::id()),
+                original_filename: "Stockiha_Historical_TEST_DATASET_corrected.xlsx".to_string(),
+                content_hash: None,
+                import_profile: Some("PAPER_BOOK_V2".to_string()),
+            },
+        )
+        .await
+        .expect("creating the batch must succeed");
+        println!("BATCH_ID={}", batch.batch_id);
+
+        let mut request: ReplaceHistoricalTradeBatchDataRequest =
+            serde_json::from_str(&payload_text).expect("payload must deserialise into the DTO");
+        request.batch_id = batch.batch_id;
+        println!("TXN_COUNT_IN_PAYLOAD={}", request.transactions.len());
+
+        let staged = replace_historical_trade_batch_data(&pool, &token, request)
+            .await
+            .expect("staging must succeed");
+
+        println!(
+            "STAGED batch={} txns={} lines={} unmatched={} overrides={} missingQty={}",
+            staged.batch_id,
+            staged.transaction_count,
+            staged.line_count,
+            staged.unmatched_product_count,
+            staged.override_count,
+            staged.missing_qty_count
+        );
+
+        assert_eq!(staged.transaction_count, 235);
+        assert_eq!(staged.line_count, 469);
+    }
 }

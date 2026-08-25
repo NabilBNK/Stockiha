@@ -43,6 +43,58 @@ const BALANCE_TYPES: &[&str] = &[
     "OTHER",
 ];
 
+/// Maximum digits accepted in an exact-decimal amount string, so a hostile or
+/// corrupt workbook cannot push an unbounded literal into PostgreSQL.
+const DECIMAL_TEXT_MAX_LEN: usize = 30;
+
+/// Validates that a value carried across the IPC boundary is an exact whole
+/// decimal written as text (for example `"19880510"` or `"-4000"`).
+///
+/// Money and quantity are never deserialised into an `f64` or an `i64` here:
+/// the exact characters read from the workbook are passed through to
+/// PostgreSQL, which does the arithmetic in `numeric`/`bigint`.
+fn validate_exact_whole_decimal(
+    value: &Option<String>,
+    field: &str,
+    allow_negative: bool,
+) -> Result<(), String> {
+    let Some(raw) = value.as_deref() else {
+        return Ok(());
+    };
+    let text = raw.trim();
+    if text.is_empty() {
+        return Err(format!("{field} must not be blank; omit it instead"));
+    }
+    if text.len() > DECIMAL_TEXT_MAX_LEN {
+        return Err(format!(
+            "{field} must be at most {DECIMAL_TEXT_MAX_LEN} characters"
+        ));
+    }
+    let (sign, digits) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    if sign && !allow_negative {
+        return Err(format!("{field} must not be negative"));
+    }
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!(
+            "{field} must be a whole DZD amount written in digits"
+        ));
+    }
+    if digits.len() > 1 && digits.starts_with('0') {
+        return Err(format!("{field} must not carry leading zeros"));
+    }
+    Ok(())
+}
+
+/// True when an exact-decimal string is greater than zero. Pure text
+/// inspection: no numeric conversion takes place.
+fn is_positive_decimal_text(value: &str) -> bool {
+    let text = value.trim();
+    !text.starts_with('-') && text.bytes().any(|b| b.is_ascii_digit() && b != b'0')
+}
+
 fn validate_request_id(request_id: &str) -> Result<(), String> {
     let request_id = request_id.trim();
     if !(REQUEST_ID_MIN_LEN..=REQUEST_ID_MAX_LEN).contains(&request_id.len()) {
@@ -496,10 +548,14 @@ pub(crate) struct HistoricalTradeLineInput {
     pub(crate) brand: Option<String>,
     pub(crate) custom_details: Option<String>,
     pub(crate) party_company: Option<String>,
-    pub(crate) manual_benefit_dzd: Option<i64>,
-    pub(crate) quantity: Option<i64>,
-    pub(crate) unit_price_dzd: Option<i64>,
-    pub(crate) manual_line_total_dzd: Option<i64>,
+    /// Exact decimal string, signed. `None` means the paper left it blank.
+    pub(crate) manual_benefit_dzd: Option<String>,
+    /// Exact decimal string. `None` means the paper left it blank.
+    pub(crate) quantity: Option<String>,
+    /// Exact decimal string. `None` means the paper left it blank.
+    pub(crate) unit_price_dzd: Option<String>,
+    /// Exact decimal string taken from column K. `None` means column K is empty.
+    pub(crate) manual_line_total_dzd: Option<String>,
 }
 
 impl HistoricalTradeLineInput {
@@ -510,19 +566,14 @@ impl HistoricalTradeLineInput {
         if self.line_sequence < 1 {
             return Err("lineSequence must be at least 1".to_string());
         }
-        if let Some(price) = self.unit_price_dzd {
-            if price < 0 {
-                return Err("unitPriceDzd must not be negative".to_string());
-            }
-        }
-        if let Some(qty) = self.quantity {
-            if qty <= 0 {
+        validate_exact_whole_decimal(&self.unit_price_dzd, "unitPriceDzd", false)?;
+        validate_exact_whole_decimal(&self.quantity, "quantity", false)?;
+        validate_exact_whole_decimal(&self.manual_line_total_dzd, "manualLineTotalDzd", false)?;
+        validate_exact_whole_decimal(&self.manual_benefit_dzd, "manualBenefitDzd", true)?;
+
+        if let Some(qty) = self.quantity.as_deref() {
+            if !is_positive_decimal_text(qty) {
                 return Err("quantity must be positive".to_string());
-            }
-        }
-        if let Some(total) = self.manual_line_total_dzd {
-            if total < 0 {
-                return Err("manualLineTotalDzd must not be negative".to_string());
             }
         }
         if self.quantity.is_none()
@@ -549,8 +600,11 @@ pub(crate) struct HistoricalTradeTransactionInput {
     pub(crate) transaction_type: String,
     pub(crate) payment_status: String,
     pub(crate) party_company: Option<String>,
-    pub(crate) manual_benefit_dzd: Option<i64>,
-    pub(crate) page_number: Option<i32>,
+    /// Exact decimal string, signed. `None` means the benefit is unknown, which
+    /// is not the same as a recorded zero.
+    pub(crate) manual_benefit_dzd: Option<String>,
+    /// Exact whole-number string. `None` means no page number was written.
+    pub(crate) page_number: Option<String>,
     pub(crate) lines: Vec<HistoricalTradeLineInput>,
 }
 
@@ -572,14 +626,16 @@ impl HistoricalTradeTransactionInput {
         if txn_type != "SALE" && self.manual_benefit_dzd.is_some() {
             return Err("manualBenefitDzd is only allowed for SALE transactions".to_string());
         }
+        validate_exact_whole_decimal(&self.manual_benefit_dzd, "manualBenefitDzd", true)?;
+        validate_exact_whole_decimal(&self.page_number, "pageNumber", false)?;
 
         let payment = self.payment_status.trim().to_ascii_uppercase();
         if !matches!(payment.as_str(), "PAID" | "UNPAID") {
             return Err("paymentStatus must be PAID or UNPAID".to_string());
         }
 
-        if let Some(page) = self.page_number {
-            if page <= 0 {
+        if let Some(page) = self.page_number.as_deref() {
+            if !is_positive_decimal_text(page) {
                 return Err("pageNumber must be positive".to_string());
             }
         }
@@ -751,5 +807,54 @@ mod tests {
 
         assert!(result.enabled);
         assert!(!result.can_update);
+    }
+    #[test]
+    fn accepts_exact_decimal_strings_and_rejects_floats_or_junk() {
+        // Money and quantity cross the IPC boundary as exact decimal text.
+        assert!(
+            validate_exact_whole_decimal(&Some("19880510".to_string()), "total", false).is_ok()
+        );
+        assert!(validate_exact_whole_decimal(&Some("0".to_string()), "benefit", true).is_ok());
+        assert!(validate_exact_whole_decimal(&Some("-4000".to_string()), "benefit", true).is_ok());
+        assert!(validate_exact_whole_decimal(&None, "benefit", true).is_ok());
+
+        assert!(validate_exact_whole_decimal(&Some("-4000".to_string()), "total", false).is_err());
+        assert!(validate_exact_whole_decimal(&Some("4000.5".to_string()), "total", false).is_err());
+        assert!(validate_exact_whole_decimal(&Some("1e5".to_string()), "total", false).is_err());
+        assert!(validate_exact_whole_decimal(&Some("007".to_string()), "total", false).is_err());
+        assert!(validate_exact_whole_decimal(&Some("".to_string()), "total", false).is_err());
+        assert!(validate_exact_whole_decimal(&Some("1".repeat(31)), "total", false).is_err());
+    }
+
+    #[test]
+    fn recognises_a_positive_amount_without_numeric_conversion() {
+        assert!(is_positive_decimal_text("12"));
+        assert!(is_positive_decimal_text("100800"));
+        assert!(!is_positive_decimal_text("0"));
+        assert!(!is_positive_decimal_text("000"));
+        assert!(!is_positive_decimal_text("-5"));
+    }
+
+    #[test]
+    fn rejects_a_trade_line_whose_quantity_is_not_a_whole_positive_amount() {
+        let line = HistoricalTradeLineInput {
+            source_row_number: 3,
+            line_sequence: 1,
+            product_name: Some("couette".to_string()),
+            brand: None,
+            custom_details: Some("1.6".to_string()),
+            party_company: None,
+            manual_benefit_dzd: None,
+            quantity: Some("0".to_string()),
+            unit_price_dzd: Some("9200".to_string()),
+            manual_line_total_dzd: Some("110400".to_string()),
+        };
+        assert!(line.validate().is_err());
+
+        let ok = HistoricalTradeLineInput {
+            quantity: Some("12".to_string()),
+            ..line
+        };
+        assert!(ok.validate().is_ok());
     }
 }

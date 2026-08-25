@@ -124,6 +124,14 @@ type CellValue = string | number | boolean | null;
 export interface RawCellDetails {
   value: CellValue;
   hasFormula: boolean;
+  /**
+   * The exact characters stored in the cell (`<v>` text for numeric cells, the
+   * resolved text for string cells). Money and quantity are read from this and
+   * never from `value`, so no IEEE-754 double ever touches the money path.
+   */
+  rawText: string | null;
+  /** True when the cell is stored as a number (not a shared/inline string). */
+  isNumeric: boolean;
 }
 
 interface ZipEntry {
@@ -157,26 +165,28 @@ export type PaperBookError = HistoricalFinanceImportError;
 export type PaperBookTransaction = HistoricalTradeTransactionInput;
 export type PaperBookLine = HistoricalTradeLineInput;
 
+/**
+ * Counts only. Every monetary and quantity total is computed by PostgreSQL in
+ * exact `numeric`/`bigint`; the browser deliberately holds no money aggregate,
+ * because React is never authoritative for a financial figure.
+ */
 export interface PaperBookSummary {
+  /** Non-empty spreadsheet rows that were read, including ignored ones. */
+  dataRowCount: number;
+  /** Rows that were read but produced no line (page-only / spill-over rows). */
+  ignoredRowCount: number;
   transactionCount: number;
   lineCount: number;
   totalLines: number;
   salesCount: number;
   purchaseCount: number;
   expenseCount: number;
-  totalSalesDzd: number;
-  totalPurchasesDzd: number;
-  totalExpensesDzd: number;
-  paidSalesDzd: number;
-  unpaidSalesDzd: number;
-  paidPurchasesDzd: number;
-  unpaidPurchasesDzd: number;
-  paidExpensesDzd: number;
-  unpaidExpensesDzd: number;
   manualBenefitCount: number;
-  totalManualBenefitDzd: number;
   salesWithManualBenefitCount: number;
   salesWithoutManualBenefitCount: number;
+  benefitZeroCount: number;
+  benefitNegativeCount: number;
+  benefitPositiveCount: number;
   minDate: string | null;
   maxDate: string | null;
   unmatchedProductCount: number;
@@ -184,6 +194,7 @@ export interface PaperBookSummary {
   missingQtyCount: number;
   errorCount: number;
   warningCount: number;
+  infoCount: number;
   isPartial: boolean;
   contentHash?: string;
 }
@@ -192,6 +203,8 @@ export interface PaperBookWorkbookData {
   transactions: HistoricalTradeTransactionInput[];
   errors: HistoricalFinanceImportError[];
   warnings: HistoricalFinanceImportError[];
+  /** Per-row validation report shown before anything is staged or committed. */
+  rowIssues: HistoricalRowIssue[];
   contentHash: string;
   summary: PaperBookSummary;
 }
@@ -492,33 +505,43 @@ function readCellValueWithDetails(
   const type = cell.getAttribute('t') ?? '';
   const valueNode = elementsByLocalName(cell, 'v')[0];
   const raw = valueNode?.textContent ?? '';
-  if (raw === '' && type !== 'inlineStr') return { value: null, hasFormula };
+  if (raw === '' && type !== 'inlineStr') {
+    return { value: null, hasFormula, rawText: null, isNumeric: false };
+  }
 
   if (type === 'inlineStr') {
-    return {
-      value: elementsByLocalName(cell, 't')
-        .map((text) => text.textContent ?? '')
-        .join(''),
-      hasFormula,
-    };
+    const text = elementsByLocalName(cell, 't')
+      .map((node) => node.textContent ?? '')
+      .join('');
+    return { value: text, hasFormula, rawText: text, isNumeric: false };
   }
   if (type === 's') {
     const index = Number(raw);
     if (!Number.isInteger(index) || index < 0 || index >= sharedStrings.length) {
       throw new WorkbookParseError('The workbook contains an invalid shared-string reference.');
     }
-    return { value: sharedStrings[index], hasFormula };
+    const text = sharedStrings[index];
+    return { value: text, hasFormula, rawText: text, isNumeric: false };
   }
-  if (type === 'str') return { value: raw, hasFormula };
-  if (type === 'b') return { value: raw === '1', hasFormula };
+  if (type === 'str') return { value: raw, hasFormula, rawText: raw, isNumeric: false };
+  if (type === 'b') {
+    return { value: raw === '1', hasFormula, rawText: raw, isNumeric: false };
+  }
   if (type === 'e') throw new WorkbookParseError('The workbook contains an Excel error cell.');
-  if (type === 'd') return { value: raw.slice(0, 10), hasFormula };
+  if (type === 'd') {
+    const iso = raw.slice(0, 10);
+    return { value: iso, hasFormula, rawText: iso, isNumeric: false };
+  }
 
   const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) return { value: raw, hasFormula };
+  if (!Number.isFinite(numeric)) {
+    return { value: raw, hasFormula, rawText: raw, isNumeric: false };
+  }
   const styleIndex = Number(cell.getAttribute('s') ?? '0');
+  // `value` stays a JS number only for non-money uses (dates, page numbers).
+  // `rawText` keeps the untouched stored characters for the money path.
   const value = dateStyles.has(styleIndex) ? excelSerialToIsoDate(numeric) : numeric;
-  return { value, hasFormula };
+  return { value, hasFormula, rawText: raw, isNumeric: true };
 }
 
 function parseSheet(
@@ -561,6 +584,100 @@ function optionalString(value: CellValue): string | null {
   return normalized === '' ? null : normalized;
 }
 
+// --- Exact decimal handling (WS-G) --------------------------------------
+// Every helper below works on characters only. There is deliberately no
+// Number(), parseFloat(), parseInt() or arithmetic operator anywhere in the
+// money/quantity path: the exact characters stored in the cell travel through
+// TypeScript and the IPC boundary as strings, and PostgreSQL does the maths.
+
+const DECIMAL_PATTERN = /^[+-]?(?:\d+)(?:\.\d*)?$/;
+
+/**
+ * Canonicalises the exact characters of a numeric cell without arithmetic:
+ * strips a leading `+`, leading zeros, trailing fractional zeros and a
+ * trailing decimal point, and collapses a signed zero. `"160.0"` becomes
+ * `"160"`, `"1.60"` becomes `"1.6"`, `"-0.0"` becomes `"0"`.
+ * Returns `null` when the text is not a plain decimal literal.
+ */
+export function canonicalDecimalText(text: string): string | null {
+  const trimmed = text.trim().replace(/[\s\u00a0\u202f]/g, '');
+  if (trimmed === '' || !DECIMAL_PATTERN.test(trimmed)) return null;
+
+  const negative = trimmed.startsWith('-');
+  const unsigned = trimmed.replace(/^[+-]/, '');
+  const [rawInteger, rawFraction = ''] = unsigned.split('.');
+
+  const integerPart = rawInteger.replace(/^0+(?=\d)/, '');
+  const fractionPart = rawFraction.replace(/0+$/, '');
+
+  const magnitude = fractionPart === '' ? integerPart : `${integerPart}.${fractionPart}`;
+  if (/^0$/.test(magnitude)) return '0';
+  return negative ? `-${magnitude}` : magnitude;
+}
+
+/** True when a canonical decimal string carries no fractional part. */
+function isWholeDecimal(canonical: string): boolean {
+  return !canonical.includes('.');
+}
+
+/** True when a canonical decimal string is exactly zero. */
+function isZeroDecimal(canonical: string): boolean {
+  return canonical === '0';
+}
+
+/** True when a canonical decimal string is strictly negative. */
+function isNegativeDecimal(canonical: string): boolean {
+  return canonical.startsWith('-');
+}
+
+/**
+ * Reads a cell as the exact text the workbook stores. Numeric cells return the
+ * canonicalised `<v>` characters; string cells return the trimmed text.
+ * Returns `null` for a blank cell — blank always means unknown (rule 9).
+ */
+function exactCellText(cell: RawCellDetails | undefined): string | null {
+  if (!cell) return null;
+  if (cell.rawText === null) return null;
+  if (cell.isNumeric) return canonicalDecimalText(cell.rawText);
+  const trimmed = cell.rawText.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * Reads a money or quantity cell as an exact decimal string. Non-numeric text
+ * is accepted only when it is itself a plain decimal literal (hand-typed
+ * amounts pasted as text), so that a genuinely malformed amount surfaces as a
+ * defect instead of being silently coerced.
+ */
+function exactAmountText(cell: RawCellDetails | undefined): string | null | 'INVALID' {
+  if (!cell || cell.rawText === null) return null;
+  const trimmed = cell.rawText.trim();
+  if (trimmed === '') return null;
+  const canonical = canonicalDecimalText(trimmed);
+  return canonical ?? 'INVALID';
+}
+
+// --- Per-row validation report (WS-G scope item 3) -----------------------
+
+export type HistoricalRowIssueSeverity = 'ERROR' | 'WARNING' | 'INFO';
+
+export interface HistoricalRowIssue {
+  severity: HistoricalRowIssueSeverity;
+  sheet: string;
+  /** 1-based Excel row number as shown to the user in Excel. */
+  row: number;
+  /** Human column heading, e.g. `Date`. Absent when the whole row is at fault. */
+  column?: string;
+  /** What is wrong, in plain French. */
+  probleme: string;
+  /** What the user should do about it, in plain French. */
+  action: string;
+  /** True when the row is dropped from the import until it is corrected. */
+  blocksRow: boolean;
+  /** True when the row imports only after the user explicitly confirms it. */
+  requiresConfirmation: boolean;
+}
+
 function parseInteger(value: CellValue, field: string, allowZero: boolean): number {
   let parsed: number;
   if (typeof value === 'number') {
@@ -580,27 +697,6 @@ function parseInteger(value: CellValue, field: string, allowZero: boolean): numb
 function parseOptionalInteger(value: CellValue, field: string): number | null {
   if (normalizeString(value) === '') return null;
   return parseInteger(value, field, true);
-}
-
-function parseSignedInteger(value: CellValue, field: string): number {
-  let parsed: number;
-  if (typeof value === 'number') {
-    parsed = value;
-  } else {
-    const normalized = normalizeString(value).replace(/[\s\u00a0,]/g, '');
-    if (!/^-?\d+$/.test(normalized)) throw new Error(`${field} must be a whole DZD amount.`);
-    parsed = Number(normalized);
-  }
-
-  if (!Number.isSafeInteger(parsed)) {
-    throw new Error(`${field} is outside the allowed whole-DZD range.`);
-  }
-  return parsed;
-}
-
-function parseOptionalSignedInteger(value: CellValue, field: string): number | null {
-  if (normalizeString(value) === '') return null;
-  return parseSignedInteger(value, field);
 }
 
 function parseIsoDate(value: CellValue, field: string): string {
@@ -720,6 +816,46 @@ function parsePaperBookDate(value: string, rowNumber: number): string {
   throw new Error(`Row ${rowNumber} · Date: "${value}" is not a valid date. Expected DD/MM/YYYY, for example 23/11/2025.`);
 }
 
+const COLUMN_LETTERS = 'ABCDEFGHIJKLM';
+
+function cellRef(columnIndex: number, rowNumber: number): string {
+  return `${COLUMN_LETTERS[columnIndex] ?? '?'}${rowNumber}`;
+}
+
+export interface PaperBookIssueSink {
+  errors: HistoricalFinanceImportError[];
+  warnings: HistoricalFinanceImportError[];
+  issues: HistoricalRowIssue[];
+}
+
+function addIssue(
+  sink: PaperBookIssueSink,
+  issue: Omit<HistoricalRowIssue, 'blocksRow' | 'requiresConfirmation'> &
+    Partial<Pick<HistoricalRowIssue, 'blocksRow' | 'requiresConfirmation'>>,
+): void {
+  const complete: HistoricalRowIssue = {
+    blocksRow: issue.severity === 'ERROR',
+    requiresConfirmation: issue.severity === 'WARNING',
+    ...issue,
+  };
+  sink.issues.push(complete);
+
+  // Legacy flat lists kept so the existing screen keeps working unchanged.
+  const legacy: HistoricalFinanceImportError = {
+    sheet: complete.sheet,
+    row: complete.row,
+    column: complete.column,
+    message: `${complete.probleme} ${complete.action}`,
+  };
+  if (complete.severity === 'ERROR') pushError(sink.errors, legacy);
+  else if (complete.severity === 'WARNING') sink.warnings.push(legacy);
+}
+
+/** Today in ISO form. Injectable so the future-date rule is testable. */
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function normalizeType(value: string, rowNumber: number): PaperBookTransactionType {
   const upper = value.trim().toUpperCase();
   if (upper === 'SELL' || upper === 'SALE') return 'SALE';
@@ -735,33 +871,74 @@ function normalizePaid(value: string, rowNumber: number): PaperBookPaymentStatus
   throw new Error(`Row ${rowNumber}: Invalid payment status '${value}'. Only Paid or Not Paid allowed.`);
 }
 
+export interface PaperBookSheetOutcome {
+  transactions: HistoricalTradeTransactionInput[];
+  dataRowCount: number;
+  ignoredRowCount: number;
+  typedLineTotalCount: number;
+}
+
+/**
+ * A cell holds user content when it is non-blank. A formula cell whose cached
+ * value is exactly zero is template spill-over (the `=I*J` filled down over the
+ * empty tail of the table) and is NOT user content.
+ */
+function cellHasContent(cell: RawCellDetails | undefined): boolean {
+  if (!cell || cell.rawText === null) return false;
+  const text = cell.rawText.trim();
+  if (text === '') return false;
+  if (!cell.hasFormula) return true;
+  const canonical = cell.isNumeric ? canonicalDecimalText(text) : null;
+  return canonical === null || !isZeroDecimal(canonical);
+}
+
 export function parsePaperBookSheet(
   sheet: ParsedSheet,
-  errors: HistoricalFinanceImportError[],
-  warnings: HistoricalFinanceImportError[],
+  sink: PaperBookIssueSink,
   profile: PaperBookImportProfile = 'PAPER_BOOK_V2',
-): HistoricalTradeTransactionInput[] {
+  today: string = todayIso(),
+): PaperBookSheetOutcome {
   const transactions: HistoricalTradeTransactionInput[] = [];
   const sortedRows = [...sheet.rows.entries()].sort((a, b) => a[0] - b[0]);
 
   let activeTxn: HistoricalTradeTransactionInput | null = null;
   let txnSequence = 0;
+  let dataRowCount = 0;
+  let ignoredRowCount = 0;
+  let typedLineTotalCount = 0;
 
   const isV2 = profile === 'PAPER_BOOK_V2';
   const headers = isV2 ? PAPER_BOOK_V2_HEADERS : PAPER_BOOK_HEADERS;
   const colCount = headers.length;
+  const benefitCol = isV2 ? 11 : -1;
+  const pageCol = isV2 ? 12 : 11;
 
+  // Iteration is by row number only, to read the sheet top to bottom. Grouping
+  // depends solely on column C (rule 2) and never on the dates (rule 8).
   for (const [rowNumber, cells] of sortedRows) {
-    if (rowNumber === 1 || isEmptyDataRow(cells.slice(1), colCount - 1)) continue;
+    if (rowNumber === 1) continue;
 
-    // Check forbidden formulas on non-formula columns
+    let rowHasContent = false;
+    for (let index = 1; index < colCount; index += 1) {
+      if (cellHasContent(cells[index])) {
+        rowHasContent = true;
+        break;
+      }
+    }
+    if (!rowHasContent) continue;
+    dataRowCount += 1;
+
+    // Rule 1: column A is a formula and is never parsed. Column K may legally
+    // be a formula. A formula anywhere else means the template was altered.
     cells.forEach((cell, colIdx) => {
       if (colIdx !== 0 && colIdx !== 10 && colIdx < colCount && cell?.hasFormula) {
-        pushError(errors, {
+        addIssue(sink, {
+          severity: 'ERROR',
           sheet: sheet.name,
           row: rowNumber,
           column: headers[colIdx],
-          message: `Formulas are not allowed in ${headers[colIdx]}.`,
+          probleme: `La cellule ${cellRef(colIdx, rowNumber)} contient une formule, ce qui n'est pas autorisé dans la colonne « ${headers[colIdx]} ».`,
+          action: 'Remplacez la formule par la valeur écrite sur le papier, puis relancez l\'import.',
         });
       }
     });
@@ -769,41 +946,128 @@ export function parsePaperBookSheet(
     const dateStr = normalizeString(cells[1]?.value);
     const typeStr = normalizeString(cells[2]?.value);
     const paidStr = normalizeString(cells[3]?.value);
-    const partyStr = optionalString(cells[4]?.value);
+    const partyStr = exactCellText(cells[4]);
 
-    const benefitVal = isV2 ? parseOptionalSignedInteger(cells[11]?.value, 'Benefit (Sell Only)') : null;
-    const pageNoVal = isV2
-      ? parseOptionalInteger(cells[12]?.value, 'Page No')
-      : parseOptionalInteger(cells[11]?.value, 'Page No');
+    const benefitRaw = benefitCol >= 0 ? exactAmountText(cells[benefitCol]) : null;
+    let benefitVal: string | null = null;
+    if (benefitRaw === 'INVALID') {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Benefit (Sell Only)',
+        probleme: `Le bénéfice écrit en ${cellRef(benefitCol, rowNumber)} n'est pas un montant lisible.`,
+        action: 'Saisissez un montant en dinars entiers, par exemple 7000, ou laissez la case vide si le bénéfice est inconnu.',
+      });
+    } else if (benefitRaw !== null && !isWholeDecimal(benefitRaw)) {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Benefit (Sell Only)',
+        probleme: `Le bénéfice écrit en ${cellRef(benefitCol, rowNumber)} contient des centimes (${benefitRaw}).`,
+        action: 'Arrondissez au dinar entier tel qu\'il figure sur le cahier.',
+      });
+    } else {
+      benefitVal = benefitRaw;
+    }
+
+    const pageRaw = exactAmountText(cells[pageCol]);
+    let pageNoVal: string | null = null;
+    if (pageRaw === 'INVALID' || (pageRaw !== null && !isWholeDecimal(pageRaw))) {
+      addIssue(sink, {
+        severity: 'WARNING',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Page No. (Optional)',
+        probleme: `Le numéro de page en ${cellRef(pageCol, rowNumber)} n'est pas un nombre entier.`,
+        action: 'Saisissez le numéro de page du cahier, ou laissez la case vide.',
+      });
+    } else {
+      pageNoVal = pageRaw;
+    }
 
     if (typeStr !== '') {
-      // NEW TRANSACTION
+      // Rule 2: Type filled = start of a new transaction.
       let normType: PaperBookTransactionType;
       let normPaid: PaperBookPaymentStatus;
       let isoDate: string;
 
-      try {
-        if (dateStr === '') {
-          throw new Error(`Row ${rowNumber}: Transaction header must have a valid Date.`);
-        }
-        isoDate = parsePaperBookDate(dateStr, rowNumber);
-        normType = normalizeType(typeStr, rowNumber);
-        normPaid = normalizePaid(paidStr, rowNumber);
-      } catch (err) {
-        pushError(errors, {
+      if (dateStr === '') {
+        addIssue(sink, {
+          severity: 'ERROR',
           sheet: sheet.name,
           row: rowNumber,
-          message: err instanceof Error ? err.message : 'Invalid transaction header.',
+          column: 'Date',
+          probleme: `La ligne ${rowNumber} ouvre une nouvelle opération mais la date en ${cellRef(1, rowNumber)} est vide.`,
+          action: 'Saisissez la date de l\'opération au format JJ/MM/AAAA, par exemple 15/05/2025.',
+        });
+        continue;
+      }
+      try {
+        isoDate = parsePaperBookDate(dateStr, rowNumber);
+      } catch {
+        addIssue(sink, {
+          severity: 'ERROR',
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Date',
+          probleme: `La date « ${dateStr} » écrite en ${cellRef(1, rowNumber)} n'est pas une date valide.`,
+          action: 'Corrigez la cellule au format JJ/MM/AAAA, par exemple 15/05/2025, puis relancez l\'import.',
+        });
+        continue;
+      }
+      try {
+        normType = normalizeType(typeStr, rowNumber);
+      } catch {
+        addIssue(sink, {
+          severity: 'ERROR',
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Type',
+          probleme: `Le type « ${typeStr} » écrit en ${cellRef(2, rowNumber)} n'est pas reconnu.`,
+          action: 'Écrivez exactement Sell, Buy ou Expense.',
+        });
+        continue;
+      }
+      try {
+        normPaid = normalizePaid(paidStr, rowNumber);
+      } catch {
+        addIssue(sink, {
+          severity: 'ERROR',
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Paid',
+          probleme:
+            paidStr === ''
+              ? `Le statut de paiement en ${cellRef(3, rowNumber)} est vide.`
+              : `Le statut de paiement « ${paidStr} » écrit en ${cellRef(3, rowNumber)} n'est pas reconnu.`,
+          action: 'Écrivez exactement Paid ou Not Paid.',
         });
         continue;
       }
 
+      // A date later than today is almost always a year typo on the paper.
+      // It is a warning, not a rejection: the owner confirms or corrects it.
+      if (isoDate > today) {
+        addIssue(sink, {
+          severity: 'WARNING',
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Date',
+          probleme: `La date du ${isoDate} écrite en ${cellRef(1, rowNumber)} est dans le futur.`,
+          action: 'Vérifiez l\'année sur le cahier. Corrigez-la, ou confirmez que cette date future est bien voulue avant d\'importer.',
+        });
+      }
+
       if (normType !== 'SALE' && benefitVal !== null) {
-        pushError(errors, {
+        addIssue(sink, {
+          severity: 'ERROR',
           sheet: sheet.name,
           row: rowNumber,
           column: 'Benefit (Sell Only)',
-          message: `BENEFIT_NOT_ALLOWED_FOR_NON_SALE: Benefit is only allowed for SALE transactions (found in ${normType}).`,
+          probleme: `Un bénéfice est écrit en ${cellRef(benefitCol, rowNumber)} alors que l'opération est de type ${typeStr}.`,
+          action: 'Le bénéfice ne se note que sur les ventes. Videz la case, ou corrigez le type de l\'opération.',
         });
       }
 
@@ -811,163 +1075,343 @@ export function parsePaperBookSheet(
       activeTxn = {
         sourceTransactionSequence: txnSequence,
         sourceFirstExcelRow: rowNumber,
-        sourceExcelTxnRef: optionalString(cells[0]?.value),
+        // Column A is read only as an opaque label for tracing back to the
+        // sheet. It never takes part in grouping (rule 1).
+        sourceExcelTxnRef: exactCellText(cells[0]),
         transactionDate: isoDate,
         transactionType: normType,
         paymentStatus: normPaid,
         partyCompany: partyStr,
+        // Rule 6: blank stays blank. Blank is not zero.
         manualBenefitDzd: normType === 'SALE' ? benefitVal : null,
         pageNumber: pageNoVal,
         lines: [],
       };
       transactions.push(activeTxn);
     } else {
-      // CONTINUATION ROW
+      // Rule 2: Type blank = continuation of the transaction above.
       if (!activeTxn) {
-        pushError(errors, {
+        addIssue(sink, {
+          severity: 'WARNING',
           sheet: sheet.name,
           row: rowNumber,
-          message: 'ORPHAN_PRODUCT_LINE: Continuation row has no owning transaction header above it.',
+          probleme: `La ligne ${rowNumber} contient des données mais aucune opération n'a été ouverte au-dessus d'elle.`,
+          action: 'Renseignez le Type (Sell, Buy ou Expense) sur cette ligne, sinon elle sera ignorée.',
         });
+        ignoredRowCount += 1;
         continue;
       }
 
+      // Rule 3: these fields belong on the first row only. When a continuation
+      // row repeats one of them we check it instead of silently overwriting.
       if (dateStr !== '') {
         try {
           const isoDate = parsePaperBookDate(dateStr, rowNumber);
           if (isoDate !== activeTxn.transactionDate) {
-            pushError(errors, {
+            addIssue(sink, {
+              severity: 'ERROR',
               sheet: sheet.name,
               row: rowNumber,
-              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Date (${isoDate}) conflicts with header (${activeTxn.transactionDate}).`,
+              column: 'Date',
+              probleme: `La date du ${isoDate} en ${cellRef(1, rowNumber)} contredit la date du ${activeTxn.transactionDate} de l'opération commencée ligne ${activeTxn.sourceFirstExcelRow}.`,
+              action: 'Laissez la date vide sur les lignes de suite, ou ouvrez une nouvelle opération en renseignant le Type.',
             });
           }
         } catch {
-          // Ignore
+          addIssue(sink, {
+            severity: 'WARNING',
+            sheet: sheet.name,
+            row: rowNumber,
+            column: 'Date',
+            probleme: `La date « ${dateStr} » en ${cellRef(1, rowNumber)} n'est pas lisible.`,
+            action: 'Sur une ligne de suite la date doit rester vide. Videz la cellule ou corrigez-la au format JJ/MM/AAAA.',
+          });
         }
       }
       if (paidStr !== '') {
         try {
           const normPaid = normalizePaid(paidStr, rowNumber);
           if (normPaid !== activeTxn.paymentStatus) {
-            pushError(errors, {
+            addIssue(sink, {
+              severity: 'ERROR',
               sheet: sheet.name,
               row: rowNumber,
-              message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Paid (${paidStr}) conflicts with header (${activeTxn.paymentStatus}).`,
+              column: 'Paid',
+              probleme: `Le statut « ${paidStr} » en ${cellRef(3, rowNumber)} contredit celui de l'opération commencée ligne ${activeTxn.sourceFirstExcelRow}.`,
+              action: 'Laissez la case Paid vide sur les lignes de suite.',
             });
           }
         } catch {
-          // Ignore
+          addIssue(sink, {
+            severity: 'WARNING',
+            sheet: sheet.name,
+            row: rowNumber,
+            column: 'Paid',
+            probleme: `Le statut de paiement « ${paidStr} » en ${cellRef(3, rowNumber)} n'est pas reconnu.`,
+            action: 'Sur une ligne de suite la case Paid doit rester vide.',
+          });
         }
       }
       if (partyStr !== null && activeTxn.partyCompany === null) {
         activeTxn.partyCompany = partyStr;
       }
-      if (pageNoVal !== null && activeTxn.pageNumber !== null && pageNoVal !== activeTxn.pageNumber) {
-        pushError(errors, {
+      if (
+        pageNoVal !== null &&
+        activeTxn.pageNumber !== null &&
+        pageNoVal !== activeTxn.pageNumber
+      ) {
+        addIssue(sink, {
+          severity: 'WARNING',
           sheet: sheet.name,
           row: rowNumber,
-          message: `CONFLICTING_TRANSACTION_FIELD: Continuation row Page No (${pageNoVal}) conflicts with header (${activeTxn.pageNumber}).`,
+          column: 'Page No. (Optional)',
+          probleme: `Le numéro de page ${pageNoVal} en ${cellRef(pageCol, rowNumber)} contredit la page ${activeTxn.pageNumber} de l'opération commencée ligne ${activeTxn.sourceFirstExcelRow}.`,
+          action: 'Laissez le numéro de page vide sur les lignes de suite, il est déjà noté sur la première ligne.',
         });
       }
-      if (benefitVal !== null && activeTxn.transactionType !== 'SALE') {
-        pushError(errors, {
+      if (benefitVal !== null) {
+        addIssue(sink, {
+          severity: 'WARNING',
           sheet: sheet.name,
           row: rowNumber,
           column: 'Benefit (Sell Only)',
-          message: `BENEFIT_NOT_ALLOWED_FOR_NON_SALE: Benefit is only allowed for SALE transactions.`,
+          probleme: `Un bénéfice est écrit en ${cellRef(benefitCol, rowNumber)} sur une ligne de suite.`,
+          action: 'Le bénéfice se note une seule fois, sur la première ligne de la vente. Ce montant n\'est pas repris dans le bénéfice de l\'opération.',
         });
       }
     }
 
-    // Parse product line
-    const lineSeq = activeTxn.lines.length + 1;
-    const productName = optionalString(cells[5]?.value);
-    const brand = optionalString(cells[6]?.value);
-    const customDetails = optionalString(cells[7]?.value);
-    const lineParty = partyStr !== null ? partyStr : activeTxn.partyCompany;
-    const lineBenefit = activeTxn.transactionType === 'SALE' ? benefitVal : null;
-    const qtyVal = parseOptionalInteger(cells[8]?.value, 'Quantity');
+    // --- product / amount line -------------------------------------------
+    const productName = exactCellText(cells[5]);
+    const brand = exactCellText(cells[6]);
+    // Rule 7: Custom Details may arrive as a number. The exact characters the
+    // workbook stores are kept as text; no numeric conversion takes place.
+    const customDetailsCell = cells[7];
+    const customDetails = exactCellText(customDetailsCell);
+    if (customDetails !== null && customDetailsCell?.isNumeric) {
+      addIssue(sink, {
+        severity: 'INFO',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Custom Details (Optional)',
+        probleme: `La précision « ${customDetails} » en ${cellRef(7, rowNumber)} est enregistrée comme un nombre et non comme du texte.`,
+        action: `Aucune action requise : elle est reprise telle quelle, « ${customDetails} ».`,
+      });
+    }
 
     const isExpense = activeTxn.transactionType === 'EXPENSE';
-    const unitPriceVal = isExpense
-      ? parseOptionalInteger(cells[9]?.value, 'Unit Price')
-      : parseInteger(cells[9]?.value, 'Unit Price', true);
 
+    const qtyRaw = exactAmountText(cells[8]);
+    let quantity: string | null = null;
+    if (qtyRaw === 'INVALID') {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Quantity',
+        probleme: `La quantité écrite en ${cellRef(8, rowNumber)} n'est pas un nombre lisible.`,
+        action: 'Saisissez un nombre entier de pièces, par exemple 12.',
+      });
+    } else if (qtyRaw !== null && !isWholeDecimal(qtyRaw)) {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Quantity',
+        probleme: `La quantité ${qtyRaw} en ${cellRef(8, rowNumber)} n'est pas un nombre entier de pièces.`,
+        action: 'Saisissez un nombre entier, par exemple 12.',
+      });
+    } else if (qtyRaw !== null && (isZeroDecimal(qtyRaw) || isNegativeDecimal(qtyRaw))) {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Quantity',
+        probleme: `La quantité ${qtyRaw} en ${cellRef(8, rowNumber)} doit être supérieure à zéro.`,
+        action: 'Corrigez la quantité, ou laissez la case vide si seule la somme totale est connue.',
+      });
+    } else {
+      quantity = qtyRaw;
+    }
+
+    const priceRaw = exactAmountText(cells[9]);
+    let unitPriceDzd: string | null = null;
+    if (priceRaw === 'INVALID') {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Unit Price',
+        probleme: `Le prix unitaire écrit en ${cellRef(9, rowNumber)} n'est pas un montant lisible.`,
+        action: 'Saisissez un montant en dinars entiers, par exemple 9200.',
+      });
+    } else if (priceRaw !== null && !isWholeDecimal(priceRaw)) {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Unit Price',
+        probleme: `Le prix unitaire ${priceRaw} en ${cellRef(9, rowNumber)} contient des centimes.`,
+        action: 'Arrondissez au dinar entier tel qu\'il figure sur le cahier.',
+      });
+    } else if (priceRaw !== null && isNegativeDecimal(priceRaw)) {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Unit Price',
+        probleme: `Le prix unitaire ${priceRaw} en ${cellRef(9, rowNumber)} est négatif.`,
+        action: 'Saisissez un montant positif.',
+      });
+    } else {
+      unitPriceDzd = priceRaw;
+    }
+
+    // Rule 4: column K wins. Its cached value is used whether the cell holds a
+    // formula or a hand-typed amount. Nothing is recomputed here.
     const lineTotalCell = cells[10];
-    let manualLineTotalDzd: number | null = null;
+    // A `=I*J` formula filled down over empty rows caches a zero. That is
+    // template spill-over, not an amount of zero dinars written on the paper.
+    const lineTotalRaw = cellHasContent(lineTotalCell) ? exactAmountText(lineTotalCell) : null;
+    let manualLineTotalDzd: string | null = null;
+    if (lineTotalRaw === 'INVALID') {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Line Total',
+        probleme: `Le total écrit en ${cellRef(10, rowNumber)} n'est pas un montant lisible.`,
+        action: 'Saisissez le montant total de la ligne en dinars entiers.',
+      });
+    } else if (lineTotalRaw !== null && !isWholeDecimal(lineTotalRaw)) {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Line Total',
+        probleme: `Le total ${lineTotalRaw} en ${cellRef(10, rowNumber)} contient des centimes.`,
+        action: 'Arrondissez au dinar entier tel qu\'il figure sur le cahier.',
+      });
+    } else if (lineTotalRaw !== null && isNegativeDecimal(lineTotalRaw)) {
+      addIssue(sink, {
+        severity: 'ERROR',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Line Total',
+        probleme: `Le total ${lineTotalRaw} en ${cellRef(10, rowNumber)} est négatif.`,
+        action: 'Saisissez un montant positif.',
+      });
+    } else if (lineTotalRaw !== null) {
+      manualLineTotalDzd = lineTotalRaw;
+      if (lineTotalCell && !lineTotalCell.hasFormula) typedLineTotalCount += 1;
+    }
 
-    if (
-      lineTotalCell &&
-      !lineTotalCell.hasFormula &&
-      lineTotalCell.value !== null &&
-      normalizeString(lineTotalCell.value) !== ''
-    ) {
-      manualLineTotalDzd = parseInteger(lineTotalCell.value, 'Line Total', true);
-      if (!isExpense) {
-        warnings.push({
+    // A row that carries no product, no quantity, no price and no amount is
+    // not a line at all (rule 2 continuation with nothing on it). It must never
+    // become an invented transaction or a zero-value line.
+    const hasLineSubstance =
+      productName !== null ||
+      brand !== null ||
+      customDetails !== null ||
+      quantity !== null ||
+      unitPriceDzd !== null ||
+      manualLineTotalDzd !== null;
+
+    if (!hasLineSubstance) {
+      ignoredRowCount += 1;
+      addIssue(sink, {
+        severity: 'WARNING',
+        sheet: sheet.name,
+        row: rowNumber,
+        probleme:
+          pageNoVal !== null
+            ? `La ligne ${rowNumber} ne contient qu'un numéro de page (${pageNoVal}), sans produit ni montant.`
+            : `La ligne ${rowNumber} ne contient aucun produit ni montant.`,
+        action: 'Elle est ignorée : aucune opération ni ligne n\'a été créée. Complétez-la si un produit ou un montant manque.',
+      });
+      continue;
+    }
+
+    if (manualLineTotalDzd === null && lineTotalCell?.hasFormula) {
+      // A formula with no cached value: the file was written by a script and
+      // never opened in Excel. PostgreSQL recomputes quantity x unit price.
+      addIssue(sink, {
+        severity: 'WARNING',
+        sheet: sheet.name,
+        row: rowNumber,
+        column: 'Line Total',
+        probleme: `La formule du total en ${cellRef(10, rowNumber)} n'a pas de résultat enregistré.`,
+        action: 'Le total sera recalculé à partir de la quantité et du prix unitaire. Ouvrez le fichier dans Excel et enregistrez-le pour figer le montant du cahier.',
+      });
+    }
+
+    // Rule 5 / rule 9: an amount-only expense line is legitimate, but a line
+    // with no amount at all is a defect, never a silent zero.
+    if (isExpense) {
+      if (manualLineTotalDzd === null && (quantity === null || unitPriceDzd === null)) {
+        addIssue(sink, {
+          severity: 'ERROR',
           sheet: sheet.name,
           row: rowNumber,
           column: 'Line Total',
-          message: 'MANUAL_LINE_TOTAL_OVERRIDE: Line Total is a literal override instead of calculated formula.',
-        });
-      }
-    }
-
-    if (isExpense) {
-      if (qtyVal === null && unitPriceVal === null && manualLineTotalDzd === null) {
-        pushError(errors, {
-          sheet: sheet.name,
-          row: rowNumber,
-          message: 'Expense row requires Line Total when Quantity and Unit Price are blank.',
+          probleme: `La dépense de la ligne ${rowNumber} n'a pas de montant en ${cellRef(10, rowNumber)}.`,
+          action: 'Saisissez le montant de la dépense dans la colonne Line Total.',
         });
       }
     } else {
-      if (qtyVal === null && manualLineTotalDzd === null) {
-        pushError(errors, {
+      if (quantity === null && manualLineTotalDzd === null) {
+        addIssue(sink, {
+          severity: 'ERROR',
           sheet: sheet.name,
           row: rowNumber,
-          message: 'Quantity can only be blank if a valid manual Line Total is entered.',
+          column: 'Quantity',
+          probleme: `La ligne ${rowNumber} n'a ni quantité ni montant total.`,
+          action: 'Saisissez la quantité et le prix unitaire, ou à défaut le montant total de la ligne.',
         });
       }
-      if (!productName) {
-        warnings.push({
+      if (unitPriceDzd === null && manualLineTotalDzd === null) {
+        addIssue(sink, {
+          severity: 'ERROR',
           sheet: sheet.name,
           row: rowNumber,
-          column: 'Product Name',
-          message: 'MISSING_PRODUCT_NAME: Product Name is blank.',
+          column: 'Unit Price',
+          probleme: `La ligne ${rowNumber} n'a ni prix unitaire ni montant total.`,
+          action: 'Saisissez le prix unitaire, ou à défaut le montant total de la ligne.',
+        });
+      }
+      if (productName === null) {
+        addIssue(sink, {
+          severity: 'WARNING',
+          sheet: sheet.name,
+          row: rowNumber,
+          column: 'Product Name (Optional)',
+          probleme: `Le nom du produit est vide en ${cellRef(5, rowNumber)}.`,
+          action: 'Renseignez le produit pour que cette ligne compte dans le classement des meilleures ventes.',
         });
       }
     }
 
     activeTxn.lines.push({
       sourceRowNumber: rowNumber,
-      lineSequence: lineSeq,
+      lineSequence: activeTxn.lines.length + 1,
       productName,
       brand,
       customDetails,
-      partyCompany: lineParty,
-      manualBenefitDzd: lineBenefit,
-      quantity: qtyVal,
-      unitPriceDzd: unitPriceVal,
+      partyCompany: partyStr !== null ? partyStr : activeTxn.partyCompany,
+      manualBenefitDzd: activeTxn.transactionType === 'SALE' ? benefitVal : null,
+      quantity,
+      unitPriceDzd,
       manualLineTotalDzd,
     });
-
-    // Re-aggregate transaction-level manual benefit for SALE transactions
-    if (activeTxn.transactionType === 'SALE') {
-      const nonNullBenefits = activeTxn.lines
-        .map((l) => l.manualBenefitDzd)
-        .filter((b): b is number => b !== null);
-      activeTxn.manualBenefitDzd = nonNullBenefits.length > 0
-        ? nonNullBenefits.reduce((sum, val) => sum + val, 0)
-        : null;
-    }
   }
 
-  return transactions;
+  return { transactions, dataRowCount, ignoredRowCount, typedLineTotalCount };
 }
 
-export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkbookData> {
+export async function parsePaperBookWorkbook(
+  file: File,
+  today: string = todayIso(),
+): Promise<PaperBookWorkbookData> {
   if (!file.name.toLowerCase().endsWith('.xlsx')) {
     throw new WorkbookParseError('Select an .xlsx file created from the Stockiha paper-book template.');
   }
@@ -1013,48 +1457,41 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
     throw new WorkbookParseError('The paper-book workbook must contain a Transactions sheet.');
   }
 
-  const errors: HistoricalFinanceImportError[] = [];
-  const warnings: HistoricalFinanceImportError[] = [];
+  const sink: PaperBookIssueSink = { errors: [], warnings: [], issues: [] };
   const profile = assertPaperBookHeaders(transactionSheet);
-  const transactions = parsePaperBookSheet(transactionSheet, errors, warnings, profile);
+  const outcome = parsePaperBookSheet(transactionSheet, sink, profile, today);
+  const { transactions } = outcome;
 
   const contentHash = await computeContentHash(transactions);
 
-  // Compute summary stats
+  // Counts only — never money. Totals are computed by PostgreSQL from the
+  // staged rows, in exact decimal arithmetic.
   let lineCount = 0;
   let salesCount = 0;
   let purchaseCount = 0;
   let expenseCount = 0;
-  let totalSalesDzd = 0;
-  let totalPurchasesDzd = 0;
-  let totalExpensesDzd = 0;
-  let paidSalesDzd = 0;
-  let unpaidSalesDzd = 0;
-  let paidPurchasesDzd = 0;
-  let unpaidPurchasesDzd = 0;
-  let paidExpensesDzd = 0;
-  let unpaidExpensesDzd = 0;
-  let manualBenefitCount = 0;
-  let totalManualBenefitDzd = 0;
   let salesWithManualBenefitCount = 0;
   let salesWithoutManualBenefitCount = 0;
+  let benefitZeroCount = 0;
+  let benefitNegativeCount = 0;
+  let benefitPositiveCount = 0;
   let minDate: string | null = null;
   let maxDate: string | null = null;
-  let manualOverrideCount = 0;
   let missingQtyCount = 0;
 
   transactions.forEach((t) => {
-    if (!minDate || t.transactionDate < minDate) minDate = t.transactionDate;
-    if (!maxDate || t.transactionDate > maxDate) maxDate = t.transactionDate;
+    if (minDate === null || t.transactionDate < minDate) minDate = t.transactionDate;
+    if (maxDate === null || t.transactionDate > maxDate) maxDate = t.transactionDate;
 
     if (t.transactionType === 'SALE') {
       salesCount += 1;
-      if (t.manualBenefitDzd !== null) {
-        manualBenefitCount += 1;
-        totalManualBenefitDzd += t.manualBenefitDzd;
-        salesWithManualBenefitCount += 1;
-      } else {
+      if (t.manualBenefitDzd === null) {
         salesWithoutManualBenefitCount += 1;
+      } else {
+        salesWithManualBenefitCount += 1;
+        if (isZeroDecimal(t.manualBenefitDzd)) benefitZeroCount += 1;
+        else if (isNegativeDecimal(t.manualBenefitDzd)) benefitNegativeCount += 1;
+        else benefitPositiveCount += 1;
       }
     } else if (t.transactionType === 'PURCHASE') {
       purchaseCount += 1;
@@ -1064,63 +1501,46 @@ export async function parsePaperBookWorkbook(file: File): Promise<PaperBookWorkb
 
     t.lines.forEach((l) => {
       lineCount += 1;
-      const calcTotal = l.quantity !== null && l.unitPriceDzd !== null ? l.quantity * l.unitPriceDzd : null;
-      const effTotal = l.manualLineTotalDzd !== null ? l.manualLineTotalDzd : calcTotal ?? 0;
-
-      if (t.transactionType === 'SALE') {
-        totalSalesDzd += effTotal;
-        if (t.paymentStatus === 'PAID') paidSalesDzd += effTotal;
-        else unpaidSalesDzd += effTotal;
-      } else if (t.transactionType === 'PURCHASE') {
-        totalPurchasesDzd += effTotal;
-        if (t.paymentStatus === 'PAID') paidPurchasesDzd += effTotal;
-        else unpaidPurchasesDzd += effTotal;
-      } else if (t.transactionType === 'EXPENSE') {
-        totalExpensesDzd += effTotal;
-        if (t.paymentStatus === 'PAID') paidExpensesDzd += effTotal;
-        else unpaidExpensesDzd += effTotal;
-      }
-
-      if (t.transactionType !== 'EXPENSE' && l.manualLineTotalDzd !== null) manualOverrideCount += 1;
       if (l.quantity === null) missingQtyCount += 1;
     });
   });
 
+  const errorCount = sink.issues.filter((issue) => issue.severity === 'ERROR').length;
+  const warningCount = sink.issues.filter((issue) => issue.severity === 'WARNING').length;
+  const infoCount = sink.issues.filter((issue) => issue.severity === 'INFO').length;
+
   const summary: PaperBookSummary = {
+    dataRowCount: outcome.dataRowCount,
+    ignoredRowCount: outcome.ignoredRowCount,
     transactionCount: transactions.length,
     lineCount,
     totalLines: lineCount,
     salesCount,
     purchaseCount,
     expenseCount,
-    totalSalesDzd,
-    totalPurchasesDzd,
-    totalExpensesDzd,
-    paidSalesDzd,
-    unpaidSalesDzd,
-    paidPurchasesDzd,
-    unpaidPurchasesDzd,
-    paidExpensesDzd,
-    unpaidExpensesDzd,
-    manualBenefitCount,
-    totalManualBenefitDzd,
+    manualBenefitCount: salesWithManualBenefitCount,
     salesWithManualBenefitCount,
     salesWithoutManualBenefitCount,
+    benefitZeroCount,
+    benefitNegativeCount,
+    benefitPositiveCount,
     minDate,
     maxDate,
     unmatchedProductCount: 0,
-    manualOverrideCount,
+    manualOverrideCount: outcome.typedLineTotalCount,
     missingQtyCount,
-    errorCount: errors.length,
-    warningCount: warnings.length,
-    isPartial: errors.length > 0,
+    errorCount,
+    warningCount,
+    infoCount,
+    isPartial: errorCount > 0,
     contentHash,
   };
 
   return {
     transactions,
-    errors,
-    warnings,
+    errors: sink.errors,
+    warnings: sink.warnings,
+    rowIssues: sink.issues,
     contentHash,
     summary,
   };

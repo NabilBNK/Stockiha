@@ -54,13 +54,14 @@ describe('historical finance onboarding', () => {
       transactions: [{
         sourceTransactionSequence: 1, sourceFirstExcelRow: 2, sourceExcelTxnRef: 'TX-1',
         transactionDate: '2025-01-10', transactionType: 'SALE', paymentStatus: 'PAID',
-        partyCompany: 'Customer A', manualBenefitDzd: null, pageNumber: 1,
-        lines: [{ sourceRowNumber: 2, lineSequence: 1, productName: 'Desk', brand: 'Stockiha', customDetails: null, partyCompany: null, manualBenefitDzd: 20000, quantity: 1, unitPriceDzd: 100000, manualLineTotalDzd: 100000 }],
+        partyCompany: 'Customer A', manualBenefitDzd: null, pageNumber: '1',
+        lines: [{ sourceRowNumber: 2, lineSequence: 1, productName: 'Desk', brand: 'Stockiha', customDetails: null, partyCompany: null, manualBenefitDzd: '20000', quantity: '1', unitPriceDzd: '100000', manualLineTotalDzd: '100000' }],
       }],
       errors: [],
       warnings: [],
+      rowIssues: [],
       contentHash: 'hash',
-      summary: { transactionCount: 1, totalLines: 1, lineCount: 1, totalSalesDzd: 100000, totalPurchasesDzd: 0, totalExpensesDzd: 0, paidSalesDzd: 100000, unpaidSalesDzd: 0, paidPurchasesDzd: 0, unpaidPurchasesDzd: 0, paidExpensesDzd: 0, unpaidExpensesDzd: 0, totalManualBenefitDzd: 20000, isPartial: false, contentHash: 'hash' },
+      summary: { dataRowCount: 1, ignoredRowCount: 0, transactionCount: 1, totalLines: 1, lineCount: 1, salesCount: 1, purchaseCount: 0, expenseCount: 0, manualBenefitCount: 1, salesWithManualBenefitCount: 1, salesWithoutManualBenefitCount: 0, benefitZeroCount: 0, benefitNegativeCount: 0, benefitPositiveCount: 1, minDate: '2025-01-10', maxDate: '2025-01-10', unmatchedProductCount: 0, manualOverrideCount: 1, missingQtyCount: 0, errorCount: 0, warningCount: 0, infoCount: 0, isPartial: false, contentHash: 'hash' },
     });
 
     const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
@@ -119,7 +120,8 @@ describe('historical finance onboarding', () => {
       sessionToken: 'session-token',
       request: {
         batchId: 7,
-        transactions: [{ sourceExcelTxnRef: 'TX-1', lines: [{ productName: 'Desk', manualBenefitDzd: 20000 }] }],
+        // Money crosses the IPC boundary as exact decimal strings.
+        transactions: [{ sourceExcelTxnRef: 'TX-1', lines: [{ productName: 'Desk', manualBenefitDzd: '20000', quantity: '1', unitPriceDzd: '100000', manualLineTotalDzd: '100000' }] }],
       },
     });
 

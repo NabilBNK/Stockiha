@@ -13,8 +13,8 @@ import type { HistoricalTableRow } from '../src/features/onboarding/historicalTa
 import type { HistoricalTradeAnalyticsResult } from '../src/shared/ipc/onboardingDto';
 
 const rows: HistoricalTableRow[] = [
-  { transactionSequence: 2, lineSequence: 1, row: 3, reference: 'TX-3', date: '2024-01-05', type: 'PURCHASE', payment: 'UNPAID', party: 'Supplier', product: 'Item 20', brand: null, details: null, quantity: 10, unitPrice: 20, lineTotal: 200, benefit: null },
-  { transactionSequence: 1, lineSequence: 1, row: 2, reference: 'TX-20', date: '2025-12-20', type: 'SALE', payment: 'PAID', party: 'Customer', product: 'Item 100', brand: 'B', details: null, quantity: 2, unitPrice: 100, lineTotal: 200, benefit: 500 },
+  { transactionSequence: 2, lineSequence: 1, row: 3, reference: 'TX-3', date: '2024-01-05', type: 'PURCHASE', payment: 'UNPAID', party: 'Supplier', product: 'Item 20', brand: null, details: null, quantity: '10', unitPrice: '20', lineTotal: '200', benefit: null },
+  { transactionSequence: 1, lineSequence: 1, row: 2, reference: 'TX-20', date: '2025-12-20', type: 'SALE', payment: 'PAID', party: 'Customer', product: 'Item 100', brand: 'B', details: null, quantity: '2', unitPrice: '100', lineTotal: '200', benefit: '500' },
 ];
 
 describe('historical exports', () => {

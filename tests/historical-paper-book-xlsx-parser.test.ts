@@ -142,6 +142,10 @@ function numberCell(column: number, row: number, value: number, formula?: string
   return `<c r="${columnName(column)}${row}">${formula ? `<f>${escapeXml(formula)}</f>` : ''}<v>${value}</v></c>`;
 }
 
+function formulaCellWithoutCachedValue(column: number, row: number, formula: string): string {
+  return `<c r="${columnName(column)}${row}"><f>${escapeXml(formula)}</f></c>`;
+}
+
 function rowXml(row: number, cells: string[]): string {
   return `<row r="${row}">${cells.join('')}</row>`;
 }
@@ -153,7 +157,7 @@ function worksheet(rows: string[]): string {
 </worksheet>`;
 }
 
-function createPaperBookFile(rowSpecs: Array<Record<number, { val: string | number; formula?: string }>>): File {
+function createPaperBookFile(rowSpecs: Array<Record<number, { val: string | number | null; formula?: string }>>): File {
   const headerCells = PAPER_BOOK_HEADERS.map((h, idx) => stringCell(idx, 1, h));
   const rowsXml: string[] = [rowXml(1, headerCells)];
 
@@ -162,7 +166,9 @@ function createPaperBookFile(rowSpecs: Array<Record<number, { val: string | numb
     const cells: string[] = [];
     Object.entries(spec).forEach(([colStr, item]) => {
       const col = Number(colStr);
-      if (typeof item.val === 'number') {
+      if (item.val === null) {
+        cells.push(formulaCellWithoutCachedValue(col, rowNum, item.formula ?? ''));
+      } else if (typeof item.val === 'number') {
         cells.push(numberCell(col, rowNum, item.val, item.formula));
       } else {
         cells.push(stringCell(col, rowNum, item.val));
@@ -199,7 +205,7 @@ function createPaperBookFile(rowSpecs: Array<Record<number, { val: string | numb
   } as File;
 }
 
-function createPaperBookV2File(rowSpecs: Array<Record<number, { val: string | number; formula?: string }>>): File {
+function createPaperBookV2File(rowSpecs: Array<Record<number, { val: string | number | null; formula?: string }>>): File {
   const headerCells = [
     'Txn No. (Auto)',
     'Date',
@@ -222,7 +228,9 @@ function createPaperBookV2File(rowSpecs: Array<Record<number, { val: string | nu
     const cells: string[] = [];
     Object.entries(spec).forEach(([colStr, item]) => {
       const col = Number(colStr);
-      if (typeof item.val === 'number') {
+      if (item.val === null) {
+        cells.push(formulaCellWithoutCachedValue(col, rowNum, item.formula ?? ''));
+      } else if (typeof item.val === 'number') {
         cells.push(numberCell(col, rowNum, item.val, item.formula));
       } else {
         cells.push(stringCell(col, rowNum, item.val));
@@ -270,7 +278,7 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
       { 0: { val: 'TX-002' }, 1: { val: '16/03/2025' }, 2: { val: 'Buy' }, 3: { val: 'Not Paid' }, 4: { val: 'XYZ' }, 5: { val: 'Lamp' }, 8: { val: 3 }, 9: { val: 2500 }, 10: { val: 7500, formula: 'I4*J4' } },
     ]);
 
-    const parsed = await parsePaperBookWorkbook(file);
+    const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
 
     expect(parsed.errors).toEqual([]);
     expect(parsed.transactions.length).toBe(2);
@@ -283,11 +291,13 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
     expect(t1.partyCompany).toBe('ABC');
     expect(t1.lines.length).toBe(2);
     expect(t1.lines[0].productName).toBe('Chair');
-    expect(t1.lines[0].quantity).toBe(2);
-    expect(t1.lines[0].unitPriceDzd).toBe(5000);
-    expect(t1.lines[0].manualLineTotalDzd).toBeNull(); // formula cell -> calculated
+    expect(t1.lines[0].quantity).toBe('2');
+    expect(t1.lines[0].unitPriceDzd).toBe('5000');
+    // Rule 4: the CACHED value of the =I*J formula wins and is carried as an
+    // exact decimal string. It is never recomputed in TypeScript.
+    expect(t1.lines[0].manualLineTotalDzd).toBe('10000');
     expect(t1.lines[1].productName).toBe('Table');
-    expect(t1.lines[1].quantity).toBe(1);
+    expect(t1.lines[1].quantity).toBe('1');
 
     // Txn 2
     const t2 = parsed.transactions[1];
@@ -299,31 +309,49 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
 
     expect(parsed.summary.transactionCount).toBe(2);
     expect(parsed.summary.lineCount).toBe(3);
-    expect(parsed.summary.totalSalesDzd).toBe(22000);
-    expect(parsed.summary.totalPurchasesDzd).toBe(7500);
+    expect(parsed.summary.dataRowCount).toBe(3);
+    // The browser holds no monetary total at all.
+    expect('totalSalesDzd' in parsed.summary).toBe(false);
   });
 
-  it('detects orphan product line error when row 2 has blank Date', async () => {
+  it('reports a data row with no transaction above it as an ignored row, not a crash', async () => {
     const file = createPaperBookFile([
-      // Row 2: Blank Date orphan row
+      // Row 2: Blank Type orphan row
       { 5: { val: 'Orphan Chair' }, 8: { val: 2 }, 9: { val: 5000 } },
     ]);
 
-    const parsed = await parsePaperBookWorkbook(file);
-    expect(parsed.errors.length).toBe(1);
-    expect(parsed.errors[0].message).toContain('ORPHAN_PRODUCT_LINE');
+    const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.transactions).toEqual([]);
+    const issue = parsed.rowIssues.find((i) => i.row === 2);
+    expect(issue?.severity).toBe('WARNING');
+    expect(issue?.probleme).toContain('aucune opération');
+    expect(parsed.summary.ignoredRowCount).toBe(1);
   });
 
-  it('supports literal Line Total as manual override and generates warning', async () => {
+  it('lets a hand-typed Line Total win over quantity x unit price', async () => {
     const file = createPaperBookFile([
-      // Qty=10, Price=500 -> Calc=5000, Literal Total=4500 (NO formula tag)
+      // Qty=10, Price=500 -> would be 5000, but the paper says 4500.
       { 0: { val: 'TX-001' }, 1: { val: '15/03/2025' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 5: { val: 'Desk' }, 8: { val: 10 }, 9: { val: 500 }, 10: { val: 4500 } },
     ]);
 
-    const parsed = await parsePaperBookWorkbook(file);
+    const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
     expect(parsed.errors).toEqual([]);
-    expect(parsed.transactions[0].lines[0].manualLineTotalDzd).toBe(4500);
-    expect(parsed.warnings.some((w) => w.message.includes('MANUAL_LINE_TOTAL_OVERRIDE'))).toBe(true);
+    expect(parsed.transactions[0].lines[0].manualLineTotalDzd).toBe('4500');
+    expect(parsed.summary.manualOverrideCount).toBe(1);
+  });
+
+  it('warns and falls back to the database calculation when a formula has no cached value', async () => {
+    const file = createPaperBookFile([
+      { 0: { val: 'TX-001' }, 1: { val: '15/03/2025' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 5: { val: 'Desk' }, 8: { val: 10 }, 9: { val: 500 }, 10: { val: null, formula: 'I2*J2' } },
+    ]);
+
+    const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.transactions[0].lines[0].manualLineTotalDzd).toBeNull();
+    const issue = parsed.rowIssues.find((i) => i.row === 2 && i.column === 'Line Total');
+    expect(issue?.severity).toBe('WARNING');
+    expect(issue?.probleme).toContain('pas de résultat enregistré');
   });
 
   it('parses PAPER_BOOK_V2 contract with same date multi-txns, signed benefit, and expenses', async () => {
@@ -337,39 +365,40 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
       // Txn 4: 15/04/2026 Expense (SAME DATE) with no Qty/Price, literal Line Total=3500
       { 0: { val: 'TX-004' }, 1: { val: '15/04/2026' }, 2: { val: 'Expense' }, 3: { val: 'Paid' }, 7: { val: 'Transport' }, 10: { val: 3500 } },
       // Unused formula row: Column A & Column K formulas, but blank content
-      { 0: { val: '', formula: 'IF(C6<>"","TX-005","")' }, 10: { val: '', formula: 'I6*J6' } },
+      { 0: { val: '', formula: 'IF(C6<>"","TX-005","")' }, 10: { val: null, formula: 'I6*J6' } },
     ]);
 
-    const parsed = await parsePaperBookWorkbook(file);
+    const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
     expect(parsed.errors).toEqual([]);
     expect(parsed.transactions.length).toBe(4);
 
     // Txn 1: Sell + Positive Benefit
     expect(parsed.transactions[0].transactionType).toBe('SALE');
-    expect(parsed.transactions[0].manualBenefitDzd).toBe(14500);
+    expect(parsed.transactions[0].manualBenefitDzd).toBe('14500');
+    expect(parsed.transactions[0].pageNumber).toBe('42');
 
     // Txn 2: Sell + Negative Benefit
     expect(parsed.transactions[1].transactionType).toBe('SALE');
-    expect(parsed.transactions[1].manualBenefitDzd).toBe(-2500);
+    expect(parsed.transactions[1].manualBenefitDzd).toBe('-2500');
 
     // Txn 3: Buy
     expect(parsed.transactions[2].transactionType).toBe('PURCHASE');
     expect(parsed.transactions[2].manualBenefitDzd).toBeNull();
+    expect(parsed.transactions[2].lines[0].manualLineTotalDzd).toBeNull();
 
-    // Txn 4: Expense
+    // Txn 4: Expense — amount-only line, no invented Quantity=1 (rule 5)
     expect(parsed.transactions[3].transactionType).toBe('EXPENSE');
     expect(parsed.transactions[3].lines[0].quantity).toBeNull();
     expect(parsed.transactions[3].lines[0].unitPriceDzd).toBeNull();
-    expect(parsed.transactions[3].lines[0].manualLineTotalDzd).toBe(3500);
+    expect(parsed.transactions[3].lines[0].manualLineTotalDzd).toBe('3500');
 
-    // Summary stats
+    // The trailing formula-only row creates nothing at all.
+    expect(parsed.summary.dataRowCount).toBe(4);
     expect(parsed.summary.salesCount).toBe(2);
     expect(parsed.summary.purchaseCount).toBe(1);
     expect(parsed.summary.expenseCount).toBe(1);
-    expect(parsed.summary.totalSalesDzd).toBe(55000);
-    expect(parsed.summary.totalPurchasesDzd).toBe(15000);
-    expect(parsed.summary.totalExpensesDzd).toBe(3500);
-    expect(parsed.summary.totalManualBenefitDzd).toBe(12000);
+    expect(parsed.summary.benefitPositiveCount).toBe(1);
+    expect(parsed.summary.benefitNegativeCount).toBe(1);
   });
 
   it('rejects Benefit on Buy or Expense transactions', async () => {
@@ -377,9 +406,11 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
       { 0: { val: 'TX-001' }, 1: { val: '15/04/2026' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 5: { val: 'Wood' }, 8: { val: 1 }, 9: { val: 5000 }, 11: { val: 1000 } },
     ]);
 
-    const parsed = await parsePaperBookWorkbook(file);
+    const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
     expect(parsed.errors.length).toBe(1);
-    expect(parsed.errors[0].message).toContain('BENEFIT_NOT_ALLOWED_FOR_NON_SALE');
+    const issue = parsed.rowIssues.find((i) => i.column === 'Benefit (Sell Only)');
+    expect(issue?.severity).toBe('ERROR');
+    expect(issue?.probleme).toContain('bénéfice');
   });
 
   it('computes deterministic SHA-256 content hash including manual benefit', async () => {
@@ -387,65 +418,49 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
       { 0: { val: 'TX-001' }, 1: { val: '15/04/2026' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 5: { val: 'Desk' }, 8: { val: 1 }, 9: { val: 5000 }, 11: { val: 1500 } },
     ]);
 
-    const parsed = await parsePaperBookWorkbook(file);
+    const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
     expect(parsed.contentHash.length).toBe(64);
 
     const recomputed = await computeContentHash(parsed.transactions);
     expect(recomputed).toBe(parsed.contentHash);
   });
 
-  it('asserts exact Section 13 sample totals when Row 6 date is corrected to 23/11/2025', async () => {
+  it('keeps every amount as the exact characters the workbook stores', async () => {
     const file = createPaperBookV2File([
-      // TX-000001 (BUY) - Row 2 to 5
       { 0: { val: 'TX-000001' }, 1: { val: '22/10/2025' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 4: { val: 'AK home' }, 5: { val: 'kowat' }, 6: { val: 'AK' }, 7: { val: '2 pers' }, 8: { val: 10 }, 9: { val: 2000 }, 12: { val: 2 } },
       { 4: { val: 'Rozana' }, 5: { val: 'kowat' }, 6: { val: 'rozana' }, 7: { val: '1 person' }, 8: { val: 5 }, 9: { val: 1500 } },
-      { 4: { val: 'Dolz' }, 5: { val: 'ouess' }, 6: { val: 'Dolz' }, 8: { val: 4 }, 9: { val: 500 } },
-      { 4: { val: 'Dolz' }, 5: { val: 'pillow' }, 6: { val: 'Dolz' }, 8: { val: 8 }, 9: { val: 1750 } },
-      // TX-000002 (SELL) - Row 6 (Corrected Date: 23/11/2025)
       { 0: { val: 'TX-000002' }, 1: { val: '23/11/2025' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 4: { val: 'anis' }, 5: { val: 'kowat' }, 6: { val: 'rozana' }, 8: { val: 15 }, 9: { val: 2000 }, 11: { val: 7000 } },
-      // TX-000003 (SELL) - Row 7 to 8
       { 0: { val: 'TX-000003' }, 1: { val: '26/12/2025' }, 2: { val: 'Sell' }, 3: { val: 'Not Paid' }, 4: { val: 'zakou' }, 5: { val: 'ouess' }, 6: { val: 'Dolz' }, 8: { val: 2 }, 9: { val: 800 }, 11: { val: 500 } },
+      // Rule 3: a continuation row must not carry its own Benefit.
       { 5: { val: 'kowat' }, 6: { val: 'rozana' }, 8: { val: 5 }, 9: { val: 2000 }, 11: { val: 2500 } },
-      // TX-000004 (EXPENSE) - Row 9
       { 0: { val: 'TX-000004' }, 1: { val: '29/12/2025' }, 2: { val: 'Expense' }, 3: { val: 'Paid' }, 7: { val: 'food' }, 10: { val: 500 } },
     ]);
 
-    const parsed = await parsePaperBookWorkbook(file);
+    const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
 
     expect(parsed.errors).toEqual([]);
     expect(parsed.summary.isPartial).toBe(false);
     expect(parsed.summary.transactionCount).toBe(4);
-    expect(parsed.summary.lineCount).toBe(8);
+    expect(parsed.summary.lineCount).toBe(6);
     expect(parsed.summary.purchaseCount).toBe(1);
     expect(parsed.summary.salesCount).toBe(2);
     expect(parsed.summary.expenseCount).toBe(1);
-
-    expect(parsed.summary.totalPurchasesDzd).toBe(43500);
-    expect(parsed.summary.totalSalesDzd).toBe(41600);
-    expect(parsed.summary.totalExpensesDzd).toBe(500);
-    expect(parsed.summary.totalManualBenefitDzd).toBe(10000);
-
-    expect(parsed.summary.paidSalesDzd).toBe(30000);
-    expect(parsed.summary.unpaidSalesDzd).toBe(11600);
-    expect(parsed.summary.paidPurchasesDzd).toBe(43500);
-    expect(parsed.summary.unpaidPurchasesDzd).toBe(0);
-    expect(parsed.summary.paidExpensesDzd).toBe(500);
-    expect(parsed.summary.unpaidExpensesDzd).toBe(0);
-
     expect(parsed.summary.minDate).toBe('2025-10-22');
     expect(parsed.summary.maxDate).toBe('2025-12-29');
 
-    // Line-level party assertions on TX-000001
     const t1 = parsed.transactions[0];
+    expect(t1.lines.map((l) => l.quantity)).toEqual(['10', '5']);
+    expect(t1.lines.map((l) => l.unitPriceDzd)).toEqual(['2000', '1500']);
     expect(t1.lines[0].partyCompany).toBe('AK home');
     expect(t1.lines[1].partyCompany).toBe('Rozana');
-    expect(t1.lines[2].partyCompany).toBe('Dolz');
-    expect(t1.lines[3].partyCompany).toBe('Dolz');
 
-    // Line-level benefit assertions on TX-000003
+    // Rule 3/6: the transaction benefit is the one written on its first row.
+    // The stray benefit on the continuation row is reported, not summed in.
     const t3 = parsed.transactions[2];
-    expect(t3.lines[0].manualBenefitDzd).toBe(500);
-    expect(t3.lines[1].manualBenefitDzd).toBe(2500);
-    expect(t3.manualBenefitDzd).toBe(3000);
+    expect(t3.manualBenefitDzd).toBe('500');
+    const strayBenefit = parsed.rowIssues.find(
+      (i) => i.row === 6 && i.column === 'Benefit (Sell Only)',
+    );
+    expect(strayBenefit?.severity).toBe('WARNING');
   });
 });

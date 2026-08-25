@@ -4,6 +4,7 @@ import type { PaperBookTransaction } from './xlsxParser';
 import {
   filterHistoricalRows,
   flattenHistoricalTransactions,
+  formatExactAmount,
   historicalRowsKpis,
   nextHistoricalSort,
   sortHistoricalRows,
@@ -87,8 +88,10 @@ export function HistoricalRowPreview({ transactions, locale, isPartial = false, 
 
   useEffect(() => onRowsChange?.(visibleRows), [onRowsChange, visibleRows]);
 
-  const formatDzd = (amount: number | null) =>
-    amount === null ? '—' : `${new Intl.NumberFormat(locale).format(amount)} DZD`;
+  const formatDzd = (amount: string | null) => {
+    const formatted = formatExactAmount(amount, locale);
+    return formatted === null ? '—' : `${formatted} DZD`;
+  };
   const updateSort = (key: HistoricalTableSortKey) => setSort((current) => nextHistoricalSort(current, key));
 
   return (
@@ -173,12 +176,19 @@ export function HistoricalRowPreview({ transactions, locale, isPartial = false, 
           </tbody>
           {visibleRows.length > 0 && (
             <tfoot>
+              {/*
+                No monetary totals here on purpose: every total the owner sees
+                is computed by PostgreSQL in exact decimal arithmetic once the
+                rows are staged. The footer reports coverage only.
+              */}
               <tr>
-                <th colSpan={7}>{kpis.rowCount} {text.rows}</th>
-                <td className="sk-num"><strong>{new Intl.NumberFormat(locale).format(kpis.totalQuantity)}</strong></td>
+                <th colSpan={7}>
+                  {kpis.rowCount} {text.rows} · {kpis.transactionCount} {text.transactions}
+                </th>
+                <td className="sk-num sk-muted">{kpis.linesWithoutQuantity ? `−${kpis.linesWithoutQuantity}` : ''}</td>
                 <td />
-                <td className="sk-num"><strong>{formatDzd(kpis.totalValueDzd)}</strong></td>
-                <td className="sk-num"><strong>{formatDzd(kpis.totalBenefitDzd)}</strong></td>
+                <td className="sk-num sk-muted">{kpis.linesWithoutAmount ? `−${kpis.linesWithoutAmount}` : ''}</td>
+                <td className="sk-num sk-muted">{kpis.linesWithoutBenefit ? `−${kpis.linesWithoutBenefit}` : ''}</td>
               </tr>
             </tfoot>
           )}

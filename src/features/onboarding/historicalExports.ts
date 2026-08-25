@@ -54,6 +54,18 @@ function cell(ref: string, value: string | number | null, style?: number): strin
   return `<c r="${ref}" t="inlineStr"${style ? ` s="${style}"` : ''}><is><t>${escapeXml(value)}</t></is></c>`;
 }
 
+/**
+ * Writes an exact decimal string straight into the cell's `<v>` element, so the
+ * exported workbook holds a real number without the value ever passing through
+ * a JavaScript float.
+ */
+function exactNumericCell(ref: string, value: string | null, style?: number): string {
+  if (value === null || !/^-?\d+(\.\d+)?$/.test(value)) {
+    return `<c r="${ref}"${style ? ` s="${style}"` : ''}/>`;
+  }
+  return `<c r="${ref}"${style ? ` s="${style}"` : ''}><v>${value}</v></c>`;
+}
+
 export const HISTORICAL_EXPORT_HEADERS = [
   'Source Row', 'Transaction Reference', 'Date', 'Type', 'Payment', 'Party / Company',
   'Product', 'Brand', 'Details', 'Quantity', 'Unit Price (DZD)', 'Line Total (DZD)', 'Benefit (DZD)',
@@ -71,6 +83,15 @@ export function buildHistoricalTableXlsx(rows: HistoricalTableRow[]): Uint8Array
     ];
     return `<row r="${number}">${values.map((value, index) => {
       const style = index === 2 && date !== null ? 2 : index >= 9 ? 3 : undefined;
+      // Columns 9..12 are quantity and money: exact decimal strings that must
+      // land in the workbook as numbers, not as text.
+      if (index >= 9) {
+        return exactNumericCell(
+          `${columnName(index)}${number}`,
+          value === null ? null : String(value),
+          style,
+        );
+      }
       return cell(`${columnName(index)}${number}`, value, style);
     }).join('')}</row>`;
   }).join('');
