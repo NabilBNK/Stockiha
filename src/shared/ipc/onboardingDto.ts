@@ -148,6 +148,13 @@ export type PaperBookTransactionType = 'SALE' | 'PURCHASE' | 'EXPENSE';
 export type PaperBookPaymentStatus = 'PAID' | 'UNPAID';
 export type PaperBookImportProfile = 'PAPER_BOOK_V1' | 'PAPER_BOOK_V2';
 
+/**
+ * Money and quantity cross the IPC boundary as EXACT DECIMAL STRINGS, never as
+ * JavaScript numbers. TypeScript reads the characters the workbook stores and
+ * hands them straight to PostgreSQL, which does every calculation in exact
+ * decimal arithmetic. `null` means the paper ledger left the cell blank, which
+ * is "unknown" — it is never a zero.
+ */
 export interface HistoricalTradeLineInput {
   sourceRowNumber: number;
   lineSequence: number;
@@ -155,10 +162,14 @@ export interface HistoricalTradeLineInput {
   brand: string | null;
   customDetails: string | null;
   partyCompany?: string | null;
-  manualBenefitDzd?: number | null;
-  quantity: number | null;
-  unitPriceDzd: number | null;
-  manualLineTotalDzd: number | null;
+  /** Exact decimal string, signed. `null` = not recorded on the paper. */
+  manualBenefitDzd?: string | null;
+  /** Exact decimal string. `null` = quantity not recorded. */
+  quantity: string | null;
+  /** Exact decimal string. `null` = unit price not recorded. */
+  unitPriceDzd: string | null;
+  /** Exact decimal string taken from column K. `null` = no amount in column K. */
+  manualLineTotalDzd: string | null;
 }
 
 export interface HistoricalTradeTransactionInput {
@@ -169,8 +180,10 @@ export interface HistoricalTradeTransactionInput {
   transactionType: PaperBookTransactionType;
   paymentStatus: PaperBookPaymentStatus;
   partyCompany: string | null;
-  manualBenefitDzd: number | null;
-  pageNumber: number | null;
+  /** Exact decimal string, signed. `null` = benefit unknown (not zero). */
+  manualBenefitDzd: string | null;
+  /** Exact whole-number string. `null` = no page number written. */
+  pageNumber: string | null;
   lines: HistoricalTradeLineInput[];
 }
 

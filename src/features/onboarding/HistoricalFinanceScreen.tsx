@@ -27,7 +27,7 @@ import { HistoricalAnalyticsDashboard } from './HistoricalAnalyticsDashboard';
 import { HistoricalImportPanel } from './HistoricalImportPanel';
 import { HistoricalImportStepper, type ImportStep } from './HistoricalImportStepper';
 import { HistoricalIssueList } from './HistoricalIssueList';
-import { HistoricalKpiCard } from './HistoricalKpiCard';
+import { HistoricalValidationReport } from './HistoricalValidationReport';
 import { HistoricalRowPreview } from './HistoricalRowPreview';
 import type { HistoricalTableRow } from './historicalTableModel';
 import { exportHistoricalAnalytics, exportHistoricalTable } from './historicalExports';
@@ -314,6 +314,7 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
   // Paper Book R0-002 State
   const [pbFile, setPbFile] = useState<File | null>(null);
   const [pbData, setPbData] = useState<PaperBookWorkbookData | null>(null);
+  const [pbWarningsConfirmed, setPbWarningsConfirmed] = useState(false);
   const [pbValidation, setPbValidation] = useState<HistoricalTradeValidationResult | null>(null);
   const [pbActiveBatchId, setPbActiveBatchId] = useState<number | null>(null);
   const [showConfirmApprovePaperBook, setShowConfirmApprovePaperBook] = useState(false);
@@ -344,14 +345,17 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
     };
   }, [sessionToken, errorText]);
 
+  // An ERROR blocks the import outright. A WARNING blocks it only until the
+  // owner has read the validation report and confirmed those rows.
   const canImportPaperBook = useMemo(
     () =>
       enabled &&
       pbData !== null &&
-      pbData.errors.length === 0 &&
+      pbData.summary.errorCount === 0 &&
+      (pbData.summary.warningCount === 0 || pbWarningsConfirmed) &&
       pbData.transactions.length > 0 &&
       busy === null,
-    [enabled, pbData, busy],
+    [enabled, pbData, pbWarningsConfirmed, busy],
   );
 
   // Workflow step determination
@@ -382,6 +386,7 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
   async function selectPaperBookFile(file: File | null) {
     setPbFile(file);
     setPbData(null);
+    setPbWarningsConfirmed(false);
     setPbValidation(null);
     setPbActiveBatchId(null);
     setError(null);
@@ -686,37 +691,54 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
           onFileSelect={(f) => void selectPaperBookFile(f)}
         />
 
-        {/* Parsed Summary KPI Cards */}
+        {/*
+          What was READ from the workbook — counts only. No monetary total is
+          computed in the browser: every figure the owner acts on comes back
+          from PostgreSQL after the rows are staged.
+        */}
         {pbData && (
-          <div className="sk-section-block">
-            <div className="sk-kpi-grid">
-              <HistoricalKpiCard
-                title={locale === 'ar' ? 'المبيعات المحسوبة' : 'Parsed Sales'}
-                value={pbData.summary.totalSalesDzd}
-                locale={locale}
-                tone="success"
-                badgeText={pbData.summary.paidSalesDzd > 0 ? 'Paid: ' + formatMoney(pbData.summary.paidSalesDzd, locale) : undefined}
-              />
-              <HistoricalKpiCard
-                title={locale === 'ar' ? 'المشتريات المحسوبة' : 'Parsed Purchases'}
-                value={pbData.summary.totalPurchasesDzd}
-                locale={locale}
-                tone="info"
-              />
-              <HistoricalKpiCard
-                title={locale === 'ar' ? 'المصاريف المحسوبة' : 'Parsed Expenses'}
-                value={pbData.summary.totalExpensesDzd}
-                locale={locale}
-                tone="warning"
-              />
-              <HistoricalKpiCard
-                title={locale === 'ar' ? 'الفائدة المسجلة' : 'Recorded Benefit (Sell Only)'}
-                value={pbData.summary.totalManualBenefitDzd}
-                locale={locale}
-                tone="primary"
-              />
-            </div>
+          <div className="sk-section-block" data-testid="paperbook-parse-summary">
+            <dl className="sk-fact-grid">
+              <div>
+                <dt>Lignes lues</dt>
+                <dd>{pbData.summary.dataRowCount}</dd>
+              </div>
+              <div>
+                <dt>Opérations</dt>
+                <dd>{pbData.summary.transactionCount}</dd>
+              </div>
+              <div>
+                <dt>Ventes / Achats / Dépenses</dt>
+                <dd>
+                  {pbData.summary.salesCount} / {pbData.summary.purchaseCount} /{' '}
+                  {pbData.summary.expenseCount}
+                </dd>
+              </div>
+              <div>
+                <dt>Lignes de produits</dt>
+                <dd>{pbData.summary.lineCount}</dd>
+              </div>
+              <div>
+                <dt>Lignes ignorées</dt>
+                <dd>{pbData.summary.ignoredRowCount}</dd>
+              </div>
+              <div>
+                <dt>Ventes avec bénéfice noté</dt>
+                <dd>
+                  {pbData.summary.salesWithManualBenefitCount} / {pbData.summary.salesCount}
+                </dd>
+              </div>
+            </dl>
           </div>
+        )}
+
+        {/* Per-row validation report, shown before anything is staged. */}
+        {pbData && (
+          <HistoricalValidationReport
+            issues={pbData.rowIssues}
+            warningsConfirmed={pbWarningsConfirmed}
+            onConfirmWarnings={setPbWarningsConfirmed}
+          />
         )}
 
         {/* Errors and Warnings List */}
