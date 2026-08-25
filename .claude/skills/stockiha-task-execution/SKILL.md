@@ -92,6 +92,20 @@ If you find an unrelated real problem: **report it in the Result Report, do not 
 
 ---
 
+## 3.5 Dashboard version bump rule
+
+**Every code change must also bump the `[ version = ... ]` string on the dashboard** (in `DashboardScreen.tsx` or equivalent). This allows manual Windows testing to confirm which build is actually running.
+
+When you modify any code:
+- Locate the dashboard version string (currently format: `[ version = X.Y.Z ]` or similar).
+- Increment it (typically patch version: X.Y.(Z+1)).
+- Include the version bump in the same commit as your feature/fix.
+- If you cannot find the version string, report this as a blocker.
+
+This is non-negotiable for Windows manual acceptance testing — testers need to verify they are actually running your new build.
+
+---
+
 ## 4. Stop conditions
 
 Fix ordinary problems yourself. Stop and escalate to the Lead Architect **only** for:

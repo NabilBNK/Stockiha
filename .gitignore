@@ -67,3 +67,8 @@ backups/
 *.sln
 *._gs
 .gemini/
+
+# Historical documentation and outdated design versions
+old_DESIGN.md
+old-documents/
+Folders/
