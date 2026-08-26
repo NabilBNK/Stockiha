@@ -9,7 +9,7 @@ use crate::domain::onboarding::{
     HistoricalFinanceBatchResult, HistoricalFinanceSettingResult, HistoricalFinanceSummaryRequest,
     HistoricalFinanceSummaryResult, HistoricalFinanceValidationResult,
     HistoricalProductAliasClearResult, HistoricalProductAliasWriteResult,
-    HistoricalProductMappingRequest, HistoricalTradeAnalyticsRequest,
+    HistoricalProductMappingRequest, HistoricalReportRequest, HistoricalTradeAnalyticsRequest,
     HistoricalTradeBatchDataResult, HistoricalTradeBatchResult, HistoricalTradeValidationResult,
     InventoryCorrectionsSettingResult, ReplaceHistoricalFinanceBatchDataRequest,
     ReplaceHistoricalTradeBatchDataRequest, UpdateHistoricalFinanceSettingRequest,
@@ -414,6 +414,52 @@ pub(crate) async fn get_historical_mapping_readiness(
             .fetch_one(pool)
             .await
             .map_err(AppError::from_posting_error)?;
+
+    Ok(result)
+}
+
+/// WS-I: one historical financial report.
+///
+/// The whole computation — cost of goods sold, the weighted average, the
+/// readiness gate, every total — happens inside the SQL function. This is a
+/// typed pass-through: it validates the shape and hands the exact-decimal JSON
+/// straight to the caller. It deliberately does not interpret, re-round or
+/// re-total anything, because Rust is not the authority for a financial figure.
+pub(crate) async fn get_historical_report(
+    pool: &PgPool,
+    session_token: &str,
+    request: HistoricalReportRequest,
+) -> Result<JsonValue, AppError> {
+    request.validate().map_err(validation_error)?;
+
+    let date_from = request.parsed_date_from().map_err(validation_error)?;
+    let date_to = request.parsed_date_to().map_err(validation_error)?;
+
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.get_historical_report($1, $2, $3, $4, $5)")
+            .bind(session_token)
+            .bind(request.normalized_code())
+            .bind(request.batch_id)
+            .bind(date_from)
+            .bind(date_to)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    Ok(result)
+}
+
+/// WS-I: the date span and batch the reports can currently cover, so the range
+/// filter can offer real bounds instead of asking the operator to guess.
+pub(crate) async fn get_historical_report_scope(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<JsonValue, AppError> {
+    let result: JsonValue = query_scalar("SELECT onboarding.get_historical_report_scope($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     Ok(result)
 }

@@ -527,6 +527,331 @@ export interface HistoricalProductMappingRequest {
   batchId: number;
 }
 
+/* -------------------------------------------------------------------------- */
+/* WS-I — historical financial reports                                        */
+/* -------------------------------------------------------------------------- */
+/* Every monetary field below is an EXACT DECIMAL STRING produced by
+ * PostgreSQL `numeric`, already rounded to 2 decimals for display. Never
+ * parse one into a JavaScript number to do arithmetic on it: the figures are
+ * computed in the database precisely so that no IEEE-754 double ever touches
+ * the customer's money. Format them, compare them, display them — do not add
+ * them up here. */
+
+export type HistoricalReportCode =
+  | 'PROFIT_AND_LOSS'
+  | 'MONTHLY_TREND'
+  | 'CUSTOMER_DEBT'
+  | 'PURCHASES'
+  | 'SALES'
+  | 'SELLERS'
+  | 'SUPPLIER_DEBT_AND_EXPENSES'
+  | 'STOCK_VALUATION';
+
+/**
+ * The reports whose figures are derived from a purchase cost. They are refused
+ * outright while the product mapping is incomplete, because an unresolved
+ * description has no cost source and the report would book a whole sale price
+ * as profit. Every other report reads amounts, parties and payment status only,
+ * which no mapping decision can change, so it stays available.
+ *
+ * This list mirrors the gate in `onboarding.get_historical_report`; the
+ * database decides, this constant only lets the screen explain.
+ */
+export const HISTORICAL_COST_DEPENDENT_REPORTS: readonly HistoricalReportCode[] = [
+  'PROFIT_AND_LOSS',
+  'MONTHLY_TREND',
+  'SELLERS',
+  'STOCK_VALUATION',
+];
+
+export interface HistoricalReportRequest {
+  reportCode: HistoricalReportCode;
+  /** `null` means "the most recent import". */
+  batchId?: number | null;
+  /** Inclusive `YYYY-MM-DD`; `null` means unbounded. */
+  dateFrom?: string | null;
+  dateTo?: string | null;
+}
+
+/** Report 1 — profit and loss over the selected period. */
+export interface HistoricalProfitAndLossReport {
+  revenueDzd: string;
+  purchasesDzd: string;
+  cogsDzd: string;
+  grossProfitDzd: string;
+  expensesDzd: string;
+  netProfitDzd: string;
+  /** The figure written by hand in the paper ledger's Benefit column. */
+  recordedBenefitDzd: string;
+  /** recordedBenefit − computed gross profit. Negative means the paper
+   *  under-recorded relative to the computed figure. */
+  gapVsGrossDzd: string;
+  gapVsNetDzd: string;
+  customerDebtDzd: string;
+  supplierDebtDzd: string;
+  unpaidExpensesDzd: string;
+  saleLineCount: number;
+  monthCount: number;
+  salesWithRecordedBenefitCount: number;
+  salesWithoutRecordedBenefitCount: number;
+
+  /* ---- the cost-free sales split ------------------------------------------
+   * The customer held stock before his paper records began, so some sales have
+   * no purchase to price them against. That is permanent, not a fixture quirk.
+   * `revenueWithCostDzd + revenueWithoutCostDzd === revenueDzd`, exactly, and
+   * `grossProfitOnCostedSalesDzd` applies ONLY to the first of the two. */
+  revenueWithCostDzd: string;
+  revenueWithoutCostDzd: string;
+  grossProfitOnCostedSalesDzd: string;
+  saleLinesWithCostCount: number;
+  saleLinesWithoutCostCount: number;
+  /** No purchase of that variant was recorded before the sale. */
+  costFreeNoPurchaseCount: number;
+  costFreeNoPurchaseValueDzd: string;
+  /** The quantity column was left blank, so no cost can be attributed either. */
+  costFreeNoQuantityCount: number;
+  costFreeNoQuantityValueDzd: string;
+
+  /** Same figures as `costFreeNoPurchase*`, under the names the first cut of
+   *  this screen used. */
+  saleLinesWithoutCostAtDateCount: number;
+  saleLinesWithoutCostAtDateValueDzd: string;
+  saleLinesWithoutQuantityCount: number;
+}
+
+/** Report 2 — one row per calendar month. */
+export interface HistoricalMonthlyTrendRow {
+  /** `YYYY-MM`. */
+  month: string;
+  purchasesDzd: string;
+  salesDzd: string;
+  cogsDzd: string;
+  grossProfitDzd: string;
+  expensesDzd: string;
+  netProfitDzd: string;
+  recordedBenefitDzd: string;
+  gapVsGrossDzd: string;
+  revenueWithCostDzd: string;
+  revenueWithoutCostDzd: string;
+  saleLinesWithoutCostAtDateCount: number;
+}
+
+/** Report 6 — customer debt. One lifetime balance per customer. */
+export interface HistoricalCustomerDebtRow {
+  /** `null` when the paper left the customer blank. */
+  party: string | null;
+  balanceDzd: string;
+  transactionCount: number;
+  oldestDate: string;
+  newestDate: string;
+}
+
+export interface HistoricalCustomerDebtReport {
+  rows: HistoricalCustomerDebtRow[];
+  totalDzd: string;
+  partyCount: number;
+  unspecifiedPartyBalanceDzd: string;
+  transactionCount: number;
+  /** Both always false: the paper ledger has no partial-payment concept and no
+   *  invoice ageing, so the report must not imply either exists. */
+  hasPartialPayments: boolean;
+  hasAgeing: boolean;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reports 3 and 4 — purchases and sales, grouped two ways                    */
+/* -------------------------------------------------------------------------- */
+/* `quantity` is an exact integer string, like every money field: it is summed
+ * in PostgreSQL and formatted here, never added up in JavaScript. */
+
+export interface HistoricalPartyGroupRow {
+  /** `null` when the paper left the supplier or customer blank. */
+  party: string | null;
+  totalDzd: string;
+  quantity: string;
+  lineCount: number;
+  transactionCount: number;
+}
+
+/** Every product row names the CANONICAL variant from the alias system, never
+ *  the raw transcribed text, so one product can never appear as two rows. */
+export interface HistoricalProductGroupRow {
+  canonicalKey: string;
+  /** The canonical key rendered for a human: `produit · marque · détail`. */
+  label: string;
+  totalDzd: string;
+  quantity: string;
+  lineCount: number;
+  transactionCount: number;
+}
+
+/** Report 3 — purchases by supplier and by product. */
+export interface HistoricalPurchasesReport {
+  bySupplier: HistoricalPartyGroupRow[];
+  byProduct: HistoricalProductGroupRow[];
+  totalDzd: string;
+  totalQuantity: string;
+  lineCount: number;
+  transactionCount: number;
+  supplierCount: number;
+  productCount: number;
+  unspecifiedSupplierTotalDzd: string;
+}
+
+/** Report 4 — sales by customer and by product. */
+export interface HistoricalSalesCustomerRow extends HistoricalPartyGroupRow {
+  unpaidDzd: string;
+}
+
+export interface HistoricalSalesReport {
+  byCustomer: HistoricalSalesCustomerRow[];
+  byProduct: HistoricalProductGroupRow[];
+  totalDzd: string;
+  totalQuantity: string;
+  lineCount: number;
+  transactionCount: number;
+  customerCount: number;
+  productCount: number;
+  unspecifiedCustomerTotalDzd: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Report 5 — best and worst sellers                                          */
+/* -------------------------------------------------------------------------- */
+
+export interface HistoricalSellerRow {
+  canonicalKey: string;
+  label: string;
+  quantitySold: string;
+  revenueDzd: string;
+  /** `null` — NOT zero — whenever the margin is unknown. A missing purchase
+   *  cost treated as zero would display the whole sale price as margin. */
+  cogsDzd: string | null;
+  marginDzd: string | null;
+  marginKnown: boolean;
+  saleLineCount: number;
+  linesWithoutCostCount: number;
+}
+
+export interface HistoricalSellersReport {
+  variantCount: number;
+  marginKnownCount: number;
+  marginUnknownCount: number;
+  rankingSize: number;
+  bestByQuantity: HistoricalSellerRow[];
+  worstByQuantity: HistoricalSellerRow[];
+  /** Only variants whose margin is known. The others are never ranked here. */
+  bestByMargin: HistoricalSellerRow[];
+  worstByMargin: HistoricalSellerRow[];
+  unknownMargin: HistoricalSellerRow[];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Report 7 — supplier debt and expenses                                      */
+/* -------------------------------------------------------------------------- */
+
+export interface HistoricalSupplierDebtReport {
+  rows: HistoricalCustomerDebtRow[];
+  totalDzd: string;
+  partyCount: number;
+  unspecifiedPartyBalanceDzd: string;
+  transactionCount: number;
+  hasPartialPayments: boolean;
+  hasAgeing: boolean;
+}
+
+export interface HistoricalExpenseCategoryRow {
+  /** The free text the customer actually wrote; `null` when he wrote nothing. */
+  category: string | null;
+  totalDzd: string;
+  unpaidDzd: string;
+  lineCount: number;
+  transactionCount: number;
+}
+
+export interface HistoricalExpensesReport {
+  rows: HistoricalExpenseCategoryRow[];
+  totalDzd: string;
+  unpaidTotalDzd: string;
+  categoryCount: number;
+  lineCount: number;
+  uncategorizedTotalDzd: string;
+  /** Always false: there is no expense taxonomy, only the customer's own words. */
+  hasCategoryTaxonomy: boolean;
+}
+
+export interface HistoricalSupplierDebtAndExpensesReport {
+  supplier: HistoricalSupplierDebtReport;
+  expenses: HistoricalExpensesReport;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Report 8 — stock on hand and valuation                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface HistoricalStockRow {
+  canonicalKey: string;
+  label: string;
+  quantity: string;
+  valueDzd: string;
+  /** `null` when the pool holds value but no counted units. */
+  unitCostDzd: string | null;
+}
+
+export interface HistoricalStockValuationReport {
+  /** The last transaction date in the batch. A stock level is a position, not
+   *  a flow, so the date range deliberately does not apply. */
+  asOfDate: string | null;
+  dateRangeApplies: boolean;
+  rows: HistoricalStockRow[];
+  variantCount: number;
+  totalQuantity: string;
+  totalValueDzd: string;
+  /** The self-proof: purchases − cost of goods sold − closing stock = 0, from
+   *  the UNROUNDED walk. This is an internal-consistency check, not a displayed
+   *  total, which is why it does not use the rounded monthly figures the
+   *  profit-and-loss headline sums. */
+  totalPurchasedDzd: string;
+  totalCogsDzd: string;
+  balanceResidualDzd: string;
+  balances: boolean;
+}
+
+export type HistoricalReportBody =
+  | HistoricalProfitAndLossReport
+  | HistoricalMonthlyTrendRow[]
+  | HistoricalCustomerDebtReport
+  | HistoricalPurchasesReport
+  | HistoricalSalesReport
+  | HistoricalSellersReport
+  | HistoricalSupplierDebtAndExpensesReport
+  | HistoricalStockValuationReport;
+
+export interface HistoricalReportEnvelope {
+  batchId: number | null;
+  reportCode: HistoricalReportCode;
+  dateFrom: string | null;
+  dateTo: string | null;
+  readiness: HistoricalMappingReadiness | null;
+  /** False whenever a COST-DEPENDENT report — see
+   *  `HISTORICAL_COST_DEPENDENT_REPORTS` — was asked for while the product
+   *  mapping is incomplete. `report` is then null and the caller MUST show the
+   *  readiness message instead of a number. The other reports read only
+   *  amounts, parties and payment status, so they stay renderable —
+   *  `readiness` still reports the unfinished mapping. */
+  canRender: boolean;
+  refusalReason: 'MAPPING_INCOMPLETE' | 'NO_BATCH' | null;
+  report: HistoricalReportBody | null;
+}
+
+export interface HistoricalReportScope {
+  batchId: number | null;
+  status: string | null;
+  minDate: string | null;
+  maxDate: string | null;
+  transactionCount: number;
+}
+
 export interface HistoricalTradeAnalyticsResult {
   overview: HistoricalTradeAnalyticsOverview;
   payment: HistoricalTradeAnalyticsPayment;

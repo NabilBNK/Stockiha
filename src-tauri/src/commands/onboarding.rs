@@ -8,7 +8,7 @@ use crate::domain::onboarding::{
     HistoricalFinanceBatchIdRequest, HistoricalFinanceBatchResult, HistoricalFinanceSettingResult,
     HistoricalFinanceSummaryRequest, HistoricalFinanceSummaryResult,
     HistoricalFinanceValidationResult, HistoricalProductAliasClearResult,
-    HistoricalProductAliasWriteResult, HistoricalProductMappingRequest,
+    HistoricalProductAliasWriteResult, HistoricalProductMappingRequest, HistoricalReportRequest,
     HistoricalTradeAnalyticsRequest, HistoricalTradeBatchDataResult, HistoricalTradeBatchResult,
     HistoricalTradeValidationResult, InventoryCorrectionsSettingResult,
     ReplaceHistoricalFinanceBatchDataRequest, ReplaceHistoricalTradeBatchDataRequest,
@@ -208,6 +208,29 @@ pub(crate) async fn get_historical_mapping_readiness(
 ) -> Result<JsonValue, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     onboarding::get_historical_mapping_readiness(pool, &session_token, request)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_historical_report(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: HistoricalReportRequest,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    onboarding::get_historical_report(pool, &session_token, request)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_historical_report_scope(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    onboarding::get_historical_report_scope(pool, &session_token)
         .await
         .map_err(IpcError::from)
 }

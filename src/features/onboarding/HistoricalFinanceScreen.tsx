@@ -28,6 +28,7 @@ import { HistoricalImportPanel } from './HistoricalImportPanel';
 import { HistoricalImportStepper, type ImportStep } from './HistoricalImportStepper';
 import { HistoricalIssueList } from './HistoricalIssueList';
 import { HistoricalProductMappingScreen } from './HistoricalProductMappingScreen';
+import { HistoricalReportsScreen } from './HistoricalReportsScreen';
 import { HistoricalValidationReport } from './HistoricalValidationReport';
 import { HistoricalRowPreview } from './HistoricalRowPreview';
 import type { HistoricalTableRow } from './historicalTableModel';
@@ -751,6 +752,14 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             sessionToken={sessionToken}
             batchId={pbActiveBatchId}
           />
+        )}
+
+        {/* WS-I: the reports over the recopied cahier. They sit directly under
+            the mapping screen because that is what gates them: a profit report
+            refuses to compute until every description is resolved, and the
+            operator has to be able to walk straight back up to fix it. */}
+        {pbActiveBatchId !== null && (
+          <HistoricalReportsScreen sessionToken={sessionToken} batchId={pbActiveBatchId} />
         )}
 
         {/* Errors and Warnings List */}
