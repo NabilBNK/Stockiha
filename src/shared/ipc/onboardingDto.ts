@@ -417,6 +417,116 @@ export interface HistoricalTradeManualOverrides {
   totalOverrideDifferenceDzd: number;
 }
 
+// --- R0-005 WS-G historical product description mapping ---
+
+/**
+ * What the administrator decided about one normalized historical description.
+ * `null` means he has not decided yet — nothing is ever decided for him.
+ */
+export type HistoricalProductMappingDecision =
+  | 'CANONICAL'
+  | 'MERGED'
+  | 'NEW_PRODUCT'
+  | 'IGNORED';
+
+export interface HistoricalProductRawVariant {
+  productName: string | null;
+  brand: string | null;
+  customDetails: string | null;
+}
+
+/**
+ * One distinct normalized description in the staged transcription.
+ *
+ * Money and quantity are EXACT DECIMAL STRINGS, never JavaScript numbers:
+ * PostgreSQL computed them and TypeScript only displays the characters.
+ */
+export interface HistoricalProductMappingRow {
+  normalizedKey: string;
+  canonicalKey: string;
+  decision: HistoricalProductMappingDecision | null;
+  isResolved: boolean;
+  displayProductName: string | null;
+  displayBrand: string | null;
+  displayCustomDetails: string | null;
+  /** Every raw spelling that normalizes to this key, as transcribed. */
+  rawVariants: HistoricalProductRawVariant[];
+  occurrenceCount: number;
+  buyLineCount: number;
+  sellLineCount: number;
+  appearsInBuy: boolean;
+  appearsInSell: boolean;
+  totalQuantity: string;
+  sellQuantity: string;
+  totalValueDzd: string;
+  buyValueDzd: string;
+  sellValueDzd: string;
+  /** True when at least one Buy line resolves to this canonical variant. */
+  hasCostSource: boolean;
+  firstSourceRow: number;
+}
+
+export interface HistoricalMappingReadiness {
+  batchId: number;
+  distinctDescriptionCount: number;
+  resolvedDescriptionCount: number;
+  /** Descriptions the administrator has not decided about yet. */
+  unresolvedDescriptionCount: number;
+  sellDescriptionCount: number;
+  unresolvedSellDescriptionCount: number;
+  distinctCanonicalVariantsSold: number;
+  /** Sold variants with no purchase line to take a cost from. */
+  sellWithoutCostSourceCount: number;
+  sellWithoutCostSourceValueDzd: string;
+  isComplete: boolean;
+}
+
+export interface HistoricalProductMappingResult {
+  batchId: number;
+  descriptions: HistoricalProductMappingRow[];
+  readiness: HistoricalMappingReadiness;
+}
+
+/** A grouping the screen proposes. It has no effect until it is confirmed. */
+export interface HistoricalProductMappingSuggestion {
+  kind: 'NORMALIZED_IDENTICAL' | 'FUZZY';
+  normalizedKey: string;
+  suggestedCanonicalKey: string;
+  distance: number;
+  rawVariants: HistoricalProductRawVariant[];
+}
+
+export interface HistoricalProductAliasDecisionInput {
+  normalizedKey: string;
+  rawSample?: string | null;
+  decision: HistoricalProductMappingDecision;
+  /** Required for `MERGED`; ignored otherwise. */
+  canonicalKey?: string | null;
+  note?: string | null;
+}
+
+export interface ApplyHistoricalProductAliasDecisionsRequest {
+  decisions: HistoricalProductAliasDecisionInput[];
+}
+
+export interface HistoricalProductAliasWriteResult {
+  appliedCount: number;
+  aliasCount: number;
+}
+
+export interface ClearHistoricalProductAliasRequest {
+  normalizedKey: string;
+}
+
+export interface HistoricalProductAliasClearResult {
+  removedCount: number;
+  aliasCount: number;
+}
+
+export interface HistoricalProductMappingRequest {
+  batchId: number;
+}
+
 export interface HistoricalTradeAnalyticsResult {
   overview: HistoricalTradeAnalyticsOverview;
   payment: HistoricalTradeAnalyticsPayment;

@@ -1,0 +1,625 @@
+[
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "bouti|ak home|",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "bouti|ak home|2p",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": false,
+        "appearsInSell": true,
+        "normalizedKey": "bouti|ak home|istambul 2p",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "bouti|ak home|istanbul 2p",
+        "occurrenceCount": 5,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "bouti|dolz|1p",
+        "occurrenceCount": 5,
+        "rawVariantCount": 2
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "bouti|rozana|",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "bouti|rozana|1p",
+        "occurrenceCount": 5,
+        "rawVariantCount": 2
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "bouti|rozana|2p",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": false,
+        "appearsInSell": true,
+        "normalizedKey": "couete||blanc 2.4",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": false,
+        "appearsInSell": true,
+        "normalizedKey": "couete|ak home|istanbul",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": false,
+        "appearsInSell": true,
+        "normalizedKey": "couete|ak home|uni 1p",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couette||1p",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette||blanc 2.4",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette||blanc 2.6",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couette||blanc polister",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couette||blanc polister 1p",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette||blanc polister 2.6",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couette||coton 2.4",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette||uni",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|",
+        "occurrenceCount": 5,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|1p",
+        "occurrenceCount": 18,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|240x220",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|2p",
+        "occurrenceCount": 12,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc 1.6",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couette|ak home|blanc 2.2",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc 2.4 2.2",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc 2.6 2.4",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc coton 2.2",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc coton 2.4",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc coton 2.6",
+        "occurrenceCount": 5,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc polinare",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc polister 1p",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc polister 2.2",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc polister 2.4",
+        "occurrenceCount": 6,
+        "rawVariantCount": 2
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|blanc polister 2.6",
+        "occurrenceCount": 5,
+        "rawVariantCount": 2
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|bossoft",
+        "occurrenceCount": 12,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couette|ak home|bossoft 1p",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|bossoft 2p",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|coton satin",
+        "occurrenceCount": 6,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couette|ak home|iatanbul 1p",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|istanbul",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|istanbul 1p",
+        "occurrenceCount": 9,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|istanbul 1p uni",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|istanbul 2p",
+        "occurrenceCount": 17,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|uni 1p",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|ak home|uni 2p",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|dolz|1p",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|dolz|3d",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|rozana|1p",
+        "occurrenceCount": 17,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|rozana|2p",
+        "occurrenceCount": 11,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couette|rozana|uni 1p",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couette|rozana|uni 2p",
+        "occurrenceCount": 5,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couvre lit|ak home|",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couvre lit|ak home|bossoft",
+        "occurrenceCount": 9,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couvre lit|ak home|bossoft 1p",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couvre lit|ak home|bossoft 2p",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couvre lit|ak home|bossoft 3p",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "couvre lit|ak home|bossoft 4p",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couvre lit|ak home|istanbul",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "couvre lit|ak home|istanbul 2p",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap housse||1.6",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "drap housse||1p",
+        "occurrenceCount": 1,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap housse||1p 0.9",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap housse|ak home|0.9",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap housse|ak home|1.6",
+        "occurrenceCount": 10,
+        "rawVariantCount": 2
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap housse|ak home|1.8",
+        "occurrenceCount": 6,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap housse|ak home|1p",
+        "occurrenceCount": 5,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap|ak home|1.6",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap|ak home|1.8",
+        "occurrenceCount": 8,
+        "rawVariantCount": 2
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap|ak home|1p",
+        "occurrenceCount": 8,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap|ak home|1p 0.9",
+        "occurrenceCount": 13,
+        "rawVariantCount": 3
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap|ak home|2p 1.6",
+        "occurrenceCount": 13,
+        "rawVariantCount": 2
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap|ak home|2p 1.8",
+        "occurrenceCount": 5,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap|ak home|drap 0.9",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap|ak home|istanbul 2p 1.6",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "drap|ak home|uni 2p",
+        "occurrenceCount": 7,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pic|ak home|",
+        "occurrenceCount": 8,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow couver||bossoft",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow couver|rozana|",
+        "occurrenceCount": 3,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow cover|ak home|",
+        "occurrenceCount": 8,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow cover|ak home|pic",
+        "occurrenceCount": 4,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow cover|dolz|",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": false,
+        "normalizedKey": "pillow cover|rozana|",
+        "occurrenceCount": 2,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow|ak home|",
+        "occurrenceCount": 10,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow|ak home|blanc",
+        "occurrenceCount": 9,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow|ak home|colored",
+        "occurrenceCount": 8,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow|rozana|",
+        "occurrenceCount": 10,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow|rozana|blanc",
+        "occurrenceCount": 7,
+        "rawVariantCount": 1
+    },
+    {
+        "appearsInBuy": true,
+        "appearsInSell": true,
+        "normalizedKey": "pillow|rozana|rolored",
+        "occurrenceCount": 8,
+        "rawVariantCount": 1
+    }
+]

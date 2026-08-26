@@ -2,15 +2,17 @@ use tauri::State;
 
 use crate::application::onboarding;
 use crate::domain::onboarding::{
+    ApplyHistoricalProductAliasDecisionsRequest, ClearHistoricalProductAliasRequest,
     CreateHistoricalFinanceBatchRequest, CreateHistoricalTradeBatchRequest,
     HistoricalFinanceApprovalResult, HistoricalFinanceBatchDataResult,
     HistoricalFinanceBatchIdRequest, HistoricalFinanceBatchResult, HistoricalFinanceSettingResult,
     HistoricalFinanceSummaryRequest, HistoricalFinanceSummaryResult,
-    HistoricalFinanceValidationResult, HistoricalTradeAnalyticsRequest,
-    HistoricalTradeBatchDataResult, HistoricalTradeBatchResult, HistoricalTradeValidationResult,
-    InventoryCorrectionsSettingResult, ReplaceHistoricalFinanceBatchDataRequest,
-    ReplaceHistoricalTradeBatchDataRequest, UpdateHistoricalFinanceSettingRequest,
-    UpdateInventoryCorrectionsSettingRequest,
+    HistoricalFinanceValidationResult, HistoricalProductAliasClearResult,
+    HistoricalProductAliasWriteResult, HistoricalProductMappingRequest,
+    HistoricalTradeAnalyticsRequest, HistoricalTradeBatchDataResult, HistoricalTradeBatchResult,
+    HistoricalTradeValidationResult, InventoryCorrectionsSettingResult,
+    ReplaceHistoricalFinanceBatchDataRequest, ReplaceHistoricalTradeBatchDataRequest,
+    UpdateHistoricalFinanceSettingRequest, UpdateInventoryCorrectionsSettingRequest,
 };
 use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
@@ -180,6 +182,56 @@ pub(crate) async fn get_historical_trade_analytics(
 ) -> Result<JsonValue, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     onboarding::get_historical_trade_analytics(pool, &session_token, request)
+        .await
+        .map_err(IpcError::from)
+}
+
+// --- R0-005 Historical product description mapping ---
+
+#[tauri::command]
+pub(crate) async fn get_historical_product_mapping(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: HistoricalProductMappingRequest,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    onboarding::get_historical_product_mapping(pool, &session_token, request)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_historical_mapping_readiness(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: HistoricalProductMappingRequest,
+) -> Result<JsonValue, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    onboarding::get_historical_mapping_readiness(pool, &session_token, request)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn apply_historical_product_alias_decisions(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: ApplyHistoricalProductAliasDecisionsRequest,
+) -> Result<HistoricalProductAliasWriteResult, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    onboarding::apply_historical_product_alias_decisions(pool, &session_token, request)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn clear_historical_product_alias(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: ClearHistoricalProductAliasRequest,
+) -> Result<HistoricalProductAliasClearResult, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    onboarding::clear_historical_product_alias(pool, &session_token, request)
         .await
         .map_err(IpcError::from)
 }
