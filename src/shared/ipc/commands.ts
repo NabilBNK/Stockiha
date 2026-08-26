@@ -60,6 +60,9 @@ export const COMMANDS = {
   GET_HISTORICAL_MAPPING_READINESS: 'get_historical_mapping_readiness',
   APPLY_HISTORICAL_PRODUCT_ALIAS_DECISIONS: 'apply_historical_product_alias_decisions',
   CLEAR_HISTORICAL_PRODUCT_ALIAS: 'clear_historical_product_alias',
+  // WS-I-1 — historical financial reports
+  GET_HISTORICAL_REPORT: 'get_historical_report',
+  GET_HISTORICAL_REPORT_SCOPE: 'get_historical_report_scope',
   // R5 — current opening-state reconciliation and one-time application
   GET_OPENING_STATE_SETTING: 'get_opening_state_setting',
   UPDATE_OPENING_STATE_SETTING: 'update_opening_state_setting',

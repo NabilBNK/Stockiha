@@ -187,3 +187,28 @@ export function clearHistoricalProductAlias(
   );
 }
 
+// ---------------------------------------------------------------------------
+// WS-I — historical financial reports
+// ---------------------------------------------------------------------------
+// Both calls return figures already computed in PostgreSQL `numeric` and
+// serialized as exact decimal strings. Nothing here re-totals or re-rounds.
+
+export function getHistoricalReport(
+  sessionToken: string,
+  request: import('./onboardingDto').HistoricalReportRequest,
+): Promise<import('./onboardingDto').HistoricalReportEnvelope> {
+  return call<import('./onboardingDto').HistoricalReportEnvelope>(COMMANDS.GET_HISTORICAL_REPORT, {
+    sessionToken,
+    request,
+  });
+}
+
+export function getHistoricalReportScope(
+  sessionToken: string,
+): Promise<import('./onboardingDto').HistoricalReportScope> {
+  return call<import('./onboardingDto').HistoricalReportScope>(
+    COMMANDS.GET_HISTORICAL_REPORT_SCOPE,
+    { sessionToken },
+  );
+}
+

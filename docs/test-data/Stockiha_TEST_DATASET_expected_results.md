@@ -34,13 +34,36 @@ Every figure below is computed with exact decimal arithmetic. A correct import +
 
 | Figure | Expected (DZD) |
 |---|---:|
-| Cost of goods sold | 3,132,961.61 |
-| **Gross profit** | **1,125,988.39** |
-| **Net profit (computed)** | **560,888.39** |
-| **Gap: recorded − computed gross** | **-429,288.39** |
-| Closing stock value | 16,747,548.39 |
-| Closing stock units | 5,442 |
+| Cost of goods sold | 2,839,167.30 |
+| **Gross profit** | **1,419,782.70** |
+| **Net profit (computed)** | **854,682.70** |
+| **Gap: recorded − computed gross** | **-723,082.70** |
+| Closing stock value | 17,041,342.70 |
+| Closing stock units | 5,513 |
 | Sell lines with no cost source | **0** — the deciding check for the mapping screen |
+| Sell lines with no cost *at their date* | **17**, worth 403,400.00 — see below |
+
+**Balance statement.** Cost of goods sold + closing stock value
+= 2,839,167.30 + 17,041,342.70 = **19,880,510.00** = total ever purchased.
+No fraction of a dinar is lost between what was bought, what was sold and what
+is still on the shelf. This identity is computed from the UNROUNDED walk and is
+an internal-consistency proof, not a displayed figure.
+
+**Sales with no purchase cost.** Under date-level ordering, 17 sell lines worth
+403,400.00 fall before any purchase of the same variant — the shop held stock
+before the paper records begin. Their revenue is part of Tier 1 total sales
+(3,855,550.00 with a cost + 403,400.00 without = 4,258,950.00) but they carry
+no cost and no margin. They must never be priced at zero.
+
+**Displayed profit-and-loss headline.** The application rounds each monthly row
+to 2 decimals and sums those rounded rows for the headline, so that a printed
+monthly table adds up to its own printed total. That makes the DISPLAYED
+headline COGS 2,839,167.31 / gross 1,419,782.69 / net 854,682.69 — one centime
+away from the exact figures above, which are rounded once from the unrounded
+total. Both are correct; they are two different computations (a displayed total
+that must equal the sum of displayed rows, and the exact arithmetic truth used
+for the balance statement). Check a report against the figure that matches what
+it claims to be.
 
 ## Monthly breakdown (Tier 2 — same convention applies)
 
@@ -97,24 +120,32 @@ Plus one REAL typo found in the customer's own purchase data (not injected): `ia
    `couvre-lit` -> `couvre lit`. This yields **83 purchased** and **72 sold**
    variants, with **zero** sell lines lacking a cost source.
 2. **Date corrections applied first:** row 6 -> 15/05/2025, row 83 -> 08/09/2025.
-3. **Ordering (fixture-specific):** group by calendar month. Within a month, apply
-   ALL purchases before ANY sale. Within the sales of a month, process in Date then
-   workbook-row order. Expenses last.
+3. **Ordering — strictly chronological, at DATE level.** Process by transaction
+   date; on the same date, ALL purchases before ANY sale; then workbook-row
+   order, then line order. A sale can never consume stock bought after it.
+   Expenses never enter the cost walk at all. This is the sole normative
+   ordering. The month-level grouping printed in revision 2 of this file was a
+   mistake in the document, not a property of the data, and is obsolete.
 4. **Arithmetic:** running WAC = pool value / pool quantity, rounded to 6 decimals.
    COGS per line = WAC x quantity, left UNROUNDED. When a sale empties a pool, COGS
    for that line = the entire remaining pool value, so no residue is orphaned.
    Round only final displayed totals, to 2 decimals.
 5. **Revenue** = the `Line Total` cell as written. Never Quantity x Unit Price.
 
-### Known limitation of this fixture
+## Revision history
 
-A production system should order strictly by date, purchases before sales on the
-same date. This fixture cannot verify that: its sales were generated month-by-month,
-so strict date ordering leaves 17 sell lines with no cost source and yields
-COGS 2,839,167.30. Implement date-level ordering in the real product; test Tier 2
-of THIS fixture against the month-level convention above. Tier 1 is unaffected by
-ordering and remains the primary gate. Regenerating the fixture to support
-date-level ordering is post-delivery work, not in scope now.
+- **Revision 3 (this file).** Corrects a mixed-convention bug present in revision 2:
+  the monthly breakdown table was already date-level, but the Tier 2 headline was
+  still month-level, so the two contradicted each other. Date-level ordering is now
+  the sole normative convention; Tier 2 has been restated accordingly
+  (COGS 2,839,167.30, closing stock 17,041,342.70 / 5,513 units), the balance
+  statement has been added, and the "Known limitation of this fixture" section has
+  been removed — it no longer applies. The monthly breakdown table and Tier 1 are
+  UNCHANGED from revision 2.
+- **Revision 2.** Corrected the Tier 2 figures of revision 1 and restated the monthly
+  breakdown table at date level. It carried no explicit revision marker; this
+  section is introduced in revision 3 and numbers the earlier states retrospectively.
+- **Revision 1.** First delivery, generated deterministically with seed 20260903.
 
 ## How to use this file
 

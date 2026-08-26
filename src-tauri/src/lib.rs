@@ -99,6 +99,8 @@ pub fn run() {
             commands::onboarding::get_historical_trade_analytics,
             commands::onboarding::get_historical_product_mapping,
             commands::onboarding::get_historical_mapping_readiness,
+            commands::onboarding::get_historical_report,
+            commands::onboarding::get_historical_report_scope,
             commands::onboarding::apply_historical_product_alias_decisions,
             commands::onboarding::clear_historical_product_alias,
             commands::opening_state::get_opening_state_setting,

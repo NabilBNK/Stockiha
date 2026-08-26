@@ -753,6 +753,86 @@ impl HistoricalProductMappingRequest {
     }
 }
 
+/// WS-I: which historical report to compute, over which period.
+///
+/// `batch_id` may be `None`, meaning "the most recent import". Both date bounds
+/// are optional and inclusive; `None` means unbounded, which is how the whole
+/// period is requested. The report code is validated again in SQL — this is a
+/// fail-fast convenience, never the authority.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalReportRequest {
+    pub(crate) report_code: String,
+    pub(crate) batch_id: Option<i64>,
+    pub(crate) date_from: Option<String>,
+    pub(crate) date_to: Option<String>,
+}
+
+/// The eight core historical reports. This list is a fail-fast convenience; the
+/// SQL entry point validates the code again and is the authority.
+pub(crate) const HISTORICAL_REPORT_CODES: [&str; 8] = [
+    "PROFIT_AND_LOSS",
+    "MONTHLY_TREND",
+    "CUSTOMER_DEBT",
+    "PURCHASES",
+    "SALES",
+    "SELLERS",
+    "SUPPLIER_DEBT_AND_EXPENSES",
+    "STOCK_VALUATION",
+];
+
+impl HistoricalReportRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let code = self.report_code.trim().to_ascii_uppercase();
+        if !HISTORICAL_REPORT_CODES.contains(&code.as_str()) {
+            return Err("reportCode is not a known historical report".to_string());
+        }
+        if let Some(batch_id) = self.batch_id {
+            if batch_id <= 0 {
+                return Err("batchId must be positive".to_string());
+            }
+        }
+
+        let from = self
+            .date_from
+            .as_deref()
+            .map(|value| parse_iso_date(value, "dateFrom"))
+            .transpose()?;
+        let to = self
+            .date_to
+            .as_deref()
+            .map(|value| parse_iso_date(value, "dateTo"))
+            .transpose()?;
+
+        if let (Some(from), Some(to)) = (from, to) {
+            if from > to {
+                return Err("dateFrom must not be after dateTo".to_string());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// The normalized code the SQL layer is given.
+    pub(crate) fn normalized_code(&self) -> String {
+        self.report_code.trim().to_ascii_uppercase()
+    }
+
+    pub(crate) fn parsed_date_from(&self) -> Result<Option<Date>, String> {
+        self.date_from
+            .as_deref()
+            .map(|value| parse_iso_date(value, "dateFrom"))
+            .transpose()
+    }
+
+    pub(crate) fn parsed_date_to(&self) -> Result<Option<Date>, String> {
+        self.date_to
+            .as_deref()
+            .map(|value| parse_iso_date(value, "dateTo"))
+            .transpose()
+    }
+}
+
 /// One administrator decision about one normalized historical description.
 /// Nothing is ever written to the alias table except through this type.
 #[derive(Clone, Debug, Deserialize)]
