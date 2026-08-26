@@ -341,17 +341,25 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
     expect(parsed.summary.manualOverrideCount).toBe(1);
   });
 
-  it('warns and falls back to the database calculation when a formula has no cached value', async () => {
+  it('blocks the line when a formula has no cached value instead of recomputing the total', async () => {
+    // Primary-field policy: Line Total is never inferred. A formula with no
+    // cached value means the workbook does not state the amount, so the line is
+    // held back until the owner fixes the file — quantity x unit price (5000
+    // here) must NOT be substituted.
     const file = createPaperBookFile([
       { 0: { val: 'TX-001' }, 1: { val: '15/03/2025' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 5: { val: 'Desk' }, 8: { val: 10 }, 9: { val: 500 }, 10: { val: null, formula: 'I2*J2' } },
     ]);
 
     const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
-    expect(parsed.errors).toEqual([]);
-    expect(parsed.transactions[0].lines[0].manualLineTotalDzd).toBeNull();
     const issue = parsed.rowIssues.find((i) => i.row === 2 && i.column === 'Line Total');
-    expect(issue?.severity).toBe('WARNING');
+    expect(issue?.severity).toBe('ERROR');
+    expect(issue?.blocksRow).toBe(true);
     expect(issue?.probleme).toContain('pas de résultat enregistré');
+    // Plain French, and it says the amount is NOT recomputed.
+    expect(issue?.action).toContain('jamais recalculé');
+    expect(parsed.errors.length).toBe(1);
+    // No line was staged, and no total of 5000 was invented anywhere.
+    expect(parsed.transactions.flatMap((t) => t.lines)).toEqual([]);
   });
 
   it('parses PAPER_BOOK_V2 contract with same date multi-txns, signed benefit, and expenses', async () => {
@@ -361,7 +369,7 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
       // Txn 2: 15/04/2026 Sell (SAME DATE) with negative benefit (-2500 loss)
       { 0: { val: 'TX-002' }, 1: { val: '15/04/2026' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 4: { val: 'Client B' }, 5: { val: 'Mattress' }, 8: { val: 1 }, 9: { val: 15000 }, 10: { val: 15000 }, 11: { val: -2500 } },
       // Txn 3: 15/04/2026 Buy (SAME DATE)
-      { 0: { val: 'TX-003' }, 1: { val: '15/04/2026' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 4: { val: 'Supplier S' }, 5: { val: 'Raw Wood' }, 8: { val: 5 }, 9: { val: 3000 } },
+      { 0: { val: 'TX-003' }, 1: { val: '15/04/2026' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 4: { val: 'Supplier S' }, 5: { val: 'Raw Wood' }, 8: { val: 5 }, 9: { val: 3000 }, 10: { val: 15000 } },
       // Txn 4: 15/04/2026 Expense (SAME DATE) with no Qty/Price, literal Line Total=3500
       { 0: { val: 'TX-004' }, 1: { val: '15/04/2026' }, 2: { val: 'Expense' }, 3: { val: 'Paid' }, 7: { val: 'Transport' }, 10: { val: 3500 } },
       // Unused formula row: Column A & Column K formulas, but blank content
@@ -384,7 +392,9 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
     // Txn 3: Buy
     expect(parsed.transactions[2].transactionType).toBe('PURCHASE');
     expect(parsed.transactions[2].manualBenefitDzd).toBeNull();
-    expect(parsed.transactions[2].lines[0].manualLineTotalDzd).toBeNull();
+    // The total is the amount written in column K, never quantity x unit price
+    // recomputed on the owner's behalf (primary-field policy).
+    expect(parsed.transactions[2].lines[0].manualLineTotalDzd).toBe('15000');
 
     // Txn 4: Expense — amount-only line, no invented Quantity=1 (rule 5)
     expect(parsed.transactions[3].transactionType).toBe('EXPENSE');
@@ -403,7 +413,7 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
 
   it('rejects Benefit on Buy or Expense transactions', async () => {
     const file = createPaperBookV2File([
-      { 0: { val: 'TX-001' }, 1: { val: '15/04/2026' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 5: { val: 'Wood' }, 8: { val: 1 }, 9: { val: 5000 }, 11: { val: 1000 } },
+      { 0: { val: 'TX-001' }, 1: { val: '15/04/2026' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 5: { val: 'Wood' }, 8: { val: 1 }, 9: { val: 5000 }, 10: { val: 5000 }, 11: { val: 1000 } },
     ]);
 
     const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
@@ -415,7 +425,7 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
 
   it('computes deterministic SHA-256 content hash including manual benefit', async () => {
     const file = createPaperBookV2File([
-      { 0: { val: 'TX-001' }, 1: { val: '15/04/2026' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 5: { val: 'Desk' }, 8: { val: 1 }, 9: { val: 5000 }, 11: { val: 1500 } },
+      { 0: { val: 'TX-001' }, 1: { val: '15/04/2026' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 5: { val: 'Desk' }, 8: { val: 1 }, 9: { val: 5000 }, 10: { val: 5000 }, 11: { val: 1500 } },
     ]);
 
     const parsed = await parsePaperBookWorkbook(file, '2026-08-25');
@@ -427,12 +437,12 @@ describe('R0-002 & R0-003 Paper-Book XLSX Parser & Grouping', () => {
 
   it('keeps every amount as the exact characters the workbook stores', async () => {
     const file = createPaperBookV2File([
-      { 0: { val: 'TX-000001' }, 1: { val: '22/10/2025' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 4: { val: 'AK home' }, 5: { val: 'kowat' }, 6: { val: 'AK' }, 7: { val: '2 pers' }, 8: { val: 10 }, 9: { val: 2000 }, 12: { val: 2 } },
-      { 4: { val: 'Rozana' }, 5: { val: 'kowat' }, 6: { val: 'rozana' }, 7: { val: '1 person' }, 8: { val: 5 }, 9: { val: 1500 } },
-      { 0: { val: 'TX-000002' }, 1: { val: '23/11/2025' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 4: { val: 'anis' }, 5: { val: 'kowat' }, 6: { val: 'rozana' }, 8: { val: 15 }, 9: { val: 2000 }, 11: { val: 7000 } },
-      { 0: { val: 'TX-000003' }, 1: { val: '26/12/2025' }, 2: { val: 'Sell' }, 3: { val: 'Not Paid' }, 4: { val: 'zakou' }, 5: { val: 'ouess' }, 6: { val: 'Dolz' }, 8: { val: 2 }, 9: { val: 800 }, 11: { val: 500 } },
+      { 0: { val: 'TX-000001' }, 1: { val: '22/10/2025' }, 2: { val: 'Buy' }, 3: { val: 'Paid' }, 4: { val: 'AK home' }, 5: { val: 'kowat' }, 6: { val: 'AK' }, 7: { val: '2 pers' }, 8: { val: 10 }, 9: { val: 2000 }, 10: { val: 20000 }, 12: { val: 2 } },
+      { 4: { val: 'Rozana' }, 5: { val: 'kowat' }, 6: { val: 'rozana' }, 7: { val: '1 person' }, 8: { val: 5 }, 9: { val: 1500 }, 10: { val: 7500 } },
+      { 0: { val: 'TX-000002' }, 1: { val: '23/11/2025' }, 2: { val: 'Sell' }, 3: { val: 'Paid' }, 4: { val: 'anis' }, 5: { val: 'kowat' }, 6: { val: 'rozana' }, 8: { val: 15 }, 9: { val: 2000 }, 10: { val: 30000 }, 11: { val: 7000 } },
+      { 0: { val: 'TX-000003' }, 1: { val: '26/12/2025' }, 2: { val: 'Sell' }, 3: { val: 'Not Paid' }, 4: { val: 'zakou' }, 5: { val: 'ouess' }, 6: { val: 'Dolz' }, 8: { val: 2 }, 9: { val: 800 }, 10: { val: 1600 }, 11: { val: 500 } },
       // Rule 3: a continuation row must not carry its own Benefit.
-      { 5: { val: 'kowat' }, 6: { val: 'rozana' }, 8: { val: 5 }, 9: { val: 2000 }, 11: { val: 2500 } },
+      { 5: { val: 'kowat' }, 6: { val: 'rozana' }, 8: { val: 5 }, 9: { val: 2000 }, 10: { val: 10000 }, 11: { val: 2500 } },
       { 0: { val: 'TX-000004' }, 1: { val: '29/12/2025' }, 2: { val: 'Expense' }, 3: { val: 'Paid' }, 7: { val: 'food' }, 10: { val: 500 } },
     ]);
 

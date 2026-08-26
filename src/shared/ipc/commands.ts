@@ -55,6 +55,11 @@ export const COMMANDS = {
   VALIDATE_HISTORICAL_TRADE_BATCH: 'validate_historical_trade_batch',
   APPROVE_HISTORICAL_TRADE_BATCH: 'approve_historical_trade_batch',
   GET_HISTORICAL_TRADE_ANALYTICS: 'get_historical_trade_analytics',
+  // R0-005 — historical product description mapping
+  GET_HISTORICAL_PRODUCT_MAPPING: 'get_historical_product_mapping',
+  GET_HISTORICAL_MAPPING_READINESS: 'get_historical_mapping_readiness',
+  APPLY_HISTORICAL_PRODUCT_ALIAS_DECISIONS: 'apply_historical_product_alias_decisions',
+  CLEAR_HISTORICAL_PRODUCT_ALIAS: 'clear_historical_product_alias',
   // R5 — current opening-state reconciliation and one-time application
   GET_OPENING_STATE_SETTING: 'get_opening_state_setting',
   UPDATE_OPENING_STATE_SETTING: 'update_opening_state_setting',

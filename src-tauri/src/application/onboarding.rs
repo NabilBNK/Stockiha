@@ -2,11 +2,14 @@ use serde_json::{json, Value as JsonValue};
 use sqlx::{query_scalar, PgPool};
 
 use crate::domain::onboarding::{
-    parse_iso_date, CreateHistoricalFinanceBatchRequest, CreateHistoricalTradeBatchRequest,
-    HistoricalFinanceApprovalResult, HistoricalFinanceBatchDataResult,
-    HistoricalFinanceBatchIdRequest, HistoricalFinanceBatchResult, HistoricalFinanceSettingResult,
-    HistoricalFinanceSummaryRequest, HistoricalFinanceSummaryResult,
-    HistoricalFinanceValidationResult, HistoricalTradeAnalyticsRequest,
+    parse_iso_date, ApplyHistoricalProductAliasDecisionsRequest,
+    ClearHistoricalProductAliasRequest, CreateHistoricalFinanceBatchRequest,
+    CreateHistoricalTradeBatchRequest, HistoricalFinanceApprovalResult,
+    HistoricalFinanceBatchDataResult, HistoricalFinanceBatchIdRequest,
+    HistoricalFinanceBatchResult, HistoricalFinanceSettingResult, HistoricalFinanceSummaryRequest,
+    HistoricalFinanceSummaryResult, HistoricalFinanceValidationResult,
+    HistoricalProductAliasClearResult, HistoricalProductAliasWriteResult,
+    HistoricalProductMappingRequest, HistoricalTradeAnalyticsRequest,
     HistoricalTradeBatchDataResult, HistoricalTradeBatchResult, HistoricalTradeValidationResult,
     InventoryCorrectionsSettingResult, ReplaceHistoricalFinanceBatchDataRequest,
     ReplaceHistoricalTradeBatchDataRequest, UpdateHistoricalFinanceSettingRequest,
@@ -375,6 +378,96 @@ pub(crate) async fn get_historical_trade_analytics(
             .map_err(AppError::from_posting_error)?;
 
     Ok(result)
+}
+
+// --- R0-005 Historical product description mapping ---
+
+pub(crate) async fn get_historical_product_mapping(
+    pool: &PgPool,
+    session_token: &str,
+    request: HistoricalProductMappingRequest,
+) -> Result<JsonValue, AppError> {
+    request.validate().map_err(validation_error)?;
+
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.get_historical_product_mapping($1, $2)")
+            .bind(session_token)
+            .bind(request.batch_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    Ok(result)
+}
+
+pub(crate) async fn get_historical_mapping_readiness(
+    pool: &PgPool,
+    session_token: &str,
+    request: HistoricalProductMappingRequest,
+) -> Result<JsonValue, AppError> {
+    request.validate().map_err(validation_error)?;
+
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.get_historical_mapping_readiness($1, $2)")
+            .bind(session_token)
+            .bind(request.batch_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    Ok(result)
+}
+
+/// Records administrator confirmations. There is no other write path into the
+/// alias table, which is what makes "no automatic merge" enforceable.
+pub(crate) async fn apply_historical_product_alias_decisions(
+    pool: &PgPool,
+    session_token: &str,
+    request: ApplyHistoricalProductAliasDecisionsRequest,
+) -> Result<HistoricalProductAliasWriteResult, AppError> {
+    request.validate().map_err(validation_error)?;
+
+    let decisions = request
+        .decisions
+        .iter()
+        .map(|decision| {
+            json!({
+                "normalized_key": decision.normalized_key.trim(),
+                "raw_sample": decision.raw_sample.as_deref().map(str::trim),
+                "decision": decision.decision.trim().to_ascii_uppercase(),
+                "canonical_key": decision.canonical_key.as_deref().map(str::trim),
+                "note": decision.note.as_deref().map(str::trim),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.apply_historical_product_alias_decisions($1, $2)")
+            .bind(session_token)
+            .bind(JsonValue::Array(decisions))
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    parse_result(result, "historical product alias decisions result")
+}
+
+pub(crate) async fn clear_historical_product_alias(
+    pool: &PgPool,
+    session_token: &str,
+    request: ClearHistoricalProductAliasRequest,
+) -> Result<HistoricalProductAliasClearResult, AppError> {
+    request.validate().map_err(validation_error)?;
+
+    let result: JsonValue =
+        query_scalar("SELECT onboarding.clear_historical_product_alias($1, $2)")
+            .bind(session_token)
+            .bind(request.normalized_key.trim())
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    parse_result(result, "historical product alias clear result")
 }
 
 #[cfg(test)]

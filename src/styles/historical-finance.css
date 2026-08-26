@@ -161,3 +161,16 @@
 [dir="rtl"] .sk-sort-header, [dir="rtl"] .sk-table th, [dir="rtl"] .sk-table td { text-align: start; }
 [dir="rtl"] .sk-num { text-align: end !important; }
 [data-theme="dark"] .sk-tab-btn--active { box-shadow: 0 1px 4px rgba(0, 0, 0, .3); }
+
+/* WS-G product-mapping — type-to-filter combobox for choosing a merge target.
+   A native <select> would force the owner to scan ~88 options on each of the
+   ~90 rows he reviews in one sitting. */
+.sk-combobox { position: relative; min-width: 240px; flex: 1 1 240px; }
+.sk-combobox__input { width: 100%; padding: 7px 10px; border: 1px solid var(--sk-border); border-radius: 8px; background: var(--sk-surface); color: var(--sk-text); font: inherit; }
+.sk-combobox__input:focus-visible { border-color: var(--sk-primary); outline: 2px solid var(--sk-primary); outline-offset: 1px; }
+.sk-combobox__input:disabled { background: var(--sk-surface-soft); color: var(--sk-muted); }
+.sk-combobox__list { position: absolute; z-index: 30; inset-inline: 0; inset-block-start: calc(100% + 3px); max-height: 260px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; border: 1px solid var(--sk-border-strong); border-radius: 8px; background: var(--sk-surface); box-shadow: 0 8px 22px rgba(0, 0, 0, .16); }
+.sk-combobox__option { padding: 7px 9px; border-radius: 6px; cursor: pointer; font-size: .82rem; }
+.sk-combobox__option--active { background: var(--sk-primary-soft); color: var(--sk-primary); }
+.sk-combobox__option[aria-selected="true"] { font-weight: 650; }
+.sk-combobox__empty { padding: 9px; color: var(--sk-muted); font-size: .78rem; }

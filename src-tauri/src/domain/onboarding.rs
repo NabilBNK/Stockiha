@@ -731,6 +731,123 @@ impl HistoricalTradeAnalyticsRequest {
     }
 }
 
+// --- R0-005 Historical product description mapping ---
+
+const NORMALIZED_KEY_MAX_LEN: usize = 1_500;
+const MAX_ALIAS_DECISIONS_PER_REQUEST: usize = 5_000;
+
+const ALIAS_DECISIONS: &[&str] = &["CANONICAL", "MERGED", "NEW_PRODUCT", "IGNORED"];
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalProductMappingRequest {
+    pub(crate) batch_id: i64,
+}
+
+impl HistoricalProductMappingRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.batch_id <= 0 {
+            return Err("batchId must be positive".to_string());
+        }
+        Ok(())
+    }
+}
+
+/// One administrator decision about one normalized historical description.
+/// Nothing is ever written to the alias table except through this type.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalProductAliasDecisionInput {
+    pub(crate) normalized_key: String,
+    pub(crate) raw_sample: Option<String>,
+    pub(crate) decision: String,
+    pub(crate) canonical_key: Option<String>,
+    pub(crate) note: Option<String>,
+}
+
+impl HistoricalProductAliasDecisionInput {
+    fn validate(&self) -> Result<(), String> {
+        let key = self.normalized_key.trim();
+        if key.is_empty() || key.len() > NORMALIZED_KEY_MAX_LEN {
+            return Err("normalizedKey must be a non-empty normalized description".to_string());
+        }
+
+        let decision = self.decision.trim().to_ascii_uppercase();
+        if !ALIAS_DECISIONS.contains(&decision.as_str()) {
+            return Err("decision must be CANONICAL, MERGED, NEW_PRODUCT, or IGNORED".to_string());
+        }
+
+        let canonical = self.canonical_key.as_deref().map(str::trim).unwrap_or("");
+        if decision == "MERGED" {
+            if canonical.is_empty() || canonical.len() > NORMALIZED_KEY_MAX_LEN {
+                return Err("merging a description requires a target variant".to_string());
+            }
+            if canonical == key {
+                return Err("a description cannot be merged into itself".to_string());
+            }
+        }
+
+        validate_optional_text(&self.raw_sample, "rawSample", OPTIONAL_TEXT_MAX_LEN)?;
+        validate_optional_text(&self.note, "note", OPTIONAL_TEXT_MAX_LEN)?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ApplyHistoricalProductAliasDecisionsRequest {
+    pub(crate) decisions: Vec<HistoricalProductAliasDecisionInput>,
+}
+
+impl ApplyHistoricalProductAliasDecisionsRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.decisions.is_empty() {
+            return Err("at least one mapping decision is required".to_string());
+        }
+        if self.decisions.len() > MAX_ALIAS_DECISIONS_PER_REQUEST {
+            return Err(format!(
+                "A request may contain at most {MAX_ALIAS_DECISIONS_PER_REQUEST} mapping decisions"
+            ));
+        }
+        for (idx, decision) in self.decisions.iter().enumerate() {
+            decision
+                .validate()
+                .map_err(|err| format!("decisions[{idx}]: {err}"))?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalProductAliasWriteResult {
+    pub(crate) applied_count: i64,
+    pub(crate) alias_count: i64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClearHistoricalProductAliasRequest {
+    pub(crate) normalized_key: String,
+}
+
+impl ClearHistoricalProductAliasRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let key = self.normalized_key.trim();
+        if key.is_empty() || key.len() > NORMALIZED_KEY_MAX_LEN {
+            return Err("normalizedKey must be a non-empty normalized description".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HistoricalProductAliasClearResult {
+    pub(crate) removed_count: i64,
+    pub(crate) alias_count: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -856,5 +973,65 @@ mod tests {
             ..line
         };
         assert!(ok.validate().is_ok());
+    }
+
+    fn alias_decision(decision: &str) -> HistoricalProductAliasDecisionInput {
+        HistoricalProductAliasDecisionInput {
+            normalized_key: "couete|ak home|istanbul".to_string(),
+            raw_sample: Some("couete|AK home|istanbul".to_string()),
+            decision: decision.to_string(),
+            canonical_key: Some("couette|ak home|istanbul".to_string()),
+            note: None,
+        }
+    }
+
+    #[test]
+    fn accepts_a_merge_into_a_different_canonical_variant() {
+        assert!(alias_decision("MERGED").validate().is_ok());
+        assert!(alias_decision("merged").validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_a_merge_with_no_target_or_onto_itself() {
+        let mut decision = alias_decision("MERGED");
+        decision.canonical_key = None;
+        assert!(decision.validate().is_err());
+
+        let mut decision = alias_decision("MERGED");
+        decision.canonical_key = Some("couete|ak home|istanbul".to_string());
+        assert!(decision.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_an_unknown_decision_and_a_blank_description() {
+        let mut decision = alias_decision("AUTOMATIC");
+        assert!(decision.validate().is_err());
+
+        decision = alias_decision("CANONICAL");
+        decision.normalized_key = "   ".to_string();
+        assert!(decision.validate().is_err());
+    }
+
+    #[test]
+    fn a_non_merge_decision_needs_no_target() {
+        for code in ["CANONICAL", "NEW_PRODUCT", "IGNORED"] {
+            let mut decision = alias_decision(code);
+            decision.canonical_key = None;
+            assert!(decision.validate().is_ok(), "{code} must be accepted");
+        }
+    }
+
+    #[test]
+    fn rejects_an_empty_or_oversized_decision_batch() {
+        assert!(
+            ApplyHistoricalProductAliasDecisionsRequest { decisions: vec![] }
+                .validate()
+                .is_err()
+        );
+
+        let request = ApplyHistoricalProductAliasDecisionsRequest {
+            decisions: vec![alias_decision("MERGED")],
+        };
+        assert!(request.validate().is_ok());
     }
 }

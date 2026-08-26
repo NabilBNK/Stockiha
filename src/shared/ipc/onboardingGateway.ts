@@ -145,3 +145,45 @@ export function getHistoricalTradeAnalytics(
   );
 }
 
+// R0-005 Historical product description mapping
+
+export function getHistoricalProductMapping(
+  sessionToken: string,
+  request: import('./onboardingDto').HistoricalProductMappingRequest,
+): Promise<import('./onboardingDto').HistoricalProductMappingResult> {
+  return call<import('./onboardingDto').HistoricalProductMappingResult>(
+    COMMANDS.GET_HISTORICAL_PRODUCT_MAPPING,
+    { sessionToken, request },
+  );
+}
+
+export function getHistoricalMappingReadiness(
+  sessionToken: string,
+  request: import('./onboardingDto').HistoricalProductMappingRequest,
+): Promise<import('./onboardingDto').HistoricalMappingReadiness> {
+  return call<import('./onboardingDto').HistoricalMappingReadiness>(
+    COMMANDS.GET_HISTORICAL_MAPPING_READINESS,
+    { sessionToken, request },
+  );
+}
+
+export function applyHistoricalProductAliasDecisions(
+  sessionToken: string,
+  request: import('./onboardingDto').ApplyHistoricalProductAliasDecisionsRequest,
+): Promise<import('./onboardingDto').HistoricalProductAliasWriteResult> {
+  return call<import('./onboardingDto').HistoricalProductAliasWriteResult>(
+    COMMANDS.APPLY_HISTORICAL_PRODUCT_ALIAS_DECISIONS,
+    { sessionToken, request },
+  );
+}
+
+export function clearHistoricalProductAlias(
+  sessionToken: string,
+  request: import('./onboardingDto').ClearHistoricalProductAliasRequest,
+): Promise<import('./onboardingDto').HistoricalProductAliasClearResult> {
+  return call<import('./onboardingDto').HistoricalProductAliasClearResult>(
+    COMMANDS.CLEAR_HISTORICAL_PRODUCT_ALIAS,
+    { sessionToken, request },
+  );
+}
+

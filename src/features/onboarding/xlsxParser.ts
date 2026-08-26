@@ -1274,7 +1274,11 @@ export function parsePaperBookSheet(
     // template spill-over, not an amount of zero dinars written on the paper.
     const lineTotalRaw = cellHasContent(lineTotalCell) ? exactAmountText(lineTotalCell) : null;
     let manualLineTotalDzd: string | null = null;
+    // True when column K held something but it was refused. The line is blocked
+    // either way; this only stops a second message being piled on top.
+    let lineTotalRejected = false;
     if (lineTotalRaw === 'INVALID') {
+      lineTotalRejected = true;
       addIssue(sink, {
         severity: 'ERROR',
         sheet: sheet.name,
@@ -1284,6 +1288,7 @@ export function parsePaperBookSheet(
         action: 'Saisissez le montant total de la ligne en dinars entiers.',
       });
     } else if (lineTotalRaw !== null && !isWholeDecimal(lineTotalRaw)) {
+      lineTotalRejected = true;
       addIssue(sink, {
         severity: 'ERROR',
         sheet: sheet.name,
@@ -1293,6 +1298,7 @@ export function parsePaperBookSheet(
         action: 'Arrondissez au dinar entier tel qu\'il figure sur le cahier.',
       });
     } else if (lineTotalRaw !== null && isNegativeDecimal(lineTotalRaw)) {
+      lineTotalRejected = true;
       addIssue(sink, {
         severity: 'ERROR',
         sheet: sheet.name,
@@ -1332,53 +1338,55 @@ export function parsePaperBookSheet(
       continue;
     }
 
-    if (manualLineTotalDzd === null && lineTotalCell?.hasFormula) {
-      // A formula with no cached value: the file was written by a script and
-      // never opened in Excel. PostgreSQL recomputes quantity x unit price.
-      addIssue(sink, {
-        severity: 'WARNING',
-        sheet: sheet.name,
-        row: rowNumber,
-        column: 'Line Total',
-        probleme: `La formule du total en ${cellRef(10, rowNumber)} n'a pas de résultat enregistré.`,
-        action: 'Le total sera recalculé à partir de la quantité et du prix unitaire. Ouvrez le fichier dans Excel et enregistrez-le pour figer le montant du cahier.',
-      });
-    }
-
-    // Rule 5 / rule 9: an amount-only expense line is legitimate, but a line
-    // with no amount at all is a defect, never a silent zero.
-    if (isExpense) {
-      if (manualLineTotalDzd === null && (quantity === null || unitPriceDzd === null)) {
+    // PRIMARY-FIELD POLICY — Date, Type, Paid, Quantity, Unit Price and Line
+    // Total are never inferred, computed or repaired. When column K does not
+    // state what the line is worth, the line is HELD BACK; quantity x unit
+    // price is NOT substituted for it. Rows 255, 326 and 420 of the customer's
+    // own file prove the two genuinely disagree, so a substituted total would
+    // silently invent revenue that is not written on the paper.
+    if (manualLineTotalDzd === null) {
+      if (!lineTotalRejected) {
         addIssue(sink, {
           severity: 'ERROR',
           sheet: sheet.name,
           row: rowNumber,
           column: 'Line Total',
-          probleme: `La dépense de la ligne ${rowNumber} n'a pas de montant en ${cellRef(10, rowNumber)}.`,
-          action: 'Saisissez le montant de la dépense dans la colonne Line Total.',
+          probleme: lineTotalCell?.hasFormula
+            ? `La formule du total en ${cellRef(10, rowNumber)} n'a pas de résultat enregistré : le fichier ne dit pas quel est le montant de la ligne ${rowNumber}.`
+            : `Le montant total de la ligne ${rowNumber} est absent en ${cellRef(10, rowNumber)}.`,
+          action: lineTotalCell?.hasFormula
+            ? `Cette ligne est mise de côté et n'est pas importée : le montant n'est jamais recalculé à votre place. Ouvrez le fichier dans Excel, vérifiez le montant écrit sur le cahier, enregistrez, puis relancez l'import.`
+            : `Cette ligne est mise de côté et n'est pas importée : le montant n'est jamais recalculé à votre place. Écrivez en ${cellRef(10, rowNumber)} le montant tel qu'il figure sur le cahier, puis relancez l'import.`,
         });
       }
-    } else {
-      if (quantity === null && manualLineTotalDzd === null) {
+      continue;
+    }
+
+    // Defect 8: a typed Line Total that does not equal Quantity x Unit Price.
+    // The typed amount still WINS — it may be a negotiated price rather than a
+    // transcription error — but the owner is told the two disagree so he can
+    // check the page. The comparison is exact: both operands are whole DZD
+    // integers already, and BigInt multiplies them without any floating point.
+    if (!isExpense && manualLineTotalDzd !== null && quantity !== null && unitPriceDzd !== null) {
+      const expected = BigInt(quantity) * BigInt(unitPriceDzd);
+      const typed = BigInt(manualLineTotalDzd);
+      if (expected !== typed) {
+        const difference = typed - expected;
         addIssue(sink, {
-          severity: 'ERROR',
+          severity: 'WARNING',
           sheet: sheet.name,
           row: rowNumber,
-          column: 'Quantity',
-          probleme: `La ligne ${rowNumber} n'a ni quantité ni montant total.`,
-          action: 'Saisissez la quantité et le prix unitaire, ou à défaut le montant total de la ligne.',
+          column: 'Line Total',
+          probleme: `Le total ${manualLineTotalDzd} écrit en ${cellRef(10, rowNumber)} ne correspond pas à ${quantity} × ${unitPriceDzd} = ${expected.toString()} (écart de ${difference > 0n ? '+' : ''}${difference.toString()} DA).`,
+          action: `Le montant écrit sur le cahier est conservé tel quel (${manualLineTotalDzd} DA). Vérifiez la page : s'il s'agit d'un prix négocié, il n'y a rien à faire ; s'il s'agit d'une erreur de recopie, corrigez la case.`,
         });
       }
-      if (unitPriceDzd === null && manualLineTotalDzd === null) {
-        addIssue(sink, {
-          severity: 'ERROR',
-          sheet: sheet.name,
-          row: rowNumber,
-          column: 'Unit Price',
-          probleme: `La ligne ${rowNumber} n'a ni prix unitaire ni montant total.`,
-          action: 'Saisissez le prix unitaire, ou à défaut le montant total de la ligne.',
-        });
-      }
+    }
+
+    // Rule 5: an amount-only expense line is legitimate. Rule 9 (a line with no
+    // amount at all) is now handled by the primary-field policy check above,
+    // which blocks the line instead of letting the total be recomputed.
+    if (!isExpense) {
       if (productName === null) {
         addIssue(sink, {
           severity: 'WARNING',

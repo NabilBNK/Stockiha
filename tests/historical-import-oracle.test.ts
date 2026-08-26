@@ -155,6 +155,42 @@ describe('WS-G historical import vs the oracle dataset', () => {
     expect(byRow.get(420)).toEqual({ qty: '2', price: '5050', total: '10000' });
   });
 
+  it('warns in French that rows 255, 326 and 420 disagree with quantity x unit price', async () => {
+    const parsed = await loadDataset();
+
+    for (const [row, expected, typed] of [
+      [255, '53000', '52500'],
+      [326, '83500', '84000'],
+      [420, '10100', '10000'],
+    ] as const) {
+      const warnings = issuesForRow(parsed, row).filter(
+        (issue) => issue.severity === 'WARNING' && issue.column === 'Line Total',
+      );
+      expect(warnings, `row ${row} must carry a Line Total warning`).toHaveLength(1);
+      const [warning] = warnings;
+      expect(warning.probleme).toContain(expected);
+      expect(warning.probleme).toContain(typed);
+      // The typed amount wins; the owner is only told the two differ.
+      expect(warning.action).toContain(typed);
+      expect(warning.blocksRow).toBe(false);
+      // Plain French, no error codes, no SQL, no stack traces.
+      expect(warning.probleme).toMatch(/ne correspond pas/);
+      expect(warning.probleme).not.toMatch(/[A-Z]{2,}_[A-Z]{2,}/);
+    }
+
+    // No OTHER row is flagged for this: the fixture has exactly three.
+    const mismatchRows = parsed.rowIssues
+      .filter(
+        (issue) =>
+          issue.severity === 'WARNING' &&
+          issue.column === 'Line Total' &&
+          issue.probleme.includes('ne correspond pas'),
+      )
+      .map((issue) => issue.row)
+      .sort((left, right) => left - right);
+    expect(mismatchRows).toEqual([255, 326, 420]);
+  });
+
   it('imports the 12-line purchase as ONE transaction with 12 lines', async () => {
     const parsed = await loadDataset();
     const twelve = parsed.transactions.filter((t) => t.lines.length === 12);

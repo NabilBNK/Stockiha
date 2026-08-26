@@ -27,6 +27,7 @@ import { HistoricalAnalyticsDashboard } from './HistoricalAnalyticsDashboard';
 import { HistoricalImportPanel } from './HistoricalImportPanel';
 import { HistoricalImportStepper, type ImportStep } from './HistoricalImportStepper';
 import { HistoricalIssueList } from './HistoricalIssueList';
+import { HistoricalProductMappingScreen } from './HistoricalProductMappingScreen';
 import { HistoricalValidationReport } from './HistoricalValidationReport';
 import { HistoricalRowPreview } from './HistoricalRowPreview';
 import type { HistoricalTableRow } from './historicalTableModel';
@@ -738,6 +739,17 @@ export function HistoricalFinanceScreen({ sessionToken }: Props) {
             issues={pbData.rowIssues}
             warningsConfirmed={pbWarningsConfirmed}
             onConfirmWarnings={setPbWarningsConfirmed}
+          />
+        )}
+
+        {/* Product mapping: once the transcription is staged, every distinct
+            description must be resolved into a canonical article before any
+            report is computed, otherwise a sale whose spelling differs from
+            its purchase would be reported as pure profit. */}
+        {pbActiveBatchId !== null && (
+          <HistoricalProductMappingScreen
+            sessionToken={sessionToken}
+            batchId={pbActiveBatchId}
           />
         )}
 
