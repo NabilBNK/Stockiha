@@ -1,15 +1,22 @@
-# Parking Lot — deferred, non-blocking issues
+# Remaining Issues — deferred, non-blocking
 
 Non-urgent, real problems found during task execution but explicitly out of
 scope for the task that found them. Nobody should fix these without a
-deliberate decision to pick them up. `WS-B_REMAINING_ISSUES.md` was referenced
-by earlier task briefs as the intended home for this list but does not exist
-in this repository checkout, so this file is its replacement — update this one
-going forward.
+deliberate decision to pick them up.
+
+**Note on this file's history:** prior task briefs in this project referenced
+`WS-B_REMAINING_ISSUES.md` at the repo root as an existing document recording
+WS-B's own deferred items (the `create_posted_journal` permission gap, the IAM
+permissions CHECK constraint, the landed-cost call-shape mismatch, etc.). That
+content was never checked into this repository — this file did not exist here
+until now. That gap is a separate problem worth naming on its own (the
+canonical WS-B issue list may exist only outside this checkout, or may not
+exist at all) — it is not solved by creating this file, which starts empty of
+WS-B content and only carries what's logged below.
 
 ---
 
-## WS-I-2 (historical report export) — found 2026-08-27
+## WS-I — Deferred
 
 ### 1. `pdf-lib` duplicates font resource entries per `drawText` call
 
