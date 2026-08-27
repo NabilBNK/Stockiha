@@ -27,11 +27,11 @@ const EXPORT_COPY: Record<Locale, Record<string, string>> = {
   },
 };
 
-function escapeXml(value: string): string {
+export function escapeXml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function columnName(index: number): string {
+export function columnName(index: number): string {
   let value = index + 1;
   let output = '';
   while (value > 0) {
@@ -48,7 +48,7 @@ function excelSerial(date: string): number | null {
   return Number.isNaN(millis) ? null : millis / 86_400_000 + 25569;
 }
 
-function cell(ref: string, value: string | number | null, style?: number): string {
+export function cell(ref: string, value: string | number | null, style?: number): string {
   if (value === null) return `<c r="${ref}"${style ? ` s="${style}"` : ''}/>`;
   if (typeof value === 'number') return `<c r="${ref}"${style ? ` s="${style}"` : ''}><v>${value}</v></c>`;
   return `<c r="${ref}" t="inlineStr"${style ? ` s="${style}"` : ''}><is><t>${escapeXml(value)}</t></is></c>`;
@@ -59,7 +59,7 @@ function cell(ref: string, value: string | number | null, style?: number): strin
  * exported workbook holds a real number without the value ever passing through
  * a JavaScript float.
  */
-function exactNumericCell(ref: string, value: string | null, style?: number): string {
+export function exactNumericCell(ref: string, value: string | null, style?: number): string {
   if (value === null || !/^-?\d+(\.\d+)?$/.test(value)) {
     return `<c r="${ref}"${style ? ` s="${style}"` : ''}/>`;
   }
@@ -113,6 +113,117 @@ export function buildHistoricalTableXlsx(rows: HistoricalTableRow[]): Uint8Array
   };
   return zipSync(files, { level: 6 });
 }
+
+/* -------------------------------------------------------------------------- */
+/* Generic workbook writer                                                     */
+/* -------------------------------------------------------------------------- */
+/* `buildHistoricalTableXlsx` above writes one fixed sheet for the transcribed
+ * ledger table. The WS-I reports need the same proven machinery — above all the
+ * `exactNumericCell` technique, which puts an exact decimal string into the
+ * cell's `<v>` element so the workbook holds a REAL number that Excel can SUM,
+ * without the value ever passing through a JavaScript float — over an arbitrary
+ * sequence of headings, paragraphs and tables. Rather than duplicate the OPC
+ * package plumbing per report, this builder takes a declarative sheet spec.
+ *
+ * `buildHistoricalTableXlsx` is deliberately left untouched: it already ships. */
+
+/** Style slots defined by `WORKBOOK_STYLES` below. */
+export const XLSX_STYLE = {
+  general: 0,
+  header: 1,
+  date: 2,
+  money: 3,
+  integer: 4,
+  bold: 5,
+  wrapped: 6,
+  boldMoney: 7,
+  title: 8,
+  italic: 9,
+} as const;
+
+export type XlsxCellInput =
+  | { t: 'text'; v: string; s?: number }
+  /** `v` is an EXACT decimal string. It lands in `<v>` verbatim, as a number. */
+  | { t: 'number'; v: string | null; s?: number }
+  | { t: 'blank' };
+
+export interface XlsxSheetSpec {
+  name: string;
+  columnWidths: number[];
+  rows: XlsxCellInput[][];
+}
+
+/** Excel rejects these in a sheet name, and caps the name at 31 characters. */
+function sheetName(name: string, index: number): string {
+  const cleaned = name.replace(/[:\\/?*[\]]/g, ' ').trim().slice(0, 31);
+  return cleaned === '' ? `Feuille ${index + 1}` : cleaned;
+}
+
+const WORKBOOK_STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="#,##0"/></numFmts><fonts count="5"><font><sz val="11"/><name val="Aptos"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Aptos"/></font><font><b/><sz val="11"/><name val="Aptos"/></font><font><b/><sz val="14"/><name val="Aptos"/></font><font><i/><sz val="11"/><name val="Aptos"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF2457D6"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="10"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="164" fontId="2" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>`;
+
+export function buildXlsxWorkbook(sheets: XlsxSheetSpec[]): Uint8Array {
+  const specs = sheets.length === 0 ? [{ name: 'Rapport', columnWidths: [40], rows: [] }] : sheets;
+  const files: Record<string, Uint8Array> = {};
+
+  specs.forEach((spec, sheetIndex) => {
+    const body = spec.rows
+      .map((cells, rowIndex) => {
+        const number = rowIndex + 1;
+        const rendered = cells
+          .map((input, columnIndex) => {
+            const ref = `${columnName(columnIndex)}${number}`;
+            if (input.t === 'blank') return '';
+            if (input.t === 'number') return exactNumericCell(ref, input.v, input.s);
+            return cell(ref, input.v, input.s);
+          })
+          .join('');
+        return `<row r="${number}">${rendered}</row>`;
+      })
+      .join('');
+    const cols = spec.columnWidths
+      .map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`)
+      .join('');
+    files[`xl/worksheets/sheet${sheetIndex + 1}.xml`] = strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <cols>${cols}</cols>
+  <sheetData>${body}</sheetData>
+</worksheet>`);
+  });
+
+  const overrides = specs
+    .map(
+      (_, index) =>
+        `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    )
+    .join('');
+  const sheetTags = specs
+    .map((spec, index) => `<sheet name="${escapeXml(sheetName(spec.name, index))}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`)
+    .join('');
+  const sheetRels = specs
+    .map(
+      (_, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
+    )
+    .join('');
+
+  files['[Content_Types].xml'] = strToU8(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${overrides}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
+  );
+  files['_rels/.rels'] = strToU8(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+  );
+  files['xl/workbook.xml'] = strToU8(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheetTags}</sheets></workbook>`,
+  );
+  files['xl/_rels/workbook.xml.rels'] = strToU8(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheetRels}<Relationship Id="rId${specs.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+  );
+  files['xl/styles.xml'] = strToU8(WORKBOOK_STYLES);
+
+  return zipSync(files, { level: 6 });
+}
+
+export { XLSX_MIME };
 
 export interface HistoricalReportModel {
   title: string;
