@@ -5,12 +5,39 @@ use tauri::{AppHandle, Manager, State};
 use crate::application::recovery::{self, RestoreVerificationAttempt, ValidationAttempt};
 use crate::application::recovery_creation::{self, CreationAttempt};
 use crate::domain::recovery::{
-    CreateOperatorBackupRequest, OperatorBackupCreationResult, OperatorBackupValidationResult,
-    OperatorRestoreVerificationResult, ValidateOperatorBackupRequest,
+    BackupDestinationSetting, CreateOperatorBackupRequest, OperatorBackupCreationResult,
+    OperatorBackupValidationResult, OperatorRestoreVerificationResult,
+    UpdateBackupDestinationRequest, UpdateBackupDestinationResult, ValidateOperatorBackupRequest,
     VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
+
+#[tauri::command]
+pub(crate) async fn get_backup_destination_setting(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<BackupDestinationSetting, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    recovery::get_backup_destination(pool, &session_token)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn update_backup_destination_setting(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: UpdateBackupDestinationRequest,
+) -> Result<UpdateBackupDestinationResult, IpcError> {
+    request
+        .validate()
+        .map_err(|diagnostic| IpcError::from(AppError::ValidationError { diagnostic }))?;
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    recovery::update_backup_destination(pool, &session_token, &request.path)
+        .await
+        .map_err(IpcError::from)
+}
 
 #[tauri::command]
 pub(crate) async fn get_restore_verification_setting(
@@ -89,6 +116,20 @@ pub(crate) async fn create_operator_backup(
         }
     };
 
+    let canonical_root = match recovery_creation::resolve_backup_root(pool, &session_token).await {
+        Ok(path) => path,
+        Err(error) => {
+            let _ = recovery_creation::complete_operator_backup_creation_failure(
+                pool,
+                &session_token,
+                attempt_id,
+                &error,
+            )
+            .await;
+            return Err(IpcError::from(error));
+        }
+    };
+
     let creation = tauri::async_runtime::spawn_blocking(move || {
         recovery_creation::create_operator_backup_files(
             request_id,
@@ -97,6 +138,7 @@ pub(crate) async fn create_operator_backup(
             current_schema_version,
             resume_existing,
             app_data_dir,
+            canonical_root,
         )
     })
     .await

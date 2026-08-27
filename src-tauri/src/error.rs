@@ -27,6 +27,17 @@ pub enum ErrorCode {
     CreditPolicyBlocked,
     InsufficientStock,
     CorrectionsDisabled,
+    /// WS-H-1 (G2): `STOCKIHA_RESTORE_ADMIN_DATABASE_URL` is unavailable at
+    /// runtime. Never surfaced as a raw variable name or a generic
+    /// configuration error — the frontend must show its own specific,
+    /// plain-language sentence.
+    RestoreAdminNotConfigured,
+    /// WS-H-1 (G3): the requested backup destination resolves inside the
+    /// PostgreSQL data directory and was rejected before being saved.
+    BackupDestinationInsideDataDirectory,
+    /// WS-H-1 (G3): the requested backup destination could not be created or
+    /// used (permissions, invalid path, missing drive).
+    BackupDestinationCreateFailed,
 }
 
 pub enum AppError {
@@ -74,6 +85,18 @@ pub enum AppError {
         diagnostic: String,
     },
     CorrectionsDisabled {
+        diagnostic: String,
+    },
+    RestoreAdminNotConfigured {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    BackupDestinationInsideDataDirectory {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    BackupDestinationCreateFailed {
+        #[cfg_attr(not(test), allow(dead_code))]
         diagnostic: String,
     },
 }
@@ -207,6 +230,15 @@ impl fmt::Debug for AppError {
             AppError::CorrectionsDisabled { .. } => {
                 f.write_str("AppError::CorrectionsDisabled(<redacted>)")
             }
+            AppError::RestoreAdminNotConfigured { .. } => {
+                f.write_str("AppError::RestoreAdminNotConfigured(<redacted>)")
+            }
+            AppError::BackupDestinationInsideDataDirectory { .. } => {
+                f.write_str("AppError::BackupDestinationInsideDataDirectory(<redacted>)")
+            }
+            AppError::BackupDestinationCreateFailed { .. } => {
+                f.write_str("AppError::BackupDestinationCreateFailed(<redacted>)")
+            }
         }
     }
 }
@@ -230,6 +262,15 @@ impl fmt::Display for AppError {
             AppError::InsufficientStock { .. } => f.write_str("insufficient stock"),
             AppError::CorrectionsDisabled { .. } => {
                 f.write_str("inventory corrections disabled by policy")
+            }
+            AppError::RestoreAdminNotConfigured { .. } => {
+                f.write_str("restore admin connection is not configured")
+            }
+            AppError::BackupDestinationInsideDataDirectory { .. } => {
+                f.write_str("backup destination is inside the PostgreSQL data directory")
+            }
+            AppError::BackupDestinationCreateFailed { .. } => {
+                f.write_str("backup destination could not be created or used")
             }
         }
     }
@@ -270,6 +311,15 @@ impl From<AppError> for IpcError {
             AppError::CreditPolicyBlocked { .. } => IpcError::new(ErrorCode::CreditPolicyBlocked),
             AppError::InsufficientStock { .. } => IpcError::new(ErrorCode::InsufficientStock),
             AppError::CorrectionsDisabled { .. } => IpcError::new(ErrorCode::CorrectionsDisabled),
+            AppError::RestoreAdminNotConfigured { .. } => {
+                IpcError::new(ErrorCode::RestoreAdminNotConfigured)
+            }
+            AppError::BackupDestinationInsideDataDirectory { .. } => {
+                IpcError::new(ErrorCode::BackupDestinationInsideDataDirectory)
+            }
+            AppError::BackupDestinationCreateFailed { .. } => {
+                IpcError::new(ErrorCode::BackupDestinationCreateFailed)
+            }
         }
     }
 }

@@ -296,9 +296,10 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
         });
     }
 
-    let raw_admin_url = std::env::var(RESTORE_ADMIN_URL_ENV).map_err(|_| {
-        AppError::database_configuration(format!("{RESTORE_ADMIN_URL_ENV} is not configured"))
-    })?;
+    let raw_admin_url =
+        std::env::var(RESTORE_ADMIN_URL_ENV).map_err(|_| AppError::RestoreAdminNotConfigured {
+            diagnostic: format!("{RESTORE_ADMIN_URL_ENV} is not configured"),
+        })?;
     let parsed = restore_proof::parse_admin_url(&raw_admin_url).map_err(map_restore_error)?;
     let maintenance_options = restore_proof::admin_connect_options(&parsed);
     let mut maintenance = PgConnection::connect_with(&maintenance_options)
@@ -606,6 +607,11 @@ pub(crate) fn stable_error_code(error: &AppError) -> &'static str {
         AppError::CreditPolicyBlocked { .. } => "CREDIT_POLICY_BLOCKED",
         AppError::InsufficientStock { .. } => "INSUFFICIENT_STOCK",
         AppError::CorrectionsDisabled { .. } => "CORRECTIONS_DISABLED",
+        AppError::RestoreAdminNotConfigured { .. } => "RESTORE_ADMIN_NOT_CONFIGURED",
+        AppError::BackupDestinationInsideDataDirectory { .. } => {
+            "BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY"
+        }
+        AppError::BackupDestinationCreateFailed { .. } => "BACKUP_DESTINATION_CREATE_FAILED",
     }
 }
 
@@ -727,6 +733,148 @@ fn is_symlink_or_reparse(metadata: &fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 
+// ---------------------------------------------------------------------------
+// WS-H-1 (G3): configurable backup destination setting.
+// ---------------------------------------------------------------------------
+
+pub(crate) async fn get_backup_destination(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<crate::domain::recovery::BackupDestinationSetting, AppError> {
+    let value: JsonValue = query_scalar("SELECT operations.get_backup_destination_setting($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+    let path = value
+        .get("path")
+        .and_then(JsonValue::as_str)
+        .map(str::to_string);
+    Ok(crate::domain::recovery::BackupDestinationSetting { path })
+}
+
+pub(crate) async fn update_backup_destination(
+    pool: &PgPool,
+    session_token: &str,
+    path: &str,
+) -> Result<crate::domain::recovery::UpdateBackupDestinationResult, AppError> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::ValidationError {
+            diagnostic: "backup destination path is empty".to_string(),
+        });
+    }
+
+    let data_dir = fetch_pg_data_directory().await?;
+    let candidate_path = Path::new(trimmed);
+    let canonical_candidate = canonicalize_best_effort(candidate_path);
+    let canonical_data_dir = data_dir.canonicalize().unwrap_or(data_dir);
+    if canonical_candidate == canonical_data_dir
+        || canonical_candidate.starts_with(&canonical_data_dir)
+    {
+        return Err(AppError::BackupDestinationInsideDataDirectory {
+            diagnostic: "BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY".to_string(),
+        });
+    }
+    let same_drive_warning = match (
+        drive_letter(&canonical_candidate),
+        drive_letter(&canonical_data_dir),
+    ) {
+        (Some(candidate_drive), Some(data_drive)) => candidate_drive == data_drive,
+        _ => false,
+    };
+
+    let value: JsonValue =
+        query_scalar("SELECT operations.update_backup_destination_setting($1, $2)")
+            .bind(session_token)
+            .bind(trimmed)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+    let saved_path = value
+        .get("path")
+        .and_then(JsonValue::as_str)
+        .map(str::to_string);
+
+    Ok(crate::domain::recovery::UpdateBackupDestinationResult {
+        path: saved_path,
+        same_drive_warning,
+    })
+}
+
+/// Opens a short-lived connection through the same restore-admin
+/// configuration G2 already requires (a real PostgreSQL superuser, never one
+/// of the four Stockiha app roles), reads `data_directory`, and closes the
+/// connection. Read-only: `SHOW`/`current_setting` only, never a write.
+async fn fetch_pg_data_directory() -> Result<PathBuf, AppError> {
+    let raw_admin_url =
+        std::env::var(RESTORE_ADMIN_URL_ENV).map_err(|_| AppError::RestoreAdminNotConfigured {
+            diagnostic: format!("{RESTORE_ADMIN_URL_ENV} is not configured"),
+        })?;
+    let parsed = restore_proof::parse_admin_url(&raw_admin_url).map_err(map_restore_error)?;
+    let options = restore_proof::admin_connect_options(&parsed);
+    let mut conn = PgConnection::connect_with(&options)
+        .await
+        .map_err(|_| AppError::database_unavailable("restore-admin connection failed"))?;
+    let data_directory: String = query_scalar("SELECT current_setting('data_directory')")
+        .fetch_one(&mut conn)
+        .await
+        .map_err(|_| AppError::BackupDestinationCreateFailed {
+            diagnostic: "DATA_DIRECTORY_QUERY_FAILED".to_string(),
+        })?;
+    let _ = conn.close().await;
+    Ok(PathBuf::from(data_directory))
+}
+
+/// Canonicalize `path`, falling back to canonicalizing the nearest existing
+/// ancestor when `path` itself does not exist yet (a not-yet-created backup
+/// destination candidate). Never fails: an unresolvable path is returned
+/// as-is, which simply makes the containment/same-drive comparisons using it
+/// a syntactic (not symlink-resistant) best effort.
+fn canonicalize_best_effort(path: &Path) -> PathBuf {
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+    let mut trailing: Vec<std::ffi::OsString> = Vec::new();
+    let mut ancestor = path.to_path_buf();
+    loop {
+        let Some(file_name) = ancestor.file_name() else {
+            break;
+        };
+        trailing.push(file_name.to_os_string());
+        if !ancestor.pop() {
+            break;
+        }
+        if let Ok(canonical_ancestor) = ancestor.canonicalize() {
+            let mut resolved = canonical_ancestor;
+            for component in trailing.into_iter().rev() {
+                resolved.push(component);
+            }
+            return resolved;
+        }
+    }
+    path.to_path_buf()
+}
+
+#[cfg(windows)]
+fn drive_letter(path: &Path) -> Option<char> {
+    use std::path::{Component, Prefix};
+    match path.components().next() {
+        Some(Component::Prefix(prefix)) => match prefix.kind() {
+            Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
+                Some((letter as char).to_ascii_uppercase())
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+#[cfg(not(windows))]
+fn drive_letter(_path: &Path) -> Option<char> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -810,5 +958,40 @@ mod tests {
         assert!(value.get("temporaryDatabaseName").is_none());
         assert!(value.get("databaseUrl").is_none());
         assert!(value.get("credential").is_none());
+    }
+
+    // ---- WS-H-1 (G3) live proof: acceptance criterion 9 ---------------------
+    //
+    // `update_backup_destination` performs the PostgreSQL-data-directory
+    // containment check via `fetch_pg_data_directory` and returns
+    // `Err(AppError::BackupDestinationInsideDataDirectory)` *before* it ever
+    // uses `pool` or `session_token` to call the database function — so this
+    // test can prove the real rejection against a real live PostgreSQL data
+    // directory without needing a real authenticated session. Requires
+    // `STOCKIHA_RESTORE_ADMIN_DATABASE_URL` and `STOCKIHA_DEV_DATABASE_URL`
+    // (any reachable pool satisfies the unused-until-later `pool` parameter).
+    #[tokio::test]
+    #[ignore = "requires a live PostgreSQL 18 server, STOCKIHA_RESTORE_ADMIN_DATABASE_URL, and STOCKIHA_DEV_DATABASE_URL"]
+    async fn update_backup_destination_rejects_the_real_pg_data_directory() {
+        let dev_url = std::env::var("STOCKIHA_DEV_DATABASE_URL")
+            .expect("STOCKIHA_DEV_DATABASE_URL must be set to run this live proof");
+        let pool = PgPool::connect(&dev_url)
+            .await
+            .expect("STOCKIHA_DEV_DATABASE_URL must be reachable");
+
+        let data_dir = fetch_pg_data_directory()
+            .await
+            .expect("STOCKIHA_RESTORE_ADMIN_DATABASE_URL must be reachable");
+        let data_dir_str = data_dir.to_string_lossy().into_owned();
+
+        let result =
+            update_backup_destination(&pool, "unused-because-rejected-first", &data_dir_str).await;
+        assert!(
+            matches!(
+                result,
+                Err(AppError::BackupDestinationInsideDataDirectory { .. })
+            ),
+            "expected BackupDestinationInsideDataDirectory, got: {result:?}"
+        );
     }
 }

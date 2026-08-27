@@ -60,6 +60,15 @@ if errorlevel 1 (
 
 if not defined STOCKIHA_BACKUP_ROOT set "STOCKIHA_BACKUP_ROOT=C:\Stockiha-R6-SQLx-Final-Acceptance"
 if not defined STOCKIHA_PG_DUMP_PATH set "STOCKIHA_PG_DUMP_PATH=C:\Program Files\PostgreSQL\18\bin\pg_dump.exe"
+if not defined STOCKIHA_PG_RESTORE_PATH set "STOCKIHA_PG_RESTORE_PATH=C:\Program Files\PostgreSQL\18\bin\pg_restore.exe"
+
+REM ---- WS-H-1 (G2): resolve the restore-verification admin connection the ----
+REM ---- same way STOCKIHA_DEV_DATABASE_URL is resolved below from runtime.key.
+REM ---- Optional: the "Verify temporary restore" feature is unreachable
+REM ---- without it, but its absence must not block the rest of the app.
+if not defined STOCKIHA_RESTORE_ADMIN_DATABASE_URL if exist "%SECRET_ROOT%\admin.key" (
+    for /f "usebackq delims=" %%A in (`powershell -NoProfile -Command "$pw = (Get-Content -LiteralPath '%SECRET_ROOT%\admin.key' -Raw).Trim(); if ([string]::IsNullOrWhiteSpace($pw)) { exit 0 }; $enc = [System.Uri]::EscapeDataString($pw); Write-Output ('postgres://stockiha_admin:' + $enc + '@127.0.0.1:5433/postgres?sslmode=disable')"`) do set "STOCKIHA_RESTORE_ADMIN_DATABASE_URL=%%A"
+)
 
 REM ---- Step 4: Read database credentials and build DB URL ----
 echo.
@@ -100,6 +109,12 @@ if not defined STOCKIHA_DEV_DATABASE_URL (
 )
 
 echo  [OK] Credentials loaded.
+if defined STOCKIHA_RESTORE_ADMIN_DATABASE_URL (
+    echo  [OK] Restore-verification admin connection resolved.
+) else (
+    echo  [WARN] Restore-verification admin connection NOT resolved -- the
+    echo         "Verify temporary restore" feature will be unavailable this run.
+)
 
 REM ---- Step 5: Build frontend and backend, then launch Tauri dev ----
 echo.

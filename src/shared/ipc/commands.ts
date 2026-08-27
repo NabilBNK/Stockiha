@@ -82,6 +82,8 @@ export const COMMANDS = {
   CREATE_OPERATOR_BACKUP: 'create_operator_backup',
   VALIDATE_OPERATOR_BACKUP: 'validate_operator_backup',
   VERIFY_OPERATOR_BACKUP_RESTORE: 'verify_operator_backup_restore',
+  GET_BACKUP_DESTINATION_SETTING: 'get_backup_destination_setting',
+  UPDATE_BACKUP_DESTINATION_SETTING: 'update_backup_destination_setting',
   CONFIRM_CASH_SALE: 'confirm_cash_sale',
   GET_SALE_DOCUMENT: 'get_sale_document',
   LIST_SALE_LINES: 'list_sale_lines',

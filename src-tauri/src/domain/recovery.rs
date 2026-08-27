@@ -117,6 +117,38 @@ pub(crate) struct RestoreControlTotals {
     pub(crate) opening_state_application_count: i64,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateBackupDestinationRequest {
+    pub(crate) path: String,
+}
+
+impl UpdateBackupDestinationRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let trimmed = self.path.trim();
+        if trimmed.is_empty() || trimmed.len() > PATH_MAX_LEN {
+            return Err("path is empty or too long".to_string());
+        }
+        if trimmed.contains('\0') {
+            return Err("path contains a NUL character".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BackupDestinationSetting {
+    pub(crate) path: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateBackupDestinationResult {
+    pub(crate) path: Option<String>,
+    pub(crate) same_drive_warning: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OperatorRestoreVerificationResult {

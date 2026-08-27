@@ -9,7 +9,9 @@ import type {
 } from '../../shared/ipc/recoveryDto';
 import {
   createOperatorBackup,
+  getBackupDestinationSetting,
   getRestoreVerificationSetting,
+  updateBackupDestinationSetting,
   updateRestoreVerificationSetting,
   validateOperatorBackup,
   verifyOperatorBackupRestore,
@@ -19,7 +21,7 @@ interface Props {
   sessionToken: string;
 }
 
-type BusyAction = 'setting' | 'create' | 'validate' | 'restore' | null;
+type BusyAction = 'setting' | 'create' | 'validate' | 'restore' | 'destination' | null;
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
@@ -28,6 +30,12 @@ const COPY: Record<Locale, Record<string, string>> = {
     setting: 'Temporary restore verification enabled',
     settingHelp: 'When disabled, new temporary restore drills are blocked. Backup creation and read-only validation remain available.',
     settingUpdated: 'Restore-verification policy updated.',
+    destinationTitle: 'Backup destination',
+    destinationHelp: 'Where new backups are saved. Leave empty to use the default location. The folder is created automatically if it does not exist yet.',
+    destinationPlaceholder: 'C:\\Stockiha Backups',
+    destinationSave: 'Save destination',
+    destinationSaved: 'Backup destination saved.',
+    destinationSameDriveWarning: 'This folder is on the same drive as the Stockiha database. If that drive fails, both the database and this backup would be lost. A different drive or an external drive is safer.',
     createHelp: 'Creates a verified bundle inside the configured backup directory. The destination, PostgreSQL role, credential, and pg_dump executable are resolved by the backend.',
     create: 'Create backup',
     created: 'Backup created and verified.',
@@ -80,6 +88,12 @@ const COPY: Record<Locale, Record<string, string>> = {
     setting: 'Vérification de restauration temporaire activée',
     settingHelp: 'Lorsqu’elle est désactivée, les nouveaux tests de restauration sont bloqués. La création et la validation restent disponibles.',
     settingUpdated: 'Politique de vérification de restauration mise à jour.',
+    destinationTitle: 'Destination de la sauvegarde',
+    destinationHelp: 'Emplacement où les nouvelles sauvegardes sont enregistrées. Laissez vide pour utiliser l’emplacement par défaut. Le dossier est créé automatiquement s’il n’existe pas encore.',
+    destinationPlaceholder: 'C:\\Sauvegardes Stockiha',
+    destinationSave: 'Enregistrer la destination',
+    destinationSaved: 'Destination de sauvegarde enregistrée.',
+    destinationSameDriveWarning: 'Ce dossier se trouve sur le même disque que la base de données Stockiha. En cas de panne de ce disque, la base de données et cette sauvegarde seraient toutes deux perdues. Un autre disque ou un disque externe est plus sûr.',
     createHelp: 'Crée une sauvegarde vérifiée dans le répertoire configuré. La destination, le rôle PostgreSQL, le secret et pg_dump sont résolus par le backend.',
     create: 'Créer une sauvegarde',
     created: 'Sauvegarde créée et vérifiée.',
@@ -132,6 +146,12 @@ const COPY: Record<Locale, Record<string, string>> = {
     setting: 'تفعيل اختبار الاسترجاع المؤقت',
     settingHelp: 'عند التعطيل يتم منع اختبارات الاسترجاع الجديدة، بينما يبقى إنشاء النسخ والتحقق منها متاحاً.',
     settingUpdated: 'تم تحديث سياسة اختبار الاسترجاع.',
+    destinationTitle: 'وجهة النسخ الاحتياطي',
+    destinationHelp: 'المكان الذي تُحفظ فيه النسخ الاحتياطية الجديدة. اتركه فارغاً لاستخدام الموقع الافتراضي. يتم إنشاء المجلد تلقائياً إذا لم يكن موجوداً.',
+    destinationPlaceholder: 'C:\\نسخ Stockiha الاحتياطية',
+    destinationSave: 'حفظ الوجهة',
+    destinationSaved: 'تم حفظ وجهة النسخ الاحتياطي.',
+    destinationSameDriveWarning: 'هذا المجلد موجود على نفس قرص قاعدة بيانات Stockiha. إذا تعطل هذا القرص، ستُفقد قاعدة البيانات وهذه النسخة معاً. يُفضّل استخدام قرص آخر أو قرص خارجي.',
     createHelp: 'ينشئ نسخة جديدة ويتم التحقق منها داخل مجلد النسخ المضبوط. يحدد النظام المسار ودور PostgreSQL وكلمة السر وpg_dump داخلياً.',
     create: 'إنشاء نسخة احتياطية',
     created: 'تم إنشاء النسخة الاحتياطية والتحقق منها.',
@@ -203,12 +223,28 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [result, setResult] = useState<OperatorBackupValidationResult | null>(null);
   const [restoreResult, setRestoreResult] = useState<OperatorRestoreVerificationResult | null>(null);
+  const [destinationInput, setDestinationInput] = useState('');
+  const [destinationSameDriveWarning, setDestinationSameDriveWarning] = useState(false);
 
   useEffect(() => {
     let active = true;
     void getRestoreVerificationSetting(sessionToken)
       .then((setting) => {
         if (active) setRestoreEnabled(setting.enabled);
+      })
+      .catch((settingError) => {
+        if (active) setError(errorText(settingError));
+      });
+    return () => {
+      active = false;
+    };
+  }, [errorText, sessionToken]);
+
+  useEffect(() => {
+    let active = true;
+    void getBackupDestinationSetting(sessionToken)
+      .then((setting) => {
+        if (active) setDestinationInput(setting.path ?? '');
       })
       .catch((settingError) => {
         if (active) setError(errorText(settingError));
@@ -237,6 +273,25 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
       setFeedback(text.settingUpdated);
     } catch (settingError) {
       setError(errorText(settingError));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveDestination() {
+    if (busy) return;
+    setBusy('destination');
+    resetMessages();
+    setDestinationSameDriveWarning(false);
+    try {
+      const saved = await updateBackupDestinationSetting(sessionToken, {
+        path: destinationInput.trim(),
+      });
+      setDestinationInput(saved.path ?? '');
+      setDestinationSameDriveWarning(saved.sameDriveWarning);
+      setFeedback(text.destinationSaved);
+    } catch (destinationError) {
+      setError(errorText(destinationError));
     } finally {
       setBusy(null);
     }
@@ -317,6 +372,34 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
         <Banner tone="warning">{text.recoveryBoundary}</Banner>
         {error ? <Banner tone="error">{error}</Banner> : null}
         {feedback ? <Banner tone="success">{feedback}</Banner> : null}
+        {destinationSameDriveWarning ? (
+          <Banner tone="warning">{text.destinationSameDriveWarning}</Banner>
+        ) : null}
+
+        <div className="sk-stack">
+          <h3>{text.destinationTitle}</h3>
+          <TextField
+            label={text.destinationTitle}
+            value={destinationInput}
+            placeholder={text.destinationPlaceholder}
+            disabled={busy !== null}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => setDestinationInput(event.target.value)}
+          />
+          <small className="sk-field-help">{text.destinationHelp}</small>
+          <div>
+            <Button
+              type="button"
+              variant="secondary"
+              loading={busy === 'destination'}
+              disabled={busy !== null}
+              onClick={() => void saveDestination()}
+            >
+              {text.destinationSave}
+            </Button>
+          </div>
+        </div>
 
         <div className="sk-stack">
           <label className="sk-checkbox-row">

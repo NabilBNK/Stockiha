@@ -47,6 +47,9 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   CREDIT_POLICY_BLOCKED: 'Customer credit policy blocks this sale.',
   INSUFFICIENT_STOCK: 'There is not enough stock on hand for this operation.',
   CORRECTIONS_DISABLED: 'Inventory corrections are disabled by the current policy.',
+  RESTORE_ADMIN_NOT_CONFIGURED: 'Restore verification is not configured on this computer.',
+  BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY: 'This location is inside the PostgreSQL data folder and cannot be used.',
+  BACKUP_DESTINATION_CREATE_FAILED: 'This backup folder could not be created or used.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

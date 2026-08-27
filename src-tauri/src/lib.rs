@@ -120,6 +120,8 @@ pub fn run() {
             commands::recovery::create_operator_backup,
             commands::recovery::validate_operator_backup,
             commands::recovery::verify_operator_backup_restore,
+            commands::recovery::get_backup_destination_setting,
+            commands::recovery::update_backup_destination_setting,
             commands::setup::get_setup_status,
             commands::setup::bootstrap_first_admin,
             commands::catalog::create_product,

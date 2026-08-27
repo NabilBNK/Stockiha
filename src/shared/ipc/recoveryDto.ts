@@ -17,6 +17,19 @@ export interface RestoreVerificationSetting {
   enabled: boolean;
 }
 
+export interface UpdateBackupDestinationRequest {
+  path: string;
+}
+
+export interface BackupDestinationSetting {
+  path: string | null;
+}
+
+export interface UpdateBackupDestinationResult {
+  path: string | null;
+  sameDriveWarning: boolean;
+}
+
 export interface OperatorBackupValidationResult {
   requestId: string;
   bundleIdentifier: string;

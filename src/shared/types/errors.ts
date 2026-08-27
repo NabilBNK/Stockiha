@@ -18,6 +18,9 @@ export const BACKEND_ERROR_CODES = [
   'CREDIT_POLICY_BLOCKED',
   'INSUFFICIENT_STOCK',
   'CORRECTIONS_DISABLED',
+  'RESTORE_ADMIN_NOT_CONFIGURED',
+  'BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY',
+  'BACKUP_DESTINATION_CREATE_FAILED',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -42,6 +45,9 @@ export const ERROR_MESSAGE_KEYS = {
   CREDIT_POLICY_BLOCKED: 'errors.preconditionFailed',
   INSUFFICIENT_STOCK: 'adjustment.insufficientStock',
   CORRECTIONS_DISABLED: 'adjustment.disabledPolicy',
+  RESTORE_ADMIN_NOT_CONFIGURED: 'errors.restoreAdminNotConfigured',
+  BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY: 'errors.backupDestinationInsideDataDirectory',
+  BACKUP_DESTINATION_CREATE_FAILED: 'errors.backupDestinationCreateFailed',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 

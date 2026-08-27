@@ -2,11 +2,14 @@ import { invoke } from '@tauri-apps/api/core';
 
 import { COMMANDS } from './commands';
 import type {
+  BackupDestinationSetting,
   CreateOperatorBackupRequest,
   OperatorBackupCreationResult,
   OperatorBackupValidationResult,
   OperatorRestoreVerificationResult,
   RestoreVerificationSetting,
+  UpdateBackupDestinationRequest,
+  UpdateBackupDestinationResult,
   ValidateOperatorBackupRequest,
   VerifyOperatorBackupRestoreRequest,
 } from './recoveryDto';
@@ -75,6 +78,33 @@ export async function verifyOperatorBackupRestore(
   try {
     return await invoke<OperatorRestoreVerificationResult>(
       COMMANDS.VERIFY_OPERATOR_BACKUP_RESTORE,
+      { sessionToken, request },
+    );
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+export async function getBackupDestinationSetting(
+  sessionToken: string,
+): Promise<BackupDestinationSetting> {
+  try {
+    return await invoke<BackupDestinationSetting>(
+      COMMANDS.GET_BACKUP_DESTINATION_SETTING,
+      { sessionToken },
+    );
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+export async function updateBackupDestinationSetting(
+  sessionToken: string,
+  request: UpdateBackupDestinationRequest,
+): Promise<UpdateBackupDestinationResult> {
+  try {
+    return await invoke<UpdateBackupDestinationResult>(
+      COMMANDS.UPDATE_BACKUP_DESTINATION_SETTING,
       { sessionToken, request },
     );
   } catch (error: unknown) {

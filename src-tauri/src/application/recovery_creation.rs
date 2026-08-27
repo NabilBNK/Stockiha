@@ -136,8 +136,8 @@ pub(crate) fn create_operator_backup_files(
     current_schema_version: String,
     resume_existing: bool,
     app_data_dir: PathBuf,
+    canonical_root: PathBuf,
 ) -> Result<OperatorBackupCreationResult, AppError> {
-    let canonical_root = configured_backup_root()?;
     let final_path = canonical_root.join(&bundle_identifier);
 
     if final_path.exists() {
@@ -332,6 +332,52 @@ fn build_result(
     })
 }
 
+/// WS-H-1 (G3): resolve the backup destination directory. Stored-setting
+/// resolution order: `operations.get_backup_destination_setting` (an
+/// authorised-user-changeable value persisted in the database) first, then
+/// the `STOCKIHA_BACKUP_ROOT` environment variable exactly as it worked
+/// before this task — the env-var-only path below is byte-identical to the
+/// pre-existing `configured_backup_root` behaviour and is exercised whenever
+/// no stored setting is present, so it must never regress.
+pub(crate) async fn resolve_backup_root(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<PathBuf, AppError> {
+    let value: JsonValue = query_scalar("SELECT operations.get_backup_destination_setting($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+    let stored_path = value
+        .get("path")
+        .and_then(JsonValue::as_str)
+        .map(str::to_string);
+
+    match stored_path {
+        Some(path) => resolve_and_create_backup_root(&path),
+        None => configured_backup_root(),
+    }
+}
+
+/// The stored-setting path: create the directory if it does not yet exist
+/// (this is what makes "user picks their own folder" usable rather than a
+/// trap — G3), then apply the exact same real-directory / not-a-symlink
+/// validation the env-var path already applies.
+fn resolve_and_create_backup_root(raw_path: &str) -> Result<PathBuf, AppError> {
+    let configured = PathBuf::from(raw_path);
+    if !configured.exists() {
+        fs::create_dir_all(&configured).map_err(|_| AppError::BackupDestinationCreateFailed {
+            diagnostic: "BACKUP_DESTINATION_CREATE_DIR_FAILED".to_string(),
+        })?;
+    }
+    validate_real_directory(&configured, || AppError::BackupDestinationCreateFailed {
+        diagnostic: "BACKUP_DESTINATION_INVALID".to_string(),
+    })
+}
+
+/// The pre-existing, unchanged env-var-only resolution path (G3 regression
+/// seam — acceptance criterion 8): the directory must already exist. Never
+/// auto-creates. Behaviour here must stay byte-identical to before this task.
 fn configured_backup_root() -> Result<PathBuf, AppError> {
     let value = std::env::var_os(BACKUP_ROOT_ENV).ok_or_else(|| {
         AppError::database_configuration(format!("{BACKUP_ROOT_ENV} is not configured"))
@@ -343,25 +389,28 @@ fn configured_backup_root() -> Result<PathBuf, AppError> {
     }
 
     let configured = PathBuf::from(value);
-    let configured_metadata = fs::symlink_metadata(&configured).map_err(|_| {
-        AppError::database_configuration("configured backup root cannot be inspected")
-    })?;
+    validate_real_directory(&configured, || {
+        AppError::database_configuration("configured backup root is not a real directory")
+    })
+}
+
+/// Shared real-directory validation (not a symlink/reparse point, is a
+/// directory, canonicalizes cleanly) used by both backup-root resolution
+/// paths. `make_error` is called fresh at every failure point so each path
+/// keeps its own `AppError` variant / stable error code.
+fn validate_real_directory(
+    configured: &Path,
+    make_error: impl Fn() -> AppError,
+) -> Result<PathBuf, AppError> {
+    let configured_metadata = fs::symlink_metadata(configured).map_err(|_| make_error())?;
     if is_symlink_or_reparse(&configured_metadata) || !configured_metadata.is_dir() {
-        return Err(AppError::database_configuration(
-            "configured backup root is not a real directory",
-        ));
+        return Err(make_error());
     }
 
-    let canonical = configured
-        .canonicalize()
-        .map_err(|_| AppError::database_configuration("configured backup root is unavailable"))?;
-    let canonical_metadata = fs::symlink_metadata(&canonical).map_err(|_| {
-        AppError::database_configuration("configured backup root cannot be inspected")
-    })?;
+    let canonical = configured.canonicalize().map_err(|_| make_error())?;
+    let canonical_metadata = fs::symlink_metadata(&canonical).map_err(|_| make_error())?;
     if is_symlink_or_reparse(&canonical_metadata) || !canonical_metadata.is_dir() {
-        return Err(AppError::database_configuration(
-            "configured backup root does not resolve to a real directory",
-        ));
+        return Err(make_error());
     }
     Ok(canonical)
 }
