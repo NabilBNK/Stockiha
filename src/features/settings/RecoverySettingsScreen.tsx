@@ -9,9 +9,7 @@ import type {
 } from '../../shared/ipc/recoveryDto';
 import {
   createOperatorBackup,
-  getBackupDestinationSetting,
   getRestoreVerificationSetting,
-  updateBackupDestinationSetting,
   updateRestoreVerificationSetting,
   validateOperatorBackup,
   verifyOperatorBackupRestore,
@@ -21,26 +19,27 @@ interface Props {
   sessionToken: string;
 }
 
-type BusyAction = 'setting' | 'create' | 'validate' | 'restore' | 'destination' | null;
+type BusyAction = 'setting' | 'create' | 'validate' | 'restore' | null;
+
+// MVP scope decision (see STOCKIHA_GROUND_TRUTH.md WS-H):
+// Only backup creation and read-only validation ship for MVP. The temporary
+// restore drill is fully implemented on the backend but is deliberately kept
+// out of reach in the UI until WS-H resumes after MVP. Set to `true` to
+// restore the original behaviour — no other code in this file needs to change.
+const RESTORE_DRILL_AVAILABLE = false;
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
     title: 'Backup and recovery',
-    subtitle: 'Create, validate, or verify recovery from a Stockiha backup',
+    subtitle: 'Create a backup of your Stockiha data at any time',
     setting: 'Temporary restore verification enabled',
     settingHelp: 'When disabled, new temporary restore drills are blocked. Backup creation and read-only validation remain available.',
     settingUpdated: 'Restore-verification policy updated.',
-    destinationTitle: 'Backup destination',
-    destinationHelp: 'Where new backups are saved. Leave empty to use the default location. The folder is created automatically if it does not exist yet.',
-    destinationPlaceholder: 'C:\\Stockiha Backups',
-    destinationSave: 'Save destination',
-    destinationSaved: 'Backup destination saved.',
-    destinationSameDriveWarning: 'This folder is on the same drive as the Stockiha database. If that drive fails, both the database and this backup would be lost. A different drive or an external drive is safer.',
-    createHelp: 'Creates a verified bundle inside the configured backup directory. The destination, PostgreSQL role, credential, and pg_dump executable are resolved by the backend.',
+    createHelp: 'Creates a verified backup file inside your chosen backup destination. The PostgreSQL role, credential, and pg_dump executable are resolved automatically.',
     create: 'Create backup',
     created: 'Backup created and verified.',
     creationFailed: 'The backup could not be created. No partial bundle was published.',
-    validateHelp: 'Enter the full path of a GestStock-Backup folder located directly inside the configured backup directory.',
+    validateHelp: 'Enter the full path of a GestStock-Backup folder located directly inside your backup destination.',
     path: 'Existing backup folder path',
     placeholder: 'C:\\Stockiha Backups\\GestStock-Backup-20260805-150500',
     validate: 'Validate backup',
@@ -50,6 +49,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     restoreHelp: 'Requires an exact application, schema, and PostgreSQL 18 match. The temporary database must be deleted before success is reported.',
     restored: 'Backup restored and reconciled successfully in a temporary database.',
     restoreFailed: 'The temporary restore verification failed. The live database was not replaced.',
+    restoreComingSoon: 'Coming after MVP',
+    restoreDeferredTitle: 'Restoring from a backup is not available yet',
+    restoreDeferredBody: 'This version can create and validate backup files, so your data is protected while the rest of Stockiha is completed. The ability to actually restore your data from a backup file will be added in a later update. Keep every backup file you create — they will work with that update.',
     valid: 'Backup integrity verified.',
     invalid: 'The backup could not be validated. It was not changed or repaired.',
     bundle: 'Bundle',
@@ -84,21 +86,15 @@ const COPY: Record<Locale, Record<string, string>> = {
   },
   fr: {
     title: 'Sauvegarde et récupération',
-    subtitle: 'Créer, valider ou vérifier la récupération d’une sauvegarde Stockiha',
+    subtitle: 'Créez à tout moment une sauvegarde de vos données Stockiha',
     setting: 'Vérification de restauration temporaire activée',
     settingHelp: 'Lorsqu’elle est désactivée, les nouveaux tests de restauration sont bloqués. La création et la validation restent disponibles.',
     settingUpdated: 'Politique de vérification de restauration mise à jour.',
-    destinationTitle: 'Destination de la sauvegarde',
-    destinationHelp: 'Emplacement où les nouvelles sauvegardes sont enregistrées. Laissez vide pour utiliser l’emplacement par défaut. Le dossier est créé automatiquement s’il n’existe pas encore.',
-    destinationPlaceholder: 'C:\\Sauvegardes Stockiha',
-    destinationSave: 'Enregistrer la destination',
-    destinationSaved: 'Destination de sauvegarde enregistrée.',
-    destinationSameDriveWarning: 'Ce dossier se trouve sur le même disque que la base de données Stockiha. En cas de panne de ce disque, la base de données et cette sauvegarde seraient toutes deux perdues. Un autre disque ou un disque externe est plus sûr.',
-    createHelp: 'Crée une sauvegarde vérifiée dans le répertoire configuré. La destination, le rôle PostgreSQL, le secret et pg_dump sont résolus par le backend.',
+    createHelp: 'Crée un fichier de sauvegarde vérifié dans la destination choisie. Le rôle PostgreSQL, le secret et pg_dump sont résolus automatiquement.',
     create: 'Créer une sauvegarde',
     created: 'Sauvegarde créée et vérifiée.',
     creationFailed: 'La sauvegarde n’a pas pu être créée. Aucun dossier partiel n’a été publié.',
-    validateHelp: 'Saisissez le chemin complet d’un dossier GestStock-Backup placé directement dans le répertoire configuré.',
+    validateHelp: 'Saisissez le chemin complet d’un dossier GestStock-Backup placé directement dans votre destination de sauvegarde.',
     path: 'Chemin d’une sauvegarde existante',
     placeholder: 'C:\\Stockiha Backups\\GestStock-Backup-20260805-150500',
     validate: 'Valider la sauvegarde',
@@ -108,6 +104,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     restoreHelp: 'Exige la même version d’application, de schéma et PostgreSQL 18. La base temporaire doit être supprimée avant le succès.',
     restored: 'Sauvegarde restaurée et rapprochée avec succès dans une base temporaire.',
     restoreFailed: 'La vérification de restauration temporaire a échoué. La base active n’a pas été remplacée.',
+    restoreComingSoon: 'Disponible après le MVP',
+    restoreDeferredTitle: 'La restauration à partir d’une sauvegarde n’est pas encore disponible',
+    restoreDeferredBody: 'Cette version permet de créer et de valider des fichiers de sauvegarde, afin que vos données soient protégées pendant que le reste de Stockiha est finalisé. La restauration réelle de vos données à partir d’un fichier de sauvegarde sera ajoutée dans une prochaine mise à jour. Conservez chaque sauvegarde créée — elles fonctionneront avec cette mise à jour.',
     valid: 'Intégrité de la sauvegarde vérifiée.',
     invalid: 'La sauvegarde n’a pas pu être validée. Aucun fichier n’a été modifié ou réparé.',
     bundle: 'Sauvegarde',
@@ -142,21 +141,15 @@ const COPY: Record<Locale, Record<string, string>> = {
   },
   ar: {
     title: 'النسخ الاحتياطي والاسترجاع',
-    subtitle: 'إنشاء نسخة Stockiha أو التحقق منها أو اختبار استرجاعها',
+    subtitle: 'أنشئ نسخة احتياطية من بيانات Stockiha في أي وقت',
     setting: 'تفعيل اختبار الاسترجاع المؤقت',
     settingHelp: 'عند التعطيل يتم منع اختبارات الاسترجاع الجديدة، بينما يبقى إنشاء النسخ والتحقق منها متاحاً.',
     settingUpdated: 'تم تحديث سياسة اختبار الاسترجاع.',
-    destinationTitle: 'وجهة النسخ الاحتياطي',
-    destinationHelp: 'المكان الذي تُحفظ فيه النسخ الاحتياطية الجديدة. اتركه فارغاً لاستخدام الموقع الافتراضي. يتم إنشاء المجلد تلقائياً إذا لم يكن موجوداً.',
-    destinationPlaceholder: 'C:\\نسخ Stockiha الاحتياطية',
-    destinationSave: 'حفظ الوجهة',
-    destinationSaved: 'تم حفظ وجهة النسخ الاحتياطي.',
-    destinationSameDriveWarning: 'هذا المجلد موجود على نفس قرص قاعدة بيانات Stockiha. إذا تعطل هذا القرص، ستُفقد قاعدة البيانات وهذه النسخة معاً. يُفضّل استخدام قرص آخر أو قرص خارجي.',
-    createHelp: 'ينشئ نسخة جديدة ويتم التحقق منها داخل مجلد النسخ المضبوط. يحدد النظام المسار ودور PostgreSQL وكلمة السر وpg_dump داخلياً.',
+    createHelp: 'ينشئ ملف نسخة احتياطية موثوقاً داخل الوجهة التي اخترتها. يحدد النظام دور PostgreSQL وكلمة السر وpg_dump تلقائياً.',
     create: 'إنشاء نسخة احتياطية',
     created: 'تم إنشاء النسخة الاحتياطية والتحقق منها.',
     creationFailed: 'تعذر إنشاء النسخة الاحتياطية. لم يتم نشر أي مجلد ناقص.',
-    validateHelp: 'أدخل المسار الكامل لمجلد GestStock-Backup الموجود مباشرة داخل مجلد النسخ المضبوط.',
+    validateHelp: 'أدخل المسار الكامل لمجلد GestStock-Backup الموجود مباشرة داخل وجهة النسخ الخاصة بك.',
     path: 'مسار نسخة احتياطية موجودة',
     placeholder: 'C:\\Stockiha Backups\\GestStock-Backup-20260805-150500',
     validate: 'التحقق من النسخة',
@@ -166,6 +159,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     restoreHelp: 'يتطلب تطابق إصدار التطبيق والمخطط وPostgreSQL 18. يجب حذف القاعدة المؤقتة قبل إعلان النجاح.',
     restored: 'تم استرجاع النسخة ومطابقة الأرصدة بنجاح داخل قاعدة مؤقتة.',
     restoreFailed: 'فشل اختبار الاسترجاع المؤقت. لم يتم استبدال قاعدة البيانات الحالية.',
+    restoreComingSoon: 'متوفر بعد الإصدار الأول',
+    restoreDeferredTitle: 'استرجاع البيانات من نسخة احتياطية غير متاح بعد',
+    restoreDeferredBody: 'تتيح هذه النسخة إنشاء ملفات النسخ الاحتياطي والتحقق منها، لحماية بياناتك أثناء إتمام باقي أجزاء Stockiha. سيتم إضافة الاسترجاع الفعلي للبيانات من ملف نسخة احتياطية في تحديث لاحق. احتفظ بكل نسخة تنشئها الآن، فهي ستعمل مع ذلك التحديث.',
     valid: 'تم التحقق من سلامة النسخة الاحتياطية.',
     invalid: 'تعذر التحقق من النسخة الاحتياطية. لم يتم تعديلها أو إصلاحها.',
     bundle: 'النسخة',
@@ -223,28 +219,13 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [result, setResult] = useState<OperatorBackupValidationResult | null>(null);
   const [restoreResult, setRestoreResult] = useState<OperatorRestoreVerificationResult | null>(null);
-  const [destinationInput, setDestinationInput] = useState('');
-  const [destinationSameDriveWarning, setDestinationSameDriveWarning] = useState(false);
 
   useEffect(() => {
+    if (!RESTORE_DRILL_AVAILABLE) return;
     let active = true;
     void getRestoreVerificationSetting(sessionToken)
       .then((setting) => {
         if (active) setRestoreEnabled(setting.enabled);
-      })
-      .catch((settingError) => {
-        if (active) setError(errorText(settingError));
-      });
-    return () => {
-      active = false;
-    };
-  }, [errorText, sessionToken]);
-
-  useEffect(() => {
-    let active = true;
-    void getBackupDestinationSetting(sessionToken)
-      .then((setting) => {
-        if (active) setDestinationInput(setting.path ?? '');
       })
       .catch((settingError) => {
         if (active) setError(errorText(settingError));
@@ -273,25 +254,6 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
       setFeedback(text.settingUpdated);
     } catch (settingError) {
       setError(errorText(settingError));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function saveDestination() {
-    if (busy) return;
-    setBusy('destination');
-    resetMessages();
-    setDestinationSameDriveWarning(false);
-    try {
-      const saved = await updateBackupDestinationSetting(sessionToken, {
-        path: destinationInput.trim(),
-      });
-      setDestinationInput(saved.path ?? '');
-      setDestinationSameDriveWarning(saved.sameDriveWarning);
-      setFeedback(text.destinationSaved);
-    } catch (destinationError) {
-      setError(errorText(destinationError));
     } finally {
       setBusy(null);
     }
@@ -341,6 +303,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   }
 
   async function verifyRestore() {
+    if (!RESTORE_DRILL_AVAILABLE) return;
     if (!bundlePath.trim() || !restoreConfirmed || !restoreEnabled || busy) return;
     setBusy('restore');
     resetMessages();
@@ -369,52 +332,11 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
         <h2 id="recovery-settings-title">{text.title}</h2>
         <p>{text.subtitle}</p>
 
-        <Banner tone="warning">{text.recoveryBoundary}</Banner>
         {error ? <Banner tone="error">{error}</Banner> : null}
         {feedback ? <Banner tone="success">{feedback}</Banner> : null}
-        {destinationSameDriveWarning ? (
-          <Banner tone="warning">{text.destinationSameDriveWarning}</Banner>
-        ) : null}
 
-        <div className="sk-stack">
-          <h3>{text.destinationTitle}</h3>
-          <TextField
-            label={text.destinationTitle}
-            value={destinationInput}
-            placeholder={text.destinationPlaceholder}
-            disabled={busy !== null}
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(event) => setDestinationInput(event.target.value)}
-          />
-          <small className="sk-field-help">{text.destinationHelp}</small>
-          <div>
-            <Button
-              type="button"
-              variant="secondary"
-              loading={busy === 'destination'}
-              disabled={busy !== null}
-              onClick={() => void saveDestination()}
-            >
-              {text.destinationSave}
-            </Button>
-          </div>
-        </div>
-
-        <div className="sk-stack">
-          <label className="sk-checkbox-row">
-            <input
-              type="checkbox"
-              aria-label={text.setting}
-              checked={restoreEnabled === true}
-              disabled={restoreEnabled === null || busy !== null}
-              onChange={(event) => void changeRestoreSetting(event.target.checked)}
-            />
-            <span>{text.setting}</span>
-          </label>
-          <small className="sk-field-help">{text.settingHelp}</small>
-
-          <div>
+        <div className="sk-form">
+          <div className="sk-field">
             <Button
               type="button"
               loading={busy === 'create'}
@@ -426,20 +348,23 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
             <small className="sk-field-help">{text.createHelp}</small>
           </div>
 
-          <TextField
-            label={text.path}
-            value={bundlePath}
-            placeholder={text.placeholder}
-            disabled={busy !== null}
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(event) => {
-              setBundlePath(event.target.value);
-              setRestoreConfirmed(false);
-            }}
-          />
-          <small className="sk-field-help">{text.validateHelp}</small>
-          <div className="sk-actions">
+          <div className="sk-field">
+            <TextField
+              label={text.path}
+              value={bundlePath}
+              placeholder={text.placeholder}
+              disabled={busy !== null}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(event) => {
+                setBundlePath(event.target.value);
+                setRestoreConfirmed(false);
+              }}
+            />
+            <small className="sk-field-help">{text.validateHelp}</small>
+          </div>
+
+          <div className="sk-field">
             <Button
               type="button"
               variant="secondary"
@@ -449,28 +374,6 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
             >
               {text.validate}
             </Button>
-          </div>
-
-          <label className="sk-checkbox-row">
-            <input
-              type="checkbox"
-              checked={restoreConfirmed}
-              disabled={!bundlePath.trim() || !restoreEnabled || busy !== null}
-              onChange={(event) => setRestoreConfirmed(event.target.checked)}
-            />
-            <span>{text.restoreConfirm}</span>
-          </label>
-          <div>
-            <Button
-              type="button"
-              variant="secondary"
-              loading={busy === 'restore'}
-              disabled={!bundlePath.trim() || !restoreConfirmed || !restoreEnabled || busy !== null}
-              onClick={() => void verifyRestore()}
-            >
-              {text.restore}
-            </Button>
-            <small className="sk-field-help">{text.restoreHelp}</small>
           </div>
         </div>
 
@@ -484,6 +387,43 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
             <div><dt>{text.bytes}</dt><dd>{new Intl.NumberFormat(locale).format(result.totalBytes)}</dd></div>
           </dl>
         ) : null}
+      </div>
+
+      <div className="sk-card sk-card--muted" aria-labelledby="recovery-restore-title">
+        <div className="sk-section-heading">
+          <h2 id="recovery-restore-title">{text.restoreDeferredTitle}</h2>
+          <span className="sk-badge sk-badge--warning">{text.restoreComingSoon}</span>
+        </div>
+        <p className="sk-field-help">{text.restoreDeferredBody}</p>
+
+        <Banner tone="warning">{text.recoveryBoundary}</Banner>
+
+        <fieldset className="sk-form sk-fieldset--disabled" disabled>
+          <div className="sk-field">
+            <label className="sk-checkbox-row">
+              <input
+                type="checkbox"
+                aria-label={text.setting}
+                checked={restoreEnabled === true}
+                readOnly
+              />
+              <span>{text.setting}</span>
+            </label>
+            <small className="sk-field-help">{text.settingHelp}</small>
+          </div>
+
+          <label className="sk-checkbox-row">
+            <input type="checkbox" checked={restoreConfirmed} readOnly />
+            <span>{text.restoreConfirm}</span>
+          </label>
+
+          <div className="sk-field">
+            <Button type="button" variant="secondary" disabled>
+              {text.restore}
+            </Button>
+            <small className="sk-field-help">{text.restoreHelp}</small>
+          </div>
+        </fieldset>
 
         {restoreResult ? (
           <dl className="sk-details-grid" data-testid="restore-result">
