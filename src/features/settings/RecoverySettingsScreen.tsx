@@ -506,9 +506,11 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
             <span className="sk-badge sk-badge--warning">{text.restoreComingSoon}</span>
           )}
         </div>
-        <p className="sk-field-help">
-          {RESTORE_DRILL_AVAILABLE ? text.restoreAvailableBody : text.restoreDeferredBody}
-        </p>
+        {/* Card body copy, not field help: this is the restore card's
+            equivalent of the backup card's subtitle, so it uses the same
+            plain paragraph rather than the 0.74rem `.sk-field-help` scale
+            reserved for text attached to a single control. */}
+        <p>{RESTORE_DRILL_AVAILABLE ? text.restoreAvailableBody : text.restoreDeferredBody}</p>
 
         <Banner tone="warning">{text.recoveryBoundary}</Banner>
 
@@ -529,15 +531,20 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
             <small className="sk-field-help">{text.settingHelp}</small>
           </div>
 
-          <label className="sk-checkbox-row">
-            <input
-              type="checkbox"
-              checked={restoreConfirmed}
-              disabled={!restoreEnabled}
-              onChange={(event) => setRestoreConfirmed(event.target.checked)}
-            />
-            <span>{text.restoreConfirm}</span>
-          </label>
+          {/* Wrapped in `.sk-field` like every other row in both cards: as a
+              bare fieldset child this one row sat outside the form's field
+              rhythm. */}
+          <div className="sk-field">
+            <label className="sk-checkbox-row">
+              <input
+                type="checkbox"
+                checked={restoreConfirmed}
+                disabled={!restoreEnabled}
+                onChange={(event) => setRestoreConfirmed(event.target.checked)}
+              />
+              <span>{text.restoreConfirm}</span>
+            </label>
+          </div>
 
           <div className="sk-field">
             <Button

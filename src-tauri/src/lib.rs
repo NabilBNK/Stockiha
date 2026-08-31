@@ -45,6 +45,10 @@ pub fn run() {
             // of degrading silently into "Service unavailable" fifteen seconds
             // later with an evidence-free pool timeout.
             infrastructure::db::startup_diagnostic(&state).await;
+            // WS-H-2: the recovery environment is supplied only by run.bat.
+            // Report it missing here, by name, rather than letting it surface
+            // later as a message that reads like a broken feature.
+            application::recovery::startup_environment_diagnostic();
             state
         }))
         .invoke_handler(tauri::generate_handler![

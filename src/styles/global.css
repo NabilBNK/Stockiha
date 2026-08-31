@@ -402,6 +402,20 @@ p {
   border-block-end: 1px solid var(--sk-border);
 }
 
+/* WS-H-2: a card whose title is wrapped in `.sk-section-heading` (to carry a
+   trailing badge/actions) still opens the card, so it must keep the same
+   rule-under-the-title rhythm as a bare `h2:first-child`. Without this the
+   heading lost its underline and the wrapper's own 18px bottom margin
+   replaced the 14px title padding — the Backup and recovery restore card
+   read as a loose fragment rather than a card. `margin-block-end: 0` hands
+   the following paragraph's own margin back the spacing, exactly as it works
+   after a bare `h2`. */
+.sk-card>.sk-section-heading:first-child {
+  margin-block-end: 0;
+  padding-block-end: 14px;
+  border-block-end: 1px solid var(--sk-border);
+}
+
 .sk-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));

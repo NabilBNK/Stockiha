@@ -19,10 +19,30 @@ input[type="radio"] {
 .sk-checkbox-row {
   flex-direction: row !important;
   align-items: center !important;
-  align-self: end;
   gap: 10px !important;
   min-height: var(--sk-touch);
   padding: 8px 4px;
+}
+
+/* WS-H-2: `align-self: end` bottom-aligns a checkbox against the labelled
+   inputs sharing its auto-fit row — which only makes sense in a GRID, where
+   the cross axis is the block axis. It used to live in the block above, so it
+   also reached `.sk-form` / `.sk-field`, which are flex COLUMNS: there the
+   cross axis is horizontal, so the very same declaration shoved the row to
+   the trailing edge. That is why the Backup and recovery restore section
+   rendered both of its checkboxes hard against the right margin while every
+   other control on the screen stayed left-aligned. Scoped to grid parents
+   only; flex-column rows now fall back to `stretch` and read as full-width
+   fields, exactly like their siblings. `.sk-form__grid` is listed alongside
+   `.sk-form-grid` because global.css defines both spellings and real screens
+   (e.g. Inventory filters) use the `__grid` one. */
+.sk-form-grid > label:has(> input[type="checkbox"]),
+.sk-form-grid > label:has(> input[type="radio"]),
+.sk-form-grid > .sk-checkbox-row,
+.sk-form__grid > label:has(> input[type="checkbox"]),
+.sk-form__grid > label:has(> input[type="radio"]),
+.sk-form__grid > .sk-checkbox-row {
+  align-self: end;
 }
 
 .sk-checkbox-row > span { line-height: 1.25; }

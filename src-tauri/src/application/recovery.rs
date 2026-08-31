@@ -16,6 +16,46 @@ use crate::infrastructure::{backup_proof, restore_proof};
 pub(crate) const BACKUP_ROOT_ENV: &str = "STOCKIHA_BACKUP_ROOT";
 pub(crate) const RESTORE_ADMIN_URL_ENV: &str = "STOCKIHA_RESTORE_ADMIN_DATABASE_URL";
 
+/// WS-H-2: report a missing recovery environment at startup, by name.
+///
+/// `run.bat` is the only launcher that exports the recovery environment.
+/// Launching with a bare `npm run tauri dev` leaves `STOCKIHA_BACKUP_ROOT`
+/// and `STOCKIHA_RESTORE_ADMIN_DATABASE_URL` unset, and the operator then
+/// meets those gaps *later*, as "The application configuration is missing or
+/// invalid" when creating a backup and "Restore verification is not
+/// configured on this computer" when verifying a restore. Both read like a
+/// broken feature; neither names the actual cause, and a real Windows
+/// acceptance pass was lost to exactly that misreading.
+///
+/// This is the same rule already applied to `BACKUP_BUNDLE_OUTSIDE_ROOT`: a
+/// misleading error costs more than a missing one. Reported once, at startup,
+/// naming the variable and the fix. Never fatal — an operator who only needs
+/// the non-recovery parts of the app must still be able to run it.
+///
+/// Mirrored to stderr for the same reason `startup_diagnostic` is: `tracing`
+/// is installed in debug builds only, and this message must not be filtered
+/// away in a release build.
+pub(crate) fn startup_environment_diagnostic() {
+    let missing: Vec<&str> = [BACKUP_ROOT_ENV, RESTORE_ADMIN_URL_ENV]
+        .into_iter()
+        .filter(|name| std::env::var_os(name).is_none_or(|value| value.is_empty()))
+        .collect();
+
+    if missing.is_empty() {
+        return;
+    }
+
+    let detail = format!(
+        "backup and recovery is not fully configured: {} not set. \
+         Launch Stockiha through run.bat, which exports the recovery \
+         environment; a bare `npm run tauri dev` does not. Until then, \
+         creating a backup and verifying a restore will fail.",
+        missing.join(" and ")
+    );
+    tracing::warn!("{detail}");
+    eprintln!("[RECOVERY_STARTUP] {detail}");
+}
+
 #[derive(Deserialize)]
 struct RecoveryAttemptEnvelope {
     attempt_id: i64,
