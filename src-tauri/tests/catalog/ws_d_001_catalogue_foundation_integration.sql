@@ -443,4 +443,41 @@ BEGIN
     RAISE NOTICE 'pagination (disjoint/complete/non-repeating) + server-side clamp OK';
 END $$;
 
+-- ---- 8. LIKE metacharacters in search terms must be literal, not wildcards -
+DO $$
+DECLARE
+    v_unit bigint; v_pid_pct bigint; v_pid_other bigint; v_cnt bigint;
+BEGIN
+    SELECT v INTO v_unit FROM t WHERE k = 'unit';
+
+    -- a product name containing a literal '%' ...
+    SELECT product_id INTO v_pid_pct
+        FROM catalog.quick_create_product('wsdadmintok', '50% Cotton Towel WSD', v_unit, 5.00);
+    -- ... and an unrelated product whose name would wrongly match if '%' were
+    -- treated as a wildcard instead of a literal character.
+    SELECT product_id INTO v_pid_other
+        FROM catalog.quick_create_product('wsdadmintok', '50XCotton Towel WSD', v_unit, 5.00);
+
+    SELECT count(*) INTO v_cnt FROM catalog.list_products_v2('wsdadmintok', 1, '50% Cotton');
+    IF v_cnt <> 1 THEN
+        RAISE EXCEPTION 'ASSERT FAIL: literal %% search matched % rows, expected exactly 1', v_cnt;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM catalog.list_products_v2('wsdadmintok', 1, '50% Cotton') WHERE product_id = v_pid_pct) THEN
+        RAISE EXCEPTION 'ASSERT FAIL: literal %% search did not find the product actually containing %%';
+    END IF;
+    IF EXISTS (SELECT 1 FROM catalog.list_products_v2('wsdadmintok', 1, '50% Cotton') WHERE product_id = v_pid_other) THEN
+        RAISE EXCEPTION 'ASSERT FAIL: literal %% search wrongly matched the unrelated product (wildcard behaviour leaked through)';
+    END IF;
+
+    -- '_' must likewise be literal, not a single-character wildcard
+    PERFORM catalog.quick_create_product('wsdadmintok', 'A_B Widget WSD', v_unit, 5.00);
+    PERFORM catalog.quick_create_product('wsdadmintok', 'AxB Widget WSD', v_unit, 5.00);
+    SELECT count(*) INTO v_cnt FROM catalog.list_products_v2('wsdadmintok', 1, 'A_B Widget WSD');
+    IF v_cnt <> 1 THEN
+        RAISE EXCEPTION 'ASSERT FAIL: literal underscore search matched % rows, expected exactly 1', v_cnt;
+    END IF;
+
+    RAISE NOTICE 'LIKE metacharacter (%%, _) literal-search escaping OK';
+END $$;
+
 SELECT 'ALL WS-D-001 DB ASSERTIONS PASSED' AS result;

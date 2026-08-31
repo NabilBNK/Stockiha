@@ -789,9 +789,10 @@ SECURITY DEFINER
 SET search_path = pg_catalog
 AS $$
 DECLARE
-    v_limit  integer;
-    v_offset integer;
-    v_search text;
+    v_limit   integer;
+    v_offset  integer;
+    v_search  text;
+    v_pattern text;
 BEGIN
     PERFORM 1 FROM iam.resolve_session(p_session_token);
 
@@ -800,29 +801,38 @@ BEGIN
     v_offset := GREATEST(coalesce(p_offset, 0), 0);
     v_search := NULLIF(btrim(coalesce(p_search, '')), '');
 
+    -- A literal '%' or '_' typed by the user must match literally, not act
+    -- as an ILIKE wildcard (e.g. searching "50% cotton" or "A_B"). Escape
+    -- backslash first, then the two wildcard characters, and pair every
+    -- ILIKE below with ESCAPE '\' so the escaping actually takes effect.
+    v_pattern := CASE WHEN v_search IS NOT NULL
+        THEN '%' || replace(replace(replace(v_search, '\', '\\'), '%', '\%'), '_', '\_') || '%'
+        ELSE NULL
+    END;
+
     RETURN QUERY
     WITH matched_variants AS (
         SELECT v.id AS variant_id
         FROM catalog.product_variants v
-        WHERE v_search IS NOT NULL AND v.sku ILIKE '%' || v_search || '%'
+        WHERE v_search IS NOT NULL AND v.sku ILIKE v_pattern ESCAPE '\'
         UNION
         SELECT v.id
         FROM catalog.product_variants v
-        WHERE v_search IS NOT NULL AND coalesce(v.name_override, '') ILIKE '%' || v_search || '%'
+        WHERE v_search IS NOT NULL AND coalesce(v.name_override, '') ILIKE v_pattern ESCAPE '\'
         UNION
         SELECT v.id
         FROM catalog.product_variants v
         JOIN catalog.products p ON p.id = v.product_id
-        WHERE v_search IS NOT NULL AND p.name ILIKE '%' || v_search || '%'
+        WHERE v_search IS NOT NULL AND p.name ILIKE v_pattern ESCAPE '\'
         UNION
         SELECT b.variant_id
         FROM catalog.variant_barcodes b
-        WHERE v_search IS NOT NULL AND b.barcode ILIKE '%' || v_search || '%'
+        WHERE v_search IS NOT NULL AND b.barcode ILIKE v_pattern ESCAPE '\'
         UNION
         SELECT vav.variant_id
         FROM catalog.variant_attribute_values vav
         JOIN catalog.attribute_values av ON av.id = vav.attribute_value_id
-        WHERE v_search IS NOT NULL AND av.value ILIKE '%' || v_search || '%'
+        WHERE v_search IS NOT NULL AND av.value ILIKE v_pattern ESCAPE '\'
     ),
     base AS (
         SELECT
