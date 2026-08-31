@@ -624,6 +624,17 @@ p {
   gap: 18px;
 }
 
+/* A <fieldset> carries browser default border/margin/padding that .sk-form
+   alone never resets (only the disabled-state modifier below did). Any
+   `.sk-form` rendered as a <fieldset> — enabled or disabled — must still
+   match the spacing scale used everywhere else on the screen. */
+fieldset.sk-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
 .sk-form--wide {
   width: 100%;
 }
@@ -644,6 +655,20 @@ p {
   color: var(--sk-text-soft);
   font-size: .82rem;
   font-weight: 700;
+}
+
+/* A field plus an inline action (e.g. a native folder-picker "Browse"
+   button) — the field grows, the button keeps its natural width and stays
+   aligned to the input row rather than the label row above it. */
+.sk-field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.sk-field-row>.sk-field {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .sk-grid-full {
@@ -2159,16 +2184,6 @@ p {
 .sk-card--muted {
   background: var(--sk-surface-soft);
   box-shadow: none;
-}
-
-.sk-fieldset--disabled {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-inline-size: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sk-gap);
 }
 
 .sk-fieldset--disabled .sk-checkbox-row,

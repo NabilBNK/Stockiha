@@ -38,6 +38,13 @@ pub enum ErrorCode {
     /// WS-H-1 (G3): the requested backup destination could not be created or
     /// used (permissions, invalid path, missing drive).
     BackupDestinationCreateFailed,
+    /// WS-H-2: the selected backup bundle folder is a real, readable
+    /// directory but is not a direct child of the currently configured
+    /// backup destination. Distinct from `PermissionDenied` (a genuine IAM
+    /// authorization failure) — this is a location mismatch, not an
+    /// authorization problem, and must never be reported to the operator as
+    /// "you do not have permission".
+    BackupBundleOutsideRoot,
 }
 
 pub enum AppError {
@@ -96,6 +103,10 @@ pub enum AppError {
         diagnostic: String,
     },
     BackupDestinationCreateFailed {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    BackupBundleOutsideRoot {
         #[cfg_attr(not(test), allow(dead_code))]
         diagnostic: String,
     },
@@ -239,6 +250,9 @@ impl fmt::Debug for AppError {
             AppError::BackupDestinationCreateFailed { .. } => {
                 f.write_str("AppError::BackupDestinationCreateFailed(<redacted>)")
             }
+            AppError::BackupBundleOutsideRoot { .. } => {
+                f.write_str("AppError::BackupBundleOutsideRoot(<redacted>)")
+            }
         }
     }
 }
@@ -271,6 +285,9 @@ impl fmt::Display for AppError {
             }
             AppError::BackupDestinationCreateFailed { .. } => {
                 f.write_str("backup destination could not be created or used")
+            }
+            AppError::BackupBundleOutsideRoot { .. } => {
+                f.write_str("backup bundle is outside the configured backup destination")
             }
         }
     }
@@ -319,6 +336,9 @@ impl From<AppError> for IpcError {
             }
             AppError::BackupDestinationCreateFailed { .. } => {
                 IpcError::new(ErrorCode::BackupDestinationCreateFailed)
+            }
+            AppError::BackupBundleOutsideRoot { .. } => {
+                IpcError::new(ErrorCode::BackupBundleOutsideRoot)
             }
         }
     }

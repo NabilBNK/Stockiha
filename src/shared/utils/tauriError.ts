@@ -50,6 +50,7 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   RESTORE_ADMIN_NOT_CONFIGURED: 'Restore verification is not configured on this computer.',
   BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY: 'This location is inside the PostgreSQL data folder and cannot be used.',
   BACKUP_DESTINATION_CREATE_FAILED: 'This backup folder could not be created or used.',
+  BACKUP_BUNDLE_OUTSIDE_ROOT: 'This backup folder is outside your configured backup destination.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

@@ -28,6 +28,7 @@ pub fn run() {
     init_dev_tracing();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState {
             stage: "Slice 4".to_string(),
         })

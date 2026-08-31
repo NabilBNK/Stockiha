@@ -199,9 +199,8 @@ fn selected_bundle_identity(bundle_path: &str) -> Result<(PathBuf, String), AppE
 fn canonical_selected_bundle(
     bundle_path: &Path,
     bundle_identifier: &str,
+    canonical_root: &Path,
 ) -> Result<PathBuf, AppError> {
-    let canonical_root = configured_backup_root()?;
-
     let selected_metadata =
         fs::symlink_metadata(bundle_path).map_err(|_| AppError::BackupValidationFailed {
             diagnostic: "BACKUP_PROOF_BUNDLE_LAYOUT_INVALID".to_string(),
@@ -228,8 +227,8 @@ fn canonical_selected_bundle(
         });
     }
 
-    if canonical_bundle.parent() != Some(canonical_root.as_path()) {
-        return Err(AppError::PermissionDenied {
+    if canonical_bundle.parent() != Some(canonical_root) {
+        return Err(AppError::BackupBundleOutsideRoot {
             diagnostic: "backup bundle is outside the configured root".to_string(),
         });
     }
@@ -248,8 +247,10 @@ pub(crate) fn validate_operator_backup_files(
     bundle_path: PathBuf,
     bundle_identifier: String,
     current_schema_version: String,
+    canonical_root: PathBuf,
 ) -> Result<OperatorBackupValidationResult, AppError> {
-    let canonical_bundle = canonical_selected_bundle(&bundle_path, &bundle_identifier)?;
+    let canonical_bundle =
+        canonical_selected_bundle(&bundle_path, &bundle_identifier, &canonical_root)?;
     let validated = backup_proof::validate_bundle(&canonical_bundle).map_err(|error| {
         AppError::BackupValidationFailed {
             diagnostic: error.to_string(),
@@ -282,8 +283,10 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
     bundle_path: PathBuf,
     bundle_identifier: String,
     current_schema_version: String,
+    canonical_root: PathBuf,
 ) -> Result<OperatorRestoreVerificationResult, AppError> {
-    let canonical_bundle = canonical_selected_bundle(&bundle_path, &bundle_identifier)?;
+    let canonical_bundle =
+        canonical_selected_bundle(&bundle_path, &bundle_identifier, &canonical_root)?;
     let validated =
         restore_proof::preflight_bundle(&canonical_bundle).map_err(map_restore_error)?;
 
@@ -612,41 +615,8 @@ pub(crate) fn stable_error_code(error: &AppError) -> &'static str {
             "BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY"
         }
         AppError::BackupDestinationCreateFailed { .. } => "BACKUP_DESTINATION_CREATE_FAILED",
+        AppError::BackupBundleOutsideRoot { .. } => "BACKUP_BUNDLE_OUTSIDE_ROOT",
     }
-}
-
-fn configured_backup_root() -> Result<PathBuf, AppError> {
-    let value = std::env::var_os(BACKUP_ROOT_ENV).ok_or_else(|| {
-        AppError::database_configuration(format!("{BACKUP_ROOT_ENV} is not configured"))
-    })?;
-    if value.is_empty() {
-        return Err(AppError::database_configuration(format!(
-            "{BACKUP_ROOT_ENV} is empty"
-        )));
-    }
-
-    let configured = PathBuf::from(value);
-    let configured_metadata = fs::symlink_metadata(&configured).map_err(|_| {
-        AppError::database_configuration("configured backup root cannot be inspected")
-    })?;
-    if is_symlink_or_reparse(&configured_metadata) || !configured_metadata.is_dir() {
-        return Err(AppError::database_configuration(
-            "configured backup root is not a real directory",
-        ));
-    }
-
-    let canonical = configured
-        .canonicalize()
-        .map_err(|_| AppError::database_configuration("configured backup root is unavailable"))?;
-    let canonical_metadata = fs::symlink_metadata(&canonical).map_err(|_| {
-        AppError::database_configuration("configured backup root cannot be inspected")
-    })?;
-    if is_symlink_or_reparse(&canonical_metadata) || !canonical_metadata.is_dir() {
-        return Err(AppError::database_configuration(
-            "configured backup root does not resolve to a real directory",
-        ));
-    }
-    Ok(canonical)
 }
 
 fn is_canonical_bundle_identifier(value: &str) -> bool {

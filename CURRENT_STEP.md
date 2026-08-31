@@ -52,7 +52,7 @@
 | **WS-D** | Inventory Core & Search | In Progress | Barcode search active on inventory; catalogue UI/UX rebuild starting on `task/ws-d-product-inventory` |
 | **WS-E** | Direct Purchase | Staged | Direct purchase migration present; awaiting full acceptance; known lint/test defects, see §5 |
 | **WS-F** | POS & Cash Sessions | In Progress | Cashier lifecycle implemented; scheduled for comprehensive revision |
-| **WS-H** | Backup & Recovery | **Implemented — pending Windows acceptance** | Manual backup creation, read-only validation, and temporary-database restore verification implemented end-to-end (frontend, Rust commands, migration `20260829100000_r6_003_backup_destination_setting.sql`); restore procedure documented in [`docs/recovery/RESTORE_PROCEDURE.md`](./docs/recovery/RESTORE_PROCEDURE.md); 268 Rust unit tests pass, 22 ignored pending live PostgreSQL 18 / Windows (see §3) |
+| **WS-H** | Backup & Recovery | **Not acceptance-passed — WS-H-2 fixes pending Windows re-verification** | Manual Windows acceptance on `task/ws-h-2-recovery-ux-fixes` found 5 defects (misleading "permission denied" on validate/restore caused by an unresolved backup-root mismatch, no folder picker for the backup destination or an existing bundle, broken restore-section spacing from an unstyled `<fieldset>`). All 5 are fixed; automated suites are green (268 Rust unit tests, full frontend suite except the two pre-existing WS-E failures, all 4 recovery SQL suites). Manual Windows re-acceptance by the Project Owner is still required before WS-H can be marked acceptance-passed — see the Result Report for numbered verification steps. |
 | **WS-K** | Windows Desktop Acceptance | Active Gate | Mandatory for candidate progression |
 
 ---

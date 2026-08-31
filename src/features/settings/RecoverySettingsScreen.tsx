@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 
 import { Banner, Button, TextField } from '../../shared/components';
 import { codeForError, useErrorText } from '../../shared/hooks/useErrorText';
@@ -9,7 +10,9 @@ import type {
 } from '../../shared/ipc/recoveryDto';
 import {
   createOperatorBackup,
+  getBackupDestinationSetting,
   getRestoreVerificationSetting,
+  updateBackupDestinationSetting,
   updateRestoreVerificationSetting,
   validateOperatorBackup,
   verifyOperatorBackupRestore,
@@ -19,7 +22,7 @@ interface Props {
   sessionToken: string;
 }
 
-type BusyAction = 'setting' | 'create' | 'validate' | 'restore' | null;
+type BusyAction = 'setting' | 'create' | 'validate' | 'restore' | 'destination' | null;
 
 // Restore verification is a WS-H MVP requirement per STOCKIHA_GROUND_TRUTH.md
 // §4 ("Database restore capability (pg_restore into temporary validation
@@ -40,9 +43,17 @@ const COPY: Record<Locale, Record<string, string>> = {
     create: 'Create backup',
     created: 'Backup created and verified.',
     creationFailed: 'The backup could not be created. No partial bundle was published.',
-    validateHelp: 'Enter the full path of a GestStock-Backup folder located directly inside your backup destination.',
+    destination: 'Backup destination',
+    destinationHelp: 'New backups are created inside this folder. Choose a folder with a native picker instead of typing a path.',
+    destinationNotSet: 'Not set — using the default backup location',
+    destinationChange: 'Change destination…',
+    destinationUpdated: 'Backup destination updated.',
+    browse: 'Browse…',
+    browseTitle: 'Select a GestStock-Backup folder',
+    browseDestinationTitle: 'Select a backup destination folder',
+    validateHelp: 'Browse to a GestStock-Backup folder located directly inside your backup destination.',
     path: 'Existing backup folder path',
-    placeholder: 'C:\\Stockiha Backups\\GestStock-Backup-20260805-150500',
+    placeholder: 'No folder selected',
     validate: 'Validate backup',
     recoveryBoundary: 'Recovery verification restores only into a generated temporary database. It never replaces or modifies the live Stockiha database.',
     restoreConfirm: 'I understand that this recovery drill temporarily creates and then deletes a PostgreSQL database.',
@@ -97,9 +108,17 @@ const COPY: Record<Locale, Record<string, string>> = {
     create: 'Créer une sauvegarde',
     created: 'Sauvegarde créée et vérifiée.',
     creationFailed: 'La sauvegarde n’a pas pu être créée. Aucun dossier partiel n’a été publié.',
-    validateHelp: 'Saisissez le chemin complet d’un dossier GestStock-Backup placé directement dans votre destination de sauvegarde.',
+    destination: 'Destination des sauvegardes',
+    destinationHelp: 'Les nouvelles sauvegardes sont créées dans ce dossier. Choisissez un dossier avec le sélecteur natif plutôt que de saisir un chemin.',
+    destinationNotSet: 'Non défini — emplacement de sauvegarde par défaut utilisé',
+    destinationChange: 'Changer de destination…',
+    destinationUpdated: 'Destination de sauvegarde mise à jour.',
+    browse: 'Parcourir…',
+    browseTitle: 'Sélectionnez un dossier GestStock-Backup',
+    browseDestinationTitle: 'Sélectionnez un dossier de destination de sauvegarde',
+    validateHelp: 'Parcourez pour choisir un dossier GestStock-Backup situé directement dans votre destination de sauvegarde.',
     path: 'Chemin d’une sauvegarde existante',
-    placeholder: 'C:\\Stockiha Backups\\GestStock-Backup-20260805-150500',
+    placeholder: 'Aucun dossier sélectionné',
     validate: 'Valider la sauvegarde',
     recoveryBoundary: 'La vérification restaure uniquement dans une base temporaire générée. Elle ne remplace ni ne modifie jamais la base Stockiha active.',
     restoreConfirm: 'Je comprends que ce test crée puis supprime temporairement une base PostgreSQL.',
@@ -154,9 +173,17 @@ const COPY: Record<Locale, Record<string, string>> = {
     create: 'إنشاء نسخة احتياطية',
     created: 'تم إنشاء النسخة الاحتياطية والتحقق منها.',
     creationFailed: 'تعذر إنشاء النسخة الاحتياطية. لم يتم نشر أي مجلد ناقص.',
-    validateHelp: 'أدخل المسار الكامل لمجلد GestStock-Backup الموجود مباشرة داخل وجهة النسخ الخاصة بك.',
+    destination: 'وجهة النسخ الاحتياطي',
+    destinationHelp: 'تُنشأ النسخ الاحتياطية الجديدة داخل هذا المجلد. اختر مجلدًا باستخدام أداة الاختيار الأصلية بدلاً من كتابة المسار.',
+    destinationNotSet: 'غير محدد — يُستخدم موقع النسخ الاحتياطي الافتراضي',
+    destinationChange: 'تغيير الوجهة…',
+    destinationUpdated: 'تم تحديث وجهة النسخ الاحتياطي.',
+    browse: 'تصفح…',
+    browseTitle: 'اختر مجلد GestStock-Backup',
+    browseDestinationTitle: 'اختر مجلد وجهة النسخ الاحتياطي',
+    validateHelp: 'تصفح لاختيار مجلد GestStock-Backup الموجود مباشرة داخل وجهة النسخ الاحتياطي الخاصة بك.',
     path: 'مسار نسخة احتياطية موجودة',
-    placeholder: 'C:\\Stockiha Backups\\GestStock-Backup-20260805-150500',
+    placeholder: 'لم يتم اختيار مجلد',
     validate: 'التحقق من النسخة',
     recoveryBoundary: 'اختبار الاسترجاع يستعمل قاعدة مؤقتة يتم إنشاؤها تلقائياً فقط. لا يستبدل ولا يعدّل قاعدة Stockiha الحالية.',
     restoreConfirm: 'أفهم أن اختبار الاسترجاع ينشئ قاعدة PostgreSQL مؤقتة ثم يحذفها.',
@@ -219,6 +246,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   const text = COPY[locale];
   const errorText = useErrorText();
   const [bundlePath, setBundlePath] = useState('');
+  const [destination, setDestination] = useState<string | null>(null);
   const [restoreEnabled, setRestoreEnabled] = useState<boolean | null>(null);
   const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
@@ -233,6 +261,20 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
     void getRestoreVerificationSetting(sessionToken)
       .then((setting) => {
         if (active) setRestoreEnabled(setting.enabled);
+      })
+      .catch((settingError) => {
+        if (active) setError(errorText(settingError));
+      });
+    return () => {
+      active = false;
+    };
+  }, [errorText, sessionToken]);
+
+  useEffect(() => {
+    let active = true;
+    void getBackupDestinationSetting(sessionToken)
+      .then((setting) => {
+        if (active) setDestination(setting.path);
       })
       .catch((settingError) => {
         if (active) setError(errorText(settingError));
@@ -264,6 +306,40 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function changeDestination() {
+    if (busy) return;
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: text.browseDestinationTitle,
+    });
+    if (!selected || Array.isArray(selected)) return;
+    setBusy('destination');
+    setError(null);
+    setFeedback(null);
+    try {
+      const updated = await updateBackupDestinationSetting(sessionToken, { path: selected });
+      setDestination(updated.path ?? null);
+      setFeedback(text.destinationUpdated);
+    } catch (destinationError) {
+      setError(errorText(destinationError));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function browseBundle() {
+    if (busy) return;
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: text.browseTitle,
+    });
+    if (!selected || Array.isArray(selected)) return;
+    setBundlePath(selected);
+    setRestoreConfirmed(false);
   }
 
   async function create() {
@@ -344,6 +420,27 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
 
         <div className="sk-form">
           <div className="sk-field">
+            <div className="sk-field-row">
+              <TextField
+                label={text.destination}
+                value={destination ?? ''}
+                placeholder={text.destinationNotSet}
+                readOnly
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                loading={busy === 'destination'}
+                disabled={busy !== null}
+                onClick={() => void changeDestination()}
+              >
+                {text.destinationChange}
+              </Button>
+            </div>
+            <small className="sk-field-help">{text.destinationHelp}</small>
+          </div>
+
+          <div className="sk-field">
             <Button
               type="button"
               loading={busy === 'create'}
@@ -356,18 +453,22 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
           </div>
 
           <div className="sk-field">
-            <TextField
-              label={text.path}
-              value={bundlePath}
-              placeholder={text.placeholder}
-              disabled={busy !== null}
-              spellCheck={false}
-              autoComplete="off"
-              onChange={(event) => {
-                setBundlePath(event.target.value);
-                setRestoreConfirmed(false);
-              }}
-            />
+            <div className="sk-field-row">
+              <TextField
+                label={text.path}
+                value={bundlePath}
+                placeholder={text.placeholder}
+                readOnly
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy !== null}
+                onClick={() => void browseBundle()}
+              >
+                {text.browse}
+              </Button>
+            </div>
             <small className="sk-field-help">{text.validateHelp}</small>
           </div>
 

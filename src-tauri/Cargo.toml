@@ -19,6 +19,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# WS-H-2: native folder-picker dialogs for the backup destination and backup
+# bundle selection UI (Defects 3 and 4) — replaces hand-typed Windows paths.
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 # S0-003: PostgreSQL connectivity proof. Minimal feature set by mandate:
 # - runtime-tokio: matches Tauri's Tokio runtime.

@@ -4,6 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 
+const openDialogMock = vi.fn();
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: (...args: unknown[]) => openDialogMock(...args) }));
+
 import { RecoverySettingsScreen } from '../src/features/settings/RecoverySettingsScreen';
 import { I18nProvider } from '../src/shared/i18n';
 
@@ -64,13 +67,23 @@ function mockSettingAnd(
     if (command === 'get_restore_verification_setting') {
       return Promise.resolve({ enabled });
     }
+    if (command === 'get_backup_destination_setting') {
+      return Promise.resolve({ path: null });
+    }
     if (action) return action(command, args);
     throw new Error(`Unexpected command: ${command}`);
   });
 }
 
+async function pickBundlePath(path: string) {
+  openDialogMock.mockResolvedValueOnce(path);
+  fireEvent.click(screen.getByRole('button', { name: 'Browse…' }));
+  await waitFor(() => expect(screen.getByLabelText('Existing backup folder path')).toHaveValue(path));
+}
+
 beforeEach(() => {
   invokeMock.mockReset();
+  openDialogMock.mockReset();
   cleanup();
   document.documentElement.setAttribute('dir', 'ltr');
   document.documentElement.setAttribute('lang', 'en');
@@ -134,9 +147,7 @@ describe('R6 backup and recovery settings', () => {
     expect(updateCall?.args).toEqual({ sessionToken: 'session-token', enabled: false });
 
     const path = String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`;
-    fireEvent.change(screen.getByLabelText('Existing backup folder path'), {
-      target: { value: path },
-    });
+    await pickBundlePath(path);
     expect(screen.getByRole('button', { name: 'Create backup' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Validate backup' })).toBeEnabled();
     expect(screen.getByRole('checkbox', {
@@ -159,9 +170,7 @@ describe('R6 backup and recovery settings', () => {
     renderScreen();
     await screen.findByRole('checkbox', { name: 'Temporary restore verification enabled' });
     const path = String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`;
-    fireEvent.change(screen.getByLabelText('Existing backup folder path'), {
-      target: { value: path },
-    });
+    await pickBundlePath(path);
     fireEvent.click(screen.getByRole('button', { name: 'Validate backup' }));
 
     expect(await screen.findByText('Backup integrity verified.')).toBeInTheDocument();
@@ -186,9 +195,7 @@ describe('R6 backup and recovery settings', () => {
     renderScreen();
     await screen.findByRole('checkbox', { name: 'Temporary restore verification enabled' });
     const path = String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`;
-    fireEvent.change(screen.getByLabelText('Existing backup folder path'), {
-      target: { value: path },
-    });
+    await pickBundlePath(path);
 
     const restoreButton = screen.getByRole('button', { name: 'Verify temporary restore' });
     expect(restoreButton).toBeDisabled();
@@ -240,9 +247,7 @@ describe('R6 backup and recovery settings', () => {
 
     renderScreen();
     await screen.findByRole('checkbox', { name: 'Temporary restore verification enabled' });
-    fireEvent.change(screen.getByLabelText('Existing backup folder path'), {
-      target: { value: String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500` },
-    });
+    await pickBundlePath(String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`);
     fireEvent.click(screen.getByRole('checkbox', {
       name: /temporarily creates and then deletes a PostgreSQL database/,
     }));

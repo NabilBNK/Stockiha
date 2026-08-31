@@ -21,6 +21,7 @@ export const BACKEND_ERROR_CODES = [
   'RESTORE_ADMIN_NOT_CONFIGURED',
   'BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY',
   'BACKUP_DESTINATION_CREATE_FAILED',
+  'BACKUP_BUNDLE_OUTSIDE_ROOT',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -48,6 +49,7 @@ export const ERROR_MESSAGE_KEYS = {
   RESTORE_ADMIN_NOT_CONFIGURED: 'errors.restoreAdminNotConfigured',
   BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY: 'errors.backupDestinationInsideDataDirectory',
   BACKUP_DESTINATION_CREATE_FAILED: 'errors.backupDestinationCreateFailed',
+  BACKUP_BUNDLE_OUTSIDE_ROOT: 'errors.backupBundleOutsideRoot',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 

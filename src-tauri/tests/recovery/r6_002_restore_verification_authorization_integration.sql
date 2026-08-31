@@ -18,7 +18,12 @@ DECLARE
     v_disabled boolean := false;
     v_conflict boolean := false;
     v_result jsonb;
+    v_current_schema_version text;
 BEGIN
+    SELECT migration_version::text
+    INTO v_current_schema_version
+    FROM operations.schema_state
+    WHERE singleton;
     INSERT INTO iam.users (username, display_name, password_hash)
     VALUES ('r6_002_admin', 'R6 Restore Admin', 'hash')
     RETURNING id INTO v_admin_id;
@@ -120,7 +125,7 @@ BEGIN
 
     ASSERT v_started ->> 'status' = 'STARTED', 'First restore verification must start';
     ASSERT NOT (v_started ->> 'is_replay')::boolean, 'First restore verification is not replay';
-    ASSERT v_started ->> 'current_schema_version' = '20260812100000',
+    ASSERT v_started ->> 'current_schema_version' = v_current_schema_version,
         'Restore verification must expose the current database schema version';
 
     v_replay := operations.begin_restore_verification_attempt(

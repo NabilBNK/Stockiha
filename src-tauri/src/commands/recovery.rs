@@ -202,12 +202,27 @@ pub(crate) async fn validate_operator_backup(
             ),
         };
 
+    let canonical_root = match recovery_creation::resolve_backup_root(pool, &session_token).await {
+        Ok(path) => path,
+        Err(error) => {
+            let _ = recovery::complete_operator_backup_validation_failure(
+                pool,
+                &session_token,
+                attempt_id,
+                &error,
+            )
+            .await;
+            return Err(IpcError::from(error));
+        }
+    };
+
     let validation = tauri::async_runtime::spawn_blocking(move || {
         recovery::validate_operator_backup_files(
             request_id,
             bundle_path,
             bundle_identifier,
             current_schema_version,
+            canonical_root,
         )
     })
     .await
@@ -267,11 +282,26 @@ pub(crate) async fn verify_operator_backup_restore(
             ),
         };
 
+    let canonical_root = match recovery_creation::resolve_backup_root(pool, &session_token).await {
+        Ok(path) => path,
+        Err(error) => {
+            let _ = recovery::complete_operator_restore_verification_failure(
+                pool,
+                &session_token,
+                attempt_id,
+                &error,
+            )
+            .await;
+            return Err(IpcError::from(error));
+        }
+    };
+
     let verification = recovery::verify_operator_backup_restore_runtime(
         request_id,
         bundle_path,
         bundle_identifier,
         current_schema_version,
+        canonical_root,
     )
     .await;
 
