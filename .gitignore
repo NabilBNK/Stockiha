@@ -72,3 +72,6 @@ backups/
 old_DESIGN.md
 old-documents/
 Folders/
+
+# Stray agent git worktrees (local-only; polluted lint/test runs when untracked)
+.claude/worktrees/

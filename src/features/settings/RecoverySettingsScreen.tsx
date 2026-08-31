@@ -21,12 +21,13 @@ interface Props {
 
 type BusyAction = 'setting' | 'create' | 'validate' | 'restore' | null;
 
-// MVP scope decision (see STOCKIHA_GROUND_TRUTH.md WS-H):
-// Only backup creation and read-only validation ship for MVP. The temporary
-// restore drill is fully implemented on the backend but is deliberately kept
-// out of reach in the UI until WS-H resumes after MVP. Set to `true` to
-// restore the original behaviour — no other code in this file needs to change.
-const RESTORE_DRILL_AVAILABLE = false;
+// Restore verification is a WS-H MVP requirement per STOCKIHA_GROUND_TRUTH.md
+// §4 ("Database restore capability (pg_restore into temporary validation
+// target)"). It is not in the deferred/future list (only cloud sync,
+// off-device retention, and scheduled encrypted backups are). The drill is
+// isolated to a temporary database that it creates and drops — see
+// restore_proof/mod.rs — and never touches the live database.
+const RESTORE_DRILL_AVAILABLE = true;
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
@@ -52,6 +53,8 @@ const COPY: Record<Locale, Record<string, string>> = {
     restoreComingSoon: 'Coming after MVP',
     restoreDeferredTitle: 'Restoring from a backup is not available yet',
     restoreDeferredBody: 'This version can create and validate backup files, so your data is protected while the rest of Stockiha is completed. The ability to actually restore your data from a backup file will be added in a later update. Keep every backup file you create — they will work with that update.',
+    restoreAvailableTitle: 'Restore from a backup',
+    restoreAvailableBody: 'Verifying a restore builds a temporary database from the backup file, checks it, then deletes it. Your live Stockiha database is never touched.',
     valid: 'Backup integrity verified.',
     invalid: 'The backup could not be validated. It was not changed or repaired.',
     bundle: 'Bundle',
@@ -107,6 +110,8 @@ const COPY: Record<Locale, Record<string, string>> = {
     restoreComingSoon: 'Disponible après le MVP',
     restoreDeferredTitle: 'La restauration à partir d’une sauvegarde n’est pas encore disponible',
     restoreDeferredBody: 'Cette version permet de créer et de valider des fichiers de sauvegarde, afin que vos données soient protégées pendant que le reste de Stockiha est finalisé. La restauration réelle de vos données à partir d’un fichier de sauvegarde sera ajoutée dans une prochaine mise à jour. Conservez chaque sauvegarde créée — elles fonctionneront avec cette mise à jour.',
+    restoreAvailableTitle: 'Restaurer depuis une sauvegarde',
+    restoreAvailableBody: 'La vérification de restauration crée une base de données temporaire à partir du fichier de sauvegarde, la contrôle, puis la supprime. Votre base Stockiha active n’est jamais modifiée.',
     valid: 'Intégrité de la sauvegarde vérifiée.',
     invalid: 'La sauvegarde n’a pas pu être validée. Aucun fichier n’a été modifié ou réparé.',
     bundle: 'Sauvegarde',
@@ -162,6 +167,8 @@ const COPY: Record<Locale, Record<string, string>> = {
     restoreComingSoon: 'متوفر بعد الإصدار الأول',
     restoreDeferredTitle: 'استرجاع البيانات من نسخة احتياطية غير متاح بعد',
     restoreDeferredBody: 'تتيح هذه النسخة إنشاء ملفات النسخ الاحتياطي والتحقق منها، لحماية بياناتك أثناء إتمام باقي أجزاء Stockiha. سيتم إضافة الاسترجاع الفعلي للبيانات من ملف نسخة احتياطية في تحديث لاحق. احتفظ بكل نسخة تنشئها الآن، فهي ستعمل مع ذلك التحديث.',
+    restoreAvailableTitle: 'الاسترجاع من نسخة احتياطية',
+    restoreAvailableBody: 'يُنشئ التحقق من الاسترجاع قاعدة بيانات مؤقتة من ملف النسخة الاحتياطية، ويتحقق منها، ثم يحذفها. لا يتم أبدًا لمس قاعدة بيانات Stockiha الفعلية.',
     valid: 'تم التحقق من سلامة النسخة الاحتياطية.',
     invalid: 'تعذر التحقق من النسخة الاحتياطية. لم يتم تعديلها أو إصلاحها.',
     bundle: 'النسخة',
@@ -391,21 +398,30 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
 
       <div className="sk-card sk-card--muted" aria-labelledby="recovery-restore-title">
         <div className="sk-section-heading">
-          <h2 id="recovery-restore-title">{text.restoreDeferredTitle}</h2>
-          <span className="sk-badge sk-badge--warning">{text.restoreComingSoon}</span>
+          <h2 id="recovery-restore-title">
+            {RESTORE_DRILL_AVAILABLE ? text.restoreAvailableTitle : text.restoreDeferredTitle}
+          </h2>
+          {RESTORE_DRILL_AVAILABLE ? null : (
+            <span className="sk-badge sk-badge--warning">{text.restoreComingSoon}</span>
+          )}
         </div>
-        <p className="sk-field-help">{text.restoreDeferredBody}</p>
+        <p className="sk-field-help">
+          {RESTORE_DRILL_AVAILABLE ? text.restoreAvailableBody : text.restoreDeferredBody}
+        </p>
 
         <Banner tone="warning">{text.recoveryBoundary}</Banner>
 
-        <fieldset className="sk-form sk-fieldset--disabled" disabled>
+        <fieldset
+          className={RESTORE_DRILL_AVAILABLE ? 'sk-form' : 'sk-form sk-fieldset--disabled'}
+          disabled={!RESTORE_DRILL_AVAILABLE}
+        >
           <div className="sk-field">
             <label className="sk-checkbox-row">
               <input
                 type="checkbox"
                 aria-label={text.setting}
                 checked={restoreEnabled === true}
-                readOnly
+                onChange={(event) => changeRestoreSetting(event.target.checked)}
               />
               <span>{text.setting}</span>
             </label>
@@ -413,12 +429,22 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
           </div>
 
           <label className="sk-checkbox-row">
-            <input type="checkbox" checked={restoreConfirmed} readOnly />
+            <input
+              type="checkbox"
+              checked={restoreConfirmed}
+              disabled={!restoreEnabled}
+              onChange={(event) => setRestoreConfirmed(event.target.checked)}
+            />
             <span>{text.restoreConfirm}</span>
           </label>
 
           <div className="sk-field">
-            <Button type="button" variant="secondary" disabled>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!bundlePath.trim() || !restoreConfirmed || !restoreEnabled || busy !== null}
+              onClick={verifyRestore}
+            >
               {text.restore}
             </Button>
             <small className="sk-field-help">{text.restoreHelp}</small>

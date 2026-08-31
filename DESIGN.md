@@ -412,6 +412,18 @@ This document describes the **target** system. Product Frontend is assessed at *
 
 ---
 
+### WS-D scope ruling (approved)
+
+> **Approved by the Project Owner.** This ruling is binding for WS-D. Do not "helpfully" swap the palette or extend RTL layout during WS-D — both are explicit, deliberate exclusions below, not oversights.
+
+WS-D adopts from DESIGN.md v2: layout regions, grid patterns, 16px body text, 48px table row height, full-width tables with 1380px-capped forms, the five button variants, 44px touch minimum, spacing scale, radius scale, elevation model.
+
+WS-D deliberately does NOT adopt: the warm off-white base surface (`#fbf9f7`), the theme-following sidebar, or the `#c25012` accent. Primary colour remains `#2457d6`. These three land globally in WS-J, in one pass, to avoid a partially repainted application.
+
+Arabic RTL layout is frozen for WS-D. Arabic translation strings are in scope; RTL layout work is deferred. Do not remove or break existing RTL support — just do not extend it.
+
+---
+
 ## 1. Overview
 
 Stockiha is a **single-company, single-store Windows desktop ERP** built with Tauri v2, React 19, and TypeScript. It serves three user tiers: cashiers at the POS, store managers overseeing inventory and procurement, and administrators managing configuration and opening state.
