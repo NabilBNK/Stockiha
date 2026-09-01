@@ -311,6 +311,7 @@ const fr = {
   'errors.backupDestinationInsideDataDirectory': "Cet emplacement est \u00e0 l'int\u00e9rieur du dossier de donn\u00e9es PostgreSQL et ne peut pas \u00eatre utilis\u00e9. Choisissez un autre dossier.",
   'errors.backupDestinationCreateFailed': "Impossible de cr\u00e9er ou d'utiliser ce dossier de sauvegarde. V\u00e9rifiez le chemin et les autorisations, puis r\u00e9essayez.",
   'errors.backupBundleOutsideRoot': "Ce dossier de sauvegarde se trouve en dehors de votre destination de sauvegarde configur\u00e9e. Choisissez un dossier cr\u00e9\u00e9 par \u00ab Cr\u00e9er une sauvegarde \u00bb dans cette destination.",
+  'errors.recoveryOperationInProgress': "Une autre opération de sauvegarde ou de récupération est déjà en cours. Attendez qu'elle se termine.",
   // S2-003: Zero-quantity safeguards
   'inventory.zeroQtyWarning.title': 'Attention : stock z\u00e9ro',
   'inventory.zeroQtyWarning.message': '"{variant}" a un stock confirm\u00e9 de z\u00e9ro et aucun co\u00fbt moyen pond\u00e9r\u00e9 ant\u00e9rieur enregistr\u00e9. Une augmentation positive n\u00e9cessite une base de co\u00fbts approuv\u00e9e.',
@@ -623,6 +624,7 @@ const ar: Record<MessageKey, string> = {
   'errors.backupDestinationInsideDataDirectory': 'هذا المسار داخل مجلد بيانات PostgreSQL ولا يمكن استخدامه. اختر مجلدًا آخر.',
   'errors.backupDestinationCreateFailed': 'تعذر إنشاء أو استخدام مجلد النسخ الاحتياطي هذا. تحقق من المسار والأذونات ثم أعد المحاولة.',
   'errors.backupBundleOutsideRoot': 'مجلد النسخة الاحتياطية هذا يقع خارج وجهة النسخ الاحتياطي المُهيأة. اختر مجلدًا أنشأه "إنشاء نسخة احتياطية" داخل هذه الوجهة.',
+  'errors.recoveryOperationInProgress': 'هناك عملية نسخ احتياطي أو استرجاع أخرى قيد التنفيذ بالفعل. انتظر حتى تنتهي.',
   'inventory.zeroQtyWarning.title': 'تحذير مخزون منعدم',
   'inventory.zeroQtyWarning.message': '"{variant}" يملك مخزونًا مؤكدًا منعدمًا ولا يملك متوسط تكلفة موازنًا سابقًا مسجلاً. تتطلب الزيادة قاعدة تكلفة معتمدة.',
   'errors.unknown': '\u062d\u062f\u062b \u062e\u0637\u0623 \u063a\u064a\u0631 \u0645\u062a\u0648\u0642\u0639. \u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629.',
@@ -932,6 +934,7 @@ const en: Record<MessageKey, string> = {
   'errors.backupDestinationInsideDataDirectory': 'This location is inside the PostgreSQL data folder and cannot be used. Choose a different folder.',
   'errors.backupDestinationCreateFailed': 'This backup folder could not be created or used. Check the path and permissions, then try again.',
   'errors.backupBundleOutsideRoot': 'This backup folder is outside your configured backup destination. Choose a folder created by "Create backup" inside that destination.',
+  'errors.recoveryOperationInProgress': 'Another backup or recovery operation is already running. Wait for it to finish.',
   // S2-003: Zero-quantity safeguards
   'inventory.zeroQtyWarning.title': 'Warning: Zero Quantity',
   'inventory.zeroQtyWarning.message': '"{variant}" has zero confirmed stock and no prior weighted-average cost on record. A positive adjustment requires an approved cost basis.',

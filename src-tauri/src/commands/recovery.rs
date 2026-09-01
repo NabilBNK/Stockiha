@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use serde_json::Value as JsonValue;
 use sqlx::query_scalar;
 use tauri::{AppHandle, Manager, State};
@@ -12,6 +14,42 @@ use crate::domain::recovery::{
 };
 use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
+
+/// WS-H-2: at most one recovery operation may run at a time, process-wide.
+///
+/// Creating a backup, validating one, and verifying a restore are all heavy —
+/// `pg_dump`, checksum walks over the whole bundle, `pg_restore` into a full
+/// temporary database. Overlapping them is what preceded the PostgreSQL
+/// backend crash seen during acceptance (`terminating connection because of
+/// crash of another server process`), which then surfaced to the operator as
+/// the unhelpful "The database is currently unavailable."
+///
+/// Disabling the buttons is a UI convenience; this is the guarantee. A second
+/// call is rejected outright rather than queued, so the operator is told what
+/// is happening instead of waiting on an invisible queue.
+static RECOVERY_OPERATION_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// RAII lease over [`RECOVERY_OPERATION_ACTIVE`]. Released in `Drop`, so the
+/// flag cannot be left stuck on by an early return, a `?`, or a panic — a
+/// stuck flag would disable backups for the rest of the session.
+struct RecoveryOperationLease;
+
+impl RecoveryOperationLease {
+    fn acquire() -> Result<Self, AppError> {
+        RECOVERY_OPERATION_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| RecoveryOperationLease)
+            .map_err(|_| AppError::RecoveryOperationInProgress {
+                diagnostic: "another recovery operation is already running".to_string(),
+            })
+    }
+}
+
+impl Drop for RecoveryOperationLease {
+    fn drop(&mut self) {
+        RECOVERY_OPERATION_ACTIVE.store(false, Ordering::Release);
+    }
+}
 
 #[tauri::command]
 pub(crate) async fn get_backup_destination_setting(
@@ -76,6 +114,8 @@ pub(crate) async fn create_operator_backup(
     session_token: String,
     request: CreateOperatorBackupRequest,
 ) -> Result<OperatorBackupCreationResult, IpcError> {
+    // Held for the whole operation; released on every exit path by `Drop`.
+    let _lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     let attempt = recovery_creation::begin_operator_backup_creation(pool, &session_token, request)
         .await
@@ -179,6 +219,8 @@ pub(crate) async fn validate_operator_backup(
     session_token: String,
     request: ValidateOperatorBackupRequest,
 ) -> Result<OperatorBackupValidationResult, IpcError> {
+    // Held for the whole operation; released on every exit path by `Drop`.
+    let _lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     let attempt = recovery::begin_operator_backup_validation(pool, &session_token, request)
         .await
@@ -259,6 +301,8 @@ pub(crate) async fn verify_operator_backup_restore(
     session_token: String,
     request: VerifyOperatorBackupRestoreRequest,
 ) -> Result<OperatorRestoreVerificationResult, IpcError> {
+    // Held for the whole operation; released on every exit path by `Drop`.
+    let _lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     let attempt = recovery::begin_operator_restore_verification(pool, &session_token, request)
         .await
@@ -327,5 +371,32 @@ pub(crate) async fn verify_operator_backup_restore(
             .await;
             Err(IpcError::from(error))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The concurrency guarantee behind Task 2: the second caller is refused
+    /// while the first holds the lease, and the lease is returned on `Drop`
+    /// so a completed operation never leaves recovery disabled.
+    #[test]
+    fn recovery_lease_is_exclusive_and_released_on_drop() {
+        let first = RecoveryOperationLease::acquire().expect("first acquire must succeed");
+        assert!(
+            matches!(
+                RecoveryOperationLease::acquire(),
+                Err(AppError::RecoveryOperationInProgress { .. })
+            ),
+            "a second concurrent recovery operation must be refused, not queued"
+        );
+
+        drop(first);
+        let again = RecoveryOperationLease::acquire();
+        assert!(
+            again.is_ok(),
+            "the lease must be released on Drop, or recovery stays disabled for the session"
+        );
     }
 }

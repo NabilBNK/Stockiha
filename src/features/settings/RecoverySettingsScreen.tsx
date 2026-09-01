@@ -524,6 +524,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
                 type="checkbox"
                 aria-label={text.setting}
                 checked={restoreEnabled === true}
+                disabled={busy !== null}
                 onChange={(event) => changeRestoreSetting(event.target.checked)}
               />
               <span>{text.setting}</span>
@@ -539,7 +540,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
               <input
                 type="checkbox"
                 checked={restoreConfirmed}
-                disabled={!restoreEnabled}
+                disabled={!restoreEnabled || busy !== null}
                 onChange={(event) => setRestoreConfirmed(event.target.checked)}
               />
               <span>{text.restoreConfirm}</span>
@@ -547,9 +548,13 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
           </div>
 
           <div className="sk-field">
+            {/* `loading` as well as `disabled`: all three recovery buttons
+                disable while any one runs, so without a spinner on the one
+                actually working the screen looks inert rather than busy. */}
             <Button
               type="button"
               variant="secondary"
+              loading={busy === 'restore'}
               disabled={!bundlePath.trim() || !restoreConfirmed || !restoreEnabled || busy !== null}
               onClick={verifyRestore}
             >

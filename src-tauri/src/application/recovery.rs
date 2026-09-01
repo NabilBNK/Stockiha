@@ -56,6 +56,51 @@ pub(crate) fn startup_environment_diagnostic() {
     eprintln!("[RECOVERY_STARTUP] {detail}");
 }
 
+/// WS-H-2: drop restore-drill databases stranded by a previous run.
+///
+/// A real Windows session left two 15 MB `stockiha_restore_proof_verify_*`
+/// duplicates of the production database behind, because a PostgreSQL backend
+/// crash killed the drill's maintenance connection before it could issue the
+/// drop. No in-process guard can cover that case — by the time the connection
+/// is gone there is nothing left to run cleanup on — so the sweep runs at
+/// application start, when no drill of this process can be in flight.
+///
+/// Silent when the restore-admin connection is not configured: that is
+/// already reported by [`startup_environment_diagnostic`], and repeating it
+/// here would just add noise. Never fatal — a failed sweep must not stop the
+/// application from starting.
+pub(crate) async fn sweep_orphaned_restore_databases() {
+    let Ok(raw_admin_url) = std::env::var(RESTORE_ADMIN_URL_ENV) else {
+        return;
+    };
+    let Ok(parsed) = restore_proof::parse_admin_url(&raw_admin_url) else {
+        tracing::warn!("restore drill sweep skipped: {RESTORE_ADMIN_URL_ENV} could not be parsed");
+        return;
+    };
+
+    let options = restore_proof::admin_connect_options(&parsed);
+    match restore_proof::sweep_orphaned_temp_databases(&options).await {
+        Ok(dropped) if dropped.is_empty() => {
+            tracing::info!("restore drill sweep: no leftover temporary databases");
+        }
+        Ok(dropped) => {
+            let detail = format!(
+                "restore drill sweep: dropped {} leftover temporary database(s): {}",
+                dropped.len(),
+                dropped.join(", ")
+            );
+            tracing::warn!("{detail}");
+            eprintln!("[RESTORE_CLEANUP] {detail}");
+        }
+        Err(_) => {
+            tracing::warn!(
+                "restore drill sweep could not run (maintenance connection unavailable); \
+                 any leftover temporary databases remain until the next start"
+            );
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct RecoveryAttemptEnvelope {
     attempt_id: i64,
@@ -362,6 +407,16 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
         return Err(original);
     }
 
+    // WS-H-2: constructed on the very next line after `CREATE DATABASE`
+    // succeeded, so there is no path between creation and the guard that can
+    // strand the database. From here on, every early return, `?`, and panic
+    // drops it — previously only the code below reaching its normal end did,
+    // which is how a PostgreSQL backend crash left two 15 MB duplicates
+    // behind. The guard connects afresh rather than reusing `maintenance`,
+    // because in that crash the maintenance connection is exactly what died.
+    let mut temp_db_guard =
+        restore_proof::TempDbGuard::new(temporary_database.clone(), maintenance_options.clone());
+
     let operation_result = async {
         let executable = restore_proof::resolve_pg_restore_executable();
         let dump_path = validated.dump_path.clone();
@@ -409,9 +464,17 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
 
     let cleanup_result =
         restore_proof::drop_database_with_force(&mut maintenance, &temporary_database).await;
+    if cleanup_result.is_ok() {
+        // The explicit path removed it, so the guard need not schedule a
+        // second attempt. If it failed, the guard is deliberately left armed.
+        temp_db_guard.mark_cleaned();
+    }
 
     let (control_totals, journal_balanced) = match operation_result {
         Err(original) => {
+            // A cleanup failure must never mask the real error. It is safe to
+            // discard here precisely because the guard above is still armed
+            // whenever `cleanup_result` is `Err`.
             let _ = cleanup_result;
             return Err(original);
         }
@@ -656,6 +719,7 @@ pub(crate) fn stable_error_code(error: &AppError) -> &'static str {
         }
         AppError::BackupDestinationCreateFailed { .. } => "BACKUP_DESTINATION_CREATE_FAILED",
         AppError::BackupBundleOutsideRoot { .. } => "BACKUP_BUNDLE_OUTSIDE_ROOT",
+        AppError::RecoveryOperationInProgress { .. } => "RECOVERY_OPERATION_IN_PROGRESS",
     }
 }
 
@@ -902,6 +966,24 @@ mod tests {
         assert!(!is_canonical_bundle_identifier(
             "GestStock-Backup-20260803_195700"
         ));
+    }
+
+    #[test]
+    fn new_ws_h_2_error_codes_are_stable_and_payload_free() {
+        // Both codes exist so the operator is told what actually went wrong.
+        // If either ever collapses back into PERMISSION_DENIED the misleading
+        // message this task removed is back.
+        let outside = AppError::BackupBundleOutsideRoot {
+            diagnostic: "DO_NOT_EXPOSE".to_string(),
+        };
+        assert_eq!(stable_error_code(&outside), "BACKUP_BUNDLE_OUTSIDE_ROOT");
+        assert!(!format!("{outside:?}").contains("DO_NOT_EXPOSE"));
+
+        let busy = AppError::RecoveryOperationInProgress {
+            diagnostic: "DO_NOT_EXPOSE".to_string(),
+        };
+        assert_eq!(stable_error_code(&busy), "RECOVERY_OPERATION_IN_PROGRESS");
+        assert!(!format!("{busy:?}").contains("DO_NOT_EXPOSE"));
     }
 
     #[test]

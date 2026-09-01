@@ -30,6 +30,26 @@ set "LIB=C:\BuildTools\VC\Tools\MSVC\14.44.35207\lib\x64;C:\Program Files (x86)\
 
 set "SECRET_ROOT=%LOCALAPPDATA%\Stockiha\r8-acceptance"
 
+REM ---- WS-H-2 (Task 3): capture a full run log -------------------------------
+REM The PostgreSQL backend crash seen during acceptance left almost no evidence:
+REM the cluster runs with logging_collector=off, and the app's own tracing
+REM subscriber defaults to "warn" with nothing capturing stdout. Every run now
+REM writes a complete, timestamped transcript to logs\ (gitignored) while the
+REM console keeps showing only progress, warnings, and errors.
+if not exist "%~dp0logs" mkdir "%~dp0logs"
+for /f "usebackq delims=" %%T in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"`) do set "RUN_STAMP=%%T"
+set "STOCKIHA_LOG_FILE=%~dp0logs\stockiha-%RUN_STAMP%.log"
+
+REM RUST_LOG governs what the app emits at all; the console filter below decides
+REM what is shown. Detail goes to the file, so raise the app's own level here
+REM rather than leaving it at the built-in "warn" default.
+if not defined RUST_LOG set "RUST_LOG=warn,stockiha_backend=debug"
+
+echo ========================================================
+echo  Run log: %STOCKIHA_LOG_FILE%
+echo  RUST_LOG: %RUST_LOG%
+echo ========================================================
+
 
 REM ---- Step 2: Ensure PostgreSQL is running on port 5433 ----
 echo.
@@ -149,14 +169,21 @@ echo ========================================================
 echo  [5/5] Launching Tauri dev window...
 echo ========================================================
 echo  Database: postgres://stockiha_runtime@127.0.0.1:5433/stockiha_acceptance
+echo  Run log : %STOCKIHA_LOG_FILE%
 echo ========================================================
 echo.
 
-call npm run tauri dev
-if errorlevel 1 (
-    echo.
-    echo  ERROR: Tauri dev launch exited with an error. See output above.
-    echo.
-    pause
-    exit /b 1
-)
+REM The full transcript (including every SQLx/tracing line RUST_LOG lets
+REM through) goes to the log file; the console shows build progress plus
+REM anything that looks like a warning, an error, or one of the app's own
+REM bracketed startup diagnostics. Note that after a pipe cmd's ERRORLEVEL
+REM reports PowerShell's exit status rather than npm's, so the launch result
+REM is reported from the transcript instead of being tested here.
+call npm run tauri dev 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '%STOCKIHA_LOG_FILE%' -Append | Where-Object { $_ -match '(?i)error|warn|panic|fatal|\[DB_STARTUP\]|\[DB_POSTING_ERROR\]|\[RECOVERY_STARTUP\]|\[RESTORE_CLEANUP\]|Compiling |Finished |Running |Local:' }"
+
+echo.
+echo ========================================================
+echo  Session ended. Full transcript:
+echo  %STOCKIHA_LOG_FILE%
+echo ========================================================
+pause

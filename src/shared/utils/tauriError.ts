@@ -51,6 +51,7 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   BACKUP_DESTINATION_INSIDE_DATA_DIRECTORY: 'This location is inside the PostgreSQL data folder and cannot be used.',
   BACKUP_DESTINATION_CREATE_FAILED: 'This backup folder could not be created or used.',
   BACKUP_BUNDLE_OUTSIDE_ROOT: 'This backup folder is outside your configured backup destination.',
+  RECOVERY_OPERATION_IN_PROGRESS: 'Another backup or recovery operation is already running. Wait for it to finish.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

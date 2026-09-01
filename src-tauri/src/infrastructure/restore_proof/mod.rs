@@ -55,7 +55,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sqlx::postgres::PgConnectOptions;
-use sqlx::PgConnection;
+use sqlx::{Connection, PgConnection};
 
 use super::backup_proof::{
     parse_pg_dump_major_version, validate_bundle, BackupProofError, ValidatedBundle,
@@ -706,6 +706,170 @@ impl Drop for TempDbObligation {
             );
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// WS-H-2: Drop-enforced cleanup, and the startup sweep behind it
+// ---------------------------------------------------------------------------
+
+/// Open a fresh maintenance connection and drop `name`.
+///
+/// Deliberately takes `PgConnectOptions` rather than an existing
+/// `&mut PgConnection`: the reason the operator found two orphaned 15 MB
+/// databases is that the drill's cleanup reused the *same* maintenance
+/// connection the drill ran on, and a PostgreSQL backend crash
+/// (`terminating connection because of crash of another server process`)
+/// killed that connection before the drop could be issued. A connection that
+/// has just died cannot clean up after itself; only a new one can.
+async fn drop_temp_database_on_new_connection(
+    maintenance: &PgConnectOptions,
+    name: &str,
+) -> Result<(), RestoreProofError> {
+    validate_generated_database_name(name)?;
+    let mut conn = PgConnection::connect_with(maintenance)
+        .await
+        .map_err(|_| RestoreProofError::AdminConnectFailed)?;
+    let result = drop_database_with_force(&mut conn, name).await;
+    let _ = conn.close().await;
+    result
+}
+
+/// A temporary restore database whose `DROP` the compiler enforces.
+///
+/// Unlike [`TempDbObligation`] — which is only a passive record and says so —
+/// this guard actually removes the database on every unwind path: an early
+/// `return`/`?`, a validation failure, or a panic. `Drop` is synchronous and
+/// still cannot `.await`, so it does not pretend to: it hands a detached task
+/// to the ambient Tokio runtime, which opens its own connection (see
+/// [`drop_temp_database_on_new_connection`]) and issues the drop.
+///
+/// This closes every path except one: a hard process kill, where no in-process
+/// code runs at all. [`sweep_orphaned_temp_databases`] is the backstop for
+/// that, and is why the sweep exists in addition to this guard rather than
+/// instead of it.
+///
+/// Never derives `Debug`: it holds `PgConnectOptions`, whose own derived
+/// `Debug` prints the password unredacted (see this module's header).
+pub(crate) struct TempDbGuard {
+    name: String,
+    maintenance: PgConnectOptions,
+    cleaned: bool,
+}
+
+impl TempDbGuard {
+    /// Construct **immediately** after `CREATE DATABASE` returns `Ok`, so no
+    /// `?` between creation and the guard can strand the database.
+    pub(crate) fn new(name: String, maintenance: PgConnectOptions) -> Self {
+        TempDbGuard {
+            name,
+            maintenance,
+            cleaned: false,
+        }
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Record that the explicit async cleanup already dropped this database,
+    /// so `Drop` does not schedule a redundant second attempt. The drop is
+    /// `IF EXISTS`, so a duplicate would be harmless — this just keeps the
+    /// logs honest about which path did the work.
+    pub(crate) fn mark_cleaned(&mut self) {
+        self.cleaned = true;
+    }
+}
+
+impl Drop for TempDbGuard {
+    fn drop(&mut self) {
+        if self.cleaned {
+            return;
+        }
+        let name = self.name.clone();
+        let maintenance = self.maintenance.clone();
+
+        // `Handle::try_current` rather than an unconditional spawn: unit
+        // tests construct guards with no ambient runtime, and a bare
+        // `spawn` would panic inside `Drop` there.
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move {
+                    match drop_temp_database_on_new_connection(&maintenance, &name).await {
+                        Ok(()) => tracing::warn!(
+                            "restore drill: temporary database {name} was dropped by the cleanup \
+                             guard after an early exit"
+                        ),
+                        Err(_) => {
+                            tracing::error!(
+                                "restore drill: temporary database {name} could NOT be dropped; \
+                                 it will be swept at the next application start"
+                            );
+                            eprintln!(
+                                "[RESTORE_CLEANUP] temporary database {name} could not be dropped; \
+                                 it will be swept at the next application start"
+                            );
+                        }
+                    }
+                });
+            }
+            Err(_) => {
+                eprintln!(
+                    "[RESTORE_CLEANUP] temporary database {name} left behind (no async runtime \
+                     available to drop it); it will be swept at the next application start"
+                );
+            }
+        }
+    }
+}
+
+/// Drop every leftover `stockiha_restore_proof_*` database, returning the
+/// names actually removed.
+///
+/// The safety net for the one case no in-process guard can cover: the process
+/// or the PostgreSQL backend dying outright, which is exactly what stranded
+/// the two 15 MB duplicates the operator found with `\l`. Runs at application
+/// start, when no drill of this process can legitimately be in flight.
+///
+/// Matching uses `left(datname, length($1)) = $1` rather than `LIKE`: the
+/// prefix contains `_`, which `LIKE` treats as a single-character wildcard,
+/// so a `LIKE` pattern would match strictly more databases than intended.
+/// Every candidate is then re-checked through
+/// [`validate_generated_database_name`] before any `DROP` is built — a name
+/// that somehow fails is left untouched and reported, never dropped.
+pub(crate) async fn sweep_orphaned_temp_databases(
+    maintenance: &PgConnectOptions,
+) -> Result<Vec<String>, RestoreProofError> {
+    let mut conn = PgConnection::connect_with(maintenance)
+        .await
+        .map_err(|_| RestoreProofError::AdminConnectFailed)?;
+
+    let candidates: Vec<String> = sqlx::query_scalar::<_, String>(
+        "SELECT datname FROM pg_database \
+         WHERE left(datname, length($1)) = $1 \
+         ORDER BY datname",
+    )
+    .bind(TEMP_DB_PREFIX)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(|_| RestoreProofError::AdminConnectFailed)?;
+
+    let mut dropped = Vec::new();
+    for name in candidates {
+        if validate_generated_database_name(&name).is_err() {
+            tracing::error!(
+                "restore drill sweep: refusing to drop '{name}' — it carries the temporary \
+                 prefix but is not a well-formed generated name"
+            );
+            continue;
+        }
+        match drop_database_with_force(&mut conn, &name).await {
+            Ok(()) => dropped.push(name),
+            Err(_) => tracing::error!("restore drill sweep: could not drop leftover '{name}'"),
+        }
+    }
+
+    let _ = conn.close().await;
+    Ok(dropped)
 }
 
 // ---------------------------------------------------------------------------

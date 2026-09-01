@@ -49,6 +49,11 @@ pub fn run() {
             // Report it missing here, by name, rather than letting it surface
             // later as a message that reads like a broken feature.
             application::recovery::startup_environment_diagnostic();
+            // WS-H-2: remove restore-drill databases stranded by a previous
+            // run (e.g. a PostgreSQL backend crash that killed the drill's
+            // connection before it could clean up). Safe here: no drill of
+            // this process can be in flight yet.
+            application::recovery::sweep_orphaned_restore_databases().await;
             state
         }))
         .invoke_handler(tauri::generate_handler![

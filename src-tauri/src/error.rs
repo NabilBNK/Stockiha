@@ -45,6 +45,12 @@ pub enum ErrorCode {
     /// authorization problem, and must never be reported to the operator as
     /// "you do not have permission".
     BackupBundleOutsideRoot,
+    /// WS-H-2: another backup/validate/restore-verify operation is already
+    /// running. These are heavy (`pg_dump`, `pg_restore`, a full temporary
+    /// database) and overlapping them is what preceded a PostgreSQL backend
+    /// crash during acceptance. Rejected outright rather than queued, so the
+    /// operator is told plainly instead of waiting on a hidden queue.
+    RecoveryOperationInProgress,
 }
 
 pub enum AppError {
@@ -107,6 +113,10 @@ pub enum AppError {
         diagnostic: String,
     },
     BackupBundleOutsideRoot {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    RecoveryOperationInProgress {
         #[cfg_attr(not(test), allow(dead_code))]
         diagnostic: String,
     },
@@ -253,6 +263,9 @@ impl fmt::Debug for AppError {
             AppError::BackupBundleOutsideRoot { .. } => {
                 f.write_str("AppError::BackupBundleOutsideRoot(<redacted>)")
             }
+            AppError::RecoveryOperationInProgress { .. } => {
+                f.write_str("AppError::RecoveryOperationInProgress(<redacted>)")
+            }
         }
     }
 }
@@ -288,6 +301,9 @@ impl fmt::Display for AppError {
             }
             AppError::BackupBundleOutsideRoot { .. } => {
                 f.write_str("backup bundle is outside the configured backup destination")
+            }
+            AppError::RecoveryOperationInProgress { .. } => {
+                f.write_str("another recovery operation is already running")
             }
         }
     }
@@ -339,6 +355,9 @@ impl From<AppError> for IpcError {
             }
             AppError::BackupBundleOutsideRoot { .. } => {
                 IpcError::new(ErrorCode::BackupBundleOutsideRoot)
+            }
+            AppError::RecoveryOperationInProgress { .. } => {
+                IpcError::new(ErrorCode::RecoveryOperationInProgress)
             }
         }
     }

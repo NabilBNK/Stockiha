@@ -12,6 +12,39 @@ a throwaway PostgreSQL cluster — not written from assumption. See the WS-H-1
 Result Report for the exact commands run and their real output, and for where
 this document had to be corrected to match reality.
 
+## Step 0 — Before you type anything
+
+Do these three things first. Every later step assumes them.
+
+1. **Close Stockiha.** Restoring into a database a running Stockiha is still
+   connected to will fail or corrupt the result. Close the app window, and
+   close any `run.bat` console window still open.
+2. **Open Windows PowerShell as Administrator.** Click Start, type
+   `PowerShell`, right-click *Windows PowerShell*, choose *Run as
+   administrator*. Use this same window for every command below.
+3. **Set the two variables every command uses**, so you do not have to retype
+   long paths. `psql.exe` and `pg_restore.exe` are **not** on the system PATH
+   on a normal Windows install, which is why every command below calls them
+   through `$PG`:
+
+   ```powershell
+   $PG = "C:\Program Files\PostgreSQL\18\bin"
+   $PGPORT = 5433
+   ```
+
+   **About the port.** `5433` is the port this repository's Stockiha cluster
+   uses (see `DEVELOPMENT_SETUP.md`); a default PostgreSQL install uses
+   `5432`. Set `$PGPORT` to whichever port the cluster you are restoring into
+   actually listens on. Getting this wrong is the single easiest way to
+   restore into the wrong server, so confirm it before continuing:
+
+   ```powershell
+   & "$PG\pg_isready.exe" -h 127.0.0.1 -p $PGPORT
+   ```
+
+   You want `accepting connections`. If you get `no response`, the cluster on
+   that port is not running — fix that before going any further.
+
 ## What you need before starting
 
 - A Stockiha backup bundle: a folder named `GestStock-Backup-YYYYMMDD-HHMMSS`
@@ -32,8 +65,12 @@ this document had to be corrected to match reality.
 Never restore an unvalidated bundle. From an elevated PowerShell prompt:
 
 ```powershell
-pwsh -File scripts\r6-001-verify-bundle.ps1 -BundlePath "C:\path\to\GestStock-Backup-YYYYMMDD-HHMMSS"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\r6-001-verify-bundle.ps1 -BundlePath "C:\path\to\GestStock-Backup-YYYYMMDD-HHMMSS"
 ```
+
+Run this from the repository root (the folder that contains `run.bat`) — the
+script path above is relative to it. Use `powershell`, not `pwsh`: `pwsh` is
+PowerShell 7 and is **not** installed on a stock Windows 10/11 machine.
 
 Confirm `integrityValid: true` in the output before continuing. If this step
 fails, stop — do not attempt to restore a bundle that failed checksum
@@ -48,32 +85,37 @@ Skip this step if a working PostgreSQL 18 cluster already exists.
    `C:\Program Files\PostgreSQL\18\bin`.
 2. Initialize a data directory and start the cluster, e.g.:
    ```powershell
-   & "C:\Program Files\PostgreSQL\18\bin\initdb.exe" -D "C:\StockihaData" -U stockiha_admin -A scram-sha-256 --pwfile=<a temp file containing a chosen admin password> --encoding=UTF8
-   & "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" -D "C:\StockihaData" -l "C:\StockihaData\startup.log" start
+   & "$PG\initdb.exe" -D "C:\StockihaData" -U stockiha_admin -A scram-sha-256 --pwfile=<a temp file containing a chosen admin password> --encoding=UTF8
+   & "$PG\pg_ctl.exe" -D "C:\StockihaData" -l "C:\StockihaData\startup.log" -o "-p $PGPORT" start
    ```
    Choose the `stockiha_admin` password yourself; it is never shipped with
    the application. Delete the temporary password file immediately after
    `initdb` succeeds.
 3. Confirm the server is accepting connections:
    ```powershell
-   & "C:\Program Files\PostgreSQL\18\bin\pg_isready.exe" -h 127.0.0.1 -p 5432
+   & "$PG\pg_isready.exe" -h 127.0.0.1 -p $PGPORT
    ```
 
 ## Step 3 — Create the target database
 
 ```powershell
 $env:PGPASSWORD = '<the stockiha_admin password you chose>'
-& psql -h 127.0.0.1 -p 5432 -U stockiha_admin -d postgres -c "CREATE DATABASE stockiha_acceptance;"
+& "$PG\psql.exe" -h 127.0.0.1 -p $PGPORT -U stockiha_admin -d postgres -c "CREATE DATABASE stockiha_acceptance;"
 ```
 
 Use whatever database name your `run.bat` / deployment configuration expects
 (`stockiha_acceptance` in this repository's dev/acceptance convention).
 
+If this reports `database "stockiha_acceptance" already exists`, stop and
+decide deliberately: restoring into a database that already holds data is not
+part of this procedure. Either pick a new name, or confirm the existing
+database is genuinely disposable and drop it yourself first. Never assume.
+
 ## Step 4 — Restore the dump into the new, empty database
 
 ```powershell
-& pg_restore --exit-on-error --single-transaction --no-owner --no-privileges `
-    --host=127.0.0.1 --port=5432 --username=stockiha_admin --dbname=stockiha_acceptance `
+& "$PG\pg_restore.exe" --exit-on-error --single-transaction --no-owner --no-privileges `
+    --host=127.0.0.1 --port=$PGPORT --username=stockiha_admin --dbname=stockiha_acceptance `
     "C:\path\to\GestStock-Backup-YYYYMMDD-HHMMSS\database.dump"
 ```
 
@@ -90,7 +132,7 @@ exists for. Run it against the freshly restored database:
 
 ```powershell
 $env:PGPASSWORD = '<the stockiha_admin password you chose>'
-& psql -h 127.0.0.1 -p 5432 -U stockiha_admin -d stockiha_acceptance -v ON_ERROR_STOP=1 -f scripts\recovery\stockiha_bootstrap_roles_and_grants.sql
+& "$PG\psql.exe" -h 127.0.0.1 -p $PGPORT -U stockiha_admin -d stockiha_acceptance -v ON_ERROR_STOP=1 -f scripts\recovery\stockiha_bootstrap_roles_and_grants.sql
 ```
 
 This creates the four Stockiha roles (`stockiha_owner`, `stockiha_migrator`,
@@ -107,8 +149,8 @@ Every role the bootstrap script creates gets the fixed placeholder password
 `CHANGE_ME_BOOTSTRAP_PLACEHOLDER`. Set the real ones now, interactively, one
 at a time — never as a script argument or in shell history:
 
-```
-psql -h 127.0.0.1 -p 5432 -U stockiha_admin -d stockiha_acceptance
+```powershell
+& "$PG\psql.exe" -h 127.0.0.1 -p $PGPORT -U stockiha_admin -d stockiha_acceptance
 \password stockiha_runtime
 \password stockiha_migrator
 \password stockiha_backup
@@ -124,6 +166,13 @@ for the exact provisioning pattern; it is not itself part of this restore
 procedure).
 
 ## Step 7 — Verify the restore
+
+Open an interactive `psql` session against the restored database — the SQL
+below is typed **into that session**, not into PowerShell:
+
+```powershell
+& "$PG\psql.exe" -h 127.0.0.1 -p $PGPORT -U stockiha_admin -d stockiha_acceptance
+```
 
 Compare row counts and the journal balance against what you expect (the
 bundle's manifest does not carry row counts, so compare against your own
@@ -143,15 +192,25 @@ HAVING SUM(debit) <> SUM(credit);
 -- Expect 0 rows: every document's debits and credits balance.
 ```
 
+Type `\q` and press Enter to leave `psql`.
+
 Then confirm the application itself can start: point `STOCKIHA_DEV_DATABASE_URL`
 (or the deployment's equivalent) at this database and launch Stockiha.
 
 ## Step 8 — Restore file-based assets (if the bundle contains any)
 
 Copy the contents of the bundle's `attachments/`, `generated-documents/`, and
-`company-assets/` directories back into the application's data directory
-(Tauri's `app_data_dir`, under `attachments/`, `generated/customer-documents/`,
-and `company-assets/` respectively). Stockiha's database restore (Steps 4-7)
+`company-assets/` directories back into the application's data directory —
+Tauri's `app_data_dir`, which on Windows is:
+
+```
+C:\Users\<your-windows-username>\AppData\Roaming\com.raqmenha.stockiha
+```
+
+(`AppData` is hidden by default; paste the path into the File Explorer address
+bar, or use `%APPDATA%\com.raqmenha.stockiha`.) The three bundle directories
+map to `attachments/`, `generated/customer-documents/`, and `company-assets/`
+underneath it, respectively. Stockiha's database restore (Steps 4-7)
 does not touch these — they are plain files copied alongside the dump.
 
 ## What this procedure deliberately does NOT do
