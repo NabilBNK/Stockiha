@@ -19,6 +19,7 @@ import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { ProductsScreen } from '../features/products/ProductsScreen';
+import { CatalogueSetupScreen } from '../features/catalogue-setup/CatalogueSetupScreen';
 import { StockAdjustmentScreen } from '../features/inventory/StockAdjustmentScreen';
 import { StockReceiptScreen } from '../features/inventory/StockReceiptScreen';
 import { InventoryScreen } from '../features/inventory/InventoryScreen';
@@ -275,6 +276,7 @@ function AuthenticatedApp() {
     if (!inventoryCapabilities) return;
     const allowed =
       (view !== 'products' || inventoryCapabilities.can_manage_catalog)
+      && (view !== 'catalogueSetup' || inventoryCapabilities.can_manage_catalog)
       && (view !== 'inventory' || inventoryCapabilities.can_view_inventory)
       && (view !== 'stock' || inventoryCapabilities.can_post_stock_receipt)
       && (view !== 'adjustment' || (inventoryCapabilities.can_manage_inventory && inventoryCorrectionsEnabled));
@@ -354,6 +356,7 @@ function AuthenticatedApp() {
         </>
       )}
       {view === 'products' && <ProductsScreen />}
+      {view === 'catalogueSetup' && <CatalogueSetupScreen sessionToken={user?.token ?? ''} />}
       {view === 'inventory' && <InventoryScreen />}
       {view === 'stock' && <StockReceiptScreen />}
       {view === 'adjustment' && inventoryCorrectionsEnabled && <StockAdjustmentScreen />}

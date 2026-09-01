@@ -2200,6 +2200,58 @@ fieldset.sk-form {
   box-shadow: none;
 }
 
+/* WS-D-3 — Catalogue Setup screen */
+.sk-catalogue-setup__panel .sk-form {
+  margin-block-end: var(--sk-gap);
+}
+
+.sk-catalogue-setup__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.sk-row--inactive {
+  color: var(--sk-muted);
+}
+
+.sk-catalogue-setup__attribute-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sk-catalogue-setup__attribute-card {
+  margin-block-end: 0;
+}
+
+.sk-catalogue-setup__attribute-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sk-catalogue-setup__expand-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+}
+
+.sk-catalogue-setup__value-panel {
+  margin-block-start: 0.75rem;
+  padding-block-start: 0.75rem;
+  border-block-start: 1px solid var(--sk-border);
+}
+
 .sk-fieldset--disabled .sk-checkbox-row,
 .sk-fieldset--disabled label {
   cursor: not-allowed;

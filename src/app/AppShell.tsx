@@ -17,6 +17,7 @@ export type AppView =
   | 'opening_state'
   | 'opening_state_application'
   | 'products'
+  | 'catalogueSetup'
   | 'inventory'
   | 'stock'
   | 'adjustment'
@@ -46,6 +47,7 @@ const NAV: NavItem[] = [
   { view: 'historical_finance', labels: { fr: 'Finance historique', ar: 'المالية التاريخية', en: 'Historical finance' }, group: 'main', icon: '▥' },
   { view: 'settings', labels: { fr: 'Paramètres', ar: 'الإعدادات', en: 'Settings' }, group: 'main', icon: '⚙' },
   { view: 'products', labelKey: 'nav.products', group: 'stock', icon: '□' },
+  { view: 'catalogueSetup', labelKey: 'nav.catalogueSetup', group: 'stock', icon: '✎' },
   { view: 'inventory', labelKey: 'nav.inventory', group: 'stock', icon: '▤' },
   { view: 'stock', labelKey: 'nav.stockReceipt', group: 'stock', icon: '↓' },
   { view: 'adjustment', labelKey: 'nav.stockAdjustment', group: 'stock', icon: '±' },
@@ -157,6 +159,7 @@ export function AppShell({
   function canShow(item: NavItem): boolean {
     switch (item.view) {
       case 'products':
+      case 'catalogueSetup':
         return inventoryCapabilities?.can_manage_catalog ?? false;
       case 'inventory':
         return inventoryCapabilities?.can_view_inventory ?? false;
