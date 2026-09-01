@@ -729,9 +729,28 @@ async fn drop_temp_database_on_new_connection(
     let mut conn = PgConnection::connect_with(maintenance)
         .await
         .map_err(|_| RestoreProofError::AdminConnectFailed)?;
-    let result = drop_database_with_force(&mut conn, name).await;
-    let _ = conn.close().await;
+    let result = with_cleanup_timeout(drop_database_with_force(&mut conn, name)).await;
+    let _ = tokio::time::timeout(CLEANUP_TIMEOUT, conn.close()).await;
     result
+}
+
+/// Bound every cleanup operation this module issues against a *server we do
+/// not control the health of*: a `DROP DATABASE`/`CHECKPOINT` needs the
+/// checkpointer, and a real Windows session showed the checkpointer can wedge
+/// — alive, consuming no CPU, never completing — after a PostgreSQL backend
+/// crash. Without this bound, [`sweep_orphaned_temp_databases`] (awaited on
+/// the application's startup path) would hang the entire app launch forever
+/// on a wedged cluster, which defeats the "never fatal" promise the sweep
+/// documents for itself. 30s is generous for a healthy checkpoint and short
+/// enough that a wedged one does not read as the app hanging.
+const CLEANUP_TIMEOUT: Duration = Duration::from_secs(30);
+
+async fn with_cleanup_timeout<T>(
+    future: impl Future<Output = Result<T, RestoreProofError>>,
+) -> Result<T, RestoreProofError> {
+    tokio::time::timeout(CLEANUP_TIMEOUT, future)
+        .await
+        .unwrap_or(Err(RestoreProofError::DatabaseDropFailed))
 }
 
 /// A temporary restore database whose `DROP` the compiler enforces.
@@ -839,19 +858,25 @@ impl Drop for TempDbGuard {
 pub(crate) async fn sweep_orphaned_temp_databases(
     maintenance: &PgConnectOptions,
 ) -> Result<Vec<String>, RestoreProofError> {
-    let mut conn = PgConnection::connect_with(maintenance)
-        .await
-        .map_err(|_| RestoreProofError::AdminConnectFailed)?;
+    let mut conn = with_cleanup_timeout(async {
+        PgConnection::connect_with(maintenance)
+            .await
+            .map_err(|_| RestoreProofError::AdminConnectFailed)
+    })
+    .await?;
 
-    let candidates: Vec<String> = sqlx::query_scalar::<_, String>(
-        "SELECT datname FROM pg_database \
-         WHERE left(datname, length($1)) = $1 \
-         ORDER BY datname",
-    )
-    .bind(TEMP_DB_PREFIX)
-    .fetch_all(&mut conn)
-    .await
-    .map_err(|_| RestoreProofError::AdminConnectFailed)?;
+    let candidates: Vec<String> = with_cleanup_timeout(async {
+        sqlx::query_scalar::<_, String>(
+            "SELECT datname FROM pg_database \
+             WHERE left(datname, length($1)) = $1 \
+             ORDER BY datname",
+        )
+        .bind(TEMP_DB_PREFIX)
+        .fetch_all(&mut conn)
+        .await
+        .map_err(|_| RestoreProofError::AdminConnectFailed)
+    })
+    .await?;
 
     let mut dropped = Vec::new();
     for name in candidates {
@@ -862,13 +887,34 @@ pub(crate) async fn sweep_orphaned_temp_databases(
             );
             continue;
         }
-        match drop_database_with_force(&mut conn, &name).await {
+        // Bounded: a DROP DATABASE needs the checkpointer, and a real Windows
+        // session showed the checkpointer can wedge server-wide (not per
+        // connection). If one drop times out, every remaining drop on this
+        // same connection would too — and reusing a connection whose command
+        // was just abandoned mid-flight, rather than actually completed or
+        // errored, is not a defined state to keep issuing queries into. Stop
+        // the sweep here rather than spend up to CLEANUP_TIMEOUT per
+        // remaining candidate finding that out the hard way; the whole sweep
+        // is retried at the next application start regardless.
+        match with_cleanup_timeout(drop_database_with_force(&mut conn, &name)).await {
             Ok(()) => dropped.push(name),
-            Err(_) => tracing::error!("restore drill sweep: could not drop leftover '{name}'"),
+            Err(_) => {
+                tracing::error!(
+                    "restore drill sweep: '{name}' did not drop within {CLEANUP_TIMEOUT:?} — \
+                     the server appears unresponsive to DROP DATABASE right now (a wedged \
+                     checkpointer is a known cause). Stopping the sweep early; it and any \
+                     remaining leftovers will be retried at the next application start"
+                );
+                break;
+            }
         }
     }
 
-    let _ = conn.close().await;
+    // Bounded and best-effort: after a timed-out DROP above, a graceful
+    // close can itself hang waiting on the same unresponsive server. Either
+    // way the socket is released when `conn` is dropped, so an unbounded
+    // wait here would buy nothing.
+    let _ = tokio::time::timeout(CLEANUP_TIMEOUT, conn.close()).await;
     Ok(dropped)
 }
 

@@ -11,6 +11,29 @@ echo ========================================================
 echo  Stockiha Development Runner
 echo ========================================================
 
+REM ---- Step 0: neutralize an inherited CARGO_TARGET_DIR --------------------
+REM A prior debugging session's shell can leave CARGO_TARGET_DIR set (e.g. to
+REM a non-standard name like "target-wsh2"). Tauri's dev file watcher ignores
+REM the default src-tauri\target, but NOT a differently named target dir, so
+REM every cargo build under that name writes files the watcher sees, which
+REM triggers "File changed. Rebuilding application..." -> another build ->
+REM another change -> forever. This is exactly what happened to the Project
+REM Owner: bare `npm run tauri dev` from a clean shell (no CARGO_TARGET_DIR)
+REM built into target\debug and worked; the inherited variable is what wedged
+REM the launcher. A stale environment variable must not be able to do that
+REM again, so it is unconditionally cleared here regardless of where it came
+REM from, and the operator is told if one was actually found and overridden.
+if defined CARGO_TARGET_DIR (
+    echo.
+    echo  WARNING: CARGO_TARGET_DIR was set to "%CARGO_TARGET_DIR%" in this
+    echo           shell. That points cargo's build output at a directory
+    echo           Tauri's dev watcher does NOT ignore, which causes an
+    echo           infinite "File changed. Rebuilding..." loop. Clearing it
+    echo           for this run.
+    echo.
+    set "CARGO_TARGET_DIR="
+)
+
 REM ---- Step 1: Clean up previous dev processes for this worktree ----
 echo Stopping previous dev processes associated with this worktree...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\cleanup-dev-processes.ps1"

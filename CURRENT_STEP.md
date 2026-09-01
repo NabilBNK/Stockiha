@@ -65,11 +65,13 @@
 
 ---
 
-## 6. WS-H parking note — PostgreSQL instability on the acceptance machine (recorded, not fixed)
+## 6. WS-H parking note — PostgreSQL instability on the acceptance machine (environmental, closed)
 
 Diagnosis only, per the WS-H-2 final-pass scope. **No fix was attempted beyond
-guaranteeing cleanup**; the decision to spend further time belongs to the Lead
-Architect.
+guaranteeing cleanup** (Task 1's `TempDbGuard` + startup sweep). The Lead
+Architect has reviewed this diagnosis and closed it: **this is an
+environmental PostgreSQL fault, not a Stockiha code defect**, and no further
+engineering time is being spent on the crash itself.
 
 **What the operator saw.** Repeatedly clicking "Create backup" produced
 `The database is currently unavailable.`, preceded by
@@ -106,13 +108,28 @@ why the two orphaned databases could not be dropped in-session, and it is a
 plausible common cause with the `abort()` above. Clearing it requires a cluster
 restart.
 
-**Assessment.** This is a fault inside `postgres.exe` itself, not in Stockiha
-code — Stockiha only sends SQL over a socket. It is therefore **not** a
-Stockiha code defect, but neither is it explained by the usual environmental
-suspects (disk, antivirus). One further environmental lead worth noting: the
-cluster is launched as a plain console child process, and this data directory
-has previously logged `background worker ... was terminated by exception
-0xC000013A` (`STATUS_CONTROL_C_EXIT`) — the signature of a console control
-event (Ctrl+C, window close, logoff) propagating to the server. Running the
-cluster as a Windows **service**, with `logging_collector = on`, would both
-remove that exposure and preserve the server log needed to take this further.
+**Assessment (accepted, closed).** This is a fault inside `postgres.exe`
+itself, not in Stockiha code — Stockiha only sends SQL over a socket. It is
+therefore **not** a Stockiha code defect. It is not explained by the usual
+environmental suspects checked here (disk, antivirus), but the version and
+launch posture are both plausible independent causes: PostgreSQL 18.0 is the
+initial 18.x release, and the cluster is launched as a plain console child
+process — this data directory has previously logged `background worker ...
+was terminated by exception 0xC000013A` (`STATUS_CONTROL_C_EXIT`), the
+signature of a console control event (Ctrl+C, window close, logoff)
+propagating to the server.
+
+**Recommended mitigations for the Project Owner** (not implemented here —
+system/infrastructure changes are outside this task's scope):
+
+1. **Update PostgreSQL 18.0 to the current 18.x patch release.** The crash is
+   inside `ucrtbase.dll` at a fixed offset, which is consistent with a known,
+   already-patched bug rather than something specific to this machine.
+2. **Run the cluster as a Windows service, with `logging_collector = on`.**
+   This removes the console-control-event exposure above and — regardless of
+   whether it changes the crash itself — preserves the server's own log for
+   next time, which this investigation did not have.
+
+No further engineering time will be spent on the crash itself. Task 1's
+cleanup guarantee (`TempDbGuard` + startup sweep) means it is no longer
+harmful when it happens, which is the scope this task closes at.
