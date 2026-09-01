@@ -46,9 +46,39 @@ function makeHandlers(extra: Handlers = {}): Handlers {
       can_manage_inventory: true,
     }),
     list_catalog_products: () => [],
+    list_products_v2: () => [],
+    list_categories: () => [],
+    list_brands: () => [],
     list_attributes: () => [],
     list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
     ...extra,
+  };
+}
+
+/** WS-D-4: a single catalog.list_products_v2 row, ProductListItemV2 shape. */
+function productListRow(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+  return {
+    product_id: 1,
+    variant_id: 10,
+    sku: 'TSH-S',
+    product_name: 'T-Shirt',
+    variant_name: 'T-Shirt',
+    primary_barcode: null,
+    display_identifier: 'TSH-S',
+    identifier_type: 'SKU',
+    sale_price: '10.00',
+    minimum_stock: '0',
+    is_active: true,
+    product_is_active: true,
+    category_id: null,
+    category_name: null,
+    brand_id: null,
+    brand_name: null,
+    quantity_on_hand: '0',
+    last_known_wac: '0',
+    attributes: [],
+    total_count: 1,
+    ...overrides,
   };
 }
 
@@ -68,24 +98,37 @@ beforeEach(() => {
   document.documentElement.setAttribute('dir', 'ltr');
 });
 
-describe('catalog product list', () => {
-  it('shows empty state when no products', async () => {
+describe('catalog product list (WS-D-4, variant-level on list_products_v2)', () => {
+  it('shows empty state when no variants match', async () => {
     wireInvoke(makeHandlers());
     render(<App />);
     await loginAndNavigate();
-    expect(await screen.findByText('No products yet. Create one to get started.')).toBeInTheDocument();
+    expect(await screen.findByText('No variants match these filters.')).toBeInTheDocument();
   });
 
-  it('displays catalog products with variant counts', async () => {
+  it('lists one row per variant, not one row per product', async () => {
     wireInvoke(makeHandlers({
-      list_catalog_products: () => [
-        { product_id: 1, name: 'T-Shirt', is_active: true, variant_count: 3, active_variant_count: 2 },
+      list_products_v2: () => [
+        productListRow({
+          variant_id: 10, sku: 'TSH-S', variant_name: 'T-Shirt / S', display_identifier: 'TSH-S',
+          identifier_type: 'SKU', total_count: 2,
+        }),
+        productListRow({
+          variant_id: 11, sku: 'TSH-M', variant_name: 'T-Shirt / M', display_identifier: '6130000000017',
+          identifier_type: 'BARCODE', primary_barcode: '6130000000017', total_count: 2,
+        }),
       ],
     }));
     render(<App />);
     await loginAndNavigate();
-    expect(await screen.findByText('T-Shirt')).toBeInTheDocument();
-    expect(screen.getByText('2/3 active')).toBeInTheDocument();
+
+    expect(await screen.findByTestId('product-row-10')).toBeInTheDocument();
+    expect(screen.getByTestId('product-row-11')).toBeInTheDocument();
+    expect(screen.getByText('T-Shirt / S')).toBeInTheDocument();
+    expect(screen.getByText('T-Shirt / M')).toBeInTheDocument();
+    expect(screen.getByText('TSH-S')).toBeInTheDocument();
+    expect(screen.getByText('6130000000017')).toBeInTheDocument();
+    expect(screen.getByText('Showing 1–2 of 2')).toBeInTheDocument();
   });
 });
 
@@ -214,9 +257,7 @@ describe('variant attribute configuration', () => {
       }],
     };
     wireInvoke(makeHandlers({
-      list_catalog_products: () => [
-        { product_id: 1, name: 'T-Shirt', is_active: true, variant_count: 1, active_variant_count: 1 },
-      ],
+      list_products_v2: () => [productListRow()],
       get_product_detail: () => detail,
       list_attributes: () => [
         { attribute_id: 1, name: 'Size', attribute_values: [{ id: 3, value: 'S' }, { id: 4, value: 'M' }] },
@@ -266,9 +307,7 @@ describe('add SKU and barcode', () => {
       }],
     };
     wireInvoke(makeHandlers({
-      list_catalog_products: () => [
-        { product_id: 1, name: 'Widget', is_active: true, variant_count: 1, active_variant_count: 1 },
-      ],
+      list_products_v2: () => [productListRow({ product_name: 'Widget', variant_name: 'Widget', sku: 'WID-1', display_identifier: 'WID-1' })],
       get_product_detail: () => detail,
       list_attributes: () => [],
       list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
@@ -313,9 +352,7 @@ describe('add SKU and barcode', () => {
       }],
     };
     wireInvoke(makeHandlers({
-      list_catalog_products: () => [
-        { product_id: 1, name: 'Widget', is_active: true, variant_count: 1, active_variant_count: 1 },
-      ],
+      list_products_v2: () => [productListRow({ product_name: 'Widget', variant_name: 'Widget', sku: 'WID-1', display_identifier: 'WID-1' })],
       get_product_detail: () => detail,
       list_attributes: () => [],
       list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
@@ -357,9 +394,7 @@ describe('deactivate a variant', () => {
       }],
     };
     wireInvoke(makeHandlers({
-      list_catalog_products: () => [
-        { product_id: 1, name: 'Widget', is_active: true, variant_count: 1, active_variant_count: 1 },
-      ],
+      list_products_v2: () => [productListRow({ product_name: 'Widget', variant_name: 'Widget', sku: 'WID-1', display_identifier: 'WID-1' })],
       get_product_detail: () => detail,
       list_attributes: () => [],
       list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
@@ -431,8 +466,8 @@ describe('locale / RTL rendering', () => {
     const productsNav = screen.getByRole('button', { name: 'المنتجات' });
     fireEvent.click(productsNav);
 
-    // Arabic empty state for catalog
-    expect(await screen.findByText('لا توجد منتجات. أنشئ منتجًا للبدء.')).toBeInTheDocument();
+    // Arabic empty state for catalog (WS-D-4: variant-level list_products_v2 empty state)
+    expect(await screen.findByText('لا توجد أصناف مطابقة لهذه المرشحات.')).toBeInTheDocument();
     expect(document.documentElement.getAttribute('dir')).toBe('rtl');
   });
 });
