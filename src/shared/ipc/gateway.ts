@@ -9,8 +9,10 @@ import { COMMANDS, type CommandName } from './commands';
 import type {
   ActiveCashSession,
   AttributeDefinition,
+  AttributeValueLifecycleItem,
   CashSaleLineInput,
   CashSessionDetail,
+  CatalogBrandItem,
   CatalogProduct,
   CreatedProduct,
   CreatedProductWithVariants,
@@ -23,10 +25,14 @@ import type {
   OpenFiscalPeriod,
   ProductDetail,
   ProductListItem,
+  ProductListItemV2,
+  QuickCreatedProduct,
+  ReferenceLifecycleItem,
   ResolvedBarcode,
   SaleDocument,
   SaleLine,
   SetupStatus,
+  UnitLifecycleItem,
   StockAdjustmentReasonCode,
   StockAdjustmentResult,
   StockAdjustmentUnit,
@@ -371,6 +377,186 @@ export function listCatalogProducts(sessionToken: string, search?: string): Prom
 
 export function getProductDetail(sessionToken: string, productId: number): Promise<ProductDetail> {
   return call<ProductDetail>(COMMANDS.GET_PRODUCT_DETAIL, { sessionToken, productId });
+}
+
+// WS-D-2 — reference-data lifecycle, quick_create_product, list_products_v2,
+// and the widened update_product/update_variant overloads.
+
+export function listCategories(sessionToken: string): Promise<ReferenceLifecycleItem[]> {
+  return call<ReferenceLifecycleItem[]>(COMMANDS.LIST_CATEGORIES, { sessionToken });
+}
+
+export function createCategory(sessionToken: string, name: string): Promise<number> {
+  return call<number>(COMMANDS.CREATE_CATEGORY, { sessionToken, name });
+}
+
+export function renameCategory(sessionToken: string, categoryId: number, name: string): Promise<void> {
+  return call<void>(COMMANDS.RENAME_CATEGORY, { sessionToken, categoryId, name });
+}
+
+export function setCategoryActive(sessionToken: string, categoryId: number, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.SET_CATEGORY_ACTIVE, { sessionToken, categoryId, isActive });
+}
+
+export function deleteCategory(sessionToken: string, categoryId: number): Promise<void> {
+  return call<void>(COMMANDS.DELETE_CATEGORY, { sessionToken, categoryId });
+}
+
+export function listBrandsV2(sessionToken: string): Promise<CatalogBrandItem[]> {
+  return call<CatalogBrandItem[]>(COMMANDS.LIST_BRANDS, { sessionToken });
+}
+
+export function createBrand(sessionToken: string, code: string, name: string): Promise<number> {
+  return call<number>(COMMANDS.CREATE_BRAND, { sessionToken, code, name });
+}
+
+export function renameBrand(sessionToken: string, brandId: number, code: string, name: string): Promise<void> {
+  return call<void>(COMMANDS.RENAME_BRAND, { sessionToken, brandId, code, name });
+}
+
+export function setBrandActive(sessionToken: string, brandId: number, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.SET_BRAND_ACTIVE, { sessionToken, brandId, isActive });
+}
+
+export function deleteBrand(sessionToken: string, brandId: number): Promise<void> {
+  return call<void>(COMMANDS.DELETE_BRAND, { sessionToken, brandId });
+}
+
+export function listAttributesV2(sessionToken: string): Promise<ReferenceLifecycleItem[]> {
+  return call<ReferenceLifecycleItem[]>(COMMANDS.LIST_ATTRIBUTES_V2, { sessionToken });
+}
+
+export function renameAttribute(sessionToken: string, attributeId: number, name: string): Promise<void> {
+  return call<void>(COMMANDS.RENAME_ATTRIBUTE, { sessionToken, attributeId, name });
+}
+
+export function setAttributeActive(sessionToken: string, attributeId: number, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.SET_ATTRIBUTE_ACTIVE, { sessionToken, attributeId, isActive });
+}
+
+export function deleteAttribute(sessionToken: string, attributeId: number): Promise<void> {
+  return call<void>(COMMANDS.DELETE_ATTRIBUTE, { sessionToken, attributeId });
+}
+
+export function listAttributeValues(sessionToken: string): Promise<AttributeValueLifecycleItem[]> {
+  return call<AttributeValueLifecycleItem[]>(COMMANDS.LIST_ATTRIBUTE_VALUES, { sessionToken });
+}
+
+export function renameAttributeValue(sessionToken: string, attributeValueId: number, value: string): Promise<void> {
+  return call<void>(COMMANDS.RENAME_ATTRIBUTE_VALUE, { sessionToken, attributeValueId, value });
+}
+
+export function setAttributeValueActive(sessionToken: string, attributeValueId: number, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.SET_ATTRIBUTE_VALUE_ACTIVE, { sessionToken, attributeValueId, isActive });
+}
+
+export function deleteAttributeValue(sessionToken: string, attributeValueId: number): Promise<void> {
+  return call<void>(COMMANDS.DELETE_ATTRIBUTE_VALUE, { sessionToken, attributeValueId });
+}
+
+export function listUnitsV2(sessionToken: string): Promise<UnitLifecycleItem[]> {
+  return call<UnitLifecycleItem[]>(COMMANDS.LIST_UNITS_V2, { sessionToken });
+}
+
+export function renameUnit(sessionToken: string, unitId: number, code: string, name: string): Promise<void> {
+  return call<void>(COMMANDS.RENAME_UNIT, { sessionToken, unitId, code, name });
+}
+
+export function setUnitActive(sessionToken: string, unitId: number, isActive: boolean): Promise<void> {
+  return call<void>(COMMANDS.SET_UNIT_ACTIVE, { sessionToken, unitId, isActive });
+}
+
+export function deleteUnit(sessionToken: string, unitId: number): Promise<void> {
+  return call<void>(COMMANDS.DELETE_UNIT, { sessionToken, unitId });
+}
+
+export interface QuickCreateProductInput {
+  name: string;
+  unitId: number;
+  salePrice: string;
+  categoryId?: number | null;
+  brandId?: number | null;
+  barcode?: string | null;
+  minimumStock: string;
+  isActive: boolean;
+}
+
+export function quickCreateProduct(sessionToken: string, input: QuickCreateProductInput): Promise<QuickCreatedProduct> {
+  return call<QuickCreatedProduct>(COMMANDS.QUICK_CREATE_PRODUCT, {
+    sessionToken,
+    name: input.name,
+    unitId: input.unitId,
+    salePrice: input.salePrice,
+    categoryId: input.categoryId ?? null,
+    brandId: input.brandId ?? null,
+    barcode: input.barcode ?? null,
+    minimumStock: input.minimumStock,
+    isActive: input.isActive,
+  });
+}
+
+export interface ListProductsV2Filters {
+  search?: string | null;
+  categoryId?: number | null;
+  brandId?: number | null;
+  includeInactive?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export function listProductsV2(
+  sessionToken: string,
+  warehouseId: number,
+  filters: ListProductsV2Filters = {},
+): Promise<ProductListItemV2[]> {
+  return call<ProductListItemV2[]>(COMMANDS.LIST_PRODUCTS_V2, {
+    sessionToken,
+    warehouseId,
+    search: filters.search ?? null,
+    categoryId: filters.categoryId ?? null,
+    brandId: filters.brandId ?? null,
+    includeInactive: filters.includeInactive ?? false,
+    limit: filters.limit ?? 100,
+    offset: filters.offset ?? 0,
+  });
+}
+
+export function updateProductV2(
+  sessionToken: string,
+  productId: number,
+  name: string,
+  unitId: number,
+  isActive: boolean,
+  categoryId: number | null,
+  brandId: number | null,
+): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_PRODUCT_V2, {
+    sessionToken,
+    productId,
+    name,
+    unitId,
+    isActive,
+    categoryId,
+    brandId,
+  });
+}
+
+export function updateVariantV2(
+  sessionToken: string,
+  variantId: number,
+  nameOverride: string | null,
+  salePrice: string,
+  isActive: boolean,
+  minimumStock: string,
+): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_VARIANT_V2, {
+    sessionToken,
+    variantId,
+    nameOverride,
+    salePrice,
+    isActive,
+    minimumStock,
+  });
 }
 
 // Slice 3 — Procurement Gateway Methods

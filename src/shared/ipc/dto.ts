@@ -740,6 +740,49 @@ export interface JournalDetail extends JournalSummary {
   lines: JournalLineDto[];
 }
 
+// WS-D-2 — reference-data lifecycle, quick_create_product, list_products_v2,
+// and the widened update_product/update_variant overloads. Every decimal
+// (sale_price, minimum_stock, quantity_on_hand, last_known_wac) crosses IPC
+// as a string, never a TS `number` (ws-d-skill.md section 6). usage_count is
+// a plain count, not a monetary/quantity value, so it stays a number, same
+// as the existing CatalogProduct.variant_count precedent above.
+
+export interface ReferenceLifecycleItem { id: number; name: string; is_active: boolean; usage_count: number; }
+export interface CatalogBrandItem { id: number; code: string; name: string; is_active: boolean; usage_count: number; }
+export interface AttributeValueLifecycleItem { id: number; attribute_id: number; attribute_name: string; value: string; is_active: boolean; usage_count: number; }
+export interface UnitLifecycleItem { id: number; code: string; name: string; is_active: boolean; usage_count: number; }
+
+export interface QuickCreatedProduct { product_id: number; variant_id: number; }
+
+/**
+ * `catalog.list_products_v2` row — all 20 returned columns
+ * (ws-d-skill.md section 2.4). `display_identifier` mirrors the SQL's own
+ * barcode-preferred-else-SKU choice; unlike `ResolvedBarcode.operational_identifier`
+ * elsewhere in this file, it is never recomputed in React.
+ */
+export interface ProductListItemV2 {
+  product_id: number;
+  variant_id: number;
+  sku: string;
+  product_name: string;
+  variant_name: string;
+  primary_barcode: string | null;
+  display_identifier: string;
+  identifier_type: 'BARCODE' | 'SKU';
+  sale_price: string;
+  minimum_stock: string;
+  is_active: boolean;
+  product_is_active: boolean;
+  category_id: number | null;
+  category_name: string | null;
+  brand_id: number | null;
+  brand_name: string | null;
+  quantity_on_hand: string;
+  last_known_wac: string;
+  attributes: VariantAttributeDto[];
+  total_count: number;
+}
+
 export interface BusinessDocumentDto {
   document_id: number;
   document_number: string | null;
