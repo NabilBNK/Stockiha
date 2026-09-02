@@ -88,43 +88,13 @@ BEGIN
     RAISE NOTICE 'category CRUD OK';
 END $$;
 
--- ---- 2. Brand CRUD (incl. code-based create/rename) --------------------------
-DO $$
-DECLARE v_brand_a bigint; v_brand_b bigint; v_pid bigint;
-BEGIN
-    v_brand_a := catalog.create_brand('wsdadmintok', 'ACME', 'Acme Corp');
-    IF catalog.create_brand('wsdadmintok', ' acme ', 'Acme Corp Duplicate') <> v_brand_a THEN
-        RAISE EXCEPTION 'ASSERT FAIL: brand create not normalized/idempotent on code';
-    END IF;
-    v_brand_b := catalog.create_brand('wsdadmintok', 'GLOBEX', 'Globex Inc');
-
-    PERFORM catalog.rename_brand('wsdadmintok', v_brand_b, 'GLOBEX', 'Globex International');
-    IF (SELECT name FROM catalog.brands WHERE id = v_brand_b) <> 'Globex International' THEN
-        RAISE EXCEPTION 'ASSERT FAIL: brand rename did not persist';
-    END IF;
-
-    -- rename collision on code
-    PERFORM pg_temp.expect_error(
-        format('SELECT catalog.rename_brand(%L,%s,%L,%L)', 'wsdadmintok', v_brand_b, 'ACME', 'Whatever'), '22023');
-
-    DECLARE v_disposable bigint;
-    BEGIN
-        v_disposable := catalog.create_brand('wsdadmintok', 'TEMP', 'Temp Brand');
-        PERFORM catalog.delete_brand('wsdadmintok', v_disposable);
-        IF EXISTS (SELECT 1 FROM catalog.brands WHERE id = v_disposable) THEN
-            RAISE EXCEPTION 'ASSERT FAIL: unused brand not deleted';
-        END IF;
-    END;
-
-    SELECT product_id INTO v_pid FROM catalog.quick_create_product(
-        'wsdadmintok', 'Acme Widget', (SELECT v FROM t WHERE k='unit'), 7.00, p_brand_id => v_brand_a);
-    PERFORM pg_temp.expect_error(format('SELECT catalog.delete_brand(%L,%s)', 'wsdadmintok', v_brand_a), '55000');
-
-    INSERT INTO t VALUES ('brand_a', v_brand_a), ('brand_b', v_brand_b);
-    RAISE NOTICE 'brand CRUD OK';
-END $$;
-
--- ---- 3. Unit CRUD (incl. in-use-by-alternate-unit) ---------------------------
+-- ---- 2. Unit CRUD (incl. in-use-by-alternate-unit) ---------------------------
+-- WS-D-CORRECTION-1: Brand CRUD (list/create/rename/set_active/delete_brand)
+-- was removed here — Brand is no longer a product-level reference type; it is
+-- now an ordinary variant-level Attribute (see section 3 below, which already
+-- exercises the Attribute lifecycle Brand now reuses). catalog.brands and
+-- catalog.products.brand_id remain in the schema, untouched, for
+-- procurement.list_purchase_product_options / post_purchase_transaction.
 DO $$
 DECLARE v_unit_new bigint; v_unit_alt bigint; v_pid bigint; v_vid bigint;
 BEGIN
@@ -166,7 +136,7 @@ BEGIN
     RAISE NOTICE 'unit CRUD (incl. alt-unit-in-use) OK';
 END $$;
 
--- ---- 4. Attribute + attribute value CRUD -------------------------------------
+-- ---- 3. Attribute + attribute value CRUD -------------------------------------
 DO $$
 DECLARE v_attr bigint; v_val_a bigint; v_val_b bigint;
 BEGIN
@@ -212,7 +182,7 @@ BEGIN
     RAISE NOTICE 'attribute + attribute value CRUD OK';
 END $$;
 
--- ---- 5. quick_create_product happy path + duplicate-barcode rollback --------
+-- ---- 4. quick_create_product happy path + duplicate-barcode rollback --------
 DO $$
 DECLARE
     v_unit bigint; v_pid bigint; v_vid bigint; v_sku text;
@@ -271,7 +241,7 @@ BEGIN
     RAISE NOTICE 'quick_create_product happy path + duplicate barcode rollback + negative minimum_stock OK';
 END $$;
 
--- ---- 6. list_products_v2: multi-field search, display_identifier, dual-match,
+-- ---- 5. list_products_v2: multi-field search, display_identifier, dual-match,
 --         category non-interference with attribute_signature/effective name --
 DO $$
 DECLARE
@@ -377,7 +347,7 @@ BEGIN
     RAISE NOTICE 'multi-field search, display_identifier, dual-match, category-non-interference OK';
 END $$;
 
--- ---- 7. Pagination: disjoint/complete/non-repeating, and server-side clamp --
+-- ---- 6. Pagination: disjoint/complete/non-repeating, and server-side clamp --
 DO $$
 DECLARE
     v_unit bigint; i integer;
@@ -443,7 +413,7 @@ BEGIN
     RAISE NOTICE 'pagination (disjoint/complete/non-repeating) + server-side clamp OK';
 END $$;
 
--- ---- 8. LIKE metacharacters in search terms must be literal, not wildcards -
+-- ---- 7. LIKE metacharacters in search terms must be literal, not wildcards -
 DO $$
 DECLARE
     v_unit bigint; v_pid_pct bigint; v_pid_other bigint; v_cnt bigint;

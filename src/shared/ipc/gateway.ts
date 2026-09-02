@@ -12,7 +12,6 @@ import type {
   AttributeValueLifecycleItem,
   CashSaleLineInput,
   CashSessionDetail,
-  CatalogBrandItem,
   CatalogProduct,
   CreatedProduct,
   CreatedProductWithVariants,
@@ -402,26 +401,6 @@ export function deleteCategory(sessionToken: string, categoryId: number): Promis
   return call<void>(COMMANDS.DELETE_CATEGORY, { sessionToken, categoryId });
 }
 
-export function listBrandsV2(sessionToken: string): Promise<CatalogBrandItem[]> {
-  return call<CatalogBrandItem[]>(COMMANDS.LIST_BRANDS, { sessionToken });
-}
-
-export function createBrand(sessionToken: string, code: string, name: string): Promise<number> {
-  return call<number>(COMMANDS.CREATE_BRAND, { sessionToken, code, name });
-}
-
-export function renameBrand(sessionToken: string, brandId: number, code: string, name: string): Promise<void> {
-  return call<void>(COMMANDS.RENAME_BRAND, { sessionToken, brandId, code, name });
-}
-
-export function setBrandActive(sessionToken: string, brandId: number, isActive: boolean): Promise<void> {
-  return call<void>(COMMANDS.SET_BRAND_ACTIVE, { sessionToken, brandId, isActive });
-}
-
-export function deleteBrand(sessionToken: string, brandId: number): Promise<void> {
-  return call<void>(COMMANDS.DELETE_BRAND, { sessionToken, brandId });
-}
-
 export function listAttributesV2(sessionToken: string): Promise<ReferenceLifecycleItem[]> {
   return call<ReferenceLifecycleItem[]>(COMMANDS.LIST_ATTRIBUTES_V2, { sessionToken });
 }
@@ -475,7 +454,6 @@ export interface QuickCreateProductInput {
   unitId: number;
   salePrice: string;
   categoryId?: number | null;
-  brandId?: number | null;
   barcode?: string | null;
   minimumStock: string;
   isActive: boolean;
@@ -488,7 +466,6 @@ export function quickCreateProduct(sessionToken: string, input: QuickCreateProdu
     unitId: input.unitId,
     salePrice: input.salePrice,
     categoryId: input.categoryId ?? null,
-    brandId: input.brandId ?? null,
     barcode: input.barcode ?? null,
     minimumStock: input.minimumStock,
     isActive: input.isActive,
@@ -498,7 +475,6 @@ export function quickCreateProduct(sessionToken: string, input: QuickCreateProdu
 export interface ListProductsV2Filters {
   search?: string | null;
   categoryId?: number | null;
-  brandId?: number | null;
   includeInactive?: boolean;
   limit?: number;
   offset?: number;
@@ -514,7 +490,6 @@ export function listProductsV2(
     warehouseId,
     search: filters.search ?? null,
     categoryId: filters.categoryId ?? null,
-    brandId: filters.brandId ?? null,
     includeInactive: filters.includeInactive ?? false,
     limit: filters.limit ?? 100,
     offset: filters.offset ?? 0,
@@ -528,7 +503,6 @@ export function updateProductV2(
   unitId: number,
   isActive: boolean,
   categoryId: number | null,
-  brandId: number | null,
 ): Promise<void> {
   return call<void>(COMMANDS.UPDATE_PRODUCT_V2, {
     sessionToken,
@@ -537,7 +511,6 @@ export function updateProductV2(
     unitId,
     isActive,
     categoryId,
-    brandId,
   });
 }
 

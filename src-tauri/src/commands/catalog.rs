@@ -471,15 +471,6 @@ pub(crate) struct ReferenceItemResponse {
 }
 
 #[derive(Serialize)]
-pub(crate) struct BrandItemResponse {
-    pub id: i64,
-    pub code: String,
-    pub name: String,
-    pub is_active: bool,
-    pub usage_count: i64,
-}
-
-#[derive(Serialize)]
 pub(crate) struct AttributeValueItemResponse {
     pub id: i64,
     pub attribute_id: i64,
@@ -520,8 +511,6 @@ pub(crate) struct ProductListItemV2Response {
     pub product_is_active: bool,
     pub category_id: Option<i64>,
     pub category_name: Option<String>,
-    pub brand_id: Option<i64>,
-    pub brand_name: Option<String>,
     pub quantity_on_hand: String,
     pub last_known_wac: String,
     pub attributes: serde_json::Value,
@@ -598,83 +587,6 @@ pub(crate) async fn delete_category(
 ) -> Result<(), IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     catalog::delete_category(pool, &session_token, category_id)
-        .await
-        .map_err(IpcError::from)
-}
-
-// -------------------------------------------------------------------- brands
-
-#[tauri::command]
-pub(crate) async fn list_brands(
-    state: State<'_, DatabaseState>,
-    session_token: String,
-) -> Result<Vec<BrandItemResponse>, IpcError> {
-    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::list_brands(pool, &session_token)
-        .await
-        .map(|items| {
-            items
-                .into_iter()
-                .map(|i| BrandItemResponse {
-                    id: i.id,
-                    code: i.code,
-                    name: i.name,
-                    is_active: i.is_active,
-                    usage_count: i.usage_count,
-                })
-                .collect()
-        })
-        .map_err(IpcError::from)
-}
-
-#[tauri::command]
-pub(crate) async fn create_brand(
-    state: State<'_, DatabaseState>,
-    session_token: String,
-    code: String,
-    name: String,
-) -> Result<i64, IpcError> {
-    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::create_brand(pool, &session_token, &code, &name)
-        .await
-        .map_err(IpcError::from)
-}
-
-#[tauri::command]
-pub(crate) async fn rename_brand(
-    state: State<'_, DatabaseState>,
-    session_token: String,
-    brand_id: i64,
-    code: String,
-    name: String,
-) -> Result<(), IpcError> {
-    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::rename_brand(pool, &session_token, brand_id, &code, &name)
-        .await
-        .map_err(IpcError::from)
-}
-
-#[tauri::command]
-pub(crate) async fn set_brand_active(
-    state: State<'_, DatabaseState>,
-    session_token: String,
-    brand_id: i64,
-    is_active: bool,
-) -> Result<(), IpcError> {
-    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::set_brand_active(pool, &session_token, brand_id, is_active)
-        .await
-        .map_err(IpcError::from)
-}
-
-#[tauri::command]
-pub(crate) async fn delete_brand(
-    state: State<'_, DatabaseState>,
-    session_token: String,
-    brand_id: i64,
-) -> Result<(), IpcError> {
-    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::delete_brand(pool, &session_token, brand_id)
         .await
         .map_err(IpcError::from)
 }
@@ -880,7 +792,6 @@ pub(crate) async fn quick_create_product(
     unit_id: i64,
     sale_price: Decimal,
     category_id: Option<i64>,
-    brand_id: Option<i64>,
     barcode: Option<String>,
     minimum_stock: Decimal,
     is_active: bool,
@@ -893,7 +804,6 @@ pub(crate) async fn quick_create_product(
         unit_id,
         sale_price,
         category_id,
-        brand_id,
         barcode.as_deref(),
         minimum_stock,
         is_active,
@@ -914,7 +824,6 @@ pub(crate) async fn list_products_v2(
     warehouse_id: i64,
     search: Option<String>,
     category_id: Option<i64>,
-    brand_id: Option<i64>,
     include_inactive: bool,
     limit: i32,
     offset: i32,
@@ -926,7 +835,6 @@ pub(crate) async fn list_products_v2(
         warehouse_id,
         search.as_deref(),
         category_id,
-        brand_id,
         include_inactive,
         limit,
         offset,
@@ -950,8 +858,6 @@ pub(crate) async fn list_products_v2(
                 product_is_active: i.product_is_active,
                 category_id: i.category_id,
                 category_name: i.category_name,
-                brand_id: i.brand_id,
-                brand_name: i.brand_name,
                 quantity_on_hand: i.quantity_on_hand,
                 last_known_wac: i.last_known_wac,
                 attributes: i.attributes,
@@ -972,7 +878,6 @@ pub(crate) async fn update_product_v2(
     unit_id: i64,
     is_active: bool,
     category_id: Option<i64>,
-    brand_id: Option<i64>,
 ) -> Result<(), IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     catalog::update_product_v2(
@@ -983,7 +888,6 @@ pub(crate) async fn update_product_v2(
         unit_id,
         is_active,
         category_id,
-        brand_id,
     )
     .await
     .map_err(IpcError::from)

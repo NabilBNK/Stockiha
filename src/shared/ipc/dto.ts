@@ -748,14 +748,13 @@ export interface JournalDetail extends JournalSummary {
 // as the existing CatalogProduct.variant_count precedent above.
 
 export interface ReferenceLifecycleItem { id: number; name: string; is_active: boolean; usage_count: number; }
-export interface CatalogBrandItem { id: number; code: string; name: string; is_active: boolean; usage_count: number; }
 export interface AttributeValueLifecycleItem { id: number; attribute_id: number; attribute_name: string; value: string; is_active: boolean; usage_count: number; }
 export interface UnitLifecycleItem { id: number; code: string; name: string; is_active: boolean; usage_count: number; }
 
 export interface QuickCreatedProduct { product_id: number; variant_id: number; }
 
 /**
- * `catalog.list_products_v2` row — all 20 returned columns
+ * `catalog.list_products_v2` row — all 18 returned columns
  * (ws-d-skill.md section 2.4). `display_identifier` mirrors the SQL's own
  * barcode-preferred-else-SKU choice; unlike `ResolvedBarcode.operational_identifier`
  * elsewhere in this file, it is never recomputed in React.
@@ -775,8 +774,6 @@ export interface ProductListItemV2 {
   product_is_active: boolean;
   category_id: number | null;
   category_name: string | null;
-  brand_id: number | null;
-  brand_name: string | null;
   quantity_on_hand: string;
   last_known_wac: string;
   attributes: VariantAttributeDto[];

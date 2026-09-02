@@ -1,6 +1,6 @@
 /**
  * WS-D-3 — generic list/create/rename/toggle/delete widget for a flat
- * reference table that carries both a code and a name (Brands, Units).
+ * reference table that carries both a code and a name (e.g. Units).
  * Same behaviour as SimpleReferenceManager; see that file for the
  * client-disable-plus-server-authority delete note.
  */

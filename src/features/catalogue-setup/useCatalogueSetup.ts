@@ -10,7 +10,6 @@ import { useErrorText } from '../../shared/hooks/useErrorText';
 import * as ipc from '../../shared/ipc/gateway';
 import type {
   AttributeValueLifecycleItem,
-  CatalogBrandItem,
   ReferenceLifecycleItem,
   UnitLifecycleItem,
 } from '../../shared/ipc/dto';
@@ -21,10 +20,6 @@ export function useCatalogueSetup(token: string) {
   const [categories, setCategories] = useState<ReferenceLifecycleItem[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
-
-  const [brands, setBrands] = useState<CatalogBrandItem[]>([]);
-  const [brandsLoading, setBrandsLoading] = useState(false);
-  const [brandsError, setBrandsError] = useState<string | null>(null);
 
   const [units, setUnits] = useState<UnitLifecycleItem[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
@@ -45,19 +40,6 @@ export function useCatalogueSetup(token: string) {
       setCategoriesError(errorText(err));
     } finally {
       setCategoriesLoading(false);
-    }
-  }, [token, errorText]);
-
-  const loadBrands = useCallback(async () => {
-    if (!token) return;
-    setBrandsLoading(true);
-    setBrandsError(null);
-    try {
-      setBrands(await ipc.listBrandsV2(token));
-    } catch (err) {
-      setBrandsError(errorText(err));
-    } finally {
-      setBrandsLoading(false);
     }
   }, [token, errorText]);
 
@@ -93,8 +75,8 @@ export function useCatalogueSetup(token: string) {
   }, [token, errorText]);
 
   const loadAll = useCallback(async () => {
-    await Promise.all([loadCategories(), loadBrands(), loadUnits(), loadAttributes()]);
-  }, [loadCategories, loadBrands, loadUnits, loadAttributes]);
+    await Promise.all([loadCategories(), loadUnits(), loadAttributes()]);
+  }, [loadCategories, loadUnits, loadAttributes]);
 
   // Categories
   const createCategory = useCallback(async (name: string) => {
@@ -116,27 +98,6 @@ export function useCatalogueSetup(token: string) {
     await ipc.deleteCategory(token, id);
     await loadCategories();
   }, [token, loadCategories]);
-
-  // Brands
-  const createBrand = useCallback(async (code: string, name: string) => {
-    await ipc.createBrand(token, code, name);
-    await loadBrands();
-  }, [token, loadBrands]);
-
-  const renameBrand = useCallback(async (id: number, code: string, name: string) => {
-    await ipc.renameBrand(token, id, code, name);
-    await loadBrands();
-  }, [token, loadBrands]);
-
-  const setBrandActive = useCallback(async (id: number, isActive: boolean) => {
-    await ipc.setBrandActive(token, id, isActive);
-    await loadBrands();
-  }, [token, loadBrands]);
-
-  const deleteBrand = useCallback(async (id: number) => {
-    await ipc.deleteBrand(token, id);
-    await loadBrands();
-  }, [token, loadBrands]);
 
   // Units
   const createUnit = useCallback(async (code: string, name: string) => {
@@ -203,12 +164,10 @@ export function useCatalogueSetup(token: string) {
 
   return {
     categories, categoriesLoading, categoriesError,
-    brands, brandsLoading, brandsError,
     units, unitsLoading, unitsError,
     attributes, attributeValues, attributesLoading, attributesError,
     loadAll,
     createCategory, renameCategory, setCategoryActive, deleteCategory,
-    createBrand, renameBrand, setBrandActive, deleteBrand,
     createUnit, renameUnit, setUnitActive, deleteUnit,
     createAttribute, renameAttribute, setAttributeActive, deleteAttribute,
     addAttributeValue, renameAttributeValue, setAttributeValueActive, deleteAttributeValue,

@@ -1,8 +1,13 @@
 /**
- * WS-D-3 — Catalogue Setup screen: four tabs (Categories, Brands,
- * Attributes, Units) over the D-2 reference-data lifecycle gateway calls.
- * Loading/error/empty-state handling follows the pattern in
+ * WS-D-3 — Catalogue Setup screen: three tabs (Categories, Attributes,
+ * Units) over the D-2 reference-data lifecycle gateway calls. Loading/
+ * error/empty-state handling follows the pattern in
  * src/features/settings/InventoryCorrectionsSettingsScreen.tsx.
+ *
+ * WS-D-CORRECTION-1: Brand was removed as a product-level reference type
+ * (its own tab/table) — it is now an ordinary variant-level Attribute,
+ * created through the Attributes tab below like any other (e.g. Color,
+ * Size). No Brand-specific UI remains here.
  */
 import { useEffect, useState } from 'react';
 
@@ -13,7 +18,7 @@ import { CodedReferenceManager } from './CodedReferenceManager';
 import { SimpleReferenceManager } from './SimpleReferenceManager';
 import { useCatalogueSetup } from './useCatalogueSetup';
 
-type Tab = 'categories' | 'brands' | 'attributes' | 'units';
+type Tab = 'categories' | 'attributes' | 'units';
 
 export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string }) {
   const { t } = useI18n();
@@ -22,12 +27,10 @@ export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string })
   const setup = useCatalogueSetup(sessionToken);
   const {
     categories, categoriesLoading, categoriesError,
-    brands, brandsLoading, brandsError,
     units, unitsLoading, unitsError,
     attributes, attributeValues, attributesLoading, attributesError,
     loadAll,
     createCategory, renameCategory, setCategoryActive, deleteCategory,
-    createBrand, renameBrand, setBrandActive, deleteBrand,
     createUnit, renameUnit, setUnitActive, deleteUnit,
     createAttribute, renameAttribute, setAttributeActive, deleteAttribute,
     addAttributeValue, renameAttributeValue, setAttributeValueActive, deleteAttributeValue,
@@ -38,12 +41,11 @@ export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string })
   }, [loadAll]);
 
   const initialLoading =
-    categoriesLoading && brandsLoading && unitsLoading && attributesLoading
-    && categories.length === 0 && brands.length === 0 && units.length === 0 && attributes.length === 0;
+    categoriesLoading && unitsLoading && attributesLoading
+    && categories.length === 0 && units.length === 0 && attributes.length === 0;
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'categories', label: t('catalogueSetup.tabs.categories') },
-    { key: 'brands', label: t('catalogueSetup.tabs.brands') },
     { key: 'attributes', label: t('catalogueSetup.tabs.attributes') },
     { key: 'units', label: t('catalogueSetup.tabs.units') },
   ];
@@ -94,21 +96,6 @@ export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string })
               onRename={renameCategory}
               onToggleActive={setCategoryActive}
               onDelete={deleteCategory}
-            />
-          )}
-          {tab === 'brands' && (
-            <CodedReferenceManager
-              items={brands}
-              loading={brandsLoading}
-              error={brandsError}
-              codeLabel={t('catalogueSetup.brands.code')}
-              nameLabel={t('catalogueSetup.brands.name')}
-              createLabel={t('catalogueSetup.brands.create')}
-              emptyText={t('catalogueSetup.brands.empty')}
-              onCreate={createBrand}
-              onRename={renameBrand}
-              onToggleActive={setBrandActive}
-              onDelete={deleteBrand}
             />
           )}
           {tab === 'attributes' && (

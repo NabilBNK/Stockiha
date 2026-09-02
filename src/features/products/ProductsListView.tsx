@@ -25,9 +25,8 @@ export function ProductsListView({
     warehouses, selectedWarehouseId, selectWarehouse,
     search, setSearch, submitSearch,
     categoryId, changeCategory,
-    brandId, changeBrand,
     includeInactive, changeIncludeInactive,
-    categories, brands,
+    categories,
     rows, totalCount, loading, error,
     pageIndex, setPageIndex, pageSize,
     reload,
@@ -94,23 +93,6 @@ export function ProductsListView({
             </select>
           </div>
 
-          <div className="sk-field">
-            <label className="sk-field__label" htmlFor="products-brand-filter">
-              {t('productsList.brand')}
-            </label>
-            <select
-              id="products-brand-filter"
-              className="sk-field__input"
-              value={brandId ?? ''}
-              onChange={(e) => changeBrand(e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">{t('productsList.allBrands')}</option>
-              {brands.map((b) => (
-                <option key={b.id} value={b.id}>{b.code} — {b.name}</option>
-              ))}
-            </select>
-          </div>
-
           <label className="sk-checkbox-row">
             <input
               type="checkbox"
@@ -148,7 +130,6 @@ export function ProductsListView({
                   <th>{t('catalog.name')}</th>
                   <th>{t('variants.title')}</th>
                   <th>{t('productsList.category')}</th>
-                  <th>{t('productsList.brand')}</th>
                   <th className="sk-num">{t('productsList.stock')}</th>
                   <th className="sk-num">{t('productsList.min')}</th>
                   <th className="sk-num">{t('productsList.price')}</th>
@@ -176,7 +157,6 @@ export function ProductsListView({
                       <td>{row.product_name}</td>
                       <td>{row.variant_name}</td>
                       <td>{row.category_name ?? t('common.none')}</td>
-                      <td>{row.brand_name ?? t('common.none')}</td>
                       <td className="sk-num">
                         {formatExactDecimal(row.quantity_on_hand)}
                         {outOfStock ? (

@@ -680,14 +680,6 @@ pub(crate) struct ReferenceItem {
     pub usage_count: i64,
 }
 
-pub(crate) struct BrandItem {
-    pub id: i64,
-    pub code: String,
-    pub name: String,
-    pub is_active: bool,
-    pub usage_count: i64,
-}
-
 pub(crate) struct AttributeValueItem {
     pub id: i64,
     pub attribute_id: i64,
@@ -730,8 +722,6 @@ pub(crate) struct ProductListRowV2 {
     pub product_is_active: bool,
     pub category_id: Option<i64>,
     pub category_name: Option<String>,
-    pub brand_id: Option<i64>,
-    pub brand_name: Option<String>,
     pub quantity_on_hand: Decimal,
     pub last_known_wac: Decimal,
     pub attributes: JsonValue,
@@ -753,8 +743,6 @@ pub(crate) struct ProductListItemV2 {
     pub product_is_active: bool,
     pub category_id: Option<i64>,
     pub category_name: Option<String>,
-    pub brand_id: Option<i64>,
-    pub brand_name: Option<String>,
     pub quantity_on_hand: String,
     pub last_known_wac: String,
     pub attributes: JsonValue,
@@ -778,8 +766,6 @@ impl From<ProductListRowV2> for ProductListItemV2 {
             product_is_active: row.product_is_active,
             category_id: row.category_id,
             category_name: row.category_name,
-            brand_id: row.brand_id,
-            brand_name: row.brand_name,
             quantity_on_hand: row.quantity_on_hand.to_string(),
             last_known_wac: row.last_known_wac.to_string(),
             attributes: row.attributes,
@@ -866,96 +852,6 @@ pub(crate) async fn delete_category(
     sqlx::query("SELECT catalog.delete_category($1::text, $2::bigint)")
         .bind(session_token)
         .bind(category_id)
-        .execute(pool)
-        .await
-        .map_err(AppError::from_posting_error)?;
-    Ok(())
-}
-
-// -------------------------------------------------------------------- brands
-
-pub(crate) async fn list_brands(
-    pool: &PgPool,
-    session_token: &str,
-) -> Result<Vec<BrandItem>, AppError> {
-    let rows = sqlx::query_as::<_, (i64, String, String, bool, i64)>(
-        "SELECT id, code, name, is_active, usage_count FROM catalog.list_brands($1::text)",
-    )
-    .bind(session_token)
-    .fetch_all(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
-    Ok(rows
-        .into_iter()
-        .map(|(id, code, name, is_active, usage_count)| BrandItem {
-            id,
-            code,
-            name,
-            is_active,
-            usage_count,
-        })
-        .collect())
-}
-
-pub(crate) async fn create_brand(
-    pool: &PgPool,
-    session_token: &str,
-    code: &str,
-    name: &str,
-) -> Result<i64, AppError> {
-    let (id,) =
-        sqlx::query_as::<_, (i64,)>("SELECT catalog.create_brand($1::text, $2::text, $3::text)")
-            .bind(session_token)
-            .bind(code)
-            .bind(name)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
-    Ok(id)
-}
-
-pub(crate) async fn rename_brand(
-    pool: &PgPool,
-    session_token: &str,
-    brand_id: i64,
-    code: &str,
-    name: &str,
-) -> Result<(), AppError> {
-    sqlx::query("SELECT catalog.rename_brand($1::text, $2::bigint, $3::text, $4::text)")
-        .bind(session_token)
-        .bind(brand_id)
-        .bind(code)
-        .bind(name)
-        .execute(pool)
-        .await
-        .map_err(AppError::from_posting_error)?;
-    Ok(())
-}
-
-pub(crate) async fn set_brand_active(
-    pool: &PgPool,
-    session_token: &str,
-    brand_id: i64,
-    is_active: bool,
-) -> Result<(), AppError> {
-    sqlx::query("SELECT catalog.set_brand_active($1::text, $2::bigint, $3::boolean)")
-        .bind(session_token)
-        .bind(brand_id)
-        .bind(is_active)
-        .execute(pool)
-        .await
-        .map_err(AppError::from_posting_error)?;
-    Ok(())
-}
-
-pub(crate) async fn delete_brand(
-    pool: &PgPool,
-    session_token: &str,
-    brand_id: i64,
-) -> Result<(), AppError> {
-    sqlx::query("SELECT catalog.delete_brand($1::text, $2::bigint)")
-        .bind(session_token)
-        .bind(brand_id)
         .execute(pool)
         .await
         .map_err(AppError::from_posting_error)?;
@@ -1196,22 +1092,20 @@ pub(crate) async fn quick_create_product(
     unit_id: i64,
     sale_price: Decimal,
     category_id: Option<i64>,
-    brand_id: Option<i64>,
     barcode: Option<&str>,
     minimum_stock: Decimal,
     is_active: bool,
 ) -> Result<QuickCreatedProduct, AppError> {
     let (product_id, variant_id) = sqlx::query_as::<_, (i64, i64)>(
         "SELECT product_id, variant_id FROM catalog.quick_create_product( \
-            $1::text, $2::text, $3::bigint, $4::numeric, $5::bigint, $6::bigint, \
-            $7::text, $8::numeric, $9::boolean)",
+            $1::text, $2::text, $3::bigint, $4::numeric, $5::bigint, \
+            $6::text, $7::numeric, $8::boolean)",
     )
     .bind(session_token)
     .bind(name)
     .bind(unit_id)
     .bind(sale_price)
     .bind(category_id)
-    .bind(brand_id)
     .bind(barcode)
     .bind(minimum_stock)
     .bind(is_active)
@@ -1235,7 +1129,6 @@ pub(crate) async fn list_products_v2(
     warehouse_id: i64,
     search: Option<&str>,
     category_id: Option<i64>,
-    brand_id: Option<i64>,
     include_inactive: bool,
     limit: i32,
     offset: i32,
@@ -1243,17 +1136,16 @@ pub(crate) async fn list_products_v2(
     let rows = sqlx::query_as::<_, ProductListRowV2>(
         "SELECT product_id, variant_id, sku, product_name, variant_name, primary_barcode, \
                 display_identifier, identifier_type, sale_price, minimum_stock, is_active, \
-                product_is_active, category_id, category_name, brand_id, brand_name, \
+                product_is_active, category_id, category_name, \
                 quantity_on_hand, last_known_wac, attributes, total_count \
          FROM catalog.list_products_v2( \
-                $1::text, $2::bigint, $3::text, $4::bigint, $5::bigint, \
-                $6::boolean, $7::integer, $8::integer)",
+                $1::text, $2::bigint, $3::text, $4::bigint, \
+                $5::boolean, $6::integer, $7::integer)",
     )
     .bind(session_token)
     .bind(warehouse_id)
     .bind(search)
     .bind(category_id)
-    .bind(brand_id)
     .bind(include_inactive)
     .bind(limit)
     .bind(offset)
@@ -1263,12 +1155,11 @@ pub(crate) async fn list_products_v2(
     Ok(rows.into_iter().map(ProductListItemV2::from).collect())
 }
 
-/// `catalog.update_product` — the **7-argument** overload (adds
-/// `p_category_id`/`p_brand_id`). Named distinctly from the pre-existing
-/// `update_product` (5-argument overload) since Rust has no function
-/// overloading; every argument carries an explicit SQL cast because two
-/// other live overloads of this same PostgreSQL function exist
-/// (ws-d-skill.md section 2.1/2.2).
+/// `catalog.update_product` — the **6-argument** overload (adds
+/// `p_category_id`). Named distinctly from the pre-existing `update_product`
+/// (5-argument overload) since Rust has no function overloading; every
+/// argument carries an explicit SQL cast because two other live overloads of
+/// this same PostgreSQL function exist (ws-d-skill.md section 2.1/2.2).
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn update_product_v2(
     pool: &PgPool,
@@ -1278,11 +1169,10 @@ pub(crate) async fn update_product_v2(
     unit_id: i64,
     is_active: bool,
     category_id: Option<i64>,
-    brand_id: Option<i64>,
 ) -> Result<(), AppError> {
     sqlx::query(
         "SELECT catalog.update_product( \
-            $1::text, $2::bigint, $3::text, $4::bigint, $5::boolean, $6::bigint, $7::bigint)",
+            $1::text, $2::bigint, $3::text, $4::bigint, $5::boolean, $6::bigint)",
     )
     .bind(session_token)
     .bind(product_id)
@@ -1290,7 +1180,6 @@ pub(crate) async fn update_product_v2(
     .bind(unit_id)
     .bind(is_active)
     .bind(category_id)
-    .bind(brand_id)
     .execute(pool)
     .await
     .map_err(AppError::from_posting_error)?;
@@ -1339,8 +1228,8 @@ mod tests {
     // requires `STOCKIHA_TEST_DATABASE_URL`, refuses a database not ending in
     // `_test`. Fixtures are seeded through the sanctioned SECURITY DEFINER
     // paths only (via `test_fixtures::root_admin_session` + this module's own
-    // create_category/create_brand/create_unit), never by inserting rows
-    // directly — `stockiha_runtime` cannot do that anyway.
+    // create_category/create_unit), never by inserting rows directly —
+    // `stockiha_runtime` cannot do that anyway.
     fn require_test_pool_url() -> String {
         let url = std::env::var("STOCKIHA_TEST_DATABASE_URL")
             .expect("STOCKIHA_TEST_DATABASE_URL must be set to run this integration test");
@@ -1415,7 +1304,6 @@ mod tests {
             unit_id,
             Decimal::new(100, 0),
             None,
-            None,
             Some(&barcode_1),
             Decimal::new(5, 0),
             true,
@@ -1432,7 +1320,6 @@ mod tests {
             Decimal::new(100, 0),
             None,
             None,
-            None,
             Decimal::ZERO,
             true,
         )
@@ -1446,7 +1333,6 @@ mod tests {
             &cotton_socks_name,
             unit_id,
             Decimal::new(100, 0),
-            None,
             None,
             Some(&barcode_3),
             Decimal::ZERO,
@@ -1485,7 +1371,6 @@ mod tests {
             warehouse_id,
             Some("50%"),
             None,
-            None,
             false,
             100,
             0,
@@ -1514,7 +1399,6 @@ mod tests {
             warehouse_id,
             Some(barcode_1.as_str()),
             None,
-            None,
             false,
             100,
             0,
@@ -1538,7 +1422,6 @@ mod tests {
             warehouse_id,
             Some(plain_tee_name.as_str()),
             None,
-            None,
             false,
             100,
             0,
@@ -1558,7 +1441,6 @@ mod tests {
             &token,
             warehouse_id,
             Some(cotton_shirt_name.as_str()),
-            None,
             None,
             false,
             1,
@@ -1590,14 +1472,6 @@ mod tests {
         let category_id = create_category(&pool, &token, &format!("WSD2 Cat {suffix}"))
             .await
             .expect("creating a fixture category must succeed");
-        let brand_id = create_brand(
-            &pool,
-            &token,
-            &format!("WB{suffix}"),
-            &format!("WSD2 Brand {suffix}"),
-        )
-        .await
-        .expect("creating a fixture brand must succeed");
 
         let created = quick_create_product(
             &pool,
@@ -1605,7 +1479,6 @@ mod tests {
             &format!("WSD2 Widget {suffix}"),
             unit_id,
             Decimal::new(12345, 2),
-            None,
             None,
             None,
             Decimal::ZERO,
@@ -1616,7 +1489,7 @@ mod tests {
 
         let renamed = format!("WSD2 Widget {suffix} renamed");
 
-        // catalog.update_product — the 7-argument overload call site.
+        // catalog.update_product — the 6-argument overload call site.
         update_product_v2(
             &pool,
             &token,
@@ -1625,10 +1498,9 @@ mod tests {
             unit_id,
             true,
             Some(category_id),
-            Some(brand_id),
         )
         .await
-        .expect("update_product (7-arg overload) should succeed");
+        .expect("update_product (6-arg overload) should succeed");
 
         // catalog.update_variant — the 6-argument overload call site.
         update_variant_v2(
@@ -1649,7 +1521,6 @@ mod tests {
             warehouse_id,
             Some(renamed.as_str()),
             None,
-            None,
             false,
             100,
             0,
@@ -1665,7 +1536,6 @@ mod tests {
         assert_eq!(item.sale_price, "199.99");
         assert_eq!(item.minimum_stock, "5");
         assert_eq!(item.category_id, Some(category_id));
-        assert_eq!(item.brand_id, Some(brand_id));
         assert_eq!(item.product_name, renamed);
     }
 
@@ -1695,7 +1565,6 @@ mod tests {
             unit_id,
             Decimal::new(100, 0),
             Some(category_id),
-            None,
             None,
             Decimal::ZERO,
             true,

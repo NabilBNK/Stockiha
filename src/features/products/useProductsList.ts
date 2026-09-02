@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useAppData } from '../../app/AppDataContext';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import * as ipc from '../../shared/ipc/gateway';
-import type { CatalogBrandItem, ProductListItemV2, ReferenceLifecycleItem } from '../../shared/ipc/dto';
+import type { ProductListItemV2, ReferenceLifecycleItem } from '../../shared/ipc/dto';
 
 export const PRODUCTS_LIST_PAGE_SIZE = 50;
 
@@ -24,7 +24,6 @@ export function useProductsList(token: string) {
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
-  const [brandId, setBrandId] = useState<number | null>(null);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
 
@@ -34,16 +33,14 @@ export function useProductsList(token: string) {
   const [error, setError] = useState<string | null>(null);
 
   const [categories, setCategories] = useState<ReferenceLifecycleItem[]>([]);
-  const [brands, setBrands] = useState<CatalogBrandItem[]>([]);
 
   useEffect(() => {
     if (!token) return;
     let active = true;
-    void Promise.all([ipc.listCategories(token), ipc.listBrandsV2(token)])
-      .then(([cats, brs]) => {
+    void ipc.listCategories(token)
+      .then((cats) => {
         if (!active) return;
         setCategories(cats);
-        setBrands(brs);
       })
       .catch(() => {
         // Filter dropdowns are non-fatal; the list itself still loads.
@@ -79,11 +76,6 @@ export function useProductsList(token: string) {
     setPageIndex(0);
   }
 
-  function changeBrand(id: number | null) {
-    setBrandId(id);
-    setPageIndex(0);
-  }
-
   function changeIncludeInactive(value: boolean) {
     setIncludeInactive(value);
     setPageIndex(0);
@@ -101,7 +93,6 @@ export function useProductsList(token: string) {
       const result = await ipc.listProductsV2(token, selectedWarehouseId, {
         search: appliedSearch || null,
         categoryId,
-        brandId,
         includeInactive,
         limit: PRODUCTS_LIST_PAGE_SIZE,
         offset: pageIndex * PRODUCTS_LIST_PAGE_SIZE,
@@ -115,7 +106,7 @@ export function useProductsList(token: string) {
     } finally {
       setLoading(false);
     }
-  }, [token, selectedWarehouseId, appliedSearch, categoryId, brandId, includeInactive, pageIndex, errorText]);
+  }, [token, selectedWarehouseId, appliedSearch, categoryId, includeInactive, pageIndex, errorText]);
 
   useEffect(() => {
     void load();
@@ -125,9 +116,8 @@ export function useProductsList(token: string) {
     warehouses, selectedWarehouseId, selectWarehouse,
     search, setSearch, submitSearch,
     categoryId, changeCategory,
-    brandId, changeBrand,
     includeInactive, changeIncludeInactive,
-    categories, brands,
+    categories,
     rows, totalCount, loading, error,
     pageIndex, setPageIndex,
     pageSize: PRODUCTS_LIST_PAGE_SIZE,
