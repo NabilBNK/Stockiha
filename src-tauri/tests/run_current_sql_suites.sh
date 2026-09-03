@@ -8,6 +8,7 @@ set -euo pipefail
 suites=(
   src-tauri/tests/catalog/s2_001_catalog_integration.sql
   src-tauri/tests/catalog/ws_d_001_catalogue_foundation_integration.sql
+  src-tauri/tests/catalog/ws_d_003_active_attribute_filtering_integration.sql
   src-tauri/tests/inventory/r8_d_catalog_inventory_integration.sql
   src-tauri/tests/inventory/s2_003_zero_quantity_safeguards_integration.sql
   src-tauri/tests/procurement/s3_001_procurement_integration.sql

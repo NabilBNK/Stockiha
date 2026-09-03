@@ -257,7 +257,14 @@ describe('variant attribute configuration', () => {
       list_products_v2: () => [productListRow()],
       get_product_detail: () => detail,
       list_attributes: () => [
-        { attribute_id: 1, name: 'Size', attribute_values: [{ id: 3, value: 'S' }, { id: 4, value: 'M' }] },
+        {
+          attribute_id: 1,
+          name: 'Size',
+          attribute_values: [
+            { id: 3, value: 'S', is_active: true },
+            { id: 4, value: 'M', is_active: true },
+          ],
+        },
       ],
       list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
       set_variant_attributes: (args) => {
@@ -288,6 +295,75 @@ describe('variant attribute configuration', () => {
     await waitFor(() => expect(setAttrsCall).not.toBeNull());
     expect(setAttrsCall!.variantId).toBe(10);
     expect(setAttrsCall!.attributeValueIds).toContain(3);
+  });
+
+  // WS-D-CORRECTION-2 — the edit-path trap. catalog.list_attributes now offers
+  // ACTIVE attributes/values only, while get_product_detail stays unfiltered so
+  // history survives. A variant holding a retired value must therefore still
+  // render it, keep it selected, and keep it after a save that does not touch
+  // it — otherwise deactivating a value would silently strip it off existing
+  // variants on the next save.
+  it('keeps a retired attribute value visible, selected, and saved for a variant that already holds it', async () => {
+    let setAttrsCall: Record<string, unknown> | null = null;
+    const detail = {
+      product_id: 1, name: 'Pillow', is_active: true, unit_id: 1,
+      variants: [{
+        variant_id: 10, operational_identifier: 'PIL-1', identifier_type: 'SKU', sale_price: '10.00', is_active: true,
+        effective_variant_name: 'Pillow', name_override: null, primary_barcode: null,
+        base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '1:3|2:9',
+        attributes: [
+          // value retired, attribute still active
+          { attribute_id: 1, attribute_name: 'Color', attribute_value_id: 3, value: 'Burgendy' },
+          // whole attribute retired -> absent from list_attributes entirely
+          { attribute_id: 2, attribute_name: 'Retired Attr', attribute_value_id: 9, value: 'OldValue' },
+        ],
+        alternate_units: [], barcodes: [],
+      }],
+    };
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [productListRow({ product_name: 'Pillow' })],
+      get_product_detail: () => detail,
+      // Backend offers only what is still active: 'Burgendy' (id 3) is gone,
+      // and attribute 2 is missing altogether.
+      list_attributes: () => [
+        {
+          attribute_id: 1,
+          name: 'Color',
+          attribute_values: [{ id: 4, value: 'Blue', is_active: true }],
+        },
+      ],
+      list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
+      set_variant_attributes: (args) => {
+        setAttrsCall = args;
+        return null;
+      },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    fireEvent.click(await screen.findByTestId('edit-product-1'));
+    await screen.findByTestId('variant-row-10');
+    fireEvent.click(screen.getByTestId('edit-variant-10'));
+
+    // Case 1: the retired value is still rendered, still selected, and flagged.
+    const retiredValue = await screen.findByRole('radio', { name: /Burgendy/ });
+    expect(retiredValue).toBeChecked();
+    expect(screen.getByTestId('attr-value-inactive-3')).toBeInTheDocument();
+
+    // Case 2: the retired ATTRIBUTE and its assigned value are rendered too.
+    expect(screen.getByText('Retired Attr')).toBeInTheDocument();
+    const retiredAttrValue = screen.getByRole('radio', { name: /OldValue/ });
+    expect(retiredAttrValue).toBeChecked();
+    expect(screen.getByTestId('attr-value-inactive-9')).toBeInTheDocument();
+
+    // Still-active values remain offered and unflagged.
+    expect(screen.getByRole('radio', { name: 'Blue' })).toBeInTheDocument();
+    expect(screen.queryByTestId('attr-value-inactive-4')).not.toBeInTheDocument();
+
+    // Saving without touching anything must preserve BOTH retired assignments.
+    fireEvent.click(screen.getByRole('button', { name: 'Assign attributes' }));
+    await waitFor(() => expect(setAttrsCall).not.toBeNull());
+    expect(setAttrsCall!.attributeValueIds).toEqual(expect.arrayContaining([3, 9]));
   });
 });
 

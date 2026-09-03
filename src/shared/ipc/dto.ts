@@ -170,7 +170,13 @@ export interface CashSaleLineInput {
 
 // Slice 2 — variant catalog DTOs (snake_case, decimals as strings)
 
-export interface AttributeValue { id: number; value: string; }
+// WS-D-CORRECTION-2: `is_active` comes from catalog.list_attributes, which
+// returns only ACTIVE values (so it is always true there). It exists so the
+// product form can merge in, in the same shape, a variant's
+// already-assigned-but-now-inactive values (from get_product_detail) and mark
+// them as retired rather than silently dropping them — see
+// mergeAssignedValues in ProductEditor.tsx.
+export interface AttributeValue { id: number; value: string; is_active: boolean; }
 export interface AttributeDefinition { attribute_id: number; name: string; attribute_values: AttributeValue[]; }
 export interface Unit { id: number; code: string; name: string; }
 export interface CatalogProduct { product_id: number; name: string; unit_id: number; unit_code: string; unit_name: string; is_active: boolean; variant_count: number; active_variant_count: number; }

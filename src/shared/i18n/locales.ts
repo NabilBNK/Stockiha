@@ -293,6 +293,7 @@ const fr = {
   'attrs.valueAdded': 'Valeur ajout\u00e9e.',
   'attrs.assign': 'Assigner les attributs',
   'attrs.assigned': 'Attributs assign\u00e9s.',
+  'attrs.retainedInactive': "Valeur retir\u00e9e : conserv\u00e9e sur cette variante, mais plus propos\u00e9e ailleurs.",
   // units
   'units.title': 'Unit\u00e9s',
   'units.code': 'Code',
@@ -657,6 +658,7 @@ const ar: Record<MessageKey, string> = {
   'attrs.valueAdded': '\u062a\u0645\u062a \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0642\u064a\u0645\u0629.',
   'attrs.assign': '\u062a\u0639\u064a\u064a\u0646 \u0627\u0644\u062e\u0635\u0627\u0626\u0635',
   'attrs.assigned': '\u062a\u0645 \u062a\u0639\u064a\u064a\u0646 \u0627\u0644\u062e\u0635\u0627\u0626\u0635.',
+  'attrs.retainedInactive': '\u0642\u064a\u0645\u0629 \u0645\u062a\u0642\u0627\u0639\u062f\u0629: \u0645\u062d\u0641\u0648\u0638\u0629 \u0639\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u0645\u062a\u063a\u064a\u0631\u060c \u0644\u0643\u0646\u0647\u0627 \u0644\u0645 \u062a\u0639\u062f \u0645\u062a\u0627\u062d\u0629 \u0644\u0644\u0627\u062e\u062a\u064a\u0627\u0631.',
   // units
   'units.title': '\u0627\u0644\u0648\u062d\u062f\u0627\u062a',
   'units.code': '\u0627\u0644\u0631\u0645\u0632',
@@ -1018,6 +1020,7 @@ const en: Record<MessageKey, string> = {
   'attrs.valueAdded': 'Value added.',
   'attrs.assign': 'Assign attributes',
   'attrs.assigned': 'Attributes assigned.',
+  'attrs.retainedInactive': 'Retired value: kept on this variant, but no longer offered elsewhere.',
   // units
   'units.title': 'Units',
   'units.code': 'Code',

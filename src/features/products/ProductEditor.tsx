@@ -9,7 +9,7 @@
  * 6. Inline Attribute & Value creation popovers/modals (no navigation away).
  * 7. Live Effective Variant Name preview badge.
  */
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import { Banner, Button, Spinner, TextField } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
@@ -747,6 +747,70 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
   );
 }
 
+/**
+ * WS-D-CORRECTION-2 — the edit-path trap.
+ *
+ * `attributes` comes from catalog.list_attributes, which (correctly) now
+ * offers ACTIVE attributes and values only. A variant's own attributes come
+ * from get_product_detail, which (correctly) is unfiltered so history is
+ * preserved. Editing a variant that holds a now-retired value therefore has to
+ * reconcile the two: if the picker's options do not contain the variant's
+ * current value, that value is invisible to the user and one careless save
+ * could drop it.
+ *
+ * The fix is additive and per-variant: merge the variant's already-assigned
+ * values into the option list, deduplicated by attribute_value_id, marked
+ * inactive so the UI can flag them as retired. Two distinct cases:
+ *
+ *   1. value retired, attribute still active  -> append the value to that
+ *      attribute's existing option list;
+ *   2. the whole ATTRIBUTE retired            -> the attribute is absent from
+ *      `attributes` entirely, so synthesize its entry holding just the
+ *      assigned value.
+ *
+ * The picker itself is never unfiltered, so nothing retired is offered for a
+ * variant that does not already hold it.
+ */
+export function mergeAssignedValues(
+  attributes: AttributeDefinition[],
+  variant: VariantDetail,
+): AttributeDefinition[] {
+  if (variant.attributes.length === 0) return attributes;
+
+  const merged = attributes.map((a) => ({ ...a, attribute_values: [...a.attribute_values] }));
+  const byAttributeId = new Map(merged.map((a) => [a.attribute_id, a]));
+
+  for (const assigned of variant.attributes) {
+    const target = byAttributeId.get(assigned.attribute_id);
+    if (!target) {
+      // Case 2: the attribute itself was deactivated, so list_attributes
+      // omits it. Rebuild a minimal entry so the assignment stays visible.
+      const synthesized: AttributeDefinition = {
+        attribute_id: assigned.attribute_id,
+        name: assigned.attribute_name,
+        attribute_values: [
+          { id: assigned.attribute_value_id, value: assigned.value, is_active: false },
+        ],
+      };
+      merged.push(synthesized);
+      byAttributeId.set(synthesized.attribute_id, synthesized);
+      continue;
+    }
+    // Case 1: attribute is offered, but this specific value may have been
+    // retired. Deduplicate by attribute_value_id — an active value is already
+    // present and must not be duplicated or downgraded.
+    if (!target.attribute_values.some((av) => av.id === assigned.attribute_value_id)) {
+      target.attribute_values.push({
+        id: assigned.attribute_value_id,
+        value: assigned.value,
+        is_active: false,
+      });
+    }
+  }
+
+  return merged;
+}
+
 /** Attribute manager helper wired to a specific variant's selections */
 function AttributeManagerForVariant({
   attributes,
@@ -784,6 +848,13 @@ function AttributeManagerForVariant({
     setSelected(map);
   }, [variant]);
 
+  // Options this variant may choose from: the active catalogue plus whatever
+  // it already holds (even if retired). See mergeAssignedValues above.
+  const optionsForVariant = useMemo(
+    () => mergeAssignedValues(attributes, variant),
+    [attributes, variant],
+  );
+
   async function handleAssign() {
     setSaving(true);
     setSaveError(null);
@@ -803,7 +874,7 @@ function AttributeManagerForVariant({
       {saveError ? <Banner tone="error">{saveError}</Banner> : null}
       {saveOk ? <Banner tone="success">{t('attrs.assigned')}</Banner> : null}
       <AttributeManager
-        attributes={attributes}
+        attributes={optionsForVariant}
         refLoading={refLoading}
         selected={selected}
         onSelectionChange={setSelected}

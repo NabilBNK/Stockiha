@@ -128,10 +128,18 @@ export function AttributeManager({
             <div key={attr.attribute_id} className="sk-card" style={{ marginBlockStart: '0.5rem' }}>
               <strong>{attr.name}</strong>
 
-              {/* Value picker */}
+              {/* Value picker. An inactive value only ever appears here when
+                  it is the one this variant already holds (merged in by
+                  ProductEditor); it stays selectable so the user can keep it,
+                  and is marked retired so they understand why it is not
+                  offered elsewhere. */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBlockStart: '0.5rem' }}>
                 {attr.attribute_values.map((av) => (
-                  <label key={av.id} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <label
+                    key={av.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                    title={av.is_active ? undefined : t('attrs.retainedInactive')}
+                  >
                     <input
                       type="radio"
                       name={`attr-${attr.attribute_id}`}
@@ -141,6 +149,11 @@ export function AttributeManager({
                       disabled={busy}
                     />
                     {av.value}
+                    {av.is_active ? null : (
+                      <span className="sk-badge sk-badge--muted" data-testid={`attr-value-inactive-${av.id}`}>
+                        {t('catalog.inactive')}
+                      </span>
+                    )}
                   </label>
                 ))}
               </div>
