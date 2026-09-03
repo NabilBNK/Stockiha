@@ -129,95 +129,163 @@ describe('catalog product list (WS-D-4, variant-level on list_products_v2)', () 
   });
 });
 
-describe('create product with multiple variants', () => {
-  it('creates product with two variants and reports success', async () => {
+describe('create product on the v2 write layer (WS-D-5)', () => {
+  it('sends category and a non-zero minimum stock to quickCreateProduct as exact strings', async () => {
     let createCall: Record<string, unknown> | null = null;
     wireInvoke(makeHandlers({
-      create_product_with_variants: (args) => {
+      list_categories: () => [
+        { id: 7, name: 'Bedding', is_active: true, usage_count: 0 },
+        { id: 8, name: 'Retired', is_active: false, usage_count: 0 },
+      ],
+      quick_create_product: (args) => {
         createCall = args;
-        return { product_id: 10, variant_ids: [101, 102] };
+        return { product_id: 10, variant_id: 101 };
       },
     }));
     render(<App />);
     await loginAndNavigate();
 
-    // Click new product button
-    const newBtn = await screen.findByTestId('new-product-btn');
-    fireEvent.click(newBtn);
+    fireEvent.click(await screen.findByTestId('new-product-btn'));
 
-    // Fill product name
-    fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'T-Shirt' } });
+    fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Pillow' } });
 
-    // Fill first variant sale price (SKU is generated automatically)
-    const priceFields = screen.getAllByLabelText(/Sale price/i);
-    fireEvent.change(priceFields[0], { target: { value: '10.00' } });
+    // Category is a PRODUCT-level field. Only active categories are offered.
+    const categorySelect = await screen.findByTestId('create-product-category');
+    await waitFor(() => expect(within(categorySelect).getByText('Bedding')).toBeInTheDocument());
+    expect(within(categorySelect).queryByText('Retired')).not.toBeInTheDocument();
+    fireEvent.change(categorySelect, { target: { value: '7' } });
 
-    // Add a second variant
-    fireEvent.click(screen.getByRole('button', { name: '+ Add variant' }));
+    fireEvent.change(screen.getByLabelText(/Sale price/i), { target: { value: '1250.50' } });
+    fireEvent.change(screen.getByLabelText('Barcode'), { target: { value: '6130000000017' } });
+    fireEvent.change(screen.getByLabelText('Minimum stock'), { target: { value: '5.500' } });
 
-    // Fill second variant
-    const priceFields2 = screen.getAllByLabelText(/Sale price/i);
-    expect(priceFields2.length).toBe(2);
-    fireEvent.change(priceFields2[1], { target: { value: '12.00' } });
-
-    // Wait for unit auto-selection effect to enable submit button
     const submitBtn = screen.getByTestId('submit-create-product');
     await waitFor(() => expect(submitBtn).not.toBeDisabled());
-
-    // Submit
     fireEvent.click(submitBtn);
 
-    await waitFor(() => {
-      expect(createCall).not.toBeNull();
-    });
-
-    // Verify argument shapes
-    expect(createCall!.name).toBe('T-Shirt');
+    await waitFor(() => expect(createCall).not.toBeNull());
+    expect(createCall!.name).toBe('Pillow');
     expect(createCall!.unitId).toBe(1);
-    const variants = createCall!.variants as Array<Record<string, unknown>>;
-    expect(variants).toHaveLength(2);
-    expect(variants[0].sale_price).toBe('10.00');
-    expect(typeof variants[0].sale_price).toBe('string');
-    expect(variants[1].sale_price).toBe('12.00');
+    expect(createCall!.categoryId).toBe(7);
+    expect(createCall!.barcode).toBe('6130000000017');
+    // Exact decimal strings, byte-for-byte as typed — never parsed or rounded.
+    expect(createCall!.salePrice).toBe('1250.50');
+    expect(createCall!.minimumStock).toBe('5.500');
+    expect(typeof createCall!.minimumStock).toBe('string');
   });
 
-  it('successfully adds a new test product from client perspective', async () => {
-    let createdProductData: Record<string, unknown> | null = null;
+  it('transmits a minimum stock of "0" as "0" rather than dropping it', async () => {
+    let createCall: Record<string, unknown> | null = null;
     wireInvoke(makeHandlers({
-      create_product_with_variants: (args) => {
-        createdProductData = args;
-        return { product_id: 99, variant_ids: [991] };
+      quick_create_product: (args) => {
+        createCall = args;
+        return { product_id: 11, variant_id: 111 };
       },
     }));
     render(<App />);
     await loginAndNavigate();
 
-    const newBtn = await screen.findByTestId('new-product-btn');
-    fireEvent.click(newBtn);
+    fireEvent.click(await screen.findByTestId('new-product-btn'));
+    fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Plain tee' } });
+    fireEvent.change(screen.getByLabelText(/Sale price/i), { target: { value: '100' } });
 
-    fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Client Test Product' } });
-    const priceFields = screen.getAllByLabelText(/Sale price/i);
-    fireEvent.change(priceFields[0], { target: { value: '150.00' } });
+    // "0" is the default and a meaningful value ("never warn me about this
+    // item"), not a missing one.
+    expect((screen.getByLabelText('Minimum stock') as HTMLInputElement).value).toBe('0');
 
     const submitBtn = screen.getByTestId('submit-create-product');
     await waitFor(() => expect(submitBtn).not.toBeDisabled());
-
     fireEvent.click(submitBtn);
 
-    await waitFor(() => {
-      expect(createdProductData).not.toBeNull();
-    });
+    await waitFor(() => expect(createCall).not.toBeNull());
+    expect(createCall!.minimumStock).toBe('0');
+    expect(createCall!.categoryId).toBeNull();
+    expect(createCall!.barcode).toBeNull();
+  });
 
-    expect(createdProductData!.name).toBe('Client Test Product');
-    const vars = createdProductData!.variants as Array<Record<string, unknown>>;
-    expect(vars[0].sale_price).toBe('150.00');
+  it('selects an inline-created category immediately', async () => {
+    let createdName: unknown = null;
+    let createCall: Record<string, unknown> | null = null;
+    let categories = [{ id: 7, name: 'Bedding', is_active: true, usage_count: 0 }];
+    wireInvoke(makeHandlers({
+      list_categories: () => categories,
+      create_category: (args) => {
+        createdName = args.name;
+        categories = [...categories, { id: 42, name: 'Cushions', is_active: true, usage_count: 0 }];
+        return 42;
+      },
+      quick_create_product: (args) => {
+        createCall = args;
+        return { product_id: 12, variant_id: 121 };
+      },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    fireEvent.click(await screen.findByTestId('new-product-btn'));
+    fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Cushion' } });
+    fireEvent.change(screen.getByLabelText(/Sale price/i), { target: { value: '300' } });
+
+    // Open the create-only inline shortcut and add a category.
+    fireEvent.click(await screen.findByTestId('create-product-category-new'));
+    fireEvent.change(screen.getByTestId('create-product-category-new-name'), { target: { value: 'Cushions' } });
+    fireEvent.click(screen.getByTestId('create-product-category-new-save'));
+
+    await waitFor(() => expect(createdName).toBe('Cushions'));
+
+    // The new category must be present AND already selected.
+    const categorySelect = await screen.findByTestId('create-product-category');
+    await waitFor(() => expect((categorySelect as HTMLSelectElement).value).toBe('42'));
+    expect(within(categorySelect).getByText('Cushions')).toBeInTheDocument();
+
+    const submitBtn = screen.getByTestId('submit-create-product');
+    await waitFor(() => expect(submitBtn).not.toBeDisabled());
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => expect(createCall).not.toBeNull());
+    expect(createCall!.categoryId).toBe(42);
+  });
+
+  it('applies selected attributes to the created variant after quickCreateProduct', async () => {
+    let setAttrsCall: Record<string, unknown> | null = null;
+    wireInvoke(makeHandlers({
+      list_attributes: () => [
+        {
+          attribute_id: 1,
+          name: 'Size',
+          attribute_values: [{ id: 3, value: 'S', is_active: true }],
+        },
+      ],
+      quick_create_product: () => ({ product_id: 13, variant_id: 131 }),
+      set_variant_attributes: (args) => {
+        setAttrsCall = args;
+        return null;
+      },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    fireEvent.click(await screen.findByTestId('new-product-btn'));
+    fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Shirt' } });
+    fireEvent.change(screen.getByLabelText(/Sale price/i), { target: { value: '900' } });
+    fireEvent.click(await screen.findByRole('radio', { name: 'S' }));
+
+    const submitBtn = screen.getByTestId('submit-create-product');
+    await waitFor(() => expect(submitBtn).not.toBeDisabled());
+    fireEvent.click(submitBtn);
+
+    // quick_create_product has no attribute parameter, so attributes are
+    // applied to the returned variant through setVariantAttributes.
+    await waitFor(() => expect(setAttrsCall).not.toBeNull());
+    expect(setAttrsCall!.variantId).toBe(131);
+    expect(setAttrsCall!.attributeValueIds).toContain(3);
   });
 });
 
 describe('backend validation error display', () => {
   it('shows localized validation error message from backend on product creation', async () => {
     wireInvoke(makeHandlers({
-      create_product_with_variants: () => { throw { code: 'VALIDATION_ERROR' }; },
+      quick_create_product: () => { throw { code: 'VALIDATION_ERROR' }; },
     }));
     render(<App />);
     await loginAndNavigate();

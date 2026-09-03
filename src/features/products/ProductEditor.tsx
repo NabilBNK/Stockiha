@@ -18,12 +18,17 @@ import type { AttributeDefinition, VariantDetail, VariantInput } from '../../sha
 import { VariantForm, isVariantFormValid, type VariantFormValues } from './VariantForm';
 import { AttributeManager } from './AttributeManager';
 import { BarcodeManager } from './BarcodeManager';
+import { InlineCreateSelect } from './InlineCreateSelect';
 import { useCatalog } from './useCatalog';
 
 const EMPTY_VARIANT: VariantFormValues = {
   nameOverride: '',
   barcode: '',
   salePrice: '',
+  // WS-D-5: "0" is the meaningful default — it means "never warn me about this
+  // item" (ws-d-skill.md section 3), not "unset". It is seeded explicitly as a
+  // string so it is transmitted as "0" rather than silently coerced later.
+  minimumStock: '0',
   isActive: true,
 };
 
@@ -43,6 +48,9 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
   // Product-level state
   const [productName, setProductName] = useState('');
   const [productUnitId, setProductUnitId] = useState<number | null>(null);
+  // WS-D-5: category is a PRODUCT-level field (never variant-level) and is
+  // optional — null means "uncategorised", which the backend accepts.
+  const [productCategoryId, setProductCategoryId] = useState<number | null>(null);
   const [productActive, setProductActive] = useState(true);
   const [productError, setProductError] = useState<string | null>(null);
   const [productOk, setProductOk] = useState(false);
@@ -112,6 +120,12 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
         nameOverride: selectedVariant.name_override ?? '',
         barcode: selectedVariant.primary_barcode ?? '',
         salePrice: selectedVariant.sale_price,
+        // get_product_detail does not return the variant's current
+        // minimum_stock, so there is nothing truthful to seed here. The field
+        // is hidden in this modal (showMinimumStock={false}) and this value is
+        // never sent — the 5-arg update_variant has no minimum_stock
+        // parameter. See the WS-D-5 report, "Not finished".
+        minimumStock: '',
         isActive: selectedVariant.is_active,
       });
       setEditVariantError(null);
@@ -119,61 +133,85 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
     }
   }, [selectedVariant]);
 
-  function addVariantForm() {
-    setVariantForms((prev) => [...prev, { ...EMPTY_VARIANT }]);
-  }
-
   function updateVariantForm(index: number, values: VariantFormValues) {
     setVariantForms((prev) => prev.map((v, i) => (i === index ? values : v)));
   }
 
-  function removeVariantForm(index: number) {
-    if (variantForms.length <= 1) return;
-    setVariantForms((prev) => prev.filter((_, i) => i !== index));
-    setAttrSelections((prev) => {
-      const next: Record<number, Record<number, number>> = {};
-      Object.keys(prev).forEach((keyStr) => {
-        const k = Number(keyStr);
-        if (k < index) next[k] = prev[k];
-        else if (k > index) next[k - 1] = prev[k];
-      });
-      return next;
-    });
-  }
+  // Only active categories may be assigned to a product; inactive ones are
+  // retired reference data and stay visible only on Catalogue Setup.
+  const activeCategoryOptions = useMemo(
+    () => catalog.categories.filter((c) => c.is_active).map((c) => ({ id: c.id, label: c.name })),
+    [catalog.categories],
+  );
 
+  const unitOptions = useMemo(
+    () => catalog.units.map((u) => ({ id: u.id, label: `${u.name} (${u.code})` })),
+    [catalog.units],
+  );
+
+  /**
+   * Inline unit creation. `catalog.create_unit` needs a code as well as a
+   * name; the inline shortcut collects one value, so the typed text is used
+   * for both and the operator can refine the pair later on Catalogue Setup.
+   */
+  const handleCreateUnit = useCallback(
+    (name: string) => catalog.createUnit(name, name),
+    [catalog],
+  );
+
+  /**
+   * WS-D-5 — create on the v2 write layer.
+   *
+   * `catalog.quick_create_product` creates the product and its first variant in
+   * one authoritative call, carrying the product-level category and the
+   * variant's barcode and minimum stock — none of which the old
+   * `createProductWithVariants` path could express, which is why those fields
+   * were unreachable from the UI before this task.
+   *
+   * Attributes are a deliberate second step: quick_create_product has no
+   * attribute parameter, so any selected values are applied afterwards through
+   * the existing `setVariantAttributes` path. That second call is not atomic
+   * with the first, so a failure there is reported distinctly — the product
+   * genuinely exists at that point, and telling the operator "creation failed"
+   * would be a lie that leads to a duplicate.
+   */
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     if (creating || !productName.trim() || !productUnitId) return;
 
-    for (const vf of variantForms) {
-      if (!isVariantFormValid(vf)) {
-        setCreateError(t('errors.validation'));
-        return;
-      }
+    const draft = variantForms[0];
+    if (!isVariantFormValid(draft)) {
+      setCreateError(t('errors.validation'));
+      return;
     }
 
     setCreating(true);
     setCreateError(null);
     try {
-      const variants: VariantInput[] = variantForms.map((vf, idx) => {
-        const sel = attrSelections[idx] ?? {};
-        const attrValueIds = Object.values(sel).filter((id) => id > 0);
-        return {
-          name_override: vf.nameOverride.trim() || undefined,
-          sale_price: vf.salePrice,
-          is_active: vf.isActive,
-          ...(vf.barcode.trim() ? { barcodes: [vf.barcode.trim()] } : {}),
-          ...(attrValueIds.length > 0 ? { attribute_value_ids: attrValueIds } : {}),
-        };
+      const created = await catalog.quickCreateProduct({
+        name: productName.trim(),
+        unitId: productUnitId,
+        // Exact decimal strings, forwarded verbatim — never parsed or rounded.
+        salePrice: draft.salePrice,
+        minimumStock: draft.minimumStock,
+        categoryId: productCategoryId,
+        barcode: draft.barcode.trim() || null,
+        isActive: draft.isActive,
       });
 
-      const result = await catalog.createProductWithVariants(
-        productName.trim(),
-        productUnitId,
-        productActive,
-        variants,
-      );
-      onCreated?.(result.product_id);
+      const attrValueIds = Object.values(attrSelections[0] ?? {}).filter((id) => id > 0);
+      if (attrValueIds.length > 0) {
+        try {
+          await catalog.setVariantAttributes(created.variant_id, attrValueIds);
+        } catch (err) {
+          // The product exists; only the attribute assignment failed. Say so
+          // precisely and stop, rather than reporting a creation failure.
+          setCreateError(`${t('catalog.createdButAttributesFailed')} ${errorText(err)}`);
+          return;
+        }
+      }
+
+      onCreated?.(created.product_id);
     } catch (err) {
       setCreateError(errorText(err));
     } finally {
@@ -200,7 +238,7 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
 
   async function handleSaveVariant(e: FormEvent) {
     e.preventDefault();
-    if (savingVariant || !selectedVariantId || !isVariantFormValid(editVariantForm)) {
+    if (savingVariant || !selectedVariantId || !isVariantFormValid(editVariantForm, false)) {
       setEditVariantError(t('errors.validation'));
       return;
     }
@@ -248,6 +286,21 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
         ...(addVariantDraft.barcode.trim() ? { barcodes: [addVariantDraft.barcode.trim()] } : {}),
       };
       const newId = await catalog.addVariant(productId, variantInput);
+
+      // WS-D-5: `VariantInput` has no minimum_stock field, so add_variant
+      // cannot carry it. Rather than render a control whose value is silently
+      // discarded, apply it immediately through the 6-arg update_variant
+      // overload. This is safe precisely because the variant is brand new —
+      // every value written here is one the operator just typed, so nothing
+      // pre-existing can be overwritten.
+      await catalog.updateVariantV2(
+        newId,
+        addVariantDraft.nameOverride.trim() || null,
+        addVariantDraft.salePrice,
+        addVariantDraft.isActive,
+        addVariantDraft.minimumStock,
+      );
+
       setSelectedVariantId(newId);
       setAddVariantDraft({ ...EMPTY_VARIANT });
       setIsAddingVariantModal(false);
@@ -309,7 +362,7 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
     const canSubmit =
       productName.trim().length > 0 &&
       productUnitId !== null &&
-      variantForms.every(isVariantFormValid) &&
+      isVariantFormValid(variantForms[0]) &&
       !creating;
 
     return (
@@ -356,25 +409,32 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
                 disabled={creating}
               />
 
-              <div className="sk-field">
-                <label className="sk-field__label" htmlFor="create-product-unit">
-                  {t('catalog.unit')}
-                </label>
-                <select
-                  id="create-product-unit"
-                  className="sk-field__input"
-                  value={productUnitId ?? ''}
-                  onChange={(e) => setProductUnitId(Number(e.target.value))}
-                  required
-                  disabled={creating}
-                >
-                  {catalog.units.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <InlineCreateSelect
+                id="create-product-category"
+                label={t('productsList.category')}
+                options={activeCategoryOptions}
+                value={productCategoryId}
+                onChange={setProductCategoryId}
+                onCreate={catalog.createCategory}
+                emptyLabel={t('common.none')}
+                createLabel={t('catalogueSetup.categories.name')}
+                newItemLabel={t('catalog.newShort')}
+                disabled={creating}
+                testId="create-product-category"
+              />
+
+              <InlineCreateSelect
+                id="create-product-unit"
+                label={t('catalog.unit')}
+                options={unitOptions}
+                value={productUnitId}
+                onChange={setProductUnitId}
+                onCreate={handleCreateUnit}
+                createLabel={t('catalogueSetup.units.name')}
+                newItemLabel={t('catalog.newShort')}
+                disabled={creating}
+                testId="create-product-unit"
+              />
 
               <div className="sk-field">
                 <span className="sk-field__label">{t('products.active')}</span>
@@ -391,73 +451,52 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
             </div>
           </div>
 
-          {/* VARIANTS SECTION */}
+          {/* FIRST VARIANT SECTION.
+              WS-D-5: creation makes one product and its first variant via
+              quick_create_product. Further variants are added afterwards from
+              the edit screen, which is the only place add_variant lives. */}
           <div style={{ marginBlockStart: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBlockEnd: '0.75rem' }}>
               <h3 style={{ margin: 0, fontSize: '0.92rem', letterSpacing: '0.04em' }}>
-                VARIANTS ({variantForms.length})
+                {t('variants.firstVariant')}
               </h3>
               <span style={{ fontSize: '0.8rem', color: 'var(--sk-muted)' }}>
-                SKU generated automatically
+                {t('variants.skuAutoGenerated')}
               </span>
             </div>
 
-            {variantForms.map((vf, idx) => (
-              <div key={idx} className="sk-card" style={{ marginBlockEnd: '1rem', padding: '1.25rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBlockEnd: '1rem', borderBlockEnd: '1px solid var(--sk-border)', paddingBlockEnd: '0.5rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <strong style={{ fontSize: '1rem' }}>Variant {idx + 1}</strong>
-                    <span className="sk-badge sk-badge--secondary" style={{ fontSize: '0.78rem' }}>
-                      {computeNewVariantPreview(idx)}
-                    </span>
-                  </div>
-                  {variantForms.length > 1 ? (
-                    <Button
-                      variant="secondary"
-                      type="button"
-                      onClick={() => removeVariantForm(idx)}
-                      disabled={creating}
-                      style={{ height: '34px', padding: '0 10px', fontSize: '0.8rem', color: 'var(--sk-danger)' }}
-                    >
-                      Remove variant
-                    </Button>
-                  ) : null}
-                </div>
-
-                <VariantForm
-                  values={vf}
-                  onChange={(vals) => updateVariantForm(idx, vals)}
-                  generatedNamePreview={computeNewVariantPreview(idx)}
-                  disabled={creating}
-                  idPrefix={`v${idx}`}
-                />
-
-                {/* Inline Attribute Selection */}
-                <div style={{ marginBlockStart: '1.25rem', paddingTop: '1rem', borderBlockStart: '1px solid var(--sk-border)' }}>
-                  <AttributeManager
-                    attributes={catalog.attributes}
-                    refLoading={catalog.refLoading}
-                    selected={attrSelections[idx] ?? {}}
-                    onSelectionChange={(sel) =>
-                      setAttrSelections((prev) => ({ ...prev, [idx]: sel }))
-                    }
-                    onCreateAttribute={catalog.createAttribute}
-                    onAddValue={catalog.addAttributeValue}
-                    busy={creating}
-                  />
-                </div>
+            <div className="sk-card" style={{ marginBlockEnd: '1rem', padding: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBlockEnd: '1rem', borderBlockEnd: '1px solid var(--sk-border)', paddingBlockEnd: '0.5rem' }}>
+                <span className="sk-badge sk-badge--secondary" style={{ fontSize: '0.78rem' }}>
+                  {computeNewVariantPreview(0)}
+                </span>
               </div>
-            ))}
 
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={addVariantForm}
-              disabled={creating}
-              style={{ width: '100%', marginBlockEnd: '1.5rem' }}
-            >
-              + {t('variants.add')}
-            </Button>
+              <VariantForm
+                values={variantForms[0]}
+                onChange={(vals) => updateVariantForm(0, vals)}
+                generatedNamePreview={computeNewVariantPreview(0)}
+                disabled={creating}
+                idPrefix="v0"
+              />
+
+              {/* Inline Attribute Selection. AttributeManager already provides
+                  create-only inline shortcuts for attributes and their values,
+                  matching the D-0 ruling applied to the pickers above. */}
+              <div style={{ marginBlockStart: '1.25rem', paddingTop: '1rem', borderBlockStart: '1px solid var(--sk-border)' }}>
+                <AttributeManager
+                  attributes={catalog.attributes}
+                  refLoading={catalog.refLoading}
+                  selected={attrSelections[0] ?? {}}
+                  onSelectionChange={(sel) =>
+                    setAttrSelections((prev) => ({ ...prev, 0: sel }))
+                  }
+                  onCreateAttribute={catalog.createAttribute}
+                  onAddValue={catalog.addAttributeValue}
+                  busy={creating}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Bottom Action Footer */}
@@ -696,15 +735,22 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
             {editVariantOk ? <Banner tone="success">{t('variants.saved')}</Banner> : null}
 
             <form onSubmit={handleSaveVariant} className="sk-form">
+              {/* WS-D-5: minimum stock is deliberately not offered here.
+                  get_product_detail does not return the variant's current
+                  minimum_stock, so the field could not be populated, and this
+                  save still goes through the 5-arg update_variant, which
+                  cannot write it. Rendering it would be a control the app
+                  cannot honour. See the WS-D-5 report, "Not finished". */}
               <VariantForm
                 values={editVariantForm}
                 onChange={setEditVariantForm}
                 disabled={savingVariant}
                 idPrefix={`modal-edit-${selectedVariant.variant_id}`}
+                showMinimumStock={false}
               />
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBlockStart: '0.75rem' }}>
-                <Button type="submit" loading={savingVariant} disabled={!isVariantFormValid(editVariantForm)}>
+                <Button type="submit" loading={savingVariant} disabled={!isVariantFormValid(editVariantForm, false)}>
                   {t('catalog.save')}
                 </Button>
               </div>

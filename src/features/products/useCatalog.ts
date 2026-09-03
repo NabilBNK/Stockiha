@@ -9,6 +9,7 @@ import type {
   AttributeDefinition,
   CatalogProduct,
   ProductDetail,
+  ReferenceLifecycleItem,
   Unit,
   VariantInput,
 } from '../../shared/ipc/dto';
@@ -21,6 +22,9 @@ export function useCatalog(token: string) {
   const [productsError, setProductsError] = useState<string | null>(null);
   const [attributes, setAttributes] = useState<AttributeDefinition[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
+  // WS-D-5: categories are a PRODUCT-level reference type, offered in the
+  // product form's category picker. Only active ones are selectable.
+  const [categories, setCategories] = useState<ReferenceLifecycleItem[]>([]);
   const [refLoading, setRefLoading] = useState(false);
   const [detail, setDetail] = useState<ProductDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -43,12 +47,14 @@ export function useCatalog(token: string) {
     if (!token) return;
     setRefLoading(true);
     try {
-      const [attrs, us] = await Promise.all([
+      const [attrs, us, cats] = await Promise.all([
         ipc.listAttributes(token),
         ipc.listUnits(token),
+        ipc.listCategories(token),
       ]);
       setAttributes(attrs);
       setUnits(us);
+      setCategories(cats);
     } catch {
       // ref data load failure is non-fatal; leave previous state
     } finally {
@@ -94,6 +100,40 @@ export function useCatalog(token: string) {
     return ipc.setVariantActive(token, variantId, isActive);
   }, [token]);
 
+  /**
+   * WS-D-5 — `catalog.quick_create_product`: one product + its first variant,
+   * with the product-level category and the variant's barcode and minimum
+   * stock, in a single authoritative call. `salePrice` and `minimumStock` are
+   * exact decimal strings and are forwarded verbatim; this layer never parses,
+   * rounds, or defaults them (ws-d-skill.md section 6).
+   */
+  const quickCreateProduct = useCallback(async (input: ipc.QuickCreateProductInput) => {
+    return ipc.quickCreateProduct(token, input);
+  }, [token]);
+
+  /** WS-D-5 — the 6-argument `catalog.update_variant` overload (adds minimum_stock). */
+  const updateVariantV2 = useCallback(async (
+    variantId: number,
+    nameOverride: string | null,
+    salePrice: string,
+    isActive: boolean,
+    minimumStock: string,
+  ) => {
+    return ipc.updateVariantV2(token, variantId, nameOverride, salePrice, isActive, minimumStock);
+  }, [token]);
+
+  /**
+   * WS-D-5 inline create shortcut. Create-only by design (D-0 ruling): the
+   * product form may add a category and select it immediately, but rename,
+   * deactivate and delete stay exclusively on the Catalogue Setup screen.
+   * Refreshes the picker so the new item is present before it is selected.
+   */
+  const createCategory = useCallback(async (name: string) => {
+    const id = await ipc.createCategory(token, name);
+    await loadRefData();
+    return id;
+  }, [token, loadRefData]);
+
   const createAttribute = useCallback(async (name: string) => {
     const id = await ipc.createAttribute(token, name);
     await loadRefData();
@@ -127,7 +167,7 @@ export function useCatalog(token: string) {
   return {
     // state
     products, productsLoading, productsError,
-    attributes, units, refLoading,
+    attributes, units, categories, refLoading,
     detail, detailLoading, detailError,
     // loaders
     loadProducts, loadRefData, loadDetail,
@@ -135,7 +175,9 @@ export function useCatalog(token: string) {
     createProductWithVariants, updateProduct,
     addVariant, updateVariant, setVariantActive,
     createAttribute, addAttributeValue, setVariantAttributes,
-    createUnit,
+    createUnit, createCategory,
     addVariantBarcode, removeVariantBarcode,
+    // WS-D-5 — v2 write layer
+    quickCreateProduct, updateVariantV2,
   };
 }
