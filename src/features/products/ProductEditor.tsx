@@ -105,6 +105,10 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
     if (catalog.detail) {
       setProductName(catalog.detail.name);
       setProductUnitId(catalog.detail.unit_id);
+      // WS-D-5B: seed the category from the loaded detail. update_product
+      // overwrites category_id unconditionally, so this round-trip is what
+      // stops an untouched save from clearing it.
+      setProductCategoryId(catalog.detail.category_id);
       setProductActive(catalog.detail.is_active);
       if (catalog.detail.variants.length > 0 && !selectedVariantId) {
         const v = catalog.detail.variants[0];
@@ -120,12 +124,11 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
         nameOverride: selectedVariant.name_override ?? '',
         barcode: selectedVariant.primary_barcode ?? '',
         salePrice: selectedVariant.sale_price,
-        // get_product_detail does not return the variant's current
-        // minimum_stock, so there is nothing truthful to seed here. The field
-        // is hidden in this modal (showMinimumStock={false}) and this value is
-        // never sent — the 5-arg update_variant has no minimum_stock
-        // parameter. See the WS-D-5 report, "Not finished".
-        minimumStock: '',
+        // WS-D-5B: seeded verbatim from get_product_detail as an exact decimal
+        // string. update_variant overwrites minimum_stock unconditionally, so
+        // sending back exactly what was loaded is what preserves it through a
+        // save that did not touch the field.
+        minimumStock: selectedVariant.minimum_stock,
         isActive: selectedVariant.is_active,
       });
       setEditVariantError(null);
@@ -226,7 +229,17 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
     setProductError(null);
     setProductOk(false);
     try {
-      await catalog.updateProduct(productId, productName.trim(), productUnitId, productActive);
+      // WS-D-5B: the 6-arg update_product overload, carrying the category.
+      // productCategoryId was seeded from get_product_detail on load, so an
+      // untouched save re-sends the product's current category rather than
+      // clearing it.
+      await catalog.updateProductV2(
+        productId,
+        productName.trim(),
+        productUnitId,
+        productActive,
+        productCategoryId,
+      );
       setProductOk(true);
       await catalog.loadDetail(productId);
     } catch (err) {
@@ -238,7 +251,7 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
 
   async function handleSaveVariant(e: FormEvent) {
     e.preventDefault();
-    if (savingVariant || !selectedVariantId || !isVariantFormValid(editVariantForm, false)) {
+    if (savingVariant || !selectedVariantId || !isVariantFormValid(editVariantForm)) {
       setEditVariantError(t('errors.validation'));
       return;
     }
@@ -246,11 +259,16 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
     setEditVariantError(null);
     setEditVariantOk(false);
     try {
-      await catalog.updateVariant(
+      // WS-D-5B: the 6-arg update_variant overload, carrying minimum_stock.
+      // editVariantForm.minimumStock was seeded verbatim from
+      // get_product_detail, so an untouched save round-trips the variant's
+      // current value instead of resetting it to 0.
+      await catalog.updateVariantV2(
         selectedVariantId,
         editVariantForm.nameOverride.trim() || null,
         editVariantForm.salePrice,
         editVariantForm.isActive,
+        editVariantForm.minimumStock,
       );
       setEditVariantOk(true);
       await catalog.loadDetail(productId!);
@@ -552,25 +570,35 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
             disabled={savingProduct}
           />
 
-          <div className="sk-field">
-            <label className="sk-field__label" htmlFor="edit-product-unit">
-              {t('catalog.unit')}
-            </label>
-            <select
-              id="edit-product-unit"
-              className="sk-field__input"
-              value={productUnitId ?? ''}
-              onChange={(e) => setProductUnitId(Number(e.target.value))}
-              required
-              disabled={savingProduct}
-            >
-              {catalog.units.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.code})
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* WS-D-5B: category is editable here now that get_product_detail
+              returns category_id to seed it. Same create-only inline shortcut
+              as the create form (D-0 ruling). */}
+          <InlineCreateSelect
+            id="edit-product-category"
+            label={t('productsList.category')}
+            options={activeCategoryOptions}
+            value={productCategoryId}
+            onChange={setProductCategoryId}
+            onCreate={catalog.createCategory}
+            emptyLabel={t('common.none')}
+            createLabel={t('catalogueSetup.categories.name')}
+            newItemLabel={t('catalog.newShort')}
+            disabled={savingProduct}
+            testId="edit-product-category"
+          />
+
+          <InlineCreateSelect
+            id="edit-product-unit"
+            label={t('catalog.unit')}
+            options={unitOptions}
+            value={productUnitId}
+            onChange={setProductUnitId}
+            onCreate={handleCreateUnit}
+            createLabel={t('catalogueSetup.units.name')}
+            newItemLabel={t('catalog.newShort')}
+            disabled={savingProduct}
+            testId="edit-product-unit"
+          />
 
           <div className="sk-field">
             <span className="sk-field__label">{t('products.active')}</span>
@@ -735,22 +763,18 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
             {editVariantOk ? <Banner tone="success">{t('variants.saved')}</Banner> : null}
 
             <form onSubmit={handleSaveVariant} className="sk-form">
-              {/* WS-D-5: minimum stock is deliberately not offered here.
-                  get_product_detail does not return the variant's current
-                  minimum_stock, so the field could not be populated, and this
-                  save still goes through the 5-arg update_variant, which
-                  cannot write it. Rendering it would be a control the app
-                  cannot honour. See the WS-D-5 report, "Not finished". */}
+              {/* WS-D-5B: minimum stock is now populated from
+                  get_product_detail and written through the 6-arg
+                  update_variant overload, so the field is offered here. */}
               <VariantForm
                 values={editVariantForm}
                 onChange={setEditVariantForm}
                 disabled={savingVariant}
                 idPrefix={`modal-edit-${selectedVariant.variant_id}`}
-                showMinimumStock={false}
               />
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBlockStart: '0.75rem' }}>
-                <Button type="submit" loading={savingVariant} disabled={!isVariantFormValid(editVariantForm, false)}>
+                <Button type="submit" loading={savingVariant} disabled={!isVariantFormValid(editVariantForm)}>
                   {t('catalog.save')}
                 </Button>
               </div>

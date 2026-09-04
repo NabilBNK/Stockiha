@@ -39,12 +39,14 @@ interface Props {
   /** Optional ID prefix to disambiguate multiple forms on the same page */
   idPrefix?: string;
   /**
-   * WS-D-5: minimum stock is only rendered where it can actually be persisted.
-   * The edit-variant modal still writes through the narrow `updateVariant`
-   * (5-arg) overload, which has no minimum_stock parameter, and
-   * `get_product_detail` does not return the variant's current minimum_stock
-   * either — so showing the field there would be a control the user can set
-   * and the app cannot honour. See the WS-D-5 report, "Not finished".
+   * Minimum stock is only rendered where it can actually be persisted.
+   *
+   * WS-D-5 introduced this to hide the field in the edit-variant modal, which
+   * at the time could neither read the current minimum_stock nor write it.
+   * WS-D-5B closed that gap — get_product_detail now returns minimum_stock and
+   * the modal writes through the 6-arg update_variant overload — so every
+   * caller currently leaves this at its default. It is kept for the next form
+   * that collects a variant without being able to persist this field.
    */
   showMinimumStock?: boolean;
 }

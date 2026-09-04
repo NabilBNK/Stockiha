@@ -184,8 +184,13 @@ export interface CatalogProduct { product_id: number; name: string; unit_id: num
 export interface ResolvedBarcode { variant_id: number; product_id: number; sku: string; name_override: string | null; effective_variant_name: string; primary_barcode: string | null; operational_identifier: string; identifier_type: 'BARCODE' | 'SKU'; product_name: string; sale_price: string; unit_id: number; unit_code: string; unit_name: string; variant_is_active: boolean; product_is_active: boolean; }
 export interface VariantAttribute { attribute_id: number; attribute_name: string; attribute_value_id: number; value: string; }
 export interface VariantBarcode { id: number; barcode: string; is_primary: boolean; }
-export interface VariantDetail { variant_id: number; sku: string; name_override: string | null; effective_variant_name: string; primary_barcode: string | null; operational_identifier: string; identifier_type: 'BARCODE' | 'SKU'; sale_price: string; is_active: boolean; attribute_signature: string; attributes: VariantAttribute[]; barcodes: VariantBarcode[]; }
-export interface ProductDetail { product_id: number; name: string; unit_id: number; unit_code: string; unit_name: string; is_active: boolean; variants: VariantDetail[]; }
+// WS-D-5B: `minimum_stock` (variant) and `category_id` (product) were added to
+// catalog.get_product_detail so the edit form can round-trip them. Both v2
+// writers overwrite those columns unconditionally, so a form that could not
+// read them would silently clear them on every save. minimum_stock crosses IPC
+// as an exact decimal string, identical treatment to sale_price.
+export interface VariantDetail { variant_id: number; sku: string; name_override: string | null; effective_variant_name: string; primary_barcode: string | null; operational_identifier: string; identifier_type: 'BARCODE' | 'SKU'; sale_price: string; minimum_stock: string; is_active: boolean; attribute_signature: string; attributes: VariantAttribute[]; barcodes: VariantBarcode[]; }
+export interface ProductDetail { product_id: number; name: string; unit_id: number; unit_code: string; unit_name: string; is_active: boolean; category_id: number | null; variants: VariantDetail[]; }
 export interface CreatedProductWithVariants { product_id: number; variant_ids: number[]; }
 
 export interface VariantAltUnit { id: number; variant_id: number; unit_id: number; conversion_factor: string; unit_code: string; unit_name: string; }

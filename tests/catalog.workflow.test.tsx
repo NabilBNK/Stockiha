@@ -309,13 +309,160 @@ describe('backend validation error display', () => {
   });
 });
 
+describe('edit product on the v2 write layer (WS-D-5B)', () => {
+  /**
+   * A product with a category and a variant with a non-zero minimum stock.
+   * Both v2 writers overwrite those columns unconditionally, so this fixture
+   * is the shape that exposes the preservation trap.
+   */
+  function editableDetail() {
+    return {
+      product_id: 1,
+      name: 'Pillow',
+      unit_id: 1,
+      unit_code: 'PC',
+      unit_name: 'Piece',
+      is_active: true,
+      // Nullable, mirroring ProductDetail — the clear-the-category test writes
+      // null back into this fixture.
+      category_id: 7 as number | null,
+      variants: [{
+        variant_id: 10,
+        sku: 'PIL-1',
+        operational_identifier: 'PIL-1',
+        identifier_type: 'SKU',
+        sale_price: '1250.50',
+        minimum_stock: '5.500',
+        is_active: true,
+        effective_variant_name: 'Pillow',
+        name_override: null,
+        primary_barcode: null,
+        base_unit_id: 1,
+        base_unit_code: 'PC',
+        attribute_signature: '',
+        attributes: [],
+        alternate_units: [],
+        barcodes: [],
+      }],
+    };
+  }
+
+  const editHandlers = (extra: Handlers = {}) => makeHandlers({
+    list_products_v2: () => [productListRow({ product_name: 'Pillow' })],
+    get_product_detail: () => editableDetail(),
+    list_categories: () => [
+      { id: 7, name: 'Bedding', is_active: true, usage_count: 1 },
+      { id: 9, name: 'Cushions', is_active: true, usage_count: 0 },
+    ],
+    ...extra,
+  });
+
+  it('preserves category and minimum stock verbatim when nothing is edited', async () => {
+    let productCall: Record<string, unknown> | null = null;
+    let variantCall: Record<string, unknown> | null = null;
+    wireInvoke(editHandlers({
+      update_product_v2: (args) => { productCall = args; return null; },
+      update_variant_v2: (args) => { variantCall = args; return null; },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    fireEvent.click(await screen.findByTestId('edit-product-1'));
+    await screen.findByTestId('variant-row-10');
+
+    // The category picker must show the product's CURRENT category.
+    const categorySelect = await screen.findByTestId('edit-product-category');
+    await waitFor(() => expect((categorySelect as HTMLSelectElement).value).toBe('7'));
+
+    // Save the product without touching anything.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]);
+    await waitFor(() => expect(productCall).not.toBeNull());
+    expect(productCall!.productId).toBe(1);
+    expect(productCall!.categoryId).toBe(7);
+
+    // Open the variant and save it without touching anything.
+    fireEvent.click(screen.getByTestId('edit-variant-10'));
+    const minStock = await screen.findByLabelText('Minimum stock');
+    // Seeded verbatim from get_product_detail, as an exact decimal string.
+    expect((minStock as HTMLInputElement).value).toBe('5.500');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
+    await waitFor(() => expect(variantCall).not.toBeNull());
+    expect(variantCall!.variantId).toBe(10);
+    expect(variantCall!.minimumStock).toBe('5.500');
+    expect(typeof variantCall!.minimumStock).toBe('string');
+    expect(variantCall!.salePrice).toBe('1250.50');
+  });
+
+  it('sends the new categoryId when changed, and null when cleared', async () => {
+    let productCall: Record<string, unknown> | null = null;
+    // Stateful fixture: the save is reflected back by get_product_detail, the
+    // way the real backend does. ProductEditor reloads the detail after every
+    // save and re-seeds the form from it, so a static fixture would rewind the
+    // picker to its original value between the two saves below.
+    const detail = editableDetail();
+    wireInvoke(editHandlers({
+      get_product_detail: () => detail,
+      update_product_v2: (args) => {
+        productCall = args;
+        detail.category_id = args.categoryId as number | null;
+        return null;
+      },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    fireEvent.click(await screen.findByTestId('edit-product-1'));
+    await screen.findByTestId('variant-row-10');
+
+    const categorySelect = await screen.findByTestId('edit-product-category');
+    await waitFor(() => expect((categorySelect as HTMLSelectElement).value).toBe('7'));
+
+    // Change it.
+    fireEvent.change(categorySelect, { target: { value: '9' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]);
+    await waitFor(() => expect(productCall).not.toBeNull());
+    expect(productCall!.categoryId).toBe(9);
+    // The reload must settle on the saved value before the next interaction.
+    await waitFor(() => expect((categorySelect as HTMLSelectElement).value).toBe('9'));
+
+    // Clear it — an explicit null, not a dropped field.
+    productCall = null;
+    fireEvent.change(categorySelect, { target: { value: '' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]);
+    await waitFor(() => expect(productCall).not.toBeNull());
+    expect(productCall!.categoryId).toBeNull();
+  });
+
+  it('sends an edited minimum stock of "0" as "0"', async () => {
+    let variantCall: Record<string, unknown> | null = null;
+    wireInvoke(editHandlers({
+      update_variant_v2: (args) => { variantCall = args; return null; },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    fireEvent.click(await screen.findByTestId('edit-product-1'));
+    await screen.findByTestId('variant-row-10');
+    fireEvent.click(screen.getByTestId('edit-variant-10'));
+
+    const minStock = await screen.findByLabelText('Minimum stock');
+    fireEvent.change(minStock, { target: { value: '0' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
+
+    await waitFor(() => expect(variantCall).not.toBeNull());
+    // "0" disables the low-stock warning; it must survive as "0".
+    expect(variantCall!.minimumStock).toBe('0');
+  });
+});
+
 describe('variant attribute configuration', () => {
   it('calls setVariantAttributes with the selected attribute value ids', async () => {
     let setAttrsCall: Record<string, unknown> | null = null;
     const detail = {
       product_id: 1, name: 'T-Shirt', is_active: true, unit_id: 1,
       variants: [{
-        variant_id: 10, operational_identifier: 'TSH-S', identifier_type: 'SKU', sale_price: '10.00', is_active: true,
+        variant_id: 10, operational_identifier: 'TSH-S', identifier_type: 'SKU', sale_price: '10.00', minimum_stock: '0', is_active: true,
         effective_variant_name: 'T-Shirt', name_override: null, primary_barcode: null,
         base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
         attributes: [], alternate_units: [], barcodes: [],
@@ -376,7 +523,7 @@ describe('variant attribute configuration', () => {
     const detail = {
       product_id: 1, name: 'Pillow', is_active: true, unit_id: 1,
       variants: [{
-        variant_id: 10, operational_identifier: 'PIL-1', identifier_type: 'SKU', sale_price: '10.00', is_active: true,
+        variant_id: 10, operational_identifier: 'PIL-1', identifier_type: 'SKU', sale_price: '10.00', minimum_stock: '0', is_active: true,
         effective_variant_name: 'Pillow', name_override: null, primary_barcode: null,
         base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '1:3|2:9',
         attributes: [
@@ -441,7 +588,7 @@ describe('add SKU and barcode', () => {
     const detail = {
       product_id: 1, name: 'Widget', is_active: true, unit_id: 1,
       variants: [{
-        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', is_active: true,
+        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', minimum_stock: '0', is_active: true,
         effective_variant_name: 'Widget', name_override: null, primary_barcode: null,
         base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
         attributes: [], alternate_units: [], barcodes: [],
@@ -455,7 +602,8 @@ describe('add SKU and barcode', () => {
       add_variant: (args) => {
         addCall = args;
         detail.variants.push({
-          variant_id: 11, operational_identifier: 'WID-2', identifier_type: 'SKU', sale_price: '7.00', is_active: true,
+          variant_id: 11, operational_identifier: 'WID-2', identifier_type: 'SKU', sale_price: '7.00',
+          minimum_stock: '0', is_active: true,
           effective_variant_name: 'Widget V2', name_override: null, primary_barcode: null,
           base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
           attributes: [], alternate_units: [], barcodes: [],
@@ -486,7 +634,7 @@ describe('add SKU and barcode', () => {
     const detail = {
       product_id: 1, name: 'Widget', is_active: true, unit_id: 1,
       variants: [{
-        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', is_active: true,
+        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', minimum_stock: '0', is_active: true,
         effective_variant_name: 'Widget', name_override: null, primary_barcode: null,
         base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
         attributes: [], alternate_units: [], barcodes: [],
@@ -528,7 +676,7 @@ describe('deactivate a variant', () => {
     const detail = {
       product_id: 1, name: 'Widget', is_active: true, unit_id: 1,
       variants: [{
-        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', is_active: true,
+        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', minimum_stock: '0', is_active: true,
         effective_variant_name: 'Widget', name_override: null, primary_barcode: null,
         base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
         attributes: [], alternate_units: [], barcodes: [],

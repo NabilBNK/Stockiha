@@ -111,6 +111,22 @@ export function useCatalog(token: string) {
     return ipc.quickCreateProduct(token, input);
   }, [token]);
 
+  /**
+   * WS-D-5B — the 6-argument `catalog.update_product` overload (adds
+   * category_id). The caller must pass the product's CURRENT category when the
+   * user did not change it: the SQL assigns `category_id = p_category_id`
+   * unconditionally, so a null here clears the category.
+   */
+  const updateProductV2 = useCallback(async (
+    productId: number,
+    name: string,
+    unitId: number,
+    isActive: boolean,
+    categoryId: number | null,
+  ) => {
+    return ipc.updateProductV2(token, productId, name, unitId, isActive, categoryId);
+  }, [token]);
+
   /** WS-D-5 — the 6-argument `catalog.update_variant` overload (adds minimum_stock). */
   const updateVariantV2 = useCallback(async (
     variantId: number,
@@ -177,7 +193,7 @@ export function useCatalog(token: string) {
     createAttribute, addAttributeValue, setVariantAttributes,
     createUnit, createCategory,
     addVariantBarcode, removeVariantBarcode,
-    // WS-D-5 — v2 write layer
-    quickCreateProduct, updateVariantV2,
+    // WS-D-5 / WS-D-5B — v2 write layer
+    quickCreateProduct, updateProductV2, updateVariantV2,
   };
 }
