@@ -1,23 +1,31 @@
 /**
- * Slice 2 — Product Creation & Editing UI/UX Overhaul.
- * Implements authoritative Stockiha Product Architecture:
- * 1. Product owns Product Name, Unit (`unit_id`), and Active state.
- * 2. Variant fields: Name override (optional), Barcode (scanner-friendly), Sale Price (DZD), Attributes, Active status.
+ * WS-D-8a — product CREATION only.
+ *
+ * The edit flow moved to ProductsWorkspace / ProductDetailPanel / VariantRow,
+ * which rebuilt it as a master-detail screen with field-level commit-on-blur
+ * and zero nested modals. Creation is untouched here and is rebuilt separately
+ * under WS-D-8b (attribute-grid variant generation); this file keeps it
+ * working exactly as WS-D-5 delivered it.
+ *
+ * Two things in this file are load-bearing for the edit flow and are exported
+ * from here on purpose (WS-D-CORRECTION-2): `mergeAssignedValues` and the
+ * `AttributeManagerForVariant` that wires it. See their comments below.
+ *
+ * Authoritative Stockiha Product Architecture, unchanged:
+ * 1. Product owns Product Name, Category, Unit (`unit_id`), and Active state.
+ * 2. Variant fields: Name override (optional), Barcode, Sale Price (DZD),
+ *    Minimum stock, Attributes, Active status.
  * 3. Automatic SKU generation (never user-entered).
  * 4. Scanner-friendly text barcodes (preserves leading zeroes).
- * 5. Compact horizontal desktop layout & theme-semantic Dark Mode contrast.
- * 6. Inline Attribute & Value creation popovers/modals (no navigation away).
- * 7. Live Effective Variant Name preview badge.
  */
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
-import { Banner, Button, Spinner, TextField } from '../../shared/components';
+import { Banner, Button, TextField } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
-import type { AttributeDefinition, VariantDetail, VariantInput } from '../../shared/ipc/dto';
+import type { AttributeDefinition, VariantDetail } from '../../shared/ipc/dto';
 import { VariantForm, isVariantFormValid, type VariantFormValues } from './VariantForm';
 import { AttributeManager } from './AttributeManager';
-import { BarcodeManager } from './BarcodeManager';
 import { InlineCreateSelect } from './InlineCreateSelect';
 import { useCatalog } from './useCatalog';
 
@@ -34,13 +42,11 @@ const EMPTY_VARIANT: VariantFormValues = {
 
 interface Props {
   token: string;
-  /** When set, we are editing an existing product */
-  productId?: number;
   onCreated?: (productId: number) => void;
   onBack: () => void;
 }
 
-export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
+export function ProductEditor({ token, onCreated, onBack }: Props) {
   const { t } = useI18n();
   const errorText = useErrorText();
   const catalog = useCatalog(token);
@@ -52,46 +58,18 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
   // optional — null means "uncategorised", which the backend accepts.
   const [productCategoryId, setProductCategoryId] = useState<number | null>(null);
   const [productActive, setProductActive] = useState(true);
-  const [productError, setProductError] = useState<string | null>(null);
-  const [productOk, setProductOk] = useState(false);
-  const [savingProduct, setSavingProduct] = useState(false);
 
-  // Variant creation state (Create Flow)
+  // Variant creation state
   const [variantForms, setVariantForms] = useState<VariantFormValues[]>([{ ...EMPTY_VARIANT }]);
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
-  // Edit flow: Selected variant modal/drawer state
-  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
-  const [isEditingVariantModal, setIsEditingVariantModal] = useState(false);
-  const [savingVariant, setSavingVariant] = useState(false);
-  const [editVariantError, setEditVariantError] = useState<string | null>(null);
-  const [editVariantOk, setEditVariantOk] = useState(false);
-  const [editVariantForm, setEditVariantForm] = useState<VariantFormValues>({ ...EMPTY_VARIANT });
-
-  // Add new variant draft (Edit Flow)
-  const [isAddingVariantModal, setIsAddingVariantModal] = useState(false);
-  const [addVariantDraft, setAddVariantDraft] = useState<VariantFormValues>({ ...EMPTY_VARIANT });
-  const [addVariantError, setAddVariantError] = useState<string | null>(null);
-
-  // Attribute selection (per-variant index for create flow)
+  // Attribute selection (per-variant index)
   const [attrSelections, setAttrSelections] = useState<Record<number, Record<number, number>>>({});
 
-  const isEdit = productId != null;
-
-  const selectedVariant = isEdit
-    ? (catalog.detail?.variants.find((v) => v.variant_id === selectedVariantId) ?? null)
-    : null;
-
-  // Load ref data and product details on mount / id change
   useEffect(() => {
-    if (isEdit && productId != null) {
-      void catalog.loadDetail(productId);
-      void catalog.loadRefData();
-    } else {
-      void catalog.loadRefData();
-    }
-  }, [productId, isEdit]);
+    void catalog.loadRefData();
+  }, [catalog.loadRefData]);
 
   // Default unit initialization
   useEffect(() => {
@@ -99,42 +77,6 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
       setProductUnitId(catalog.units[0].id);
     }
   }, [catalog.units, productUnitId]);
-
-  // Populate product form on detail load
-  useEffect(() => {
-    if (catalog.detail) {
-      setProductName(catalog.detail.name);
-      setProductUnitId(catalog.detail.unit_id);
-      // WS-D-5B: seed the category from the loaded detail. update_product
-      // overwrites category_id unconditionally, so this round-trip is what
-      // stops an untouched save from clearing it.
-      setProductCategoryId(catalog.detail.category_id);
-      setProductActive(catalog.detail.is_active);
-      if (catalog.detail.variants.length > 0 && !selectedVariantId) {
-        const v = catalog.detail.variants[0];
-        setSelectedVariantId(v.variant_id);
-      }
-    }
-  }, [catalog.detail, selectedVariantId]);
-
-  // Update edit variant form when selected variant changes
-  useEffect(() => {
-    if (selectedVariant) {
-      setEditVariantForm({
-        nameOverride: selectedVariant.name_override ?? '',
-        barcode: selectedVariant.primary_barcode ?? '',
-        salePrice: selectedVariant.sale_price,
-        // WS-D-5B: seeded verbatim from get_product_detail as an exact decimal
-        // string. update_variant overwrites minimum_stock unconditionally, so
-        // sending back exactly what was loaded is what preserves it through a
-        // save that did not touch the field.
-        minimumStock: selectedVariant.minimum_stock,
-        isActive: selectedVariant.is_active,
-      });
-      setEditVariantError(null);
-      setEditVariantOk(false);
-    }
-  }, [selectedVariant]);
 
   function updateVariantForm(index: number, values: VariantFormValues) {
     setVariantForms((prev) => prev.map((v, i) => (i === index ? values : v)));
@@ -222,142 +164,6 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
     }
   }
 
-  async function handleSaveProduct(e: FormEvent) {
-    e.preventDefault();
-    if (savingProduct || !productId || !productName.trim() || !productUnitId) return;
-    setSavingProduct(true);
-    setProductError(null);
-    setProductOk(false);
-    try {
-      // WS-D-5B: the 6-arg update_product overload, carrying the category.
-      // productCategoryId was seeded from get_product_detail on load, so an
-      // untouched save re-sends the product's current category rather than
-      // clearing it.
-      await catalog.updateProductV2(
-        productId,
-        productName.trim(),
-        productUnitId,
-        productActive,
-        productCategoryId,
-      );
-      setProductOk(true);
-      await catalog.loadDetail(productId);
-    } catch (err) {
-      setProductError(errorText(err));
-    } finally {
-      setSavingProduct(false);
-    }
-  }
-
-  async function handleSaveVariant(e: FormEvent) {
-    e.preventDefault();
-    if (savingVariant || !selectedVariantId || !isVariantFormValid(editVariantForm)) {
-      setEditVariantError(t('errors.validation'));
-      return;
-    }
-    setSavingVariant(true);
-    setEditVariantError(null);
-    setEditVariantOk(false);
-    try {
-      // WS-D-5B: the 6-arg update_variant overload, carrying minimum_stock.
-      // editVariantForm.minimumStock was seeded verbatim from
-      // get_product_detail, so an untouched save round-trips the variant's
-      // current value instead of resetting it to 0.
-      await catalog.updateVariantV2(
-        selectedVariantId,
-        editVariantForm.nameOverride.trim() || null,
-        editVariantForm.salePrice,
-        editVariantForm.isActive,
-        editVariantForm.minimumStock,
-      );
-      setEditVariantOk(true);
-      await catalog.loadDetail(productId!);
-    } catch (err) {
-      setEditVariantError(errorText(err));
-    } finally {
-      setSavingVariant(false);
-    }
-  }
-
-  async function handleToggleVariantActive(v: VariantDetail) {
-    try {
-      await catalog.setVariantActive(v.variant_id, !v.is_active);
-      await catalog.loadDetail(productId!);
-    } catch (err) {
-      setProductError(errorText(err));
-    }
-  }
-
-  async function handleAddVariant(e: FormEvent) {
-    e.preventDefault();
-    if (creating || !productId || !isVariantFormValid(addVariantDraft)) {
-      setAddVariantError(t('errors.validation'));
-      return;
-    }
-    setCreating(true);
-    setAddVariantError(null);
-    try {
-      const variantInput: VariantInput = {
-        name_override: addVariantDraft.nameOverride.trim() || undefined,
-        sale_price: addVariantDraft.salePrice,
-        is_active: addVariantDraft.isActive,
-        ...(addVariantDraft.barcode.trim() ? { barcodes: [addVariantDraft.barcode.trim()] } : {}),
-      };
-      const newId = await catalog.addVariant(productId, variantInput);
-
-      // WS-D-5: `VariantInput` has no minimum_stock field, so add_variant
-      // cannot carry it. Rather than render a control whose value is silently
-      // discarded, apply it immediately through the 6-arg update_variant
-      // overload. This is safe precisely because the variant is brand new —
-      // every value written here is one the operator just typed, so nothing
-      // pre-existing can be overwritten.
-      await catalog.updateVariantV2(
-        newId,
-        addVariantDraft.nameOverride.trim() || null,
-        addVariantDraft.salePrice,
-        addVariantDraft.isActive,
-        addVariantDraft.minimumStock,
-      );
-
-      setSelectedVariantId(newId);
-      setAddVariantDraft({ ...EMPTY_VARIANT });
-      setIsAddingVariantModal(false);
-      await catalog.loadDetail(productId);
-    } catch (err) {
-      setAddVariantError(errorText(err));
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  const handleSetAttributes = useCallback(
-    async (sel: Record<number, number>) => {
-      if (!selectedVariantId || !productId) return;
-      const ids = Object.values(sel).filter((id) => id > 0);
-      await catalog.setVariantAttributes(selectedVariantId, ids);
-      await catalog.loadDetail(productId);
-    },
-    [catalog, selectedVariantId, productId],
-  );
-
-  const handleAddBarcode = useCallback(
-    async (barcode: string) => {
-      if (!selectedVariantId || !productId) return;
-      await catalog.addVariantBarcode(selectedVariantId, barcode);
-      await catalog.loadDetail(productId);
-    },
-    [catalog, selectedVariantId, productId],
-  );
-
-  const handleRemoveBarcode = useCallback(
-    async (barcodeId: number) => {
-      if (!productId) return;
-      await catalog.removeVariantBarcode(barcodeId);
-      await catalog.loadDetail(productId);
-    },
-    [catalog, productId],
-  );
-
   // Live Effective Name preview calculation for draft variant
   function computeNewVariantPreview(idx: number): string {
     const sel = attrSelections[idx] ?? {};
@@ -375,8 +181,6 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
       : baseName;
   }
 
-  // --- CREATE MODE ---
-  if (!isEdit) {
     const canSubmit =
       productName.trim().length > 0 &&
       productUnitId !== null &&
@@ -529,292 +333,6 @@ export function ProductEditor({ token, productId, onCreated, onBack }: Props) {
         </form>
       </div>
     );
-  }
-
-  // --- EDIT MODE ---
-  if (catalog.detailLoading) return <Spinner />;
-  if (catalog.detailError) return <Banner tone="error">{catalog.detailError}</Banner>;
-  if (!catalog.detail) return null;
-
-  return (
-    <div className="sk-page" style={{ maxWidth: '1100px', marginInline: 'auto' }}>
-      {/* Header Action Bar */}
-      <div className="sk-toolbar" style={{ marginBlockEnd: '1.25rem' }}>
-        <div>
-          <h1 style={{ margin: 0 }}>
-            {t('catalog.edit')}: {catalog.detail.name}
-          </h1>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Button variant="secondary" onClick={onBack}>
-            {t('catalog.backToList')}
-          </Button>
-          <Button variant="primary" onClick={(e) => void handleSaveProduct(e)} loading={savingProduct}>
-            {t('catalog.save')}
-          </Button>
-        </div>
-      </div>
-
-      {productError ? <Banner tone="error">{productError}</Banner> : null}
-      {productOk ? <Banner tone="success">{t('catalog.saved')}</Banner> : null}
-
-      {/* Product Metadata Form */}
-      <form className="sk-card sk-form" onSubmit={handleSaveProduct} aria-label={t('catalog.edit')}>
-        <h3 style={{ margin: 0, fontSize: '0.92rem', letterSpacing: '0.04em' }}>PRODUCT DETAILS</h3>
-        <div className="sk-form__grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-          <TextField
-            label={t('catalog.name')}
-            value={productName}
-            onChange={(e) => setProductName(e.target.value)}
-            required
-            disabled={savingProduct}
-          />
-
-          {/* WS-D-5B: category is editable here now that get_product_detail
-              returns category_id to seed it. Same create-only inline shortcut
-              as the create form (D-0 ruling). */}
-          <InlineCreateSelect
-            id="edit-product-category"
-            label={t('productsList.category')}
-            options={activeCategoryOptions}
-            value={productCategoryId}
-            onChange={setProductCategoryId}
-            onCreate={catalog.createCategory}
-            emptyLabel={t('common.none')}
-            createLabel={t('catalogueSetup.categories.name')}
-            newItemLabel={t('catalog.newShort')}
-            disabled={savingProduct}
-            testId="edit-product-category"
-          />
-
-          <InlineCreateSelect
-            id="edit-product-unit"
-            label={t('catalog.unit')}
-            options={unitOptions}
-            value={productUnitId}
-            onChange={setProductUnitId}
-            onCreate={handleCreateUnit}
-            createLabel={t('catalogueSetup.units.name')}
-            newItemLabel={t('catalog.newShort')}
-            disabled={savingProduct}
-            testId="edit-product-unit"
-          />
-
-          <div className="sk-field">
-            <span className="sk-field__label">{t('products.active')}</span>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', minHeight: 'var(--sk-touch)', cursor: 'pointer', fontWeight: 600 }}>
-              <input
-                type="checkbox"
-                checked={productActive}
-                onChange={(e) => setProductActive(e.target.checked)}
-                disabled={savingProduct}
-              />
-              <span>{productActive ? t('catalog.active') : t('catalog.inactive')}</span>
-            </label>
-          </div>
-        </div>
-      </form>
-
-      {/* Variants Summary Table */}
-      <div className="sk-card" style={{ marginBlockStart: '1.25rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBlockEnd: '1rem' }}>
-          <h3 style={{ margin: 0 }}>{t('variants.title')}</h3>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              setAddVariantDraft({ ...EMPTY_VARIANT });
-              setIsAddingVariantModal(true);
-            }}
-          >
-            + {t('variants.add')}
-          </Button>
-        </div>
-
-        {catalog.detail.variants.length === 0 ? (
-          <Banner tone="info">{t('variants.empty')}</Banner>
-        ) : (
-          <div className="sk-table-wrap">
-            <table className="sk-table" data-testid="variants-table">
-              <thead>
-                <tr>
-                  <th>{t('variants.identifier')}</th>
-                  <th>{t('variants.name')}</th>
-                  <th>{t('attrs.title')}</th>
-                  <th className="sk-num">{t('variants.price')}</th>
-                  <th>{t('variants.active')}</th>
-                  <th style={{ textAlign: 'end' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {catalog.detail.variants.map((v) => {
-                  const attrStr =
-                    v.attributes.map((a) => `${a.attribute_name}: ${a.value}`).join(', ') || '—';
-                  const isSelected = selectedVariantId === v.variant_id;
-                  return (
-                    <tr
-                      key={v.variant_id}
-                      style={{
-                        background: isSelected ? 'var(--sk-surface-hover)' : undefined,
-                      }}
-                      data-testid={`variant-row-${v.variant_id}`}
-                    >
-                      <td>
-                        <code>{v.operational_identifier}</code>
-                      </td>
-                      <td>
-                        <strong>{v.effective_variant_name}</strong>
-                      </td>
-                      <td>{attrStr}</td>
-                      <td className="sk-num">{v.sale_price} DZD</td>
-                      <td>
-                        <span
-                          className={`sk-badge ${v.is_active ? 'sk-badge--ok' : 'sk-badge--secondary'}`}
-                        >
-                          {v.is_active ? t('catalog.active') : t('catalog.inactive')}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'end' }}>
-                        <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                          <Button
-                            variant="secondary"
-                            onClick={() => {
-                              setSelectedVariantId(v.variant_id);
-                              setIsEditingVariantModal(true);
-                            }}
-                            style={{ height: '32px', padding: '0 10px', fontSize: '0.8rem' }}
-                            data-testid={`edit-variant-${v.variant_id}`}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant={v.is_active ? 'secondary' : 'primary'}
-                            onClick={() => void handleToggleVariantActive(v)}
-                            style={{ height: '32px', padding: '0 10px', fontSize: '0.8rem' }}
-                            data-testid={`toggle-variant-${v.variant_id}`}
-                          >
-                            {v.is_active ? t('variants.deactivate') : t('variants.activate')}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* MODAL: Add Variant */}
-      {isAddingVariantModal ? (
-        <div className="sk-modal__backdrop" role="presentation" onClick={() => setIsAddingVariantModal(false)}>
-          <div
-            className="sk-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('variants.add')}
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 'min(100%, 600px)' }}
-          >
-            <h2 className="sk-modal__title">{t('variants.add')}</h2>
-            {addVariantError ? <Banner tone="error">{addVariantError}</Banner> : null}
-            <form onSubmit={handleAddVariant} className="sk-form">
-              <VariantForm
-                values={addVariantDraft}
-                onChange={setAddVariantDraft}
-                disabled={creating}
-                idPrefix="modal-add"
-              />
-              <div className="sk-modal__actions" style={{ marginBlockStart: '1rem' }}>
-                <Button variant="secondary" type="button" onClick={() => setIsAddingVariantModal(false)} disabled={creating}>
-                  {t('common.cancel')}
-                </Button>
-                <Button type="submit" loading={creating} disabled={!isVariantFormValid(addVariantDraft)}>
-                  {t('variants.add')}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
-
-      {/* MODAL: Edit Variant (selected variant details, attributes, barcodes) */}
-      {isEditingVariantModal && selectedVariant ? (
-        <div className="sk-modal__backdrop" role="presentation" onClick={() => setIsEditingVariantModal(false)}>
-          <div
-            className="sk-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Edit ${selectedVariant.effective_variant_name}`}
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 'min(100%, 650px)' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBlockEnd: '1rem' }}>
-              <h2 className="sk-modal__title" style={{ margin: 0 }}>
-                {selectedVariant.effective_variant_name}
-              </h2>
-              <span className="sk-badge sk-badge--secondary">
-                {selectedVariant.operational_identifier} ({selectedVariant.identifier_type})
-              </span>
-            </div>
-
-            {editVariantError ? <Banner tone="error">{editVariantError}</Banner> : null}
-            {editVariantOk ? <Banner tone="success">{t('variants.saved')}</Banner> : null}
-
-            <form onSubmit={handleSaveVariant} className="sk-form">
-              {/* WS-D-5B: minimum stock is now populated from
-                  get_product_detail and written through the 6-arg
-                  update_variant overload, so the field is offered here. */}
-              <VariantForm
-                values={editVariantForm}
-                onChange={setEditVariantForm}
-                disabled={savingVariant}
-                idPrefix={`modal-edit-${selectedVariant.variant_id}`}
-              />
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBlockStart: '0.75rem' }}>
-                <Button type="submit" loading={savingVariant} disabled={!isVariantFormValid(editVariantForm)}>
-                  {t('catalog.save')}
-                </Button>
-              </div>
-            </form>
-
-            <hr style={{ border: 0, borderTop: '1px solid var(--sk-border)', marginBlock: '1.25rem' }} />
-
-            {/* Attributes Assignment */}
-            <div style={{ marginBlockEnd: '1.25rem' }}>
-              <AttributeManagerForVariant
-                attributes={catalog.attributes}
-                refLoading={catalog.refLoading}
-                variant={selectedVariant}
-                onSetAttributes={handleSetAttributes}
-                onCreateAttribute={catalog.createAttribute}
-                onAddValue={catalog.addAttributeValue}
-              />
-            </div>
-
-            <hr style={{ border: 0, borderTop: '1px solid var(--sk-border)', marginBlock: '1.25rem' }} />
-
-            {/* Barcode Manager */}
-            <div>
-              <BarcodeManager
-                barcodes={selectedVariant.barcodes}
-                onAdd={handleAddBarcode}
-                onRemove={handleRemoveBarcode}
-              />
-            </div>
-
-            <div className="sk-modal__actions" style={{ marginBlockStart: '1.5rem' }}>
-              <Button variant="secondary" onClick={() => setIsEditingVariantModal(false)}>
-                {t('common.close')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 /**
@@ -881,8 +399,12 @@ export function mergeAssignedValues(
   return merged;
 }
 
-/** Attribute manager helper wired to a specific variant's selections */
-function AttributeManagerForVariant({
+/**
+ * Attribute manager helper wired to a specific variant's selections.
+ * WS-D-8a: exported so VariantRow can render it inline inside the expanded
+ * variant row. Its mergeAssignedValues wiring is unchanged.
+ */
+export function AttributeManagerForVariant({
   attributes,
   refLoading,
   variant,

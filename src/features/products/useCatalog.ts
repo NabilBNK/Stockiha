@@ -76,6 +76,24 @@ export function useCatalog(token: string) {
     }
   }, [token, errorText]);
 
+  /**
+   * WS-D-8a — reload the detail WITHOUT blanking it first.
+   *
+   * `loadDetail` clears `detail` and raises `detailLoading`, which is right for
+   * an initial open but wrong after a field-level autosave commit: the panel
+   * would collapse to a spinner on every blur. This refetches in place so
+   * server-derived values (effective variant name, operational identifier,
+   * attribute assignments) stay current without the panel flashing.
+   */
+  const refreshDetail = useCallback(async (productId: number) => {
+    if (!token) return;
+    try {
+      setDetail(await ipc.getProductDetail(token, productId));
+    } catch (err) {
+      setDetailError(errorText(err));
+    }
+  }, [token, errorText]);
+
   const createProductWithVariants = useCallback(async (
     name: string, unitId: number, isActive: boolean, variants: VariantInput[],
   ) => {
@@ -186,7 +204,7 @@ export function useCatalog(token: string) {
     attributes, units, categories, refLoading,
     detail, detailLoading, detailError,
     // loaders
-    loadProducts, loadRefData, loadDetail,
+    loadProducts, loadRefData, loadDetail, refreshDetail,
     // mutations
     createProductWithVariants, updateProduct,
     addVariant, updateVariant, setVariantActive,
@@ -197,3 +215,6 @@ export function useCatalog(token: string) {
     quickCreateProduct, updateProductV2, updateVariantV2,
   };
 }
+
+/** WS-D-8a — the catalog controller, shared by the products workspace. */
+export type CatalogController = ReturnType<typeof useCatalog>;

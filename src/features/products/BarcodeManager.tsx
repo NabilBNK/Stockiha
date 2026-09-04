@@ -1,9 +1,14 @@
 /**
  * Slice 2 — add/remove barcodes for a variant.
+ *
+ * WS-D-8a RULING 3: removing a barcode is destructive and there is no undo, so
+ * it is confirmed explicitly. Adding stays a single deliberate submit — a
+ * barcode is uniqueness-constrained, so it must never be written from a
+ * keystroke or a partially typed value.
  */
 import { useState, type FormEvent } from 'react';
 
-import { Banner, Button, TextField } from '../../shared/components';
+import { Banner, Button, ConfirmDialog, TextField } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import type { VariantBarcode } from '../../shared/ipc/dto';
@@ -24,6 +29,8 @@ export function BarcodeManager({ barcodes, onAdd, onRemove, busy }: Props) {
   const [addOk, setAddOk] = useState(false);
   const [adding, setAdding] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
@@ -45,10 +52,12 @@ export function BarcodeManager({ barcodes, onAdd, onRemove, busy }: Props) {
   async function handleRemove(barcodeId: number) {
     if (removingId != null) return;
     setRemovingId(barcodeId);
+    setRemoveError(null);
     try {
       await onRemove(barcodeId);
-    } catch {
-      // parent will reload detail on next user action
+      setConfirmRemoveId(null);
+    } catch (err) {
+      setRemoveError(errorText(err));
     } finally {
       setRemovingId(null);
     }
@@ -57,6 +66,8 @@ export function BarcodeManager({ barcodes, onAdd, onRemove, busy }: Props) {
   return (
     <div>
       <h3>{t('barcodes.title')}</h3>
+
+      {removeError ? <Banner tone="error" testId="barcode-remove-error">{removeError}</Banner> : null}
 
       {barcodes.length === 0 ? (
         <Banner tone="info">{t('barcodes.empty')}</Banner>
@@ -75,9 +86,10 @@ export function BarcodeManager({ barcodes, onAdd, onRemove, busy }: Props) {
                 <td>
                   <Button
                     variant="danger"
-                    onClick={() => void handleRemove(b.id)}
+                    onClick={() => setConfirmRemoveId(b.id)}
                     loading={removingId === b.id}
                     disabled={removingId != null || busy}
+                    data-testid={`remove-barcode-${b.id}`}
                   >
                     {t('barcodes.remove')}
                   </Button>
@@ -106,6 +118,21 @@ export function BarcodeManager({ barcodes, onAdd, onRemove, busy }: Props) {
           {t('barcodes.add')}
         </Button>
       </form>
+
+      {confirmRemoveId != null ? (
+        <ConfirmDialog
+          title={t('barcodes.confirmRemoveTitle')}
+          body={t('barcodes.confirmRemoveBody', {
+            barcode: barcodes.find((b) => b.id === confirmRemoveId)?.barcode ?? '',
+          })}
+          confirmLabel={t('barcodes.remove')}
+          cancelLabel={t('common.cancel')}
+          confirmVariant="danger"
+          busy={removingId != null}
+          onConfirm={() => void handleRemove(confirmRemoveId)}
+          onCancel={() => setConfirmRemoveId(null)}
+        />
+      ) : null}
     </div>
   );
 }

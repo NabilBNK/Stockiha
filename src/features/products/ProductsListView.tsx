@@ -3,6 +3,14 @@
  * built on catalog.list_products_v2. Presentational half; state and
  * fetching live in useProductsList.ts. Loading/error/empty-state pattern
  * follows src/features/inventory/InventoryScreen.tsx.
+ *
+ * WS-D-8a — this is now the MASTER pane of the products workspace. All D-4
+ * behaviour is retained verbatim: server-side pagination, server-side search
+ * and category/inactive filters, offset reset to 0 on every filter change,
+ * low-stock and out-of-stock badges, and the identifier column with its
+ * BARCODE/SKU type. What changed is only that a row SELECTS a product into
+ * the detail panel instead of navigating away — the page header moved up to
+ * ProductsWorkspace, so this component no longer owns it.
  */
 import type { FormEvent } from 'react';
 
@@ -13,11 +21,11 @@ import { formatExactDecimal, isLowStock, isExactDecimalZero } from '../inventory
 import { useProductsList } from './useProductsList';
 
 export function ProductsListView({
-  token, onEdit, onCreateNew,
+  token, selectedProductId, onSelect,
 }: {
   token: string;
-  onEdit: (productId: number) => void;
-  onCreateNew: () => void;
+  selectedProductId: number | null;
+  onSelect: (productId: number) => void;
 }) {
   const { t } = useI18n();
   const list = useProductsList(token);
@@ -41,17 +49,7 @@ export function ProductsListView({
   const hasNextPage = pageIndex * pageSize + rows.length < totalCount;
 
   return (
-    <section className="sk-page" data-testid="products-list-view">
-      <div className="sk-page-header">
-        <div>
-          <h1>{t('catalog.title')}</h1>
-          <p className="sk-muted">{t('productsList.subtitle')}</p>
-        </div>
-        <Button onClick={onCreateNew} data-testid="new-product-btn">
-          {t('catalog.new')}
-        </Button>
-      </div>
-
+    <div className="sk-products-master" data-testid="products-list-view">
       <form className="sk-card sk-form" onSubmit={handleSubmit} aria-label={t('productsList.filters')}>
         <div className="sk-form__grid">
           <div className="sk-field">
@@ -82,6 +80,7 @@ export function ProductsListView({
             </label>
             <select
               id="products-category-filter"
+              data-testid="products-category-filter"
               className="sk-field__input"
               value={categoryId ?? ''}
               onChange={(e) => changeCategory(e.target.value ? Number(e.target.value) : null)}
@@ -134,7 +133,7 @@ export function ProductsListView({
                   <th className="sk-num">{t('productsList.min')}</th>
                   <th className="sk-num">{t('productsList.price')}</th>
                   <th>{t('productsList.status')}</th>
-                  <th></th>
+                  <th scope="col">{t('productsList.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -143,7 +142,13 @@ export function ProductsListView({
                   const low = isLowStock(row.quantity_on_hand, row.minimum_stock);
                   const outOfStock = isExactDecimalZero(row.quantity_on_hand);
                   return (
-                    <tr key={row.variant_id} data-testid={`product-row-${row.variant_id}`}>
+                    <tr
+                      key={row.variant_id}
+                      data-testid={`product-row-${row.variant_id}`}
+                      className={row.product_id === selectedProductId ? 'sk-table__row--selected' : undefined}
+                      aria-current={row.product_id === selectedProductId ? true : undefined}
+                      onClick={() => onSelect(row.product_id)}
+                    >
                       <td>
                         <span
                           className={`sk-badge ${row.identifier_type === 'BARCODE' ? 'sk-badge--ok' : 'sk-badge--muted'}`}
@@ -175,10 +180,10 @@ export function ProductsListView({
                       <td>
                         <Button
                           variant="secondary"
-                          onClick={() => onEdit(row.product_id)}
+                          onClick={() => onSelect(row.product_id)}
                           data-testid={`edit-product-${row.product_id}`}
                         >
-                          {t('catalog.edit')}
+                          {t('catalog.open')}
                         </Button>
                       </td>
                     </tr>
@@ -213,6 +218,6 @@ export function ProductsListView({
           </div>
         </>
       )}
-    </section>
+    </div>
   );
 }

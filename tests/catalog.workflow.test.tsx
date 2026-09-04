@@ -309,7 +309,7 @@ describe('backend validation error display', () => {
   });
 });
 
-describe('edit product on the v2 write layer (WS-D-5B)', () => {
+describe('edit product on the v2 write layer, field-level autosave (WS-D-5B / WS-D-8a)', () => {
   /**
    * A product with a category and a variant with a non-zero minimum stock.
    * Both v2 writers overwrite those columns unconditionally, so this fixture
@@ -357,54 +357,116 @@ describe('edit product on the v2 write layer (WS-D-5B)', () => {
     ...extra,
   });
 
-  it('preserves category and minimum stock verbatim when nothing is edited', async () => {
-    let productCall: Record<string, unknown> | null = null;
-    let variantCall: Record<string, unknown> | null = null;
+  /** Opens the product in the detail panel and expands its only variant. */
+  async function openVariantPanel() {
+    fireEvent.click(await screen.findByTestId('edit-product-1'));
+    await screen.findByTestId('variant-row-10');
+    fireEvent.click(screen.getByTestId('edit-variant-10'));
+    return screen.findByTestId('variant-10-price');
+  }
+
+  // THE OVERWRITE TRAP. update_variant assigns every one of its columns
+  // unconditionally, so a commit that carries only the edited field would
+  // reset minimum_stock to 0 and blank the name override. A field-level
+  // commit must send the CURRENT server value of every other column.
+  it('commits a price edit exactly once, verbatim, carrying the other update_variant columns', async () => {
+    const variantCalls: Record<string, unknown>[] = [];
     wireInvoke(editHandlers({
-      update_product_v2: (args) => { productCall = args; return null; },
-      update_variant_v2: (args) => { variantCall = args; return null; },
+      update_variant_v2: (args) => { variantCalls.push(args); return null; },
     }));
     render(<App />);
     await loginAndNavigate();
 
-    fireEvent.click(await screen.findByTestId('edit-product-1'));
-    await screen.findByTestId('variant-row-10');
-
-    // The category picker must show the product's CURRENT category.
-    const categorySelect = await screen.findByTestId('edit-product-category');
-    await waitFor(() => expect((categorySelect as HTMLSelectElement).value).toBe('7'));
-
-    // Save the product without touching anything.
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]);
-    await waitFor(() => expect(productCall).not.toBeNull());
-    expect(productCall!.productId).toBe(1);
-    expect(productCall!.categoryId).toBe(7);
-
-    // Open the variant and save it without touching anything.
-    fireEvent.click(screen.getByTestId('edit-variant-10'));
-    const minStock = await screen.findByLabelText('Minimum stock');
+    const price = await openVariantPanel();
     // Seeded verbatim from get_product_detail, as an exact decimal string.
-    expect((minStock as HTMLInputElement).value).toBe('5.500');
+    expect((price as HTMLInputElement).value).toBe('1250.50');
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
-    await waitFor(() => expect(variantCall).not.toBeNull());
-    expect(variantCall!.variantId).toBe(10);
-    expect(variantCall!.minimumStock).toBe('5.500');
-    expect(typeof variantCall!.minimumStock).toBe('string');
-    expect(variantCall!.salePrice).toBe('1250.50');
+    fireEvent.change(price, { target: { value: '2500.00' } });
+    fireEvent.blur(price);
+
+    await waitFor(() => expect(variantCalls).toHaveLength(1));
+    const call = variantCalls[0];
+    expect(call.variantId).toBe(10);
+    // The exact string typed — never parsed, never rounded.
+    expect(call.salePrice).toBe('2500.00');
+    expect(typeof call.salePrice).toBe('string');
+    // The columns the user did not touch, at their current server values.
+    expect(call.minimumStock).toBe('5.500');
+    expect(call.nameOverride).toBeNull();
+    expect(call.isActive).toBe(true);
   });
 
-  it('sends the new categoryId when changed, and null when cleared', async () => {
-    let productCall: Record<string, unknown> | null = null;
+  // RULING 2, the rationale that must not be optimised away: typing from
+  // 2000.00 to 2500.00 passes through "2". A keystroke save would write 2 DZD
+  // to a live product.
+  it('commits nothing at all while the user is still typing', async () => {
+    wireInvoke(editHandlers({
+      update_variant_v2: () => null,
+      update_product_v2: () => null,
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    const price = await openVariantPanel();
+    invokeMock.mockClear();
+
+    fireEvent.change(price, { target: { value: '2' } });
+    fireEvent.change(price, { target: { value: '25' } });
+    fireEvent.change(price, { target: { value: '2500.00' } });
+
+    // Also type into a product-level field without leaving it.
+    fireEvent.change(screen.getByTestId('detail-product-name'), { target: { value: 'Pillo' } });
+
+    await waitFor(() => expect((price as HTMLInputElement).value).toBe('2500.00'));
+    // Not one IPC call of any kind. No debounce timer exists to flush.
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  // The single most important rule in this task: the UI must never show a
+  // value the database does not hold.
+  it('reverts a field to its last known-good server value when the commit fails', async () => {
+    wireInvoke(editHandlers({
+      update_variant_v2: () => { throw { code: 'VALIDATION_ERROR' }; },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    const price = await openVariantPanel();
+    fireEvent.change(price, { target: { value: '9999.00' } });
+    fireEvent.blur(price);
+
+    const error = await screen.findByTestId('variant-10-price-error');
+    expect(error.textContent).toBe('Some of the entered values are invalid.');
+    // Reverted, not left showing 9999.00.
+    await waitFor(() => expect((price as HTMLInputElement).value).toBe('1250.50'));
+  });
+
+  it('never sends an invalid value, and keeps it on screen for correction', async () => {
+    const variantCalls: Record<string, unknown>[] = [];
+    wireInvoke(editHandlers({
+      update_variant_v2: (args) => { variantCalls.push(args); return null; },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    const price = await openVariantPanel();
+    fireEvent.change(price, { target: { value: 'abc' } });
+    fireEvent.blur(price);
+
+    expect(await screen.findByTestId('variant-10-price-error')).toBeInTheDocument();
+    expect(variantCalls).toHaveLength(0);
+    expect((price as HTMLInputElement).value).toBe('abc');
+  });
+
+  it('sends the new categoryId when changed, and null when cleared, carrying the other update_product columns', async () => {
+    const productCalls: Record<string, unknown>[] = [];
     // Stateful fixture: the save is reflected back by get_product_detail, the
-    // way the real backend does. ProductEditor reloads the detail after every
-    // save and re-seeds the form from it, so a static fixture would rewind the
-    // picker to its original value between the two saves below.
+    // way the real backend does.
     const detail = editableDetail();
     wireInvoke(editHandlers({
       get_product_detail: () => detail,
       update_product_v2: (args) => {
-        productCall = args;
+        productCalls.push(args);
         detail.category_id = args.categoryId as number | null;
         return null;
       },
@@ -415,44 +477,95 @@ describe('edit product on the v2 write layer (WS-D-5B)', () => {
     fireEvent.click(await screen.findByTestId('edit-product-1'));
     await screen.findByTestId('variant-row-10');
 
-    const categorySelect = await screen.findByTestId('edit-product-category');
+    // The category picker must show the product's CURRENT category.
+    const categorySelect = await screen.findByTestId('detail-product-category');
     await waitFor(() => expect((categorySelect as HTMLSelectElement).value).toBe('7'));
 
-    // Change it.
+    // A select finishes on change, so change IS the commit.
     fireEvent.change(categorySelect, { target: { value: '9' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]);
-    await waitFor(() => expect(productCall).not.toBeNull());
-    expect(productCall!.categoryId).toBe(9);
-    // The reload must settle on the saved value before the next interaction.
+    await waitFor(() => expect(productCalls).toHaveLength(1));
+    expect(productCalls[0].categoryId).toBe(9);
+    expect(productCalls[0].name).toBe('Pillow');
+    expect(productCalls[0].unitId).toBe(1);
+    expect(productCalls[0].isActive).toBe(true);
     await waitFor(() => expect((categorySelect as HTMLSelectElement).value).toBe('9'));
 
     // Clear it — an explicit null, not a dropped field.
-    productCall = null;
     fireEvent.change(categorySelect, { target: { value: '' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]);
-    await waitFor(() => expect(productCall).not.toBeNull());
-    expect(productCall!.categoryId).toBeNull();
+    await waitFor(() => expect(productCalls).toHaveLength(2));
+    expect(productCalls[1].categoryId).toBeNull();
   });
 
-  it('sends an edited minimum stock of "0" as "0"', async () => {
-    let variantCall: Record<string, unknown> | null = null;
+  it('carries the current category when only the product name is edited', async () => {
+    const productCalls: Record<string, unknown>[] = [];
     wireInvoke(editHandlers({
-      update_variant_v2: (args) => { variantCall = args; return null; },
+      update_product_v2: (args) => { productCalls.push(args); return null; },
     }));
     render(<App />);
     await loginAndNavigate();
 
     fireEvent.click(await screen.findByTestId('edit-product-1'));
     await screen.findByTestId('variant-row-10');
-    fireEvent.click(screen.getByTestId('edit-variant-10'));
 
-    const minStock = await screen.findByLabelText('Minimum stock');
+    const name = screen.getByTestId('detail-product-name');
+    fireEvent.change(name, { target: { value: 'Pillow XL' } });
+    fireEvent.blur(name);
+
+    await waitFor(() => expect(productCalls).toHaveLength(1));
+    expect(productCalls[0].name).toBe('Pillow XL');
+    // Not cleared, even though the user never touched it.
+    expect(productCalls[0].categoryId).toBe(7);
+  });
+
+  it('sends an edited minimum stock of "0" as "0"', async () => {
+    const variantCalls: Record<string, unknown>[] = [];
+    wireInvoke(editHandlers({
+      update_variant_v2: (args) => { variantCalls.push(args); return null; },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    await openVariantPanel();
+    const minStock = screen.getByTestId('variant-10-minimum-stock');
+    expect((minStock as HTMLInputElement).value).toBe('5.500');
+
     fireEvent.change(minStock, { target: { value: '0' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
+    fireEvent.blur(minStock);
 
-    await waitFor(() => expect(variantCall).not.toBeNull());
+    await waitFor(() => expect(variantCalls).toHaveLength(1));
     // "0" disables the low-stock warning; it must survive as "0".
-    expect(variantCall!.minimumStock).toBe('0');
+    expect(variantCalls[0].minimumStock).toBe('0');
+    expect(variantCalls[0].salePrice).toBe('1250.50');
+  });
+
+  // Without a save button, swapping the selected product under an uncommitted
+  // edit would either lose it or write it behind the user's back.
+  it('neither loses nor silently writes a dirty field when another product is selected', async () => {
+    const variantCalls: Record<string, unknown>[] = [];
+    wireInvoke(editHandlers({
+      list_products_v2: () => [
+        productListRow({ product_id: 1, variant_id: 10, product_name: 'Pillow', total_count: 2 }),
+        productListRow({ product_id: 2, variant_id: 20, product_name: 'Cushion', sku: 'CUS-1', display_identifier: 'CUS-1', total_count: 2 }),
+      ],
+      update_variant_v2: (args) => { variantCalls.push(args); return null; },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    const price = await openVariantPanel();
+    fireEvent.change(price, { target: { value: '4000.00' } });
+
+    fireEvent.click(screen.getByTestId('edit-product-2'));
+
+    // Told about it, rather than silently discarded...
+    const dialog = await screen.findByRole('dialog', { name: 'Unsaved changes' });
+    // ...and nothing was written.
+    expect(variantCalls).toHaveLength(0);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Stay on this product' }));
+    // The edit is still there, still uncommitted.
+    await waitFor(() => expect((screen.getByTestId('variant-10-price') as HTMLInputElement).value).toBe('4000.00'));
+    expect(variantCalls).toHaveLength(0);
   });
 });
 
@@ -583,10 +696,12 @@ describe('variant attribute configuration', () => {
 });
 
 describe('add SKU and barcode', () => {
-  it('keeps the add-variant draft separate from the selected variant editor', async () => {
+  // RULING 4: adding a variant is an inline panel inside the detail pane, not
+  // a modal, and certainly not a modal inside a modal.
+  it('adds a variant from an inline panel, with no dialog anywhere', async () => {
     let addCall: Record<string, unknown> | null = null;
     const detail = {
-      product_id: 1, name: 'Widget', is_active: true, unit_id: 1,
+      product_id: 1, name: 'Widget', is_active: true, unit_id: 1, category_id: null,
       variants: [{
         variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', minimum_stock: '0', is_active: true,
         effective_variant_name: 'Widget', name_override: null, primary_barcode: null,
@@ -599,6 +714,7 @@ describe('add SKU and barcode', () => {
       get_product_detail: () => detail,
       list_attributes: () => [],
       list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
+      update_variant_v2: () => null,
       add_variant: (args) => {
         addCall = args;
         detail.variants.push({
@@ -616,14 +732,13 @@ describe('add SKU and barcode', () => {
     fireEvent.click(await screen.findByTestId('edit-product-1'));
     await screen.findByTestId('variant-row-10');
 
-    // Click + Add variant button to open Add Variant Modal
-    fireEvent.click(screen.getByRole('button', { name: '+ Add variant' }));
-    const addModal = await screen.findByRole('dialog', { name: 'Add variant' });
+    fireEvent.click(screen.getByTestId('add-variant-toggle'));
+    const panel = await screen.findByRole('form', { name: 'Add variant' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    const priceInput = within(addModal).getByLabelText(/Sale price/i);
-    fireEvent.change(priceInput, { target: { value: '7.00' } });
+    fireEvent.change(within(panel).getByLabelText(/Sale price/i), { target: { value: '7.00' } });
+    fireEvent.click(screen.getByTestId('add-variant-submit'));
 
-    fireEvent.click(within(addModal).getByRole('button', { name: 'Add variant' }));
     await waitFor(() => expect(addCall).not.toBeNull());
     expect(addCall!.productId).toBe(1);
     expect(addCall!.variant).toMatchObject({ sale_price: '7.00' });
@@ -671,10 +786,12 @@ describe('add SKU and barcode', () => {
 });
 
 describe('deactivate a variant', () => {
-  it('calls setVariantActive with false when deactivate is clicked', async () => {
+  // RULING 3: destructive and structural actions stay explicit. A stray click
+  // is cheap to make and expensive to undo, and there is no undo.
+  it('requires confirmation and never autosaves', async () => {
     let toggleCall: Record<string, unknown> | null = null;
     const detail = {
-      product_id: 1, name: 'Widget', is_active: true, unit_id: 1,
+      product_id: 1, name: 'Widget', is_active: true, unit_id: 1, category_id: null,
       variants: [{
         variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', minimum_stock: '0', is_active: true,
         effective_variant_name: 'Widget', name_override: null, primary_barcode: null,
@@ -695,15 +812,102 @@ describe('deactivate a variant', () => {
     render(<App />);
     await loginAndNavigate();
 
-    const editBtn = await screen.findByTestId('edit-product-1');
-    fireEvent.click(editBtn);
+    fireEvent.click(await screen.findByTestId('edit-product-1'));
     await screen.findByTestId('variant-row-10');
 
     fireEvent.click(screen.getByTestId('toggle-variant-10'));
+    // Nothing written on the click alone.
+    expect(toggleCall).toBeNull();
+
+    const dialog = await screen.findByRole('dialog', { name: 'Deactivate this variant?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }));
 
     await waitFor(() => expect(toggleCall).not.toBeNull());
     expect(toggleCall!.variantId).toBe(10);
     expect(toggleCall!.isActive).toBe(false);
+  });
+
+  it('writes nothing when the confirmation is cancelled', async () => {
+    let toggleCall: Record<string, unknown> | null = null;
+    const detail = {
+      product_id: 1, name: 'Widget', is_active: true, unit_id: 1, category_id: null,
+      variants: [{
+        variant_id: 10, operational_identifier: 'WID-1', identifier_type: 'SKU', sale_price: '5.00', minimum_stock: '0', is_active: true,
+        effective_variant_name: 'Widget', name_override: null, primary_barcode: null,
+        base_unit_id: 1, base_unit_code: 'PC', attribute_signature: '',
+        attributes: [], alternate_units: [], barcodes: [],
+      }],
+    };
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [productListRow({ product_name: 'Widget', variant_name: 'Widget', sku: 'WID-1', display_identifier: 'WID-1' })],
+      get_product_detail: () => detail,
+      list_attributes: () => [],
+      list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
+      set_variant_active: (args) => { toggleCall = args; return null; },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    fireEvent.click(await screen.findByTestId('edit-product-1'));
+    await screen.findByTestId('variant-row-10');
+    fireEvent.click(screen.getByTestId('toggle-variant-10'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Deactivate this variant?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(toggleCall).toBeNull();
+  });
+});
+
+describe('products list behaviour retained through the D-8a rebuild (WS-D-4)', () => {
+  it('resets paging to offset 0 when a filter changes', async () => {
+    const listCalls: Record<string, unknown>[] = [];
+    wireInvoke(makeHandlers({
+      list_categories: () => [{ id: 7, name: 'Bedding', is_active: true, usage_count: 0 }],
+      list_products_v2: (args) => {
+        listCalls.push(args);
+        return [productListRow({ total_count: 120 })];
+      },
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    await screen.findByTestId('product-row-10');
+    await waitFor(() => expect(listCalls.length).toBeGreaterThan(0));
+    expect(listCalls[listCalls.length - 1].offset).toBe(0);
+
+    // Page forward...
+    fireEvent.click(screen.getByTestId('products-list-next'));
+    await waitFor(() => expect(listCalls[listCalls.length - 1].offset).toBe(50));
+
+    // ...then filter. Paging must return to the first page, or the user sees
+    // page 2 of a result set they have not seen page 1 of.
+    fireEvent.change(screen.getByTestId('products-category-filter'), { target: { value: '7' } });
+    await waitFor(() => {
+      const last = listCalls[listCalls.length - 1];
+      expect(last.categoryId).toBe(7);
+      expect(last.offset).toBe(0);
+    });
+  });
+
+  it('keeps the list visible while a product is open in the detail panel', async () => {
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [productListRow({ product_name: 'Pillow' })],
+      get_product_detail: () => ({
+        product_id: 1, name: 'Pillow', is_active: true, unit_id: 1, category_id: null,
+        variants: [],
+      }),
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    fireEvent.click(await screen.findByTestId('edit-product-1'));
+    await screen.findByTestId('product-detail-panel');
+
+    // RULING 1: master-detail, one screen. The list never goes away.
+    expect(screen.getByTestId('products-list-view')).toBeInTheDocument();
+    expect(screen.getByTestId('product-row-10')).toBeInTheDocument();
   });
 });
 

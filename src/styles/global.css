@@ -2256,3 +2256,164 @@ fieldset.sk-form {
 .sk-fieldset--disabled label {
   cursor: not-allowed;
 }
+
+
+/* ------------------------------------------------------------------
+   WS-D-8a — products master-detail workspace.
+
+   DESIGN.md v2 layout system only (WS-D scope ruling): layout regions,
+   grid patterns, 48px table rows, forms capped at 1380px, 44px touch
+   minimum, the spacing and radius scales, border-first elevation.
+   No colour changes - the palette swap is WS-J.
+   All directional properties are logical, so RTL keeps working unchanged.
+   ------------------------------------------------------------------ */
+
+.sk-workspace {
+  width: 100%;
+}
+
+.sk-workspace__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sk-gap);
+  align-items: start;
+}
+
+/* DESIGN.md section 6.1: 1440px is where the side region stops fitting.
+   Below it the workspace collapses to one pane plus a back control. */
+@media (min-width: 1440px) {
+  .sk-workspace__grid--split {
+    grid-template-columns: minmax(0, 1.1fr) minmax(560px, 0.9fr);
+  }
+}
+
+.sk-workspace__master,
+.sk-workspace__detail {
+  min-width: 0;
+}
+
+/* Tables run full width; forms inside the detail panel are capped, so a
+   single input never stretches across a 1920px viewport. */
+.sk-detail-panel {
+  max-width: 1380px;
+}
+
+.sk-detail-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-block-end: var(--sk-gap);
+}
+
+.sk-detail-panel__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.sk-detail-panel__hint {
+  margin: 4px 0 0;
+  font-size: .85rem;
+}
+
+.sk-detail-panel__section-title {
+  margin: 0 0 12px;
+  font-size: .92rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--sk-muted);
+}
+
+.sk-detail-panel__status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--sk-touch);
+}
+
+.sk-detail-panel__variants-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block-end: 12px;
+}
+
+/* Selected master row. Never colour alone: aria-selected carries the state
+   for assistive technology, and the inline-start marker is directional. */
+.sk-table__row--selected > td {
+  background: var(--sk-primary-soft);
+}
+
+.sk-table__row--selected > td:first-child {
+  box-shadow: inset 3px 0 0 0 var(--sk-primary);
+}
+
+[dir="rtl"] .sk-table__row--selected > td:first-child {
+  box-shadow: inset -3px 0 0 0 var(--sk-primary);
+}
+
+.sk-products-master .sk-table tbody tr {
+  cursor: pointer;
+}
+
+.sk-variant-row > td {
+  min-height: 48px;
+}
+
+.sk-variant-row--expanded > td {
+  background: var(--sk-surface-hover);
+}
+
+.sk-variant-row__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sk-variant-row__panel-row > td {
+  padding: 0;
+  background: var(--sk-surface-soft);
+}
+
+.sk-variant-panel {
+  padding: 18px;
+  border-block-start: 1px solid var(--sk-border);
+}
+
+.sk-variant-panel__fields {
+  margin-block-end: 18px;
+}
+
+.sk-variant-panel__section {
+  padding-block-start: 18px;
+  border-block-start: 1px solid var(--sk-border);
+}
+
+.sk-field__hint {
+  margin: 4px 0 0;
+  font-size: .78rem;
+  color: var(--sk-muted);
+}
+
+/* Quiet per-field autosave indicator. Never a banner, never focus-stealing. */
+.sk-autosave {
+  margin: 4px 0 0;
+  font-size: .78rem;
+  line-height: 1.3;
+  min-height: 1.1em;
+}
+
+.sk-autosave--saving,
+.sk-autosave--dirty {
+  color: var(--sk-muted);
+}
+
+.sk-autosave--saved {
+  color: var(--sk-ok);
+}
+
+.sk-autosave--error {
+  color: var(--sk-danger);
+  font-weight: 600;
+}

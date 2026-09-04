@@ -1,60 +1,49 @@
 /**
- * Slice 2 — product management: catalog list + create/edit workflow.
- * WS-D-4: the list view is now ProductsListView (variant-level, built on
- * list_products_v2); create/edit still goes through ProductEditor exactly
- * as before.
+ * Slice 2 — product management.
+ *
+ * WS-D-8a: the list and the edit flow are no longer two screens. They are one
+ * master-detail workspace (ProductsWorkspace) with no navigation between
+ * them, so selecting a product never costs the list its scroll position,
+ * filters or page. Only creation is still a separate view, because it is a
+ * different task with a different shape — it is rebuilt under WS-D-8b.
  */
 import { useState } from 'react';
 
 import { useSession } from '../../shared/session/SessionContext';
 import { ProductEditor } from './ProductEditor';
-import { ProductsListView } from './ProductsListView';
-
-type View = 'list' | 'create' | 'edit';
+import { ProductsWorkspace } from './ProductsWorkspace';
 
 export function ProductsScreen() {
   const { user } = useSession();
   const token = user?.token ?? '';
 
-  const [view, setView] = useState<View>('list');
-  const [editProductId, setEditProductId] = useState<number | null>(null);
+  const [creating, setCreating] = useState(false);
+  // A freshly created product opens straight in the detail panel; making the
+  // operator hunt for it in the list would be exactly the extra step this
+  // rebuild exists to remove.
+  const [openProductId, setOpenProductId] = useState<number | null>(null);
+  const [workspaceKey, setWorkspaceKey] = useState(0);
 
-  function goEdit(productId: number) {
-    setEditProductId(productId);
-    setView('edit');
-  }
-
-  function goList() {
-    setView('list');
-    setEditProductId(null);
-  }
-
-  if (view === 'create') {
+  if (creating) {
     return (
       <ProductEditor
         token={token}
-        onCreated={() => goList()}
-        onBack={() => setView('list')}
+        onCreated={(productId) => {
+          setOpenProductId(productId);
+          setWorkspaceKey((k) => k + 1);
+          setCreating(false);
+        }}
+        onBack={() => setCreating(false)}
       />
     );
   }
 
-  if (view === 'edit' && editProductId != null) {
-    return (
-      <ProductEditor
-        token={token}
-        productId={editProductId}
-        onBack={goList}
-      />
-    );
-  }
-
-  // List view
   return (
-    <ProductsListView
+    <ProductsWorkspace
+      key={workspaceKey}
       token={token}
-      onEdit={goEdit}
-      onCreateNew={() => setView('create')}
+      initialProductId={openProductId}
+      onCreateNew={() => setCreating(true)}
     />
   );
 }
