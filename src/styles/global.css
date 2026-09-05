@@ -2417,3 +2417,142 @@ fieldset.sk-form {
   color: var(--sk-danger);
   font-weight: 600;
 }
+
+/* ------------------------------------------------------------------
+   WS-D-10 — attribute picker chips (AttributeManager.tsx).
+
+   Scoped entirely to this component's own `.sk-attr*` classes. No :root
+   rule, no [data-theme] rule: every colour is read from the existing
+   tokens, so the picker inherits whatever palette its host defines —
+   the normal one on the products screen, the page-scoped warm one
+   inside `.sk-catalog2`. Nothing here changes another screen's tokens.
+
+   All directional properties are logical, so RTL keeps mirroring.
+   ------------------------------------------------------------------ */
+
+.sk-attr__title {
+  margin: 0 0 12px;
+  font-size: .92rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--sk-muted);
+}
+
+.sk-attr__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sk-attr__row {
+  padding: 12px;
+  background: var(--sk-surface-soft);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+}
+
+.sk-attr__name {
+  margin-block-end: 8px;
+  font-weight: 700;
+}
+
+.sk-attr__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The chip IS the label. The radio inside it stays in the accessibility
+   tree — clipped, never display:none — so role and checked state survive. */
+.sk-attr__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--sk-touch);
+  padding: 0 16px;
+  border: 1px solid var(--sk-border-strong);
+  border-radius: 999px;
+  background: var(--sk-surface);
+  color: var(--sk-text);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sk-attr__chip:hover {
+  border-color: var(--sk-primary);
+  background: var(--sk-primary-soft);
+}
+
+.sk-attr__chip--selected {
+  background: var(--sk-primary);
+  border-color: var(--sk-primary);
+  color: #ffffff;
+}
+
+.sk-attr__chip--selected:hover {
+  background: var(--sk-primary-hover);
+  border-color: var(--sk-primary-hover);
+}
+
+.sk-attr__chip--retired {
+  border-style: dashed;
+}
+
+.sk-attr__chip-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sk-attr__chip:focus-within {
+  outline: 3px solid rgba(36, 87, 214, .25);
+  outline-offset: 1px;
+}
+
+.sk-attr__retired {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--sk-warn-soft);
+  color: var(--sk-warn);
+  font-size: .72rem;
+  font-weight: 750;
+}
+
+.sk-attr__chip--selected .sk-attr__retired {
+  background: rgba(255, 255, 255, .22);
+  color: #ffffff;
+}
+
+.sk-attr__add-value {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-block-start: 12px;
+}
+
+.sk-attr__add-value>.sk-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sk-attr__create {
+  margin-block-start: 18px;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--sk-border);
+}
+
+.sk-attr__create-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.sk-attr__create-row>.sk-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}

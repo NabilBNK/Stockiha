@@ -185,10 +185,43 @@
   vertical-align: middle;
 }
 
+/* ------------------------------------------------------------------
+   WS-D-10 — numeric alignment (RULING 2). Right-aligned, tabular
+   numerals, fixed column widths, and a badge that cannot displace the
+   digits: the value and the badge get separate slots, so the digits keep
+   the same right edge down the whole column whether a badge is there or
+   not. `text-align: end` is logical, so RTL mirrors.
+   ------------------------------------------------------------------ */
+
 .sk-catalog2__num {
   text-align: end;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+}
+
+.sk-catalog2__col-identifier { width: 22ch; }
+.sk-catalog2__col-category { width: 16ch; }
+.sk-catalog2__col-stock { width: 22ch; }
+.sk-catalog2__col-min { width: 12ch; }
+.sk-catalog2__col-price { width: 16ch; }
+.sk-catalog2__col-actions { width: 1%; }
+
+.sk-catalog2__stock {
+  display: grid;
+  /* The badge slot is reserved whether or not it is filled. */
+  grid-template-columns: minmax(0, 1fr) 10ch;
+  align-items: center;
+  gap: 8px;
+}
+
+.sk-catalog2__stock-value {
+  text-align: end;
+}
+
+.sk-catalog2__stock-badge {
+  display: flex;
+  justify-content: flex-start;
+  min-width: 0;
 }
 
 .sk-catalog2__product-row > td {
@@ -218,6 +251,8 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex: 0 1 auto;
   min-height: var(--sk-touch);
   padding: 0;
   font: inherit;
@@ -421,9 +456,9 @@
 }
 
 .sk-catalog2__panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 12px;
   margin-block-end: var(--sk-gap);
 }
@@ -466,12 +501,118 @@
   border-block-start: 0;
 }
 
-.sk-catalog2__panel-variant-head {
+/* ------------------------------------------------------------------
+   WS-D-10 — layout stability (RULINGS 3 and 5).
+
+   Everywhere a name sits beside action buttons, the actions get a fixed,
+   reserved slot at the row's inline-end and NEVER wrap; the name takes
+   the remaining space and truncates, with the full text on `title`.
+   One gap value from the spacing scale, no ad-hoc margins.
+   ------------------------------------------------------------------ */
+
+.sk-catalog2__vrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.sk-catalog2__vrow-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sk-catalog2__vrow-name {
+  flex: 1 1 12ch;
+  min-width: 0;
+}
+
+.sk-catalog2__vrow-id {
+  flex: 0 0 auto;
+  color: var(--sk-muted);
+}
+
+.sk-catalog2__vrow-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-block-start: 8px;
+  font-size: 14px;
+  color: var(--sk-muted);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* The one action-group rule for the whole page. */
+.sk-catalog2__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.sk-catalog2__actions--end {
+  justify-content: flex-end;
+  margin-block-start: 12px;
+}
+
+.sk-catalog2__truncate {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sk-catalog2__name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sk-catalog2__status-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
+  min-height: var(--sk-touch);
+}
+
+.sk-catalog2__section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-block-end: 12px;
+}
+
+.sk-catalog2__section-head h3 {
+  margin: 0;
+}
+
+.sk-catalog2__barcode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sk-catalog2__barcode-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.sk-catalog2__barcode-field {
+  margin-block-start: 12px;
 }
 
 .sk-catalog2__panel-variant-body {
@@ -499,11 +640,6 @@
   gap: 12px;
   flex-wrap: wrap;
   margin-block-start: 12px;
-}
-
-.sk-catalog2__footer-actions {
-  display: flex;
-  gap: 8px;
 }
 
 .sk-catalog2__note {

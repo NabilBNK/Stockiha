@@ -33,6 +33,14 @@
  *     DELIBERATE submit — a half-typed product is never autosaved into the
  *     catalogue, which is the one place on this page where commit-on-blur
  *     would be actively wrong.
+ *
+ * WS-D-10 — layout stability (RULINGS 3 and 5). A variant row is now a grid:
+ * the name takes the remaining space and truncates, the identifier and status
+ * each get their own slot, and the action group sits in a fixed slot at the
+ * row's inline-end that never wraps. Before this, "Bed - M - Blue - AK Home"
+ * pushed Open/Deactivate onto a second line while "Bed - M - Red" did not —
+ * the name was allowed to shove the actions around. Spacing comes from the
+ * page's scoped classes; the one-off inline margins are gone.
  */
 import {
   useCallback,
@@ -59,6 +67,7 @@ import type {
 import { AttributeManagerForVariant } from '../products/ProductEditor';
 import { InlineCreateSelect } from '../products/InlineCreateSelect';
 import { isValidMinimumStock, isValidPrice } from './catalogValidation';
+import { useDecimalFormat } from './useDecimalFormat';
 
 type FieldState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -385,10 +394,12 @@ function PanelShell({
         data-testid="catalog2-panel"
       >
         <div className="sk-catalog2__panel-header">
-          <h2 className="sk-catalog2__panel-title">{title}</h2>
-          <Button variant="secondary" type="button" onClick={onClose} data-testid="catalog2-panel-close">
-            {t('common.close')}
-          </Button>
+          <h2 className="sk-catalog2__panel-title sk-catalog2__truncate" title={title}>{title}</h2>
+          <div className="sk-catalog2__actions">
+            <Button variant="secondary" type="button" onClick={onClose} data-testid="catalog2-panel-close">
+              {t('common.close')}
+            </Button>
+          </div>
         </div>
         {children}
       </aside>
@@ -424,6 +435,7 @@ export function CatalogPanel({
 }) {
   const { t } = useI18n();
   const errorText = useErrorText();
+  const format = useDecimalFormat();
 
   const [detail, setDetail] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -724,7 +736,7 @@ export function CatalogPanel({
             />
             <div className="sk-catalog2__field">
               <span className="sk-catalog2__label">{t('products.active')}</span>
-              <div className="sk-catalog2__panel-variant-head">
+              <div className="sk-catalog2__status-row">
                 <span className={`sk-catalog2__pill ${detail.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
                   {detail.is_active ? t('catalog.active') : t('catalog.inactive')}
                 </span>
@@ -746,7 +758,7 @@ export function CatalogPanel({
         </section>
 
         <section className="sk-catalog2__panel-section" aria-label={t('variants.title')}>
-          <div className="sk-catalog2__panel-variant-head">
+          <div className="sk-catalog2__section-head">
             <h3>{t('variants.title')}</h3>
             <Button
               type="button"
@@ -780,7 +792,7 @@ export function CatalogPanel({
                 onChange={setAddDraft}
                 disabled={addBusy}
               />
-              <div className="sk-catalog2__footer-actions" style={{ marginBlockStart: '12px' }}>
+              <div className="sk-catalog2__actions sk-catalog2__actions--end">
                 <Button
                   type="submit"
                   loading={addBusy}
@@ -803,15 +815,24 @@ export function CatalogPanel({
                 key={variant.variant_id}
                 ref={variant.variant_id === initialVariantId ? openVariantRef : undefined}
               >
-                <div className="sk-catalog2__panel-variant-head">
-                  <div>
-                    <strong>{variant.effective_variant_name}</strong>{' '}
-                    <span className="sk-catalog2__mono">{variant.operational_identifier}</span>{' '}
+                {/* [ name (truncating) ][ identifier ][ status ][ actions ] —
+                    the actions slot is fixed and never wraps. */}
+                <div className="sk-catalog2__vrow">
+                  <div className="sk-catalog2__vrow-main">
+                    <strong
+                      className="sk-catalog2__truncate sk-catalog2__vrow-name"
+                      title={variant.effective_variant_name}
+                    >
+                      {variant.effective_variant_name}
+                    </strong>
+                    <span className="sk-catalog2__mono sk-catalog2__vrow-id">
+                      {variant.operational_identifier}
+                    </span>
                     <span className={`sk-catalog2__pill ${variant.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
                       {variant.is_active ? t('catalog.active') : t('catalog.inactive')}
                     </span>
                   </div>
-                  <div className="sk-catalog2__footer-actions">
+                  <div className="sk-catalog2__actions">
                     <Button
                       type="button"
                       variant="secondary"
@@ -834,6 +855,17 @@ export function CatalogPanel({
                       {variant.is_active ? t('variants.deactivate') : t('variants.activate')}
                     </Button>
                   </div>
+                </div>
+
+                {/* Read-only summary of what the table lets you edit inline,
+                    formatted the same way it is there. */}
+                <div className="sk-catalog2__vrow-figures">
+                  <span>
+                    {t('variants.price')}: <strong>{format(variant.sale_price)}</strong>
+                  </span>
+                  <span>
+                    {t('variants.minimumStock')}: <strong>{format(variant.minimum_stock)}</strong>
+                  </span>
                 </div>
 
                 {open ? (
@@ -1108,7 +1140,7 @@ export function CatalogCreatePanel({
           />
         </section>
 
-        <div className="sk-catalog2__footer-actions">
+        <div className="sk-catalog2__actions sk-catalog2__actions--end">
           <Button variant="secondary" type="button" onClick={onClose} disabled={submitting}>
             {t('common.cancel')}
           </Button>
@@ -1188,9 +1220,9 @@ function BarcodeSection({
       {variant.barcodes.length === 0 ? (
         <p className="sk-catalog2__note">{t('barcodes.empty')}</p>
       ) : (
-        <ul className="sk-catalog2__panel-grid" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <ul className="sk-catalog2__barcode-list">
           {variant.barcodes.map((b) => (
-            <li key={b.id} className="sk-catalog2__panel-variant-head">
+            <li key={b.id} className="sk-catalog2__barcode-row">
               <span className="sk-catalog2__mono">{b.barcode}</span>
               <Button
                 type="button"
@@ -1206,7 +1238,7 @@ function BarcodeSection({
         </ul>
       )}
 
-      <div className="sk-catalog2__field" style={{ marginBlockStart: '12px' }}>
+      <div className="sk-catalog2__field sk-catalog2__barcode-field">
         <label className="sk-catalog2__label" htmlFor={`catalog2-barcode-${variant.variant_id}`}>
           {t('barcodes.barcode')}
         </label>
@@ -1222,7 +1254,7 @@ function BarcodeSection({
           data-testid={`catalog2-barcode-input-${variant.variant_id}`}
         />
       </div>
-      <div className="sk-catalog2__footer-actions" style={{ marginBlockStart: '8px' }}>
+      <div className="sk-catalog2__actions sk-catalog2__actions--end">
         <Button
           type="button"
           loading={adding}

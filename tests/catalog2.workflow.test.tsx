@@ -276,8 +276,9 @@ describe('inline cell editing (WS-D-9 RULING 3)', () => {
     // not resurrect the cancelled commit.
     fireEvent.blur(price);
 
+    // The displayed value is formatted; the stored value is untouched.
     const trigger = await screen.findByTestId('catalog2-price-10-trigger');
-    expect(trigger.textContent).toBe('1250.50');
+    expect(trigger.textContent).toBe('1,250.50');
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
@@ -296,7 +297,7 @@ describe('inline cell editing (WS-D-9 RULING 3)', () => {
     expect(error.textContent).toBe('Some of the entered values are invalid.');
     // Never leave the UI showing a value the database does not hold.
     const trigger = await screen.findByTestId('catalog2-price-10-trigger');
-    expect(trigger.textContent).toBe('1250.50');
+    expect(trigger.textContent).toBe('1,250.50');
   });
 
   it('never sends an invalid value and keeps the cell editable', async () => {
@@ -878,6 +879,181 @@ describe('discoverability (WS-D-9B)', () => {
     // The SECOND variant is expanded, not the product's first.
     expect(await screen.findByTestId('catalog2-panel-variant-name-20')).toBeInTheDocument();
     expect(screen.queryByTestId('catalog2-panel-variant-name-10')).not.toBeInTheDocument();
+  });
+});
+
+describe('number formatting (WS-D-10)', () => {
+  const fmtHandlers = (extra: Handlers = {}) => makeHandlers({
+    get_product_detail: () => detailFixture(),
+    ...extra,
+  });
+
+  // The defect: the same Price column rendered 12000, 14000.00 and 2000.00
+  // because values were printed as stored.
+  it('formats every number in the row, consistently', async () => {
+    wireInvoke(fmtHandlers({
+      list_products_v2: () => [row({
+        sale_price: '14000.00',
+        minimum_stock: '5.500',
+        quantity_on_hand: '12000',
+      })],
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-expand-1'));
+
+    // "no decimals unless there are some"
+    expect((await screen.findByTestId('catalog2-price-10-trigger')).textContent).toBe('14,000');
+    expect(screen.getByTestId('catalog2-min-10-trigger').textContent).toBe('5.500');
+    const variantRow = screen.getByTestId('catalog2-variant-10');
+    expect(within(variantRow).getByText('12,000')).toBeInTheDocument();
+  });
+
+  // The stored string is what the operator edits, so they edit exactly what is
+  // stored — not a formatted rendering of it that would have to be parsed back.
+  it('puts the RAW stored string in the input when the cell is opened', async () => {
+    wireInvoke(fmtHandlers({
+      list_products_v2: () => [row({ sale_price: '14000.00', minimum_stock: '5.500' })],
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-expand-1'));
+
+    // Displayed formatted...
+    expect((await screen.findByTestId('catalog2-price-10-trigger')).textContent).toBe('14,000');
+    fireEvent.click(screen.getByTestId('catalog2-price-10-trigger'));
+    // ...edited raw.
+    expect((await screen.findByTestId('catalog2-price-10') as HTMLInputElement).value).toBe('14000.00');
+
+    fireEvent.keyDown(screen.getByTestId('catalog2-price-10'), { key: 'Escape' });
+    fireEvent.click(screen.getByTestId('catalog2-min-10-trigger'));
+    expect((await screen.findByTestId('catalog2-min-10') as HTMLInputElement).value).toBe('5.500');
+  });
+
+  // Formatting is display-only. A grouped or trimmed string must never reach
+  // the gateway.
+  it('sends the raw typed string on commit, never a formatted one', async () => {
+    const variantCalls: Record<string, unknown>[] = [];
+    wireInvoke(fmtHandlers({
+      list_products_v2: () => [row()],
+      update_variant_v2: (args) => { variantCalls.push(args); return null; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    const price = await openPriceEditor();
+    fireEvent.change(price, { target: { value: '14000.00' } });
+    fireEvent.blur(price);
+
+    await waitFor(() => expect(variantCalls).toHaveLength(1));
+    expect(variantCalls[0].salePrice).toBe('14000.00');
+    expect(variantCalls[0].salePrice).not.toContain(',');
+    // And the cell goes back to showing the formatted form of what was sent.
+    expect((await screen.findByTestId('catalog2-price-10-trigger')).textContent).toBe('14,000');
+  });
+
+  it('shows a single price, not a range, when the variants agree', async () => {
+    wireInvoke(fmtHandlers({
+      list_products_v2: () => [
+        row({ variant_id: 10, sale_price: '12000', total_count: 2 }),
+        // Same price, stored with a redundant fraction: still one price, so
+        // still not a range.
+        row({ variant_id: 11, sku: 'PIL-2', display_identifier: 'PIL-2', sale_price: '12000.00', total_count: 2 }),
+      ],
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    const productRow = await screen.findByTestId('catalog2-product-1');
+    expect(within(productRow).getByText('12,000')).toBeInTheDocument();
+    expect(within(productRow).queryByText(/12,000 – /)).not.toBeInTheDocument();
+  });
+
+  it('formats both ends of a real price range', async () => {
+    wireInvoke(fmtHandlers({
+      list_products_v2: () => [
+        row({ variant_id: 10, sale_price: '12000', total_count: 2 }),
+        row({ variant_id: 11, sku: 'PIL-2', display_identifier: 'PIL-2', sale_price: '14000.00', total_count: 2 }),
+      ],
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    const productRow = await screen.findByTestId('catalog2-product-1');
+    expect(within(productRow).getByText('12,000 – 14,000')).toBeInTheDocument();
+  });
+
+  // Minimum stock of 0 means "never warn". Printing 0 on a product row would
+  // assert that setting for a product, which is not a product-level field.
+  it('keeps a muted dash in the product row Min column, never a 0', async () => {
+    wireInvoke(fmtHandlers({
+      list_products_v2: () => [row({ minimum_stock: '0' })],
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    const productRow = await screen.findByTestId('catalog2-product-1');
+    const cells = productRow.querySelectorAll('td');
+    // Columns: name, variants, category, stock, min, price, actions.
+    expect(cells[4].textContent).toBe('—');
+  });
+
+  it('formats the panel figures the same way as the table', async () => {
+    wireInvoke(fmtHandlers({
+      list_products_v2: () => [row()],
+      get_product_detail: () => detailFixture({
+        variants: [{
+          variant_id: 10, sku: 'PIL-1', name_override: null,
+          effective_variant_name: 'Pillow', primary_barcode: null,
+          operational_identifier: 'PIL-1', identifier_type: 'SKU',
+          sale_price: '14000.00', minimum_stock: '5.500', is_active: true,
+          attribute_signature: '', attributes: [], barcodes: [],
+        }],
+      }),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    const panel = await screen.findByTestId('catalog2-panel');
+    expect(within(panel).getByText('14,000')).toBeInTheDocument();
+    expect(within(panel).getByText('5.500')).toBeInTheDocument();
+  });
+});
+
+describe('layout stability (WS-D-10)', () => {
+  it('keeps the action group out of the name flow on a long variant name', async () => {
+    const longName = 'Bed - M - Blue - AK Home - Extra Long Marketing Suffix';
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [row()],
+      get_product_detail: () => detailFixture({
+        variants: [{
+          variant_id: 10, sku: 'PIL-1', name_override: null,
+          effective_variant_name: longName, primary_barcode: null,
+          operational_identifier: 'PIL-1', identifier_type: 'SKU',
+          sale_price: '1250.50', minimum_stock: '5.500', is_active: true,
+          attribute_signature: '', attributes: [], barcodes: [],
+        }],
+      }),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    const toggle = await screen.findByTestId('catalog2-panel-variant-toggle-10');
+
+    // The actions live in their own fixed slot, a sibling of the name area —
+    // not inside it, where a long name could push them onto another line.
+    const actions = toggle.closest('.sk-catalog2__actions');
+    expect(actions).not.toBeNull();
+    expect(actions!.parentElement).toHaveClass('sk-catalog2__vrow');
+    expect(actions!.querySelector('.sk-catalog2__vrow-name')).toBeNull();
+
+    // The full name stays reachable even though the label truncates.
+    const name = screen.getByTitle(longName);
+    expect(name).toHaveClass('sk-catalog2__truncate');
   });
 });
 

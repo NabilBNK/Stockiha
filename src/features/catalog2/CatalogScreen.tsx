@@ -213,7 +213,7 @@ export function CatalogScreen() {
             <span className="sk-catalog2__note" data-testid="catalog2-range">
               {t('catalog2.showing', { from, to, total: totalCount })}
             </span>
-            <div className="sk-catalog2__footer-actions">
+            <div className="sk-catalog2__actions">
               <Button
                 variant="secondary"
                 type="button"

@@ -32,6 +32,17 @@ export function CatalogTable({
   return (
     <div className="sk-catalog2__table-wrap" tabIndex={0} aria-label={t('catalog2.table')}>
       <table className="sk-catalog2__table" data-testid="catalog2-table">
+        {/* Fixed numeric column widths, so digits line up vertically down the
+            column instead of the columns resizing per page (RULING 2). */}
+        <colgroup>
+          <col />
+          <col className="sk-catalog2__col-identifier" />
+          <col className="sk-catalog2__col-category" />
+          <col className="sk-catalog2__col-stock" />
+          <col className="sk-catalog2__col-min" />
+          <col className="sk-catalog2__col-price" />
+          <col className="sk-catalog2__col-actions" />
+        </colgroup>
         <thead>
           <tr>
             <th scope="col">{t('catalog.name')}</th>
