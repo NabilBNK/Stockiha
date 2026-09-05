@@ -276,23 +276,43 @@
   color: var(--sk-muted);
 }
 
-.sk-catalog2__row-menu {
+/* WS-D-9B: a labelled control, not a bare glyph. The Owner opened the page,
+   saw "…", and concluded editing did not exist. 44px touch minimum. */
+.sk-catalog2__row-edit {
   min-width: var(--sk-touch);
   min-height: var(--sk-touch);
-  padding: 0 10px;
+  padding: 0 14px;
   font: inherit;
   font-weight: 700;
-  color: var(--sk-muted);
-  background: none;
-  border: 1px solid transparent;
+  color: var(--sk-primary);
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border-strong);
   border-radius: var(--sk-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sk-catalog2__row-edit:hover {
+  color: var(--sk-primary-hover);
+  background: var(--sk-primary-soft);
+  border-color: var(--sk-primary);
+}
+
+.sk-catalog2__row-edit:focus-visible {
+  outline: 3px solid rgba(36, 87, 214, .25);
+  outline-offset: 1px;
+}
+
+/* The whole row opens the panel, so it reads as clickable — except where a
+   sub-control owns its click (the chevron, and the inline-editable cells). */
+.sk-catalog2__product-row,
+.sk-catalog2__variant-row {
   cursor: pointer;
 }
 
-.sk-catalog2__row-menu:hover {
-  color: var(--sk-text);
-  background: var(--sk-surface);
-  border-color: var(--sk-border-strong);
+.sk-catalog2__product-row [data-row-click="ignore"],
+.sk-catalog2__variant-row [data-row-click="ignore"] {
+  cursor: auto;
 }
 
 /* ----------------------------------------------------------- inline cell */

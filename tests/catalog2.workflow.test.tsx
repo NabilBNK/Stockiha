@@ -1,8 +1,10 @@
 /**
- * WS-D-9 — the new Catalog page, built fresh alongside the existing Products
- * page. These tests cover the four bindings that are easy to get quietly
+ * WS-D-9 / WS-D-9B — the new Catalog page, built fresh alongside the existing
+ * Products page. These tests cover the bindings that are easy to get quietly
  * wrong: commit-on-blur (never on keystroke), revert-on-failure, the
- * update_variant overwrite trap, and the CR2 retired-attribute-value wiring.
+ * update_variant overwrite trap, the CR2 retired-attribute-value wiring, the
+ * minimum stock that add_variant cannot carry, and the one place on this page
+ * where autosave would be wrong — creating a product.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
@@ -80,7 +82,27 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   };
 }
 
-/** catalog.get_product_detail — carries name_override and minimum_stock. */
+/**
+ * catalog.get_product_detail — carries name_override and minimum_stock.
+ * The variant members are annotated rather than inferred so tests can push a
+ * newly added variant onto `variants` without fighting a literal type.
+ */
+type VariantFixture = {
+  variant_id: number;
+  sku: string;
+  name_override: string | null;
+  effective_variant_name: string;
+  primary_barcode: string | null;
+  operational_identifier: string;
+  identifier_type: 'BARCODE' | 'SKU';
+  sale_price: string;
+  minimum_stock: string;
+  is_active: boolean;
+  attribute_signature: string;
+  attributes: Record<string, unknown>[];
+  barcodes: Record<string, unknown>[];
+};
+
 function detailFixture(overrides: Record<string, unknown> = {}) {
   return {
     product_id: 1,
@@ -104,7 +126,7 @@ function detailFixture(overrides: Record<string, unknown> = {}) {
       attribute_signature: '',
       attributes: [],
       barcodes: [],
-    }],
+    }] as VariantFixture[],
     ...overrides,
   };
 }
@@ -502,6 +524,360 @@ describe('the detail panel (WS-D-9 RULING 4)', () => {
     await waitFor(() => expect(toggleCall).not.toBeNull());
     expect(toggleCall!.variantId).toBe(10);
     expect(toggleCall!.isActive).toBe(false);
+  });
+});
+
+describe('add variant (WS-D-9B)', () => {
+  /**
+   * `VariantInput` has no minimum_stock field, so a typed minimum stock has to
+   * be applied through updateVariantV2 straight after the variant exists.
+   * Dropping it silently is data loss, so this asserts the second call.
+   */
+  it('creates the variant and applies the typed minimum stock', async () => {
+    let addCall: Record<string, unknown> | null = null;
+    const variantCalls: Record<string, unknown>[] = [];
+    const detail = detailFixture();
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [row()],
+      get_product_detail: () => detail,
+      add_variant: (args) => {
+        addCall = args;
+        detail.variants.push({
+          variant_id: 11,
+          sku: 'PIL-2',
+          name_override: 'Large',
+          effective_variant_name: 'Pillow Large',
+          primary_barcode: '6130000000024',
+          operational_identifier: '6130000000024',
+          identifier_type: 'BARCODE',
+          sale_price: '1800.00',
+          minimum_stock: '3',
+          is_active: true,
+          attribute_signature: '',
+          attributes: [],
+          barcodes: [{ id: 5, barcode: '6130000000024', is_primary: true }],
+        });
+        return 11;
+      },
+      update_variant_v2: (args) => { variantCalls.push(args); return null; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-add-variant-toggle'));
+
+    fireEvent.change(await screen.findByTestId('catalog2-add-variant-name'), { target: { value: 'Large' } });
+    fireEvent.change(screen.getByTestId('catalog2-add-variant-barcode'), { target: { value: '6130000000024' } });
+    fireEvent.change(screen.getByTestId('catalog2-add-variant-price'), { target: { value: '1800.00' } });
+    fireEvent.change(screen.getByTestId('catalog2-add-variant-minimum-stock'), { target: { value: '3' } });
+    fireEvent.click(screen.getByTestId('catalog2-add-variant-submit'));
+
+    await waitFor(() => expect(addCall).not.toBeNull());
+    expect(addCall!.productId).toBe(1);
+    expect(addCall!.variant).toMatchObject({
+      name_override: 'Large',
+      sale_price: '1800.00',
+      is_active: true,
+      barcodes: ['6130000000024'],
+    });
+
+    // The minimum stock add_variant could not carry, applied to the new
+    // variant — and nothing else invented along the way.
+    await waitFor(() => expect(variantCalls).toHaveLength(1));
+    expect(variantCalls[0].variantId).toBe(11);
+    expect(variantCalls[0].minimumStock).toBe('3');
+    expect(typeof variantCalls[0].minimumStock).toBe('string');
+    expect(variantCalls[0].salePrice).toBe('1800.00');
+    expect(variantCalls[0].nameOverride).toBe('Large');
+
+    // The new variant lands expanded, so attributes and barcodes are one click
+    // away rather than requiring a hunt.
+    expect(await screen.findByTestId('catalog2-panel-variant-name-11')).toBeInTheDocument();
+  });
+
+  it('writes nothing until the add form is submitted', async () => {
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [row()],
+      get_product_detail: () => detailFixture(),
+      add_variant: () => 11,
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-add-variant-toggle'));
+    await screen.findByTestId('catalog2-add-variant-price');
+    invokeMock.mockClear();
+
+    fireEvent.change(screen.getByTestId('catalog2-add-variant-price'), { target: { value: '1' } });
+    fireEvent.change(screen.getByTestId('catalog2-add-variant-price'), { target: { value: '18' } });
+    fireEvent.change(screen.getByTestId('catalog2-add-variant-minimum-stock'), { target: { value: '3' } });
+
+    await waitFor(() =>
+      expect((screen.getByTestId('catalog2-add-variant-price') as HTMLInputElement).value).toBe('18'));
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * CR2, applied to the newly created variant. The picker offered for a new
+   * variant is the SAME AttributeManagerForVariant, so it runs
+   * mergeAssignedValues too. A second picker written for the add path would
+   * reintroduce the retired-value defect in a new place; this fails if that
+   * ever happens.
+   *
+   * The fixture returns the new variant already holding a retired value —
+   * artificial for a brand-new row, but it is what exercises the merge on the
+   * component the add path actually renders.
+   */
+  it('gives the new variant the shared attribute picker, retired values and all', async () => {
+    const detail = detailFixture();
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [row()],
+      get_product_detail: () => detail,
+      add_variant: () => {
+        detail.variants.push({
+          variant_id: 11,
+          sku: 'PIL-2',
+          name_override: null,
+          effective_variant_name: 'Pillow Burgendy',
+          primary_barcode: null,
+          operational_identifier: 'PIL-2',
+          identifier_type: 'SKU',
+          sale_price: '1800.00',
+          minimum_stock: '0',
+          is_active: true,
+          attribute_signature: '1:3',
+          attributes: [
+            { attribute_id: 1, attribute_name: 'Color', attribute_value_id: 3, value: 'Burgendy' },
+          ],
+          barcodes: [],
+        });
+        return 11;
+      },
+      update_variant_v2: () => null,
+      // Only active values are offered; 'Burgendy' has been retired.
+      list_attributes: () => [
+        { attribute_id: 1, name: 'Color', attribute_values: [{ id: 4, value: 'Blue', is_active: true }] },
+      ],
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-add-variant-toggle'));
+    fireEvent.change(await screen.findByTestId('catalog2-add-variant-price'), { target: { value: '1800.00' } });
+    fireEvent.click(screen.getByTestId('catalog2-add-variant-submit'));
+
+    const retired = await screen.findByRole('radio', { name: /Burgendy/ });
+    expect(retired).toBeChecked();
+    expect(screen.getByTestId('attr-value-inactive-3')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Blue' })).toBeInTheDocument();
+  });
+});
+
+describe('create product (WS-D-9B)', () => {
+  const createHandlers = (extra: Handlers = {}) => makeHandlers({
+    list_products_v2: () => [row()],
+    get_product_detail: () => detailFixture({ product_id: 42, name: 'Cushion' }),
+    list_categories: () => [{ id: 7, name: 'Bedding', is_active: true, usage_count: 0 }],
+    ...extra,
+  });
+
+  it('sends the exact strings typed, with a minimum stock of "0" as "0"', async () => {
+    let createCall: Record<string, unknown> | null = null;
+    wireInvoke(createHandlers({
+      quick_create_product: (args) => {
+        createCall = args;
+        return { product_id: 42, variant_id: 420 };
+      },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-new-product'));
+    fireEvent.change(await screen.findByTestId('catalog2-create-name'), { target: { value: 'Cushion' } });
+
+    const category = await screen.findByTestId('catalog2-create-category');
+    await waitFor(() => expect(within(category).getByText('Bedding')).toBeInTheDocument());
+    fireEvent.change(category, { target: { value: '7' } });
+
+    fireEvent.change(screen.getByTestId('catalog2-create-variant-price'), { target: { value: '1250.50' } });
+    fireEvent.change(screen.getByTestId('catalog2-create-variant-barcode'), { target: { value: '6130000000017' } });
+
+    // "0" is the seeded default and a real value: "never warn me about this
+    // item". It must transmit as "0", not be dropped as an empty field.
+    expect((screen.getByTestId('catalog2-create-variant-minimum-stock') as HTMLInputElement).value).toBe('0');
+
+    const submit = screen.getByTestId('catalog2-create-submit');
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(createCall).not.toBeNull());
+    expect(createCall!.name).toBe('Cushion');
+    expect(createCall!.categoryId).toBe(7);
+    expect(createCall!.unitId).toBe(1);
+    expect(createCall!.barcode).toBe('6130000000017');
+    expect(createCall!.isActive).toBe(true);
+    // Exact decimal strings, byte-for-byte as typed.
+    expect(createCall!.salePrice).toBe('1250.50');
+    expect(createCall!.minimumStock).toBe('0');
+    expect(typeof createCall!.minimumStock).toBe('string');
+  });
+
+  // The one place on this page where commit-on-blur would be actively wrong:
+  // there is no row yet, so autosaving a half-typed name would put a nameless,
+  // priceless product into a live catalogue.
+  it('writes nothing at all until the submit button is pressed', async () => {
+    wireInvoke(createHandlers({
+      quick_create_product: () => ({ product_id: 42, variant_id: 420 }),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-new-product'));
+    const name = await screen.findByTestId('catalog2-create-name');
+    // Let the pickers finish loading before measuring.
+    await waitFor(() =>
+      expect(invokeMock.mock.calls.some((c) => c[0] === 'list_units_v2')).toBe(true));
+    invokeMock.mockClear();
+
+    fireEvent.change(name, { target: { value: 'C' } });
+    fireEvent.change(name, { target: { value: 'Cushion' } });
+    fireEvent.blur(name);
+    const price = screen.getByTestId('catalog2-create-variant-price');
+    fireEvent.change(price, { target: { value: '1' } });
+    fireEvent.change(price, { target: { value: '1250.50' } });
+    fireEvent.blur(price);
+
+    await waitFor(() => expect((price as HTMLInputElement).value).toBe('1250.50'));
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('opens the new product in the panel so variants can be added immediately', async () => {
+    wireInvoke(createHandlers({
+      quick_create_product: () => ({ product_id: 42, variant_id: 420 }),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-new-product'));
+    fireEvent.change(await screen.findByTestId('catalog2-create-name'), { target: { value: 'Cushion' } });
+    fireEvent.change(screen.getByTestId('catalog2-create-variant-price'), { target: { value: '900' } });
+
+    const submit = screen.getByTestId('catalog2-create-submit');
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    fireEvent.click(submit);
+
+    // Create mode gives way to the edit panel for the product just created.
+    await waitFor(() => expect(screen.queryByTestId('catalog2-create-form')).not.toBeInTheDocument());
+    expect(await screen.findByTestId('catalog2-add-variant-toggle')).toBeInTheDocument();
+  });
+
+  it('refuses to submit until the required values are valid', async () => {
+    wireInvoke(createHandlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-new-product'));
+    const submit = await screen.findByTestId('catalog2-create-submit');
+    expect(submit).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId('catalog2-create-name'), { target: { value: 'Cushion' } });
+    expect(submit).toBeDisabled();
+
+    // An unparseable price must not unlock the button either.
+    fireEvent.change(screen.getByTestId('catalog2-create-variant-price'), { target: { value: 'abc' } });
+    expect(submit).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId('catalog2-create-variant-price'), { target: { value: '900' } });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+  });
+});
+
+describe('discoverability (WS-D-9B)', () => {
+  const handlers = (extra: Handlers = {}) => makeHandlers({
+    list_products_v2: () => [row()],
+    get_product_detail: () => detailFixture(),
+    ...extra,
+  });
+
+  it('labels the edit affordance rather than hiding it behind a glyph', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    const productEdit = await screen.findByTestId('catalog2-product-menu-1');
+    expect(productEdit.textContent).toBe('Edit');
+
+    fireEvent.click(screen.getByTestId('catalog2-expand-1'));
+    expect(screen.getByTestId('catalog2-variant-menu-10').textContent).toBe('Edit');
+  });
+
+  it('opens the panel when the row itself is clicked', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    // The product name cell is not an editable cell, so the row handler runs.
+    fireEvent.click((await screen.findByTestId('catalog2-product-1')).querySelectorAll('td')[2]);
+    expect(await screen.findByTestId('catalog2-panel')).toBeInTheDocument();
+  });
+
+  // Cell edit takes precedence: if the row handler also ran, the panel would
+  // slide over the input the user just opened.
+  it('edits the cell, and does NOT open the panel, when an editable cell is clicked', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-expand-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-price-10-trigger'));
+
+    expect(await screen.findByTestId('catalog2-price-10')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-panel')).not.toBeInTheDocument();
+
+    // The same applies to the minimum-stock cell.
+    fireEvent.keyDown(screen.getByTestId('catalog2-price-10'), { key: 'Escape' });
+    fireEvent.click(screen.getByTestId('catalog2-min-10-trigger'));
+    expect(await screen.findByTestId('catalog2-min-10')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-panel')).not.toBeInTheDocument();
+  });
+
+  it('opens the panel expanded on the variant whose edit control was used', async () => {
+    wireInvoke(handlers({
+      get_product_detail: () => detailFixture({
+        variants: [
+          {
+            variant_id: 10, sku: 'PIL-1', name_override: null,
+            effective_variant_name: 'Pillow Small', primary_barcode: null,
+            operational_identifier: 'PIL-1', identifier_type: 'SKU',
+            sale_price: '1250.50', minimum_stock: '5.500', is_active: true,
+            attribute_signature: '', attributes: [], barcodes: [],
+          },
+          {
+            variant_id: 20, sku: 'PIL-2', name_override: null,
+            effective_variant_name: 'Pillow Large', primary_barcode: null,
+            operational_identifier: 'PIL-2', identifier_type: 'SKU',
+            sale_price: '1800.00', minimum_stock: '2', is_active: true,
+            attribute_signature: '', attributes: [], barcodes: [],
+          },
+        ],
+      }),
+      list_products_v2: () => [
+        row({ variant_id: 10, total_count: 2 }),
+        row({ variant_id: 20, sku: 'PIL-2', display_identifier: 'PIL-2', variant_name: 'Pillow Large', total_count: 2 }),
+      ],
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-expand-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-variant-menu-20'));
+
+    // The SECOND variant is expanded, not the product's first.
+    expect(await screen.findByTestId('catalog2-panel-variant-name-20')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-panel-variant-name-10')).not.toBeInTheDocument();
   });
 });
 

@@ -11,13 +11,18 @@
  * keeps full width when the panel is closed.
  * RULING 5 — one search field, autofocused, doubling as the scanner target.
  * RULING 6 — destructive and structural actions stay explicit.
+ *
+ * WS-D-9B — "New product" opens the same panel in create mode. On success
+ * the list refreshes and the new product opens in the panel straight away,
+ * so adding its remaining variants, attributes and barcodes is the next
+ * click rather than a hunt through the list.
  */
 import { useCallback, useRef, useState } from 'react';
 
 import { Banner, Button, Spinner } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
 import { useSession } from '../../shared/session/SessionContext';
-import { CatalogPanel } from './CatalogPanel';
+import { CatalogCreatePanel, CatalogPanel } from './CatalogPanel';
 import { CatalogTable } from './CatalogTable';
 import { useCatalogList } from './useCatalogList';
 import './catalog2.css';
@@ -26,6 +31,11 @@ interface PanelTarget {
   productId: number;
   variantId: number | null;
 }
+
+type PanelState =
+  | { mode: 'edit'; target: PanelTarget }
+  | { mode: 'create' }
+  | null;
 
 export function CatalogScreen() {
   const { t } = useI18n();
@@ -46,7 +56,7 @@ export function CatalogScreen() {
   } = list;
 
   const [expandedProductIds, setExpandedProductIds] = useState<ReadonlySet<number>>(new Set());
-  const [panel, setPanel] = useState<PanelTarget | null>(null);
+  const [panel, setPanel] = useState<PanelState>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   const toggleProduct = useCallback((productId: number) => {
@@ -59,7 +69,7 @@ export function CatalogScreen() {
   }, []);
 
   const openPanel = useCallback((productId: number, variantId?: number) => {
-    setPanel({ productId, variantId: variantId ?? null });
+    setPanel({ mode: 'edit', target: { productId, variantId: variantId ?? null } });
   }, []);
 
   const closePanel = useCallback((changed: boolean) => {
@@ -72,6 +82,16 @@ export function CatalogScreen() {
     searchRef.current?.focus();
   }, [reload]);
 
+  const handleCreated = useCallback((productId: number) => {
+    // Refresh the list and land the operator straight on the new product, with
+    // its first variant already there and the add-variant control one click
+    // away. Making them search for what they just created is the kind of extra
+    // step this page exists to remove.
+    void reload();
+    setExpandedProductIds((prev) => new Set(prev).add(productId));
+    setPanel({ mode: 'edit', target: { productId, variantId: null } });
+  }, [reload]);
+
   const from = totalCount === 0 ? 0 : pageIndex * pageSize + 1;
   const to = Math.min(totalCount, pageIndex * pageSize + rowCount);
 
@@ -82,6 +102,13 @@ export function CatalogScreen() {
           <h1>{t('catalog2.title')}</h1>
           <p className="sk-catalog2__subtitle">{t('catalog2.subtitle')}</p>
         </div>
+        <Button
+          type="button"
+          onClick={() => setPanel({ mode: 'create' })}
+          data-testid="catalog2-new-product"
+        >
+          {t('catalog2.newProduct')}
+        </Button>
       </div>
 
       {/* RULING 5: one field, autofocused, matching name / SKU / barcode.
@@ -210,13 +237,24 @@ export function CatalogScreen() {
         </>
       )}
 
-      {panel ? (
+      {panel?.mode === 'edit' ? (
         <CatalogPanel
-          key={`${panel.productId}:${panel.variantId ?? 'product'}`}
+          key={`${panel.target.productId}:${panel.target.variantId ?? 'product'}`}
           token={token}
-          productId={panel.productId}
-          initialVariantId={panel.variantId}
+          productId={panel.target.productId}
+          initialVariantId={panel.target.variantId}
           onClose={closePanel}
+        />
+      ) : null}
+
+      {panel?.mode === 'create' ? (
+        <CatalogCreatePanel
+          token={token}
+          onClose={() => {
+            setPanel(null);
+            searchRef.current?.focus();
+          }}
+          onCreated={handleCreated}
         />
       ) : null}
     </div>

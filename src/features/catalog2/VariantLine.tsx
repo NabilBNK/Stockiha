@@ -11,15 +11,18 @@
  *
  * Stock is NOT editable: it is derived from stock movements and owned by Stock
  * Receipt and Inventory Corrections. Display only.
+ *
+ * WS-D-9B — the row opens the panel already expanded on THIS variant, and the
+ * edit affordance is a labelled button rather than a bare "…". The two
+ * inline-editable cells are marked `data-row-click="ignore"` so clicking a
+ * price edits the price instead of sliding a panel over it.
  */
 import { useI18n } from '../../shared/i18n';
 import type { ProductListItemV2 } from '../../shared/ipc/dto';
 import { formatExactDecimal, isExactDecimalZero, isLowStock } from '../inventory/exactDecimal';
 import { InlineCell } from './InlineCell';
-
-/** Same shapes the rest of WS-D validates against. Exact decimal strings. */
-const PRICE_RE = /^\d+(\.\d{1,2})?$/;
-const MIN_STOCK_RE = /^\d+(?:\.\d+)?$/;
+import { isValidMinimumStock, isValidPrice } from './catalogValidation';
+import { isRowClickIgnored } from './rowClick';
 
 export function VariantLine({
   variant,
@@ -42,7 +45,14 @@ export function VariantLine({
   const inactive = !variant.is_active || !variant.product_is_active;
 
   return (
-    <tr className="sk-catalog2__variant-row" data-testid={`catalog2-variant-${variant.variant_id}`}>
+    <tr
+      className="sk-catalog2__variant-row"
+      data-testid={`catalog2-variant-${variant.variant_id}`}
+      onClick={(e) => {
+        if (isRowClickIgnored(e.target)) return;
+        onOpenPanel(variant.product_id, variant.variant_id);
+      }}
+    >
       <td className="sk-catalog2__variant-name">
         {variant.variant_name}
         {inactive ? (
@@ -71,22 +81,23 @@ export function VariantLine({
         ) : null}
       </td>
 
-      <td className="sk-catalog2__num">
+      {/* Cell edit takes precedence over the row's open-panel click. */}
+      <td className="sk-catalog2__num" data-row-click="ignore">
         <InlineCell
           value={variant.minimum_stock}
           label={`${t('variants.minimumStock')} — ${variant.variant_name}`}
           format={formatExactDecimal}
-          validate={(v) => (MIN_STOCK_RE.test(v) ? null : t('variants.invalidMinimumStock'))}
+          validate={(v) => (isValidMinimumStock(v) ? null : t('variants.invalidMinimumStock'))}
           commit={(v) => onCommitField(variant.variant_id, variant.product_id, { minimumStock: v })}
           testId={`catalog2-min-${variant.variant_id}`}
         />
       </td>
 
-      <td className="sk-catalog2__num">
+      <td className="sk-catalog2__num" data-row-click="ignore">
         <InlineCell
           value={variant.sale_price}
           label={`${t('variants.price')} — ${variant.variant_name}`}
-          validate={(v) => (PRICE_RE.test(v) ? null : t('variants.invalidPrice'))}
+          validate={(v) => (isValidPrice(v) ? null : t('variants.invalidPrice'))}
           commit={(v) => onCommitField(variant.variant_id, variant.product_id, { salePrice: v })}
           testId={`catalog2-price-${variant.variant_id}`}
         />
@@ -95,12 +106,12 @@ export function VariantLine({
       <td>
         <button
           type="button"
-          className="sk-catalog2__row-menu"
-          aria-label={`${t('catalog2.rowMenu')} — ${variant.variant_name}`}
+          className="sk-catalog2__row-edit"
+          aria-label={`${t('catalog2.edit')} — ${variant.variant_name}`}
           onClick={() => onOpenPanel(variant.product_id, variant.variant_id)}
           data-testid={`catalog2-variant-menu-${variant.variant_id}`}
         >
-          …
+          {t('catalog2.edit')}
         </button>
       </td>
     </tr>

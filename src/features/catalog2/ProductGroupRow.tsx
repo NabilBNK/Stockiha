@@ -11,9 +11,16 @@
  *
  * The aggregate is explicitly "across the variants on this page" — see the
  * `mayContinue` marker and the note in useCatalogList.ts.
+ *
+ * WS-D-9B — discoverability. The row's edit affordance was a bare "…", which
+ * the Owner did not recognise: he opened the page and concluded that editing
+ * did not exist. It is now a labelled "Edit" button, and the whole row opens
+ * the panel too. `data-row-click="ignore"` marks the sub-controls that own
+ * their own click — the chevron expands rather than opening the panel.
  */
 import { useI18n } from '../../shared/i18n';
 import { formatExactDecimal } from '../inventory/exactDecimal';
+import { isRowClickIgnored } from './rowClick';
 import type { CatalogProductGroup } from './useCatalogList';
 
 export function ProductGroupRow({
@@ -37,12 +44,17 @@ export function ProductGroupRow({
     <tr
       className={`sk-catalog2__product-row${expanded ? ' sk-catalog2__product-row--open' : ''}`}
       data-testid={`catalog2-product-${group.productId}`}
+      onClick={(e) => {
+        if (isRowClickIgnored(e.target)) return;
+        onOpenPanel(group.productId);
+      }}
     >
       <td>
         <button
           type="button"
           className="sk-catalog2__chevron"
           aria-expanded={expanded}
+          data-row-click="ignore"
           onClick={onToggle}
           data-testid={`catalog2-expand-${group.productId}`}
         >
@@ -81,12 +93,12 @@ export function ProductGroupRow({
       <td>
         <button
           type="button"
-          className="sk-catalog2__row-menu"
-          aria-label={`${t('catalog2.rowMenu')} — ${group.productName}`}
+          className="sk-catalog2__row-edit"
+          aria-label={`${t('catalog2.edit')} — ${group.productName}`}
           onClick={() => onOpenPanel(group.productId)}
           data-testid={`catalog2-product-menu-${group.productId}`}
         >
-          …
+          {t('catalog2.edit')}
         </button>
       </td>
     </tr>
