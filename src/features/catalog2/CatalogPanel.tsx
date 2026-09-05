@@ -44,13 +44,34 @@
  *
  * ADD VARIANT — `VariantInput` has no minimum_stock field, so a typed minimum
  * stock is applied straight after through updateVariantV2; dropping it
- * silently would be data loss.
+ * silently would be data loss. WS-D-11B (C3) moved the add-variant FORM into
+ * the detail column — the list column stays a pure list, and creating and
+ * editing a variant now happen in the same place. The "+ Add variant" trigger
+ * stays in the list, matching ordinary list-detail UX ("+" adds, opens in the
+ * detail pane).
  *
  * CREATE PRODUCT — `CatalogCreatePanel`, the same panel in create mode. A
  * deliberate submit, never autosave: there is no row yet, so a half-typed
  * product would be a nameless, priceless row in a live catalogue. R15 keeps a
  * discard guard there and, deliberately, nowhere else — the edit side commits
  * as you go, so there is nothing to lose.
+ *
+ * WS-D-11B corrections to the two-column shape:
+ *   C1 — a client-side search over the CURRENT product's already-loaded
+ *     variants, filtering by name, SKU, barcode and attribute combination.
+ *     No IPC call: these variants are already in memory.
+ *   C2 — a variant row IS the selection control. Clicking anywhere on it
+ *     selects it; there is no separate "Edit" button. The list is a
+ *     listbox-style single-select (`role="listbox"`/`"option"`,
+ *     `aria-selected`, arrow-key navigation). Deactivate is destructive, so it
+ *     moved OUT of the row — which exists to select, not to be misclicked —
+ *     into the detail column's header, acting on whichever variant is
+ *     currently selected.
+ *   C4/C5 — the detail column's field order is now: header (name, status,
+ *     Deactivate) → SKU → Barcodes → Sale price + Minimum stock (editable) →
+ *     Variant name → Attributes. Price and minimum stock are editable here
+ *     AND in the table; both call `commitVariantFields` in `variantCommit.ts`
+ *     — see that file for why this is the one place the payload is built.
  */
 import {
   useCallback,
@@ -59,6 +80,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
 } from 'react';
 
@@ -78,6 +100,7 @@ import { InlineCreateSelect } from '../products/InlineCreateSelect';
 import { PanelField, PanelSelect } from './PanelFields';
 import { PanelShell, usePanelNarrow } from './PanelShell';
 import { VariantEditor, VariantEditorEmpty } from './VariantEditor';
+import { commitVariantFields, type VariantFieldPatch } from './variantCommit';
 import {
   EMPTY_VARIANT_DRAFT,
   VariantDraftFields,
@@ -93,14 +116,25 @@ interface ProductPatch {
   categoryId?: number | null;
 }
 
-interface VariantPatch {
-  nameOverride?: string | null;
-  salePrice?: string;
-  isActive?: boolean;
-  minimumStock?: string;
-}
-
 type PanelTab = 'variants' | 'product';
+
+/**
+ * WS-D-11B C1 — client-side search over one product's already-loaded
+ * variants. Never an IPC call: this product's variants are already in
+ * memory, and the target scale (a handful to a few dozen variants per
+ * product) is exactly what a substring scan over an array is for.
+ */
+function matchesVariantSearch(variant: VariantDetail, query: string): boolean {
+  const combo = variant.attributes.map((a) => a.value).join(' · ');
+  const haystack = [
+    variant.effective_variant_name,
+    variant.name_override ?? '',
+    variant.sku,
+    combo,
+    ...variant.barcodes.map((b) => b.barcode),
+  ].join(' ').toLowerCase();
+  return haystack.includes(query);
+}
 
 export function CatalogPanel({
   token,
@@ -132,6 +166,9 @@ export function CatalogPanel({
   const [tab, setTab] = useState<PanelTab>('variants');
   // R6: exactly one variant open. A single id, never a set.
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(initialVariantId ?? null);
+  // C1: filters the CURRENT product's already-loaded variants. Client-side —
+  // never an IPC call.
+  const [variantSearch, setVariantSearch] = useState('');
   const [addingVariant, setAddingVariant] = useState(false);
   const [addDraft, setAddDraft] = useState<VariantDraft>({ ...EMPTY_VARIANT_DRAFT });
   const [addError, setAddError] = useState<string | null>(null);
@@ -219,20 +256,18 @@ export function CatalogPanel({
     return run;
   }, [token, refresh]);
 
-  /** THE OVERWRITE TRAP — variant half. Same rule, four columns. */
-  const commitVariant = useCallback((variantId: number, patch: VariantPatch) => {
+  /**
+   * THE OVERWRITE TRAP — variant half. Same rule, four columns, built by the
+   * SAME `commitVariantFields` the table's inline cells call (variantCommit.ts)
+   * — see "Panel/table edit parity" in the WS-D-11B report for the proof this
+   * cannot drift from the table's payload.
+   */
+  const commitVariant = useCallback((variantId: number, patch: VariantFieldPatch) => {
     const run = chain.current.catch(() => {}).then(async () => {
       const d = detailRef.current;
       const v = d?.variants.find((x) => x.variant_id === variantId);
       if (!v) return;
-      await ipc.updateVariantV2(
-        token,
-        variantId,
-        patch.nameOverride !== undefined ? patch.nameOverride : v.name_override,
-        patch.salePrice !== undefined ? patch.salePrice : v.sale_price,
-        patch.isActive !== undefined ? patch.isActive : v.is_active,
-        patch.minimumStock !== undefined ? patch.minimumStock : v.minimum_stock,
-      );
+      await commitVariantFields(token, variantId, v, patch);
       changedRef.current = true;
       await refresh();
     });
@@ -359,6 +394,42 @@ export function CatalogPanel({
     [detail, selectedVariantId],
   );
 
+  // C1 — filtered view of this product's variants. Nothing server-side.
+  const filteredVariants = useMemo(() => {
+    const all = detail?.variants ?? [];
+    const query = variantSearch.trim().toLowerCase();
+    if (!query) return all;
+    return all.filter((v) => matchesVariantSearch(v, query));
+  }, [detail, variantSearch]);
+
+  /**
+   * C2 — clicking a row (or selecting via arrow keys) IS the selection
+   * control; there is no separate Edit button. Selecting always cancels an
+   * in-progress add, since a click on an existing variant clearly means the
+   * operator wants that one instead.
+   */
+  const selectVariant = useCallback((variantId: number) => {
+    setAddingVariant(false);
+    setSelectedVariantId(variantId);
+  }, []);
+
+  /** C2 — arrow-key navigation over the listbox, matching the chip pattern. */
+  function handleListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    if (filteredVariants.length === 0) return;
+    event.preventDefault();
+    const currentIndex = filteredVariants.findIndex((v) => v.variant_id === selectedVariantId);
+    let nextIndex: number;
+    if (currentIndex === -1) {
+      nextIndex = event.key === 'ArrowDown' ? 0 : filteredVariants.length - 1;
+    } else if (event.key === 'ArrowDown') {
+      nextIndex = Math.min(filteredVariants.length - 1, currentIndex + 1);
+    } else {
+      nextIndex = Math.max(0, currentIndex - 1);
+    }
+    selectVariant(filteredVariants[nextIndex].variant_id);
+  }
+
   let body: ReactNode;
   if (loading) {
     body = <Spinner />;
@@ -386,8 +457,11 @@ export function CatalogPanel({
       .map((u) => ({ value: String(u.id), label: `${u.name} (${u.code})` }));
 
     // R4 fallback: one column at a time, with a way back to the list.
-    const showList = !narrow || selectedVariantId == null;
-    const showDetail = !narrow || selectedVariantId != null;
+    // C3 — adding a variant occupies the detail column too, so it counts as
+    // "detail active" the same way an actual selection does.
+    const detailActive = addingVariant || selectedVariantId != null;
+    const showList = !narrow || !detailActive;
+    const showDetail = !narrow || detailActive;
 
     body = (
       <>
@@ -474,6 +548,27 @@ export function CatalogPanel({
               <div className="sk-catalog2__vlist" data-testid="catalog2-variant-list">
                 <div className="sk-catalog2__section-head">
                   <h3>{t('variants.title')}</h3>
+                </div>
+
+                {/* C1 — client-side search over this product's already-loaded
+                    variants. Above "+ Add variant", not autofocused: the
+                    panel opens for editing, not searching. */}
+                <div className="sk-catalog2__field">
+                  <label className="sk-catalog2__label" htmlFor="catalog2-variant-search">
+                    {t('catalog2.searchVariants')}
+                  </label>
+                  <input
+                    id="catalog2-variant-search"
+                    className="sk-catalog2__input"
+                    type="search"
+                    value={variantSearch}
+                    onChange={(e) => setVariantSearch(e.target.value)}
+                    placeholder={t('catalog2.searchVariantsPlaceholder')}
+                    data-testid="catalog2-variant-search"
+                  />
+                </div>
+
+                <div className="sk-catalog2__actions sk-catalog2__actions--end">
                   <Button
                     type="button"
                     variant="secondary"
@@ -489,17 +584,107 @@ export function CatalogPanel({
                   </Button>
                 </div>
 
-                {/* The error lives in the section, not the form: an add that
-                    succeeded but could not apply the minimum stock closes the
-                    form and must still be able to say so. */}
-                {addError ? <Banner tone="error" testId="catalog2-add-variant-error">{addError}</Banner> : null}
+                {/* C3 — makes it obvious no existing variant is selected while
+                    a new one is being drafted in the detail column. */}
+                {addingVariant ? (
+                  <p className="sk-catalog2__note" data-testid="catalog2-adding-variant-hint">
+                    {t('catalog2.addingVariantHint')}
+                  </p>
+                ) : null}
 
+                {detail.variants.length === 0 ? (
+                  <Banner tone="info">{t('variants.empty')}</Banner>
+                ) : filteredVariants.length === 0 ? (
+                  <p className="sk-catalog2__note" data-testid="catalog2-variant-no-matches">
+                    {t('catalog2.noVariantMatches')}
+                  </p>
+                ) : (
+                  // C2 — a listbox-style single-select. The row itself IS the
+                  // selection control; there is no separate Edit button, and
+                  // no button lives inside it that a long name could shove
+                  // around (WS-D-10's layout rule, satisfied trivially here).
+                  <div
+                    className="sk-catalog2__vlist-items"
+                    role="listbox"
+                    aria-label={t('variants.title')}
+                    tabIndex={0}
+                    onKeyDown={handleListKeyDown}
+                    data-testid="catalog2-variant-listbox"
+                  >
+                    {filteredVariants.map((variant) => {
+                      const attrs = variant.attributes.map((a) => a.value).join(' \u00b7 ');
+                      const selected = !addingVariant && variant.variant_id === selectedVariantId;
+                      const stock = stockByVariant?.[variant.variant_id];
+                      return (
+                        <div
+                          key={variant.variant_id}
+                          role="option"
+                          aria-selected={selected}
+                          className={`sk-catalog2__panel-variant${selected ? ' sk-catalog2__panel-variant--selected' : ''}`}
+                          onClick={() => selectVariant(variant.variant_id)}
+                          data-testid={`catalog2-variant-row-${variant.variant_id}`}
+                        >
+                          <div className="sk-catalog2__vrow-main">
+                            <strong
+                              className="sk-catalog2__truncate sk-catalog2__vrow-name"
+                              title={variant.effective_variant_name}
+                            >
+                              {variant.effective_variant_name}
+                            </strong>
+                            <span className={`sk-catalog2__pill ${variant.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
+                              {variant.is_active ? t('catalog.active') : t('catalog.inactive')}
+                            </span>
+                          </div>
+
+                          {/* R11 — combination, price, stock, status at a glance. */}
+                          <div className="sk-catalog2__vrow-figures">
+                            <span className="sk-catalog2__truncate" title={attrs || undefined}>
+                              {attrs || t('catalog2.noAttributes')}
+                            </span>
+                            <span>{t('variants.price')}: <strong>{format(variant.sale_price)}</strong></span>
+                            <span>
+                              {t('productsList.stock')}:{' '}
+                              <strong>{stock !== undefined ? format(stock) : '\u2014'}</strong>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {showDetail ? (
+              <div className="sk-catalog2__vdetail" data-testid="catalog2-variant-detail">
+                {narrow ? (
+                  <div className="sk-catalog2__actions">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setAddingVariant(false);
+                        setSelectedVariantId(null);
+                      }}
+                      data-testid="catalog2-variant-back"
+                    >
+                      {t('catalog.backToList')}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {/* C3 — the add-variant FORM lives here, in the detail
+                    column, replacing whatever else it would show. Creating
+                    and editing a variant now happen in the same place. */}
                 {addingVariant ? (
                   <form
                     className="sk-catalog2__panel-variant-body"
                     onSubmit={submitAddVariant}
                     aria-label={t('catalog2.addVariantTitle')}
+                    data-testid="catalog2-add-variant-form"
                   >
+                    <h3>{t('catalog2.addVariantTitle')}</h3>
+                    {addError ? <Banner tone="error" testId="catalog2-add-variant-error">{addError}</Banner> : null}
                     <VariantDraftFields
                       idPrefix="catalog2-add-variant"
                       draft={addDraft}
@@ -517,99 +702,23 @@ export function CatalogPanel({
                       </Button>
                     </div>
                   </form>
-                ) : null}
-
-                {detail.variants.length === 0 ? (
-                  <Banner tone="info">{t('variants.empty')}</Banner>
-                ) : detail.variants.map((variant) => {
-                  const attrs = variant.attributes.map((a) => a.value).join(' \u00b7 ');
-                  const selected = variant.variant_id === selectedVariantId;
-                  const stock = stockByVariant?.[variant.variant_id];
-                  return (
-                    <div
-                      className={`sk-catalog2__panel-variant${selected ? ' sk-catalog2__panel-variant--selected' : ''}`}
-                      key={variant.variant_id}
-                    >
-                      {/* WS-D-10 layout rule still binds: the name truncates,
-                          the actions keep a fixed inline-end slot. */}
-                      <div className="sk-catalog2__vrow">
-                        <div className="sk-catalog2__vrow-main">
-                          <strong
-                            className="sk-catalog2__truncate sk-catalog2__vrow-name"
-                            title={variant.effective_variant_name}
-                          >
-                            {variant.effective_variant_name}
-                          </strong>
-                          <span className={`sk-catalog2__pill ${variant.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
-                            {variant.is_active ? t('catalog.active') : t('catalog.inactive')}
-                          </span>
-                        </div>
-                        <div className="sk-catalog2__actions">
-                          <Button
-                            type="button"
-                            variant={selected ? 'primary' : 'secondary'}
-                            aria-pressed={selected}
-                            onClick={() => setSelectedVariantId(variant.variant_id)}
-                            data-testid={`catalog2-panel-variant-toggle-${variant.variant_id}`}
-                          >
-                            {t('catalog2.edit')}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant={variant.is_active ? 'secondary' : 'primary'}
-                            loading={busy}
-                            onClick={() => {
-                              if (variant.is_active) setConfirmVariantDeactivate(variant);
-                              else void runAction(() => ipc.setVariantActive(token, variant.variant_id, true));
-                            }}
-                            data-testid={`catalog2-panel-variant-active-${variant.variant_id}`}
-                          >
-                            {variant.is_active ? t('variants.deactivate') : t('variants.activate')}
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* R11 — combination, price, stock, status at a glance. */}
-                      <div className="sk-catalog2__vrow-figures">
-                        <span className="sk-catalog2__truncate" title={attrs || undefined}>
-                          {attrs || t('catalog2.noAttributes')}
-                        </span>
-                        <span>{t('variants.price')}: <strong>{format(variant.sale_price)}</strong></span>
-                        <span>
-                          {t('productsList.stock')}:{' '}
-                          <strong>{stock !== undefined ? format(stock) : '\u2014'}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {showDetail ? (
-              <div className="sk-catalog2__vdetail" data-testid="catalog2-variant-detail">
-                {narrow && selectedVariant ? (
-                  <div className="sk-catalog2__actions">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setSelectedVariantId(null)}
-                      data-testid="catalog2-variant-back"
-                    >
-                      {t('catalog.backToList')}
-                    </Button>
-                  </div>
-                ) : null}
-
-                {selectedVariant ? (
+                ) : selectedVariant ? (
                   <VariantEditor
                     key={selectedVariant.variant_id}
                     variant={selectedVariant}
                     attributes={attributes}
                     refLoading={refLoading}
                     stock={stockByVariant?.[selectedVariant.variant_id]}
+                    busy={busy}
                     onCommitName={(nameOverride) =>
                       commitVariant(selectedVariant.variant_id, { nameOverride })}
+                    onCommitPrice={(salePrice) =>
+                      commitVariant(selectedVariant.variant_id, { salePrice })}
+                    onCommitMinimumStock={(minimumStock) =>
+                      commitVariant(selectedVariant.variant_id, { minimumStock })}
+                    onDeactivate={() => setConfirmVariantDeactivate(selectedVariant)}
+                    onActivate={() =>
+                      void runAction(() => ipc.setVariantActive(token, selectedVariant.variant_id, true))}
                     onSetAttributes={(sel) => handleSetAttributes(selectedVariant.variant_id, sel)}
                     onCreateAttribute={handleCreateAttribute}
                     onAddValue={handleAddValue}

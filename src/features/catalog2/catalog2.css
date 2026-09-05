@@ -757,11 +757,53 @@
   border-radius: var(--sk-radius);
 }
 
-.sk-catalog2__panel-variant--selected {
+/* WS-D-11B C2 — the variant list is a listbox; each row IS the selection
+   control (no separate Edit button lives inside it). */
+.sk-catalog2__vlist-items {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+  border-radius: var(--sk-radius-sm);
+}
+
+.sk-catalog2__vlist-items:focus-visible {
+  outline: 3px solid rgba(36, 87, 214, .25);
+  outline-offset: 2px;
+}
+
+.sk-catalog2__panel-variant {
+  cursor: pointer;
+}
+
+.sk-catalog2__panel-variant:hover {
+  background: var(--sk-surface-hover);
+  border-radius: var(--sk-radius-sm);
+}
+
+.sk-catalog2__panel-variant--selected,
+.sk-catalog2__panel-variant--selected:hover {
   background: var(--sk-primary-soft);
   border-radius: var(--sk-radius-sm);
   padding-inline: 8px;
   margin-inline: -8px;
+}
+
+/* C5 — an InlineCell presented as a form field instead of a right-aligned
+   table cell: start-aligned, full width, 44px touch minimum. The shared
+   .sk-catalog2__cell-* classes (used by the table) are untouched; this only
+   overrides their presentation inside a .sk-catalog2__panel-cell wrapper. */
+.sk-catalog2__panel-cell .sk-catalog2__cell-button,
+.sk-catalog2__panel-cell .sk-catalog2__cell-input {
+  width: 100%;
+  min-height: var(--sk-touch);
+  justify-content: flex-start;
+  text-align: start;
+}
+
+.sk-catalog2__panel-cell .sk-catalog2__cell-error,
+.sk-catalog2__panel-cell .sk-catalog2__cell-saving {
+  text-align: start;
 }
 
 .sk-catalog2__veditor-head {

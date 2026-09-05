@@ -21,6 +21,7 @@ import { useErrorText } from '../../shared/hooks/useErrorText';
 import * as ipc from '../../shared/ipc/gateway';
 import type { ProductListItemV2, ReferenceLifecycleItem } from '../../shared/ipc/dto';
 import { isDecimalLessThanOrEqual, sumExactDecimals } from '../inventory/exactDecimal';
+import { commitVariantFields, type VariantFieldPatch } from './variantCommit';
 
 export const CATALOG2_PAGE_SIZE = 50;
 
@@ -80,11 +81,6 @@ export function groupByProduct(
         || (index === order.length - 1 && options.hasNextPage),
     };
   });
-}
-
-interface VariantFieldPatch {
-  salePrice?: string;
-  minimumStock?: string;
 }
 
 export function useCatalogList(token: string) {
@@ -198,9 +194,12 @@ export function useCatalogList(token: string) {
    * product had none.
    *
    * The commit therefore reads `get_product_detail` immediately before
-   * writing, takes the untouched columns from that snapshot, and sends a full
-   * payload. Commits are serialised so a second edit can never read a snapshot
-   * that predates the first one and write its old value back.
+   * writing, then hands that snapshot and the patch to `commitVariantFields`
+   * in `variantCommit.ts` — the SAME function `CatalogPanel`'s price and
+   * minimum-stock fields call — so the table and the panel build byte-for-byte
+   * the same payload rather than two implementations that could drift apart
+   * (WS-D-11B). Commits are serialised so a second edit can never read a
+   * snapshot that predates the first one and write its old value back.
    */
   const chain = useRef<Promise<void>>(Promise.resolve());
 
@@ -212,14 +211,8 @@ export function useCatalogList(token: string) {
         if (!current) {
           throw new Error(`variant ${variantId} is no longer part of product ${productId}`);
         }
-        await ipc.updateVariantV2(
-          token,
-          variantId,
-          current.name_override,
-          patch.salePrice !== undefined ? patch.salePrice : current.sale_price,
-          current.is_active,
-          patch.minimumStock !== undefined ? patch.minimumStock : current.minimum_stock,
-        );
+        // The ONE payload-assembly function, shared with the panel's fields.
+        await commitVariantFields(token, variantId, current, patch);
         // Patch the row locally rather than refetching the page: the two
         // editable columns are stored verbatim, nothing server-derived
         // depends on them, and a refetch per blur would be wasteful.

@@ -1029,40 +1029,57 @@ describe('number formatting (WS-D-10)', () => {
   });
 });
 
-describe('layout stability (WS-D-10)', () => {
-  it('keeps the action group out of the name flow on a long variant name', async () => {
-    const longName = 'Bed - M - Blue - AK Home - Extra Long Marketing Suffix';
-    wireInvoke(makeHandlers({
-      list_products_v2: () => [row()],
-      get_product_detail: () => detailFixture({
-        variants: [{
-          variant_id: 10, sku: 'PIL-1', name_override: null,
-          effective_variant_name: longName, primary_barcode: null,
-          operational_identifier: 'PIL-1', identifier_type: 'SKU',
-          sale_price: '1250.50', minimum_stock: '5.500', is_active: true,
-          attribute_signature: '', attributes: [], barcodes: [],
-        }],
-      }),
-    }));
+describe('layout stability (WS-D-10 / WS-D-11B)', () => {
+  const longName = 'Bed - M - Blue - AK Home - Extra Long Marketing Suffix';
+  const handlers = () => makeHandlers({
+    list_products_v2: () => [row()],
+    get_product_detail: () => detailFixture({
+      variants: [{
+        variant_id: 10, sku: 'PIL-1', name_override: null,
+        effective_variant_name: longName, primary_barcode: null,
+        operational_identifier: 'PIL-1', identifier_type: 'SKU',
+        sale_price: '1250.50', minimum_stock: '5.500', is_active: true,
+        attribute_signature: '', attributes: [], barcodes: [],
+      }],
+    }),
+  });
+
+  // WS-D-11B C2 removed the per-row action button entirely, so a long name in
+  // the LIST has nothing left to push — it just truncates.
+  it('truncates a long name in the list row, which carries no button', async () => {
+    wireInvoke(handlers());
     render(<App />);
     await loginAndOpenCatalog();
 
     fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
-    const toggle = await screen.findByTestId('catalog2-panel-variant-toggle-10');
+    const list = await screen.findByTestId('catalog2-variant-list');
+    const row = within(list).getByTestId('catalog2-variant-row-10');
+    expect(row.querySelector('button')).toBeNull();
 
-    // The actions live in their own fixed slot, a sibling of the name area —
-    // not inside it, where a long name could push them onto another line.
-    const actions = toggle.closest('.sk-catalog2__actions');
-    expect(actions).not.toBeNull();
-    expect(actions!.parentElement).toHaveClass('sk-catalog2__vrow');
-    expect(actions!.querySelector('.sk-catalog2__vrow-name')).toBeNull();
-
-    // The full name stays reachable even though the label truncates. It is
-    // rendered in the list row and again in the editor head, so scope to the
-    // list.
-    const list = screen.getByTestId('catalog2-variant-list');
-    const name = within(list).getByTitle(longName);
+    const name = within(row).getByTitle(longName);
     expect(name).toHaveClass('sk-catalog2__truncate');
+  });
+
+  // The button that DOES sit beside the name now is Deactivate, in the
+  // detail column's header (C2). That is where WS-D-10's rule still has
+  // something to prove: the action stays in its own fixed slot and is never
+  // pushed onto a second line by a long name.
+  it('keeps Deactivate out of the name flow in the detail column header', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    const deactivate = await screen.findByTestId('catalog2-panel-variant-active-10');
+
+    const actions = deactivate.closest('.sk-catalog2__actions');
+    expect(actions).not.toBeNull();
+    expect(actions!.parentElement).toHaveClass('sk-catalog2__veditor-head');
+
+    const editor = screen.getByTestId('catalog2-variant-editor-10');
+    const name = within(editor).getByTitle(longName);
+    expect(name).toHaveClass('sk-catalog2__truncate');
+    expect(name.closest('.sk-catalog2__actions')).toBeNull();
   });
 });
 
@@ -1099,6 +1116,7 @@ describe('two-column variant editing (WS-D-11)', () => {
 
   // R4 / R6: one detail column, exactly one variant open. The accordion that
   // stacked several expanded variants inside 560px is gone.
+  // WS-D-11B C2: the row itself is the selection control — no Edit button.
   it('shows the selected variant in the detail column, and only that one', async () => {
     wireInvoke(handlers());
     render(<App />);
@@ -1110,16 +1128,53 @@ describe('two-column variant editing (WS-D-11)', () => {
     expect(await screen.findByTestId('catalog2-variant-editor-10')).toBeInTheDocument();
     expect(screen.queryByTestId('catalog2-variant-editor-20')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('catalog2-panel-variant-toggle-20'));
+    fireEvent.click(screen.getByTestId('catalog2-variant-row-20'));
 
     // Selecting another REPLACES it. Never two at once.
     expect(await screen.findByTestId('catalog2-variant-editor-20')).toBeInTheDocument();
     expect(screen.queryByTestId('catalog2-variant-editor-10')).not.toBeInTheDocument();
 
-    // Both remain listed the whole time.
+    // Both remain listed the whole time, and the selected one is marked.
     const list = screen.getByTestId('catalog2-variant-list');
-    expect(within(list).getByTestId('catalog2-panel-variant-toggle-10')).toBeInTheDocument();
-    expect(within(list).getByTestId('catalog2-panel-variant-toggle-20')).toBeInTheDocument();
+    expect(within(list).getByTestId('catalog2-variant-row-10')).toBeInTheDocument();
+    const row20 = within(list).getByTestId('catalog2-variant-row-20');
+    expect(row20).toHaveAttribute('aria-selected', 'true');
+    expect(within(list).getByTestId('catalog2-variant-row-10')).toHaveAttribute('aria-selected', 'false');
+  });
+
+  // WS-D-11B C2 — the Owner's complaint was that a per-row Edit button was
+  // redundant with clicking the row to select it. It is gone.
+  it('has no Edit button inside a variant row', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    const list = await screen.findByTestId('catalog2-variant-list');
+    expect(within(list).queryByTestId('catalog2-panel-variant-toggle-10')).not.toBeInTheDocument();
+    expect(within(list).queryByTestId('catalog2-panel-variant-toggle-20')).not.toBeInTheDocument();
+    // No button of any kind lives inside a row — Deactivate moved to the
+    // detail column's header, acting on the selected variant.
+    const row = within(list).getByTestId('catalog2-variant-row-10');
+    expect(row.querySelector('button')).toBeNull();
+    expect(row).toHaveAttribute('role', 'option');
+  });
+
+  // WS-D-11B C2 — arrow keys move the selection, matching the chip pattern.
+  it('moves the selection with the arrow keys', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-editor-10');
+
+    const listbox = screen.getByTestId('catalog2-variant-listbox');
+    fireEvent.keyDown(listbox, { key: 'ArrowDown' });
+    expect(await screen.findByTestId('catalog2-variant-editor-20')).toBeInTheDocument();
+
+    fireEvent.keyDown(listbox, { key: 'ArrowUp' });
+    expect(await screen.findByTestId('catalog2-variant-editor-10')).toBeInTheDocument();
   });
 
   // R12
@@ -1129,7 +1184,7 @@ describe('two-column variant editing (WS-D-11)', () => {
     await loginAndOpenCatalog();
 
     fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
-    fireEvent.click(await screen.findByTestId('catalog2-panel-variant-toggle-20'));
+    fireEvent.click(await screen.findByTestId('catalog2-variant-row-20'));
 
     const editor = await screen.findByTestId('catalog2-variant-editor-20');
     expect(within(editor).getByText('Barcodes (2)')).toBeInTheDocument();
@@ -1138,6 +1193,24 @@ describe('two-column variant editing (WS-D-11)', () => {
 
     fireEvent.click(screen.getByTestId('catalog2-barcodes-toggle-20'));
     expect(await screen.findByTestId('catalog2-barcode-input-20')).toBeInTheDocument();
+  });
+
+  // WS-D-11B C4 — Owner ruling: barcodes above pricing, not buried at the
+  // bottom. Assert DOM order, not just presence.
+  it('renders the barcode section above the price and minimum-stock fields', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    const editor = await screen.findByTestId('catalog2-variant-editor-10');
+
+    const barcodesHeading = within(editor).getByText('Barcodes (0)');
+    const priceField = within(editor).getByTestId('catalog2-panel-price-10-trigger');
+    // DOCUMENT_POSITION_FOLLOWING (4) means barcodesHeading comes BEFORE
+    // priceField in document order.
+    const position = barcodesHeading.compareDocumentPosition(priceField);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   // R13 — identity, not an input.
@@ -1274,6 +1347,283 @@ describe('attribute selection (WS-D-11)', () => {
     // ...and the chip goes back to what the database actually holds.
     await waitFor(() => expect(screen.getByRole('radio', { name: 'Red' })).toBeChecked());
     expect(screen.getByRole('radio', { name: 'Blue' })).not.toBeChecked();
+  });
+});
+
+describe('variant search (WS-D-11B C1)', () => {
+  function searchDetail() {
+    return detailFixture({
+      variants: [
+        {
+          variant_id: 10, sku: 'PIL-RED', name_override: null,
+          effective_variant_name: 'Pillow Red', primary_barcode: null,
+          operational_identifier: 'PIL-RED', identifier_type: 'SKU',
+          sale_price: '1250.50', minimum_stock: '5.500', is_active: true,
+          attribute_signature: '1:4',
+          attributes: [{ attribute_id: 1, attribute_name: 'Color', attribute_value_id: 4, value: 'Red' }],
+          barcodes: [],
+        },
+        {
+          variant_id: 20, sku: 'PIL-BLUE', name_override: null,
+          effective_variant_name: 'Pillow Blue', primary_barcode: null,
+          operational_identifier: 'PIL-BLUE', identifier_type: 'SKU',
+          sale_price: '1800.00', minimum_stock: '2', is_active: true,
+          attribute_signature: '1:5',
+          attributes: [{ attribute_id: 1, attribute_name: 'Color', attribute_value_id: 5, value: 'Blue' }],
+          barcodes: [{ id: 5, barcode: '6130000000024', is_primary: true }],
+        },
+      ],
+    });
+  }
+
+  const handlers = (extra: Handlers = {}) => makeHandlers({
+    list_products_v2: () => [row()],
+    get_product_detail: () => searchDetail(),
+    ...extra,
+  });
+
+  it('filters the list by name as you type, and clearing restores it', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-row-10');
+    expect(screen.getByTestId('catalog2-variant-row-20')).toBeInTheDocument();
+
+    const search = screen.getByTestId('catalog2-variant-search');
+    fireEvent.change(search, { target: { value: 'red' } });
+
+    expect(screen.getByTestId('catalog2-variant-row-10')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-variant-row-20')).not.toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: '' } });
+    expect(screen.getByTestId('catalog2-variant-row-10')).toBeInTheDocument();
+    expect(screen.getByTestId('catalog2-variant-row-20')).toBeInTheDocument();
+  });
+
+  it('matches SKU and the attribute combination, not only the name', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-row-10');
+    const search = screen.getByTestId('catalog2-variant-search');
+
+    // SKU.
+    fireEvent.change(search, { target: { value: 'PIL-BLUE' } });
+    expect(screen.queryByTestId('catalog2-variant-row-10')).not.toBeInTheDocument();
+    expect(screen.getByTestId('catalog2-variant-row-20')).toBeInTheDocument();
+
+    // Barcode.
+    fireEvent.change(search, { target: { value: '6130000000024' } });
+    expect(screen.queryByTestId('catalog2-variant-row-10')).not.toBeInTheDocument();
+    expect(screen.getByTestId('catalog2-variant-row-20')).toBeInTheDocument();
+
+    // Attribute combination, e.g. "Red".
+    fireEvent.change(search, { target: { value: 'red' } });
+    expect(screen.getByTestId('catalog2-variant-row-10')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-variant-row-20')).not.toBeInTheDocument();
+  });
+
+  it('shows a plain no-matches state, and never calls the backend to filter', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-row-10');
+    invokeMock.mockClear();
+
+    fireEvent.change(screen.getByTestId('catalog2-variant-search'), { target: { value: 'zzz-no-such-variant' } });
+
+    expect(await screen.findByTestId('catalog2-variant-no-matches')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-variant-row-10')).not.toBeInTheDocument();
+    // Filtering is entirely client-side over the already-loaded variants.
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('does not autofocus the search box on open', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    const search = await screen.findByTestId('catalog2-variant-search');
+    expect(search).not.toHaveFocus();
+  });
+});
+
+describe('add variant opens in the detail column (WS-D-11B C3)', () => {
+  it('renders the add-variant form in the detail column, not the list, and clears the list selection', async () => {
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [row()],
+      get_product_detail: () => detailFixture(),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-editor-10');
+
+    const list = screen.getByTestId('catalog2-variant-list');
+    expect(within(list).getByTestId('catalog2-variant-row-10')).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByTestId('catalog2-add-variant-toggle'));
+
+    // The form is NOT in the list column...
+    expect(within(list).queryByTestId('catalog2-add-variant-form')).not.toBeInTheDocument();
+    // ...it is in the detail column, replacing the editor.
+    const detailColumn = screen.getByTestId('catalog2-variant-detail');
+    expect(within(detailColumn).getByTestId('catalog2-add-variant-form')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-variant-editor-10')).not.toBeInTheDocument();
+
+    // While adding, the list makes it obvious nothing existing is selected.
+    expect(within(list).getByTestId('catalog2-variant-row-10')).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByTestId('catalog2-adding-variant-hint')).toBeInTheDocument();
+  });
+
+  it('returns to viewing the selected variant when an existing row is clicked mid-add', async () => {
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [row()],
+      get_product_detail: () => detailFixture(),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-add-variant-toggle'));
+    await screen.findByTestId('catalog2-add-variant-form');
+
+    fireEvent.click(screen.getByTestId('catalog2-variant-row-10'));
+    expect(await screen.findByTestId('catalog2-variant-editor-10')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-add-variant-form')).not.toBeInTheDocument();
+  });
+});
+
+describe('panel/table edit parity — price and minimum stock (WS-D-11B C5)', () => {
+  const handlers = (extra: Handlers = {}) => makeHandlers({
+    list_products_v2: () => [row()],
+    get_product_detail: () => detailFixture(),
+    ...extra,
+  });
+
+  // THE OVERWRITE TRAP. update_variant assigns every column unconditionally.
+  // The panel's price field must build the same full payload the table's
+  // does — via the SAME commitVariantFields function (variantCommit.ts).
+  it('commits the exact raw string on blur, carrying the untouched columns', async () => {
+    const variantCalls: Record<string, unknown>[] = [];
+    wireInvoke(handlers({
+      update_variant_v2: (args) => { variantCalls.push(args); return null; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    const trigger = await screen.findByTestId('catalog2-panel-price-10-trigger');
+    // Formatted while idle...
+    expect(trigger.textContent).toBe('1,250.50');
+    fireEvent.click(trigger);
+    // ...raw while editing.
+    const input = await screen.findByTestId('catalog2-panel-price-10');
+    expect((input as HTMLInputElement).value).toBe('1250.50');
+
+    fireEvent.change(input, { target: { value: '14000.00' } });
+    fireEvent.blur(input);
+
+    await waitFor(() => expect(variantCalls).toHaveLength(1));
+    const call = variantCalls[0];
+    expect(call.variantId).toBe(10);
+    expect(call.salePrice).toBe('14000.00');
+    expect(typeof call.salePrice).toBe('string');
+    // Untouched columns, at their current server values.
+    expect(call.minimumStock).toBe('5.500');
+    expect(call.nameOverride).toBeNull();
+    expect(call.isActive).toBe(true);
+  });
+
+  it('commits nothing while the operator is still typing the price', async () => {
+    wireInvoke(handlers({ update_variant_v2: () => null }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-panel-price-10-trigger'));
+    const input = await screen.findByTestId('catalog2-panel-price-10');
+    invokeMock.mockClear();
+
+    fireEvent.change(input, { target: { value: '1' } });
+    fireEvent.change(input, { target: { value: '14' } });
+    fireEvent.change(input, { target: { value: '14000.00' } });
+
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe('14000.00'));
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('reverts the field to the last server value when a panel commit fails', async () => {
+    wireInvoke(handlers({
+      update_variant_v2: () => { throw { code: 'VALIDATION_ERROR' }; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-panel-price-10-trigger'));
+    const input = await screen.findByTestId('catalog2-panel-price-10');
+    fireEvent.change(input, { target: { value: '9999.00' } });
+    fireEvent.blur(input);
+
+    const error = await screen.findByTestId('catalog2-panel-price-10-error');
+    expect(error.textContent).toBe('Some of the entered values are invalid.');
+    const trigger = await screen.findByTestId('catalog2-panel-price-10-trigger');
+    expect(trigger.textContent).toBe('1,250.50');
+  });
+
+  it('round-trips minimum stock through the panel exactly as the table does, "0" included', async () => {
+    const variantCalls: Record<string, unknown>[] = [];
+    wireInvoke(handlers({
+      update_variant_v2: (args) => { variantCalls.push(args); return null; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-panel-min-10-trigger'));
+    const input = await screen.findByTestId('catalog2-panel-min-10');
+    expect((input as HTMLInputElement).value).toBe('5.500');
+
+    fireEvent.change(input, { target: { value: '0' } });
+    fireEvent.blur(input);
+
+    await waitFor(() => expect(variantCalls).toHaveLength(1));
+    expect(variantCalls[0].minimumStock).toBe('0');
+    expect(variantCalls[0].salePrice).toBe('1250.50');
+  });
+
+  // Editing in the panel must be reflected in the table without a manual
+  // refresh: closing the panel (which every commit marks as "changed") always
+  // reloads the list.
+  it('reloads the table list when the panel closes after a price edit', async () => {
+    const listCalls: Record<string, unknown>[] = [];
+    wireInvoke(handlers({
+      list_products_v2: (args) => { listCalls.push(args); return [row()]; },
+      update_variant_v2: () => null,
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    const initialCalls = listCalls.length;
+
+    fireEvent.click(await screen.findByTestId('catalog2-panel-price-10-trigger'));
+    const input = await screen.findByTestId('catalog2-panel-price-10');
+    fireEvent.change(input, { target: { value: '14000.00' } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(screen.getByTestId('catalog2-panel-price-10-trigger').textContent).toBe('14,000'));
+
+    fireEvent.click(screen.getByTestId('catalog2-panel-close'));
+    await waitFor(() => expect(listCalls.length).toBeGreaterThan(initialCalls));
   });
 });
 
