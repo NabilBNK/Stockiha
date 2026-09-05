@@ -2556,3 +2556,52 @@ fieldset.sk-form {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+
+/* WS-D-11 additions to the attribute picker. Still scoped entirely to
+   .sk-attr* and still reading only existing tokens — no :root rule, no
+   [data-theme] rule, so no other screen's palette changes. */
+
+.sk-attr__summary {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  background: var(--sk-surface-soft);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+  font-size: 15px;
+}
+
+.sk-attr__summary-label {
+  color: var(--sk-muted);
+  font-weight: 700;
+}
+
+.sk-attr__chip--none {
+  font-weight: 500;
+  color: var(--sk-muted);
+  border-style: dashed;
+}
+
+.sk-attr__chip--none.sk-attr__chip--selected {
+  color: #ffffff;
+  border-style: solid;
+}
+
+/* The inline "+" that adds a VALUE. A button, not a chip-label: it opens a
+   field, it does not participate in the radio group. */
+.sk-attr__chip--add {
+  min-width: var(--sk-touch);
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--sk-primary);
+  border-style: dashed;
+}
+
+.sk-attr__setup-hint {
+  margin: 18px 0 0;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--sk-border);
+  color: var(--sk-muted);
+  font-size: 14px;
+}

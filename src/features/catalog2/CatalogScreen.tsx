@@ -17,7 +17,7 @@
  * so adding its remaining variants, attributes and barcodes is the next
  * click rather than a hunt through the list.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { Banner, Button, Spinner } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
@@ -91,6 +91,19 @@ export function CatalogScreen() {
     setExpandedProductIds((prev) => new Set(prev).add(productId));
     setPanel({ mode: 'edit', target: { productId, variantId: null } });
   }, [reload]);
+
+  /**
+   * quantity_on_hand is per-warehouse and lives on the list rows, not on
+   * get_product_detail, so the panel is handed the figures the list already
+   * fetched rather than the panel inventing a second source for stock.
+   */
+  const stockByVariant = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const group of groups) {
+      for (const variant of group.variants) map[variant.variant_id] = variant.quantity_on_hand;
+    }
+    return map;
+  }, [groups]);
 
   const from = totalCount === 0 ? 0 : pageIndex * pageSize + 1;
   const to = Math.min(totalCount, pageIndex * pageSize + rowCount);
@@ -243,6 +256,7 @@ export function CatalogScreen() {
           token={token}
           productId={panel.target.productId}
           initialVariantId={panel.target.variantId}
+          stockByVariant={stockByVariant}
           onClose={closePanel}
         />
       ) : null}

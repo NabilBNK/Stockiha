@@ -57,9 +57,14 @@
   --sk-touch: 44px;
   --sk-gap: 18px;
 
-  /* Page-local layout constants. */
+  /* Page-local layout constants.
+     WS-D-11 R1: the panel is proportional, not fixed. 560px was its old
+     fixed width and becomes the floor; 1100px is the ceiling because past
+     that a single column of form fields becomes an unreadable line length.
+     A drag or a keyboard resize overrides this variable on the element
+     itself, so one variable still drives the width. */
   --sk-catalog2-row: 48px;
-  --sk-catalog2-panel: 560px;
+  --sk-catalog2-panel: clamp(560px, 55vw, 1100px);
 
   background: var(--sk-bg);
   color: var(--sk-text);
@@ -654,4 +659,165 @@
   background: var(--sk-surface);
   border: 1px solid var(--sk-border);
   border-radius: var(--sk-radius);
+}
+
+
+/* ------------------------------------------------------------------
+   WS-D-11 — resizable / expandable panel, tabs, and the two-column
+   variant editor.
+
+   Everything is logical (inset-inline-*), so in Arabic the panel enters
+   from the left and its drag edge and columns mirror with it.
+   ------------------------------------------------------------------ */
+
+/* R3 — full screen. */
+.sk-catalog2__panel--full {
+  width: 100vw;
+}
+
+/* R2 — the drag edge sits on the panel's inline-start side, so it mirrors
+   in RTL without a physical property anywhere. */
+.sk-catalog2__panel-resize {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 10px;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.sk-catalog2__panel-resize:hover,
+.sk-catalog2__panel-resize:focus-visible {
+  background: var(--sk-primary-soft);
+  outline: none;
+  box-shadow: inset 2px 0 0 0 var(--sk-primary);
+}
+
+[dir="rtl"] .sk-catalog2__panel-resize:hover,
+[dir="rtl"] .sk-catalog2__panel-resize:focus-visible {
+  box-shadow: inset -2px 0 0 0 var(--sk-primary);
+}
+
+/* R5 — product fields live behind a tab instead of above everything. */
+.sk-catalog2__tabs {
+  display: flex;
+  gap: 4px;
+  margin-block-end: var(--sk-gap);
+  padding: 4px;
+  background: var(--sk-surface-soft);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+}
+
+.sk-catalog2__tab {
+  flex: 1 1 auto;
+  min-height: var(--sk-touch);
+  padding: 0 16px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--sk-muted);
+  background: none;
+  border: 0;
+  border-radius: var(--sk-radius-sm);
+  cursor: pointer;
+}
+
+.sk-catalog2__tab:hover {
+  color: var(--sk-text);
+  background: var(--sk-surface);
+}
+
+.sk-catalog2__tab--active {
+  color: var(--sk-primary);
+  background: var(--sk-surface);
+  box-shadow: var(--sk-shadow);
+}
+
+/* R4 — two columns: the variant list, then the selected variant's editor.
+   The breakpoint is applied by the component from the PANEL's measured
+   width, not a viewport media query, because the panel is resizable. */
+.sk-catalog2__panel-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: var(--sk-gap);
+  align-items: start;
+}
+
+.sk-catalog2__panel-cols--stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sk-catalog2__vlist,
+.sk-catalog2__vdetail {
+  min-width: 0;
+  padding: 18px;
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+}
+
+.sk-catalog2__panel-variant--selected {
+  background: var(--sk-primary-soft);
+  border-radius: var(--sk-radius-sm);
+  padding-inline: 8px;
+  margin-inline: -8px;
+}
+
+.sk-catalog2__veditor-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-block-end: 12px;
+}
+
+.sk-catalog2__veditor-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.sk-catalog2__veditor-section {
+  padding-block-start: 18px;
+  margin-block-start: 18px;
+  border-block-start: 1px solid var(--sk-border);
+}
+
+.sk-catalog2__veditor-empty {
+  padding-block: 24px;
+}
+
+/* R13 — the SKU is identity, not an input. Click to copy. */
+.sk-catalog2__sku-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-block-end: 12px;
+}
+
+.sk-catalog2__sku {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--sk-touch);
+  padding: 0 12px;
+  font: inherit;
+  color: var(--sk-text);
+  background: var(--sk-surface-soft);
+  border: 1px dashed var(--sk-border-strong);
+  border-radius: var(--sk-radius-sm);
+  cursor: copy;
+  text-align: start;
+}
+
+.sk-catalog2__sku:hover {
+  border-color: var(--sk-primary);
+}
+
+.sk-catalog2__sku-hint {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sk-primary);
 }

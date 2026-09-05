@@ -1,54 +1,64 @@
 /**
- * WS-D-9 — the right slide-in detail panel (RULING 4).
+ * WS-D-9 / WS-D-11 — the right slide-in detail panel.
  *
- * Everything that is not inline-editable in the table lives here: product
- * name, unit, category, active state, variant name overrides, attributes and
- * barcodes. The panel overlays the table; the table keeps full width when the
- * panel is closed, and is never permanently split.
+ * Everything that is not inline-editable in the table lives here. The panel
+ * overlays the table; the table keeps full width when the panel is closed.
+ *
+ * WS-D-11 restructures it, because the Owner's verdict on the previous shape
+ * was that "the arrangements of the elements is frustrating and confusing" and
+ * "the right sidebar is so much narrow and tight". Three changes address that:
+ *
+ *   R4/R6 — TWO COLUMNS. A variant list on the inline-start side, the selected
+ *     variant's editor on the inline-end side, EXACTLY ONE open at a time. The
+ *     accordion is gone: it used to stack name + identifier + status + actions
+ *     + figures + attribute picker + barcodes vertically inside 560px, for
+ *     several variants at once. Below a panel width where two columns cannot
+ *     both be legible it falls back to list-then-detail with a back control —
+ *     measured on the PANEL, because the panel is resizable and a viewport
+ *     query would answer the wrong question.
+ *   R5 — PRODUCT FIELDS MOVED to their own tab. They are edited rarely and
+ *     variants constantly, so they no longer eat the top of every screenful.
+ *     One clearly labelled click away.
+ *   R1/R2/R3 — the panel itself is proportionally wide, drag-resizable and
+ *     expandable to full screen; see PanelShell.tsx.
  *
  * NO MODAL INSIDE THE PANEL. The only permitted overlay-on-overlay is
- * ConfirmDialog, which guards the destructive and structural actions
- * (RULING 6): deactivating a product, deactivating a variant, removing a
- * barcode. None of those autosave.
+ * ConfirmDialog, guarding the destructive and structural actions: deactivating
+ * a product, deactivating a variant, removing a barcode. None of those
+ * autosave.
  *
- * Fields commit on blur (text) or on change (selects) — a select has no
- * half-typed intermediate state, so change IS the moment the user finished.
- * Nothing commits on a keystroke.
+ * Fields commit on blur (text) or on change (selects). Nothing commits on a
+ * keystroke.
  *
  * CR2 REUSE. The attribute section renders `AttributeManagerForVariant` from
  * ProductEditor.tsx — the component that owns the `mergeAssignedValues`
- * wiring. That function merges a variant's already-assigned values into the
- * picker options so a variant holding a RETIRED value does not silently lose
- * it on the next save. Writing a fresh picker here instead would reintroduce
- * exactly that data-loss defect, so the existing component is reused whole
- * rather than reimplemented. A variant added through this panel gets the same
- * component, for the same reason.
+ * wiring, which keeps a RETIRED value a variant already holds visible,
+ * selectable and marked. A fresh picker here would reintroduce that data-loss
+ * defect, so the existing component is reused whole.
  *
- * WS-D-9B adds the two things a catalogue cannot do without:
- *   - ADD VARIANT, inline in the variants section. `VariantInput` has no
- *     minimum_stock field, so a typed minimum stock is applied straight after
- *     through updateVariantV2 — silently dropping it would be data loss.
- *   - CREATE PRODUCT, as `CatalogCreatePanel`: the same slide-in panel in
- *     create mode, never a separate screen and never a modal. Creation is a
- *     DELIBERATE submit — a half-typed product is never autosaved into the
- *     catalogue, which is the one place on this page where commit-on-blur
- *     would be actively wrong.
+ * R14 — a rejected attribute combination must not leave the chips showing a
+ * selection the database refused. `handleSetAttributes` refreshes the detail
+ * BEFORE re-throwing, which gives AttributeManagerForVariant a new `variant`
+ * object; its existing effect re-seeds the selection from server truth, so the
+ * chip reverts while the picker surfaces the message.
  *
- * WS-D-10 — layout stability (RULINGS 3 and 5). A variant row is now a grid:
- * the name takes the remaining space and truncates, the identifier and status
- * each get their own slot, and the action group sits in a fixed slot at the
- * row's inline-end that never wraps. Before this, "Bed - M - Blue - AK Home"
- * pushed Open/Deactivate onto a second line while "Bed - M - Red" did not —
- * the name was allowed to shove the actions around. Spacing comes from the
- * page's scoped classes; the one-off inline margins are gone.
+ * ADD VARIANT — `VariantInput` has no minimum_stock field, so a typed minimum
+ * stock is applied straight after through updateVariantV2; dropping it
+ * silently would be data loss.
+ *
+ * CREATE PRODUCT — `CatalogCreatePanel`, the same panel in create mode. A
+ * deliberate submit, never autosave: there is no row yet, so a half-typed
+ * product would be a nameless, priceless row in a live catalogue. R15 keeps a
+ * discard guard there and, deliberately, nowhere else — the edit side commits
+ * as you go, so there is nothing to lose.
  */
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
   type ReactNode,
 } from 'react';
 
@@ -64,349 +74,17 @@ import type {
   VariantDetail,
   VariantInput,
 } from '../../shared/ipc/dto';
-import { AttributeManagerForVariant } from '../products/ProductEditor';
 import { InlineCreateSelect } from '../products/InlineCreateSelect';
-import { isValidMinimumStock, isValidPrice } from './catalogValidation';
+import { PanelField, PanelSelect } from './PanelFields';
+import { PanelShell, usePanelNarrow } from './PanelShell';
+import { VariantEditor, VariantEditorEmpty } from './VariantEditor';
+import {
+  EMPTY_VARIANT_DRAFT,
+  VariantDraftFields,
+  isVariantDraftValid,
+  type VariantDraft,
+} from './VariantDraftFields';
 import { useDecimalFormat } from './useDecimalFormat';
-
-type FieldState = 'idle' | 'saving' | 'saved' | 'error';
-
-/** Commit-on-blur text field. Never commits on a keystroke. */
-function PanelField({
-  id,
-  label,
-  value,
-  commit,
-  validate,
-  testId,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  commit: (next: string) => Promise<void>;
-  validate?: (next: string) => string | null;
-  testId?: string;
-}) {
-  const errorText = useErrorText();
-  const [lastGood, setLastGood] = useState(value);
-  const [draft, setDraft] = useState(value);
-  const [state, setState] = useState<FieldState>('idle');
-  const [error, setError] = useState<string | null>(null);
-  const savingRef = useRef(false);
-  const dirty = draft !== lastGood;
-  // Refs, not deps: this effect reacts to the SERVER value changing, never to
-  // its own bookkeeping, and it must not clobber an edit in progress.
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
-
-  useEffect(() => {
-    if (dirtyRef.current || savingRef.current) return;
-    setLastGood(value);
-    setDraft(value);
-  }, [value]);
-
-  const commitNow = useCallback(async () => {
-    if (savingRef.current) return;
-    const candidate = draft.trim();
-    if (candidate === lastGood) {
-      setDraft(candidate);
-      setError(null);
-      return;
-    }
-    const invalid = validate?.(candidate) ?? null;
-    if (invalid) {
-      setError(invalid);
-      setState('error');
-      return;
-    }
-    savingRef.current = true;
-    setState('saving');
-    setError(null);
-    try {
-      await commit(candidate);
-      setLastGood(candidate);
-      setDraft(candidate);
-      setState('saved');
-    } catch (err) {
-      // Never show a value the database does not hold.
-      setDraft(lastGood);
-      setError(errorText(err));
-      setState('error');
-    } finally {
-      savingRef.current = false;
-    }
-  }, [draft, lastGood, validate, commit, errorText]);
-
-  function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      void commitNow();
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      setDraft(lastGood);
-      setError(null);
-      setState('idle');
-    }
-  }
-
-  return (
-    <div className="sk-catalog2__field">
-      <label className="sk-catalog2__label" htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        className="sk-catalog2__input"
-        value={draft}
-        aria-invalid={state === 'error'}
-        onChange={(e) => { setDraft(e.target.value); setState('idle'); setError(null); }}
-        onBlur={() => void commitNow()}
-        onKeyDown={onKeyDown}
-        data-testid={testId}
-      />
-      <PanelStatus state={state} dirty={dirty} error={error} testId={testId} />
-    </div>
-  );
-}
-
-/** Commit-on-change select. */
-function PanelSelect({
-  id,
-  label,
-  value,
-  options,
-  emptyLabel,
-  commit,
-  testId,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  emptyLabel?: string;
-  commit: (next: string) => Promise<void>;
-  testId?: string;
-}) {
-  const errorText = useErrorText();
-  const [state, setState] = useState<FieldState>('idle');
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleChange(next: string) {
-    setState('saving');
-    setError(null);
-    try {
-      await commit(next);
-      setState('saved');
-    } catch (err) {
-      setError(errorText(err));
-      setState('error');
-    }
-  }
-
-  return (
-    <div className="sk-catalog2__field">
-      <label className="sk-catalog2__label" htmlFor={id}>{label}</label>
-      <select
-        id={id}
-        className="sk-catalog2__select"
-        value={value}
-        aria-invalid={state === 'error'}
-        onChange={(e) => void handleChange(e.target.value)}
-        data-testid={testId}
-      >
-        {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-      <PanelStatus state={state} dirty={false} error={error} testId={testId} />
-    </div>
-  );
-}
-
-function PanelStatus({
-  state, dirty, error, testId,
-}: {
-  state: FieldState;
-  dirty: boolean;
-  error: string | null;
-  testId?: string;
-}) {
-  const { t } = useI18n();
-  if (state === 'error' && error) {
-    return (
-      <p className="sk-catalog2__status sk-catalog2__status--error" role="alert" data-testid={testId ? `${testId}-error` : undefined}>
-        {error}
-      </p>
-    );
-  }
-  if (state === 'saving') {
-    return <p className="sk-catalog2__status sk-catalog2__status--saving">{t('catalog2.saving')}</p>;
-  }
-  if (dirty) {
-    return <p className="sk-catalog2__status sk-catalog2__status--saving">{t('catalog2.pending')}</p>;
-  }
-  if (state === 'saved') {
-    return (
-      <p className="sk-catalog2__status sk-catalog2__status--saved" data-testid={testId ? `${testId}-saved` : undefined}>
-        {t('catalog2.saved')}
-      </p>
-    );
-  }
-  return null;
-}
-
-/**
- * The fields that describe one new variant. Shared by "add variant" and by the
- * first variant of a new product, so the two paths cannot drift apart.
- *
- * `minimumStock` seeds to "0" deliberately: "0" means "never warn me about
- * this item" (ws-d-skill.md section 3). It is a value, not a blank.
- */
-export interface VariantDraft {
-  nameOverride: string;
-  barcode: string;
-  salePrice: string;
-  minimumStock: string;
-  isActive: boolean;
-}
-
-export const EMPTY_VARIANT_DRAFT: VariantDraft = {
-  nameOverride: '',
-  barcode: '',
-  salePrice: '',
-  minimumStock: '0',
-  isActive: true,
-};
-
-export function isVariantDraftValid(draft: VariantDraft): boolean {
-  return isValidPrice(draft.salePrice) && isValidMinimumStock(draft.minimumStock);
-}
-
-function VariantDraftFields({
-  idPrefix,
-  draft,
-  onChange,
-  disabled,
-  showActive = true,
-}: {
-  idPrefix: string;
-  draft: VariantDraft;
-  onChange: (next: VariantDraft) => void;
-  disabled?: boolean;
-  showActive?: boolean;
-}) {
-  const { t } = useI18n();
-  const priceInvalid = draft.salePrice !== '' && !isValidPrice(draft.salePrice);
-  const minInvalid = draft.minimumStock !== '' && !isValidMinimumStock(draft.minimumStock);
-
-  function set(patch: Partial<VariantDraft>) {
-    onChange({ ...draft, ...patch });
-  }
-
-  return (
-    <div className="sk-catalog2__panel-grid">
-      <TextField
-        id={`${idPrefix}-name`}
-        label={t('variants.name')}
-        value={draft.nameOverride}
-        placeholder={t('variants.namePlaceholder')}
-        onChange={(e) => set({ nameOverride: e.target.value })}
-        disabled={disabled}
-        data-testid={`${idPrefix}-name`}
-      />
-      <TextField
-        id={`${idPrefix}-barcode`}
-        label={t('barcodes.barcode')}
-        value={draft.barcode}
-        placeholder={t('barcodes.placeholder')}
-        onChange={(e) => set({ barcode: e.target.value })}
-        disabled={disabled}
-        data-testid={`${idPrefix}-barcode`}
-      />
-      <TextField
-        id={`${idPrefix}-price`}
-        label={`${t('variants.price')} (DZD)`}
-        value={draft.salePrice}
-        inputMode="decimal"
-        onChange={(e) => set({ salePrice: e.target.value })}
-        error={priceInvalid ? t('variants.invalidPrice') : undefined}
-        required
-        disabled={disabled}
-        data-testid={`${idPrefix}-price`}
-      />
-      <div>
-        <TextField
-          id={`${idPrefix}-minimum-stock`}
-          label={t('variants.minimumStock')}
-          value={draft.minimumStock}
-          inputMode="decimal"
-          onChange={(e) => set({ minimumStock: e.target.value })}
-          error={minInvalid ? t('variants.invalidMinimumStock') : undefined}
-          required
-          disabled={disabled}
-          data-testid={`${idPrefix}-minimum-stock`}
-        />
-        <p className="sk-catalog2__note">{t('variants.minimumStockHint')}</p>
-      </div>
-      {showActive ? (
-        <label className="sk-catalog2__checkbox">
-          <input
-            type="checkbox"
-            checked={draft.isActive}
-            onChange={(e) => set({ isActive: e.target.checked })}
-            disabled={disabled}
-            data-testid={`${idPrefix}-active`}
-          />
-          <span>{draft.isActive ? t('catalog.active') : t('catalog.inactive')}</span>
-        </label>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * The slide-in chrome, shared by edit mode and create mode so both are
- * literally the same panel rather than two things that look alike.
- */
-function PanelShell({
-  title,
-  onClose,
-  children,
-  overlays,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-  overlays?: ReactNode;
-}) {
-  const { t } = useI18n();
-  return (
-    <>
-      <button
-        type="button"
-        className="sk-catalog2__panel-backdrop"
-        aria-label={t('common.close')}
-        onClick={onClose}
-        data-testid="catalog2-panel-backdrop"
-      />
-      <aside
-        className="sk-catalog2__panel"
-        role="dialog"
-        aria-modal="false"
-        aria-label={title}
-        data-testid="catalog2-panel"
-      >
-        <div className="sk-catalog2__panel-header">
-          <h2 className="sk-catalog2__panel-title sk-catalog2__truncate" title={title}>{title}</h2>
-          <div className="sk-catalog2__actions">
-            <Button variant="secondary" type="button" onClick={onClose} data-testid="catalog2-panel-close">
-              {t('common.close')}
-            </Button>
-          </div>
-        </div>
-        {children}
-      </aside>
-      {overlays}
-    </>
-  );
-}
 
 interface ProductPatch {
   name?: string;
@@ -422,20 +100,26 @@ interface VariantPatch {
   minimumStock?: string;
 }
 
+type PanelTab = 'variants' | 'product';
+
 export function CatalogPanel({
   token,
   productId,
   initialVariantId,
+  stockByVariant,
   onClose,
 }: {
   token: string;
   productId: number;
   initialVariantId?: number | null;
+  /** quantity_on_hand per variant, from the loaded list page. */
+  stockByVariant?: Record<number, string>;
   onClose: (changed: boolean) => void;
 }) {
   const { t } = useI18n();
   const errorText = useErrorText();
   const format = useDecimalFormat();
+  const narrow = usePanelNarrow();
 
   const [detail, setDetail] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -445,7 +129,9 @@ export function CatalogPanel({
   const [attributes, setAttributes] = useState<AttributeDefinition[]>([]);
   const [refLoading, setRefLoading] = useState(true);
 
-  const [openVariantId, setOpenVariantId] = useState<number | null>(initialVariantId ?? null);
+  const [tab, setTab] = useState<PanelTab>('variants');
+  // R6: exactly one variant open. A single id, never a set.
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(initialVariantId ?? null);
   const [addingVariant, setAddingVariant] = useState(false);
   const [addDraft, setAddDraft] = useState<VariantDraft>({ ...EMPTY_VARIANT_DRAFT });
   const [addError, setAddError] = useState<string | null>(null);
@@ -471,7 +157,13 @@ export function CatalogPanel({
     setLoading(true);
     setLoadError(null);
     void ipc.getProductDetail(token, productId)
-      .then((d) => { if (active) { setDetail(d); detailRef.current = d; } })
+      .then((d) => {
+        if (!active) return;
+        setDetail(d);
+        detailRef.current = d;
+        // Land on a variant rather than an empty right-hand column.
+        setSelectedVariantId((current) => current ?? d.variants[0]?.variant_id ?? null);
+      })
       .catch((err) => { if (active) setLoadError(errorText(err)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -564,9 +256,25 @@ export function CatalogPanel({
     }
   }
 
+  /**
+   * R14 — a variant's identity is its attribute combination, and
+   * `catalog.set_variant_attributes` rejects a duplicate. On rejection the
+   * chips must NOT be left showing the combination the database refused.
+   *
+   * Refreshing before re-throwing hands AttributeManagerForVariant a new
+   * `variant` object, whose existing effect re-seeds the selection from server
+   * truth — so the chip reverts to what is actually stored, and the picker's
+   * own catch surfaces the message. Doing it this way keeps that component
+   * byte-identical, which CR2 requires.
+   */
   const handleSetAttributes = useCallback(async (variantId: number, sel: Record<number, number>) => {
     const ids = Object.values(sel).filter((id) => id > 0);
-    await ipc.setVariantAttributes(token, variantId, ids);
+    try {
+      await ipc.setVariantAttributes(token, variantId, ids);
+    } catch (err) {
+      await refresh().catch(() => {});
+      throw err;
+    }
     changedRef.current = true;
     await refresh();
   }, [token, refresh]);
@@ -584,39 +292,12 @@ export function CatalogPanel({
   }, [token, loadRefData]);
 
   /**
-   * Opening from a variant's row asks for THAT variant, not the product's
-   * first one. It is already expanded via `openVariantId`; bring it into view
-   * as well, or on a product with many variants the user is looking at the
-   * top of a panel whose relevant part is off-screen. Guarded because jsdom
-   * does not implement scrollIntoView.
-   */
-  const openVariantRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (initialVariantId == null || !detail) return;
-    const node = openVariantRef.current;
-    if (node && typeof node.scrollIntoView === 'function') {
-      node.scrollIntoView({ block: 'nearest' });
-    }
-  }, [initialVariantId, detail]);
-
-  /**
-   * ADD VARIANT.
-   *
-   * `addVariant` takes a `VariantInput`, which has no minimum_stock field, so
-   * the typed value is applied immediately afterwards through updateVariantV2.
-   * That second call is unconditional and safe: the variant is brand new, so
-   * every column in the payload is a value the operator just typed and there
-   * is nothing pre-existing for it to overwrite. Making it conditional on
-   * "the user changed it" would risk dropping a deliberate value.
-   *
-   * The two calls are not atomic. If the first succeeds and the second fails,
-   * the variant genuinely exists — reporting "add failed" would be a lie that
-   * leads to a duplicate — so that case is reported distinctly and the panel
-   * still refreshes onto the new variant.
-   *
-   * A variant's uniqueness is its attribute signature, enforced in the
-   * database. A rejection surfaces here as-is; nothing is pre-validated in
-   * React, which could only ever guess.
+   * ADD VARIANT. The updateVariantV2 that follows is unconditional and safe:
+   * the variant is brand new, so every column in the payload is a value the
+   * operator just typed and there is nothing pre-existing to overwrite. The
+   * two calls are not atomic — a first-succeeded-second-failed outcome is
+   * reported distinctly, because "add failed" would be a lie that leads to a
+   * duplicate.
    */
   async function submitAddVariant(event: FormEvent) {
     event.preventDefault();
@@ -661,12 +342,9 @@ export function CatalogPanel({
     try {
       await refresh();
     } catch {
-      // The variant exists either way; a failed refresh must not read as a
-      // failed add. The list reloads on close.
+      // The variant exists either way; the list reloads on close.
     }
-    // Land on the new variant, expanded, so attributes and barcodes are one
-    // click away rather than requiring a hunt.
-    setOpenVariantId(newId);
+    setSelectedVariantId(newId);
     setAddingVariant(false);
     setAddDraft({ ...EMPTY_VARIANT_DRAFT });
     setAddBusy(false);
@@ -675,6 +353,11 @@ export function CatalogPanel({
   function close() {
     onClose(changedRef.current);
   }
+
+  const selectedVariant = useMemo(
+    () => detail?.variants.find((v) => v.variant_id === selectedVariantId) ?? null,
+    [detail, selectedVariantId],
+  );
 
   let body: ReactNode;
   if (loading) {
@@ -702,213 +385,253 @@ export function CatalogPanel({
     const unitOptions = (heldUnit ? [...activeUnits, heldUnit] : activeUnits)
       .map((u) => ({ value: String(u.id), label: `${u.name} (${u.code})` }));
 
+    // R4 fallback: one column at a time, with a way back to the list.
+    const showList = !narrow || selectedVariantId == null;
+    const showDetail = !narrow || selectedVariantId != null;
+
     body = (
       <>
         {actionError ? <Banner tone="error">{actionError}</Banner> : null}
 
-        <section className="sk-catalog2__panel-section" aria-label={t('catalog2.panelProduct')}>
-          <h3>{t('catalog2.panelProduct')}</h3>
-          <div className="sk-catalog2__panel-grid">
-            <PanelField
-              id="catalog2-panel-name"
-              label={t('catalog.name')}
-              value={detail.name}
-              validate={(v) => (v.length > 0 ? null : t('common.required'))}
-              commit={(v) => commitProduct({ name: v })}
-              testId="catalog2-panel-name"
-            />
-            <PanelSelect
-              id="catalog2-panel-category"
-              label={t('productsList.category')}
-              value={detail.category_id != null ? String(detail.category_id) : ''}
-              options={categoryOptions}
-              emptyLabel={t('common.none')}
-              commit={(v) => commitProduct({ categoryId: v === '' ? null : Number(v) })}
-              testId="catalog2-panel-category"
-            />
-            <PanelSelect
-              id="catalog2-panel-unit"
-              label={t('catalog.unit')}
-              value={detail.unit_id != null ? String(detail.unit_id) : ''}
-              options={unitOptions}
-              commit={(v) => commitProduct({ unitId: Number(v) })}
-              testId="catalog2-panel-unit"
-            />
-            <div className="sk-catalog2__field">
-              <span className="sk-catalog2__label">{t('products.active')}</span>
-              <div className="sk-catalog2__status-row">
-                <span className={`sk-catalog2__pill ${detail.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
-                  {detail.is_active ? t('catalog.active') : t('catalog.inactive')}
-                </span>
-                <Button
-                  type="button"
-                  variant={detail.is_active ? 'secondary' : 'primary'}
-                  loading={busy}
-                  onClick={() => {
-                    if (detail.is_active) setConfirmProductDeactivate(true);
-                    else void runAction(() => commitProduct({ isActive: true }));
-                  }}
-                  data-testid="catalog2-panel-product-active"
-                >
-                  {detail.is_active ? t('products.deactivate') : t('products.activate')}
-                </Button>
+        {/* R5 — product fields are one clearly labelled click away, and out of
+            the way the rest of the time. */}
+        <div className="sk-catalog2__tabs" role="tablist" aria-label={t('catalog2.panel')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'variants'}
+            className={`sk-catalog2__tab${tab === 'variants' ? ' sk-catalog2__tab--active' : ''}`}
+            onClick={() => setTab('variants')}
+            data-testid="catalog2-tab-variants"
+          >
+            {t('variants.title')} ({detail.variants.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'product'}
+            className={`sk-catalog2__tab${tab === 'product' ? ' sk-catalog2__tab--active' : ''}`}
+            onClick={() => setTab('product')}
+            data-testid="catalog2-tab-product"
+          >
+            {t('catalog2.panelProduct')}
+          </button>
+        </div>
+
+        {tab === 'product' ? (
+          <section className="sk-catalog2__panel-section" aria-label={t('catalog2.panelProduct')}>
+            <div className="sk-catalog2__panel-grid">
+              <PanelField
+                id="catalog2-panel-name"
+                label={t('catalog.name')}
+                value={detail.name}
+                validate={(v) => (v.length > 0 ? null : t('common.required'))}
+                commit={(v) => commitProduct({ name: v })}
+                testId="catalog2-panel-name"
+              />
+              <PanelSelect
+                id="catalog2-panel-category"
+                label={t('productsList.category')}
+                value={detail.category_id != null ? String(detail.category_id) : ''}
+                options={categoryOptions}
+                emptyLabel={t('common.none')}
+                commit={(v) => commitProduct({ categoryId: v === '' ? null : Number(v) })}
+                testId="catalog2-panel-category"
+              />
+              <PanelSelect
+                id="catalog2-panel-unit"
+                label={t('catalog.unit')}
+                value={detail.unit_id != null ? String(detail.unit_id) : ''}
+                options={unitOptions}
+                commit={(v) => commitProduct({ unitId: Number(v) })}
+                testId="catalog2-panel-unit"
+              />
+              <div className="sk-catalog2__field">
+                <span className="sk-catalog2__label">{t('products.active')}</span>
+                <div className="sk-catalog2__status-row">
+                  <span className={`sk-catalog2__pill ${detail.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
+                    {detail.is_active ? t('catalog.active') : t('catalog.inactive')}
+                  </span>
+                  <Button
+                    type="button"
+                    variant={detail.is_active ? 'secondary' : 'primary'}
+                    loading={busy}
+                    onClick={() => {
+                      if (detail.is_active) setConfirmProductDeactivate(true);
+                      else void runAction(() => commitProduct({ isActive: true }));
+                    }}
+                    data-testid="catalog2-panel-product-active"
+                  >
+                    {detail.is_active ? t('products.deactivate') : t('products.activate')}
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        ) : (
+          <div className={`sk-catalog2__panel-cols${narrow ? ' sk-catalog2__panel-cols--stacked' : ''}`}>
+            {showList ? (
+              <div className="sk-catalog2__vlist" data-testid="catalog2-variant-list">
+                <div className="sk-catalog2__section-head">
+                  <h3>{t('variants.title')}</h3>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    aria-expanded={addingVariant}
+                    onClick={() => {
+                      setAddDraft({ ...EMPTY_VARIANT_DRAFT });
+                      setAddError(null);
+                      setAddingVariant((prev) => !prev);
+                    }}
+                    data-testid="catalog2-add-variant-toggle"
+                  >
+                    {addingVariant ? t('common.cancel') : `+ ${t('variants.add')}`}
+                  </Button>
+                </div>
 
-        <section className="sk-catalog2__panel-section" aria-label={t('variants.title')}>
-          <div className="sk-catalog2__section-head">
-            <h3>{t('variants.title')}</h3>
-            <Button
-              type="button"
-              variant="secondary"
-              aria-expanded={addingVariant}
-              onClick={() => {
-                setAddDraft({ ...EMPTY_VARIANT_DRAFT });
-                setAddError(null);
-                setAddingVariant((prev) => !prev);
-              }}
-              data-testid="catalog2-add-variant-toggle"
-            >
-              {addingVariant ? t('common.cancel') : `+ ${t('variants.add')}`}
-            </Button>
-          </div>
+                {/* The error lives in the section, not the form: an add that
+                    succeeded but could not apply the minimum stock closes the
+                    form and must still be able to say so. */}
+                {addError ? <Banner tone="error" testId="catalog2-add-variant-error">{addError}</Banner> : null}
 
-          {/* The error lives in the section, not the form: an add that
-              succeeded but could not apply the minimum stock closes the form
-              and must still be able to say so. */}
-          {addError ? <Banner tone="error" testId="catalog2-add-variant-error">{addError}</Banner> : null}
+                {addingVariant ? (
+                  <form
+                    className="sk-catalog2__panel-variant-body"
+                    onSubmit={submitAddVariant}
+                    aria-label={t('catalog2.addVariantTitle')}
+                  >
+                    <VariantDraftFields
+                      idPrefix="catalog2-add-variant"
+                      draft={addDraft}
+                      onChange={setAddDraft}
+                      disabled={addBusy}
+                    />
+                    <div className="sk-catalog2__actions sk-catalog2__actions--end">
+                      <Button
+                        type="submit"
+                        loading={addBusy}
+                        disabled={!isVariantDraftValid(addDraft)}
+                        data-testid="catalog2-add-variant-submit"
+                      >
+                        {t('variants.add')}
+                      </Button>
+                    </div>
+                  </form>
+                ) : null}
 
-          {addingVariant ? (
-            <form
-              className="sk-catalog2__panel-variant-body"
-              onSubmit={submitAddVariant}
-              aria-label={t('catalog2.addVariantTitle')}
-            >
-              <VariantDraftFields
-                idPrefix="catalog2-add-variant"
-                draft={addDraft}
-                onChange={setAddDraft}
-                disabled={addBusy}
-              />
-              <div className="sk-catalog2__actions sk-catalog2__actions--end">
-                <Button
-                  type="submit"
-                  loading={addBusy}
-                  disabled={!isVariantDraftValid(addDraft)}
-                  data-testid="catalog2-add-variant-submit"
-                >
-                  {t('variants.add')}
-                </Button>
-              </div>
-            </form>
-          ) : null}
-
-          {detail.variants.length === 0 ? (
-            <Banner tone="info">{t('variants.empty')}</Banner>
-          ) : detail.variants.map((variant) => {
-            const open = openVariantId === variant.variant_id;
-            return (
-              <div
-                className="sk-catalog2__panel-variant"
-                key={variant.variant_id}
-                ref={variant.variant_id === initialVariantId ? openVariantRef : undefined}
-              >
-                {/* [ name (truncating) ][ identifier ][ status ][ actions ] —
-                    the actions slot is fixed and never wraps. */}
-                <div className="sk-catalog2__vrow">
-                  <div className="sk-catalog2__vrow-main">
-                    <strong
-                      className="sk-catalog2__truncate sk-catalog2__vrow-name"
-                      title={variant.effective_variant_name}
+                {detail.variants.length === 0 ? (
+                  <Banner tone="info">{t('variants.empty')}</Banner>
+                ) : detail.variants.map((variant) => {
+                  const attrs = variant.attributes.map((a) => a.value).join(' \u00b7 ');
+                  const selected = variant.variant_id === selectedVariantId;
+                  const stock = stockByVariant?.[variant.variant_id];
+                  return (
+                    <div
+                      className={`sk-catalog2__panel-variant${selected ? ' sk-catalog2__panel-variant--selected' : ''}`}
+                      key={variant.variant_id}
                     >
-                      {variant.effective_variant_name}
-                    </strong>
-                    <span className="sk-catalog2__mono sk-catalog2__vrow-id">
-                      {variant.operational_identifier}
-                    </span>
-                    <span className={`sk-catalog2__pill ${variant.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
-                      {variant.is_active ? t('catalog.active') : t('catalog.inactive')}
-                    </span>
-                  </div>
+                      {/* WS-D-10 layout rule still binds: the name truncates,
+                          the actions keep a fixed inline-end slot. */}
+                      <div className="sk-catalog2__vrow">
+                        <div className="sk-catalog2__vrow-main">
+                          <strong
+                            className="sk-catalog2__truncate sk-catalog2__vrow-name"
+                            title={variant.effective_variant_name}
+                          >
+                            {variant.effective_variant_name}
+                          </strong>
+                          <span className={`sk-catalog2__pill ${variant.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
+                            {variant.is_active ? t('catalog.active') : t('catalog.inactive')}
+                          </span>
+                        </div>
+                        <div className="sk-catalog2__actions">
+                          <Button
+                            type="button"
+                            variant={selected ? 'primary' : 'secondary'}
+                            aria-pressed={selected}
+                            onClick={() => setSelectedVariantId(variant.variant_id)}
+                            data-testid={`catalog2-panel-variant-toggle-${variant.variant_id}`}
+                          >
+                            {t('catalog2.edit')}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={variant.is_active ? 'secondary' : 'primary'}
+                            loading={busy}
+                            onClick={() => {
+                              if (variant.is_active) setConfirmVariantDeactivate(variant);
+                              else void runAction(() => ipc.setVariantActive(token, variant.variant_id, true));
+                            }}
+                            data-testid={`catalog2-panel-variant-active-${variant.variant_id}`}
+                          >
+                            {variant.is_active ? t('variants.deactivate') : t('variants.activate')}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* R11 — combination, price, stock, status at a glance. */}
+                      <div className="sk-catalog2__vrow-figures">
+                        <span className="sk-catalog2__truncate" title={attrs || undefined}>
+                          {attrs || t('catalog2.noAttributes')}
+                        </span>
+                        <span>{t('variants.price')}: <strong>{format(variant.sale_price)}</strong></span>
+                        <span>
+                          {t('productsList.stock')}:{' '}
+                          <strong>{stock !== undefined ? format(stock) : '\u2014'}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {showDetail ? (
+              <div className="sk-catalog2__vdetail" data-testid="catalog2-variant-detail">
+                {narrow && selectedVariant ? (
                   <div className="sk-catalog2__actions">
                     <Button
                       type="button"
                       variant="secondary"
-                      aria-expanded={open}
-                      onClick={() => setOpenVariantId(open ? null : variant.variant_id)}
-                      data-testid={`catalog2-panel-variant-toggle-${variant.variant_id}`}
+                      onClick={() => setSelectedVariantId(null)}
+                      data-testid="catalog2-variant-back"
                     >
-                      {open ? t('variants.collapse') : t('variants.expand')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={variant.is_active ? 'secondary' : 'primary'}
-                      loading={busy}
-                      onClick={() => {
-                        if (variant.is_active) setConfirmVariantDeactivate(variant);
-                        else void runAction(() => ipc.setVariantActive(token, variant.variant_id, true));
-                      }}
-                      data-testid={`catalog2-panel-variant-active-${variant.variant_id}`}
-                    >
-                      {variant.is_active ? t('variants.deactivate') : t('variants.activate')}
+                      {t('catalog.backToList')}
                     </Button>
                   </div>
-                </div>
+                ) : null}
 
-                {/* Read-only summary of what the table lets you edit inline,
-                    formatted the same way it is there. */}
-                <div className="sk-catalog2__vrow-figures">
-                  <span>
-                    {t('variants.price')}: <strong>{format(variant.sale_price)}</strong>
-                  </span>
-                  <span>
-                    {t('variants.minimumStock')}: <strong>{format(variant.minimum_stock)}</strong>
-                  </span>
-                </div>
-
-                {open ? (
-                  <div className="sk-catalog2__panel-variant-body">
-                    <div className="sk-catalog2__panel-grid">
-                      <PanelField
-                        id={`catalog2-panel-variant-name-${variant.variant_id}`}
-                        label={t('variants.name')}
-                        value={variant.name_override ?? ''}
-                        commit={(v) => commitVariant(variant.variant_id, { nameOverride: v || null })}
-                        testId={`catalog2-panel-variant-name-${variant.variant_id}`}
-                      />
-                    </div>
-
-                    {/* CR2: mergeAssignedValues wiring, reused whole. */}
-                    <div className="sk-catalog2__panel-variant-body">
-                      <AttributeManagerForVariant
-                        attributes={attributes}
-                        refLoading={refLoading}
-                        variant={variant}
-                        onSetAttributes={(sel) => handleSetAttributes(variant.variant_id, sel)}
-                        onCreateAttribute={handleCreateAttribute}
-                        onAddValue={handleAddValue}
-                      />
-                    </div>
-
-                    <div className="sk-catalog2__panel-variant-body">
+                {selectedVariant ? (
+                  <VariantEditor
+                    key={selectedVariant.variant_id}
+                    variant={selectedVariant}
+                    attributes={attributes}
+                    refLoading={refLoading}
+                    stock={stockByVariant?.[selectedVariant.variant_id]}
+                    onCommitName={(nameOverride) =>
+                      commitVariant(selectedVariant.variant_id, { nameOverride })}
+                    onSetAttributes={(sel) => handleSetAttributes(selectedVariant.variant_id, sel)}
+                    onCreateAttribute={handleCreateAttribute}
+                    onAddValue={handleAddValue}
+                    barcodes={(
                       <BarcodeSection
                         token={token}
-                        variant={variant}
+                        variant={selectedVariant}
                         busy={busy}
                         onChanged={async () => {
                           changedRef.current = true;
                           await refresh();
                         }}
                       />
-                    </div>
-                  </div>
-                ) : null}
+                    )}
+                  />
+                ) : (
+                  <VariantEditorEmpty />
+                )}
               </div>
-            );
-          })}
-        </section>
+            ) : null}
+          </div>
+        )}
       </>
     );
   }
@@ -951,27 +674,6 @@ export function CatalogPanel({
   );
 }
 
-/**
- * WS-D-9B — CREATE PRODUCT, in the same slide-in panel.
- *
- * The one place on this page where commit-on-blur would be actively wrong.
- * Everywhere else a field describes a row that already exists, so writing it
- * the moment the user finishes is right. Here there is no row yet, and
- * autosaving a half-typed name would put a nameless, priceless product into a
- * live catalogue that someone then has to find and clean up. Creation is
- * therefore a DELIBERATE submit: nothing reaches the backend until the button
- * is pressed.
- *
- * `catalog.quick_create_product` creates the product AND its first variant in
- * one authoritative call, carrying the product-level category and the
- * variant's barcode and minimum stock. Further variants come from the add
- * form in CatalogPanel.
- *
- * The category and unit pickers use `InlineCreateSelect` from the products
- * feature — the create-only shortcut locked by the D-0 ruling: this form may
- * add a reference item and select it immediately, and nothing more. Rename,
- * deactivate and delete stay on Catalogue Setup.
- */
 export function CatalogCreatePanel({
   token,
   onClose,
@@ -994,6 +696,28 @@ export function CatalogCreatePanel({
   const [units, setUnits] = useState<UnitLifecycleItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+
+  /**
+   * R15 — the guard exists HERE and deliberately nowhere else. The edit panel
+   * commits every field as you finish with it, so closing it can lose nothing.
+   * This form holds a product that does not exist yet, so closing it silently
+   * would throw the whole thing away.
+   */
+  const dirty = name.trim() !== ''
+    || categoryId !== null
+    || draft.nameOverride.trim() !== ''
+    || draft.barcode.trim() !== ''
+    || draft.salePrice.trim() !== ''
+    || draft.minimumStock !== EMPTY_VARIANT_DRAFT.minimumStock;
+
+  function requestClose() {
+    if (dirty && !submitting) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  }
 
   const loadRefData = useCallback(async () => {
     try {
@@ -1072,7 +796,21 @@ export function CatalogCreatePanel({
     .map((u) => ({ id: u.id, label: `${u.name} (${u.code})` }));
 
   return (
-    <PanelShell title={t('catalog2.createTitle')} onClose={onClose}>
+    <PanelShell
+      title={t('catalog2.createTitle')}
+      onClose={requestClose}
+      overlays={confirmDiscard ? (
+        <ConfirmDialog
+          title={t('catalog2.discardTitle')}
+          body={t('catalog2.discardBody')}
+          confirmLabel={t('catalog2.discardConfirm')}
+          cancelLabel={t('catalog2.keepEditing')}
+          confirmVariant="danger"
+          onConfirm={() => { setConfirmDiscard(false); onClose(); }}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      ) : null}
+    >
       <form onSubmit={submit} aria-label={t('catalog2.createTitle')} data-testid="catalog2-create-form">
         {error ? <Banner tone="error" testId="catalog2-create-error">{error}</Banner> : null}
 
@@ -1141,7 +879,7 @@ export function CatalogCreatePanel({
         </section>
 
         <div className="sk-catalog2__actions sk-catalog2__actions--end">
-          <Button variant="secondary" type="button" onClick={onClose} disabled={submitting}>
+          <Button variant="secondary" type="button" onClick={requestClose} disabled={submitting}>
             {t('common.cancel')}
           </Button>
           <Button

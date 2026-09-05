@@ -478,6 +478,10 @@ describe('the detail panel (WS-D-9 RULING 4)', () => {
     // the screen permanently.
     expect(screen.getByTestId('catalog2-table')).toBeInTheDocument();
 
+    // WS-D-11 R5: product fields live behind their own tab now, so variant
+    // editing gets the full height. One click, clearly labelled.
+    fireEvent.click(screen.getByTestId('catalog2-tab-product'));
+
     // Editing only the name must still send the category, unit and active flag.
     const name = await screen.findByTestId('catalog2-panel-name');
     fireEvent.change(name, { target: { value: 'Pillow XL' } });
@@ -1017,9 +1021,11 @@ describe('number formatting (WS-D-10)', () => {
     await loginAndOpenCatalog();
 
     fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
-    const panel = await screen.findByTestId('catalog2-panel');
-    expect(within(panel).getByText('14,000')).toBeInTheDocument();
-    expect(within(panel).getByText('5.500')).toBeInTheDocument();
+    // The panel shows the figures in the list row AND in the editor column, so
+    // scope to the editor rather than matching either.
+    const editor = await screen.findByTestId('catalog2-variant-editor-10');
+    expect(within(editor).getByText('14,000')).toBeInTheDocument();
+    expect(within(editor).getByText('5.500')).toBeInTheDocument();
   });
 });
 
@@ -1051,9 +1057,343 @@ describe('layout stability (WS-D-10)', () => {
     expect(actions!.parentElement).toHaveClass('sk-catalog2__vrow');
     expect(actions!.querySelector('.sk-catalog2__vrow-name')).toBeNull();
 
-    // The full name stays reachable even though the label truncates.
-    const name = screen.getByTitle(longName);
+    // The full name stays reachable even though the label truncates. It is
+    // rendered in the list row and again in the editor head, so scope to the
+    // list.
+    const list = screen.getByTestId('catalog2-variant-list');
+    const name = within(list).getByTitle(longName);
     expect(name).toHaveClass('sk-catalog2__truncate');
+  });
+});
+
+describe('two-column variant editing (WS-D-11)', () => {
+  function twoVariantDetail() {
+    return detailFixture({
+      variants: [
+        {
+          variant_id: 10, sku: 'PIL-1', name_override: null,
+          effective_variant_name: 'Pillow Small', primary_barcode: null,
+          operational_identifier: 'PIL-1', identifier_type: 'SKU',
+          sale_price: '1250.50', minimum_stock: '5.500', is_active: true,
+          attribute_signature: '', attributes: [], barcodes: [],
+        },
+        {
+          variant_id: 20, sku: 'PIL-2', name_override: null,
+          effective_variant_name: 'Pillow Large', primary_barcode: null,
+          operational_identifier: 'PIL-2', identifier_type: 'SKU',
+          sale_price: '1800.00', minimum_stock: '2', is_active: true,
+          attribute_signature: '', attributes: [], barcodes: [
+            { id: 5, barcode: '6130000000024', is_primary: true },
+            { id: 6, barcode: '6130000000031', is_primary: false },
+          ],
+        },
+      ],
+    });
+  }
+
+  const handlers = (extra: Handlers = {}) => makeHandlers({
+    list_products_v2: () => [row()],
+    get_product_detail: () => twoVariantDetail(),
+    ...extra,
+  });
+
+  // R4 / R6: one detail column, exactly one variant open. The accordion that
+  // stacked several expanded variants inside 560px is gone.
+  it('shows the selected variant in the detail column, and only that one', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+
+    // Opening lands on a variant rather than an empty column.
+    expect(await screen.findByTestId('catalog2-variant-editor-10')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-variant-editor-20')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('catalog2-panel-variant-toggle-20'));
+
+    // Selecting another REPLACES it. Never two at once.
+    expect(await screen.findByTestId('catalog2-variant-editor-20')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-variant-editor-10')).not.toBeInTheDocument();
+
+    // Both remain listed the whole time.
+    const list = screen.getByTestId('catalog2-variant-list');
+    expect(within(list).getByTestId('catalog2-panel-variant-toggle-10')).toBeInTheDocument();
+    expect(within(list).getByTestId('catalog2-panel-variant-toggle-20')).toBeInTheDocument();
+  });
+
+  // R12
+  it('keeps barcodes collapsed behind a count until asked', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-panel-variant-toggle-20'));
+
+    const editor = await screen.findByTestId('catalog2-variant-editor-20');
+    expect(within(editor).getByText('Barcodes (2)')).toBeInTheDocument();
+    // Closed by default.
+    expect(screen.queryByTestId('catalog2-barcode-input-20')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('catalog2-barcodes-toggle-20'));
+    expect(await screen.findByTestId('catalog2-barcode-input-20')).toBeInTheDocument();
+  });
+
+  // R13 — identity, not an input.
+  it('shows the SKU as read-only text, never as a field', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    const sku = await screen.findByTestId('catalog2-sku-10');
+    expect(sku.tagName).toBe('BUTTON');
+    expect(sku.textContent).toContain('PIL-1');
+    expect(sku.querySelector('input')).toBeNull();
+  });
+});
+
+describe('attribute selection (WS-D-11)', () => {
+  function detailWithAttributes() {
+    return detailFixture({
+      variants: [{
+        variant_id: 10, sku: 'PIL-1', name_override: null,
+        effective_variant_name: 'Pillow Red', primary_barcode: null,
+        operational_identifier: 'PIL-1', identifier_type: 'SKU',
+        sale_price: '1250.50', minimum_stock: '5.500', is_active: true,
+        attribute_signature: '1:4',
+        attributes: [
+          { attribute_id: 1, attribute_name: 'Color', attribute_value_id: 4, value: 'Red' },
+        ],
+        barcodes: [],
+      }],
+    });
+  }
+
+  const handlers = (extra: Handlers = {}) => makeHandlers({
+    list_products_v2: () => [row()],
+    get_product_detail: () => detailWithAttributes(),
+    list_attributes: () => [
+      {
+        attribute_id: 1,
+        name: 'Color',
+        attribute_values: [
+          { id: 4, value: 'Red', is_active: true },
+          { id: 5, value: 'Blue', is_active: true },
+        ],
+      },
+      { attribute_id: 2, name: 'Size', attribute_values: [{ id: 7, value: 'M', is_active: true }] },
+    ],
+    ...extra,
+  });
+
+  // R7 — creating attribute TYPES belongs to Catalogue Setup, not the variant
+  // editor. Adding a VALUE stays, because that is part of entering a product.
+  it('offers no create-attribute form, but does offer an inline add-value', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-editor-10');
+
+    expect(screen.queryByLabelText('Attribute name')).not.toBeInTheDocument();
+    expect(screen.getByText('Attribute types are created and managed in Catalogue setup.'))
+      .toBeInTheDocument();
+    expect(screen.getByTestId('attr-add-value-1')).toBeInTheDocument();
+  });
+
+  // R8 / R9
+  it('lists every attribute and summarises the chosen combination', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-editor-10');
+
+    // "Size" has nothing selected and must still be visible.
+    expect(screen.getByText('Size')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'M' })).toBeInTheDocument();
+
+    // Built from the selection in attribute order, never from
+    // attribute_signature.
+    expect(screen.getByTestId('attr-summary').textContent).toContain('Red');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'M' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('attr-summary').textContent).toContain('Red · M'));
+  });
+
+  // R10 — a variant may legitimately hold no value for an attribute.
+  it('clears an attribute to None and saves without that value', async () => {
+    let setAttrsCall: Record<string, unknown> | null = null;
+    wireInvoke(handlers({
+      set_variant_attributes: (args) => { setAttrsCall = args; return null; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-editor-10');
+
+    expect(screen.getByRole('radio', { name: 'Red' })).toBeChecked();
+    fireEvent.click(screen.getByTestId('attr-none-1'));
+    expect(screen.getByTestId('attr-none-1')).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Assign attributes' }));
+    await waitFor(() => expect(setAttrsCall).not.toBeNull());
+    expect(setAttrsCall!.variantId).toBe(10);
+    expect(setAttrsCall!.attributeValueIds).not.toContain(4);
+    expect(setAttrsCall!.attributeValueIds).toEqual([]);
+  });
+
+  /**
+   * R14 — a variant's identity IS its attribute combination, and the database
+   * rejects a duplicate. The UI must not be left showing a selection the
+   * database refused.
+   */
+  it('reverts the chip and surfaces the message when the combination is a duplicate', async () => {
+    wireInvoke(handlers({
+      set_variant_attributes: () => { throw { code: 'VALIDATION_ERROR' }; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-editor-10');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Blue' }));
+    expect(screen.getByRole('radio', { name: 'Blue' })).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Assign attributes' }));
+
+    // The message is shown...
+    expect(await screen.findByText('Some of the entered values are invalid.')).toBeInTheDocument();
+    // ...and the chip goes back to what the database actually holds.
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Red' })).toBeChecked());
+    expect(screen.getByRole('radio', { name: 'Blue' })).not.toBeChecked();
+  });
+});
+
+describe('panel size persistence (WS-D-11)', () => {
+  const handlers = () => makeHandlers({
+    list_products_v2: () => [row()],
+    get_product_detail: () => detailFixture(),
+  });
+
+  it('remembers a resized width across a remount, and clamps a corrupt one', async () => {
+    window.localStorage.clear();
+    wireInvoke(handlers());
+
+    const first = render(<App />);
+    await loginAndOpenCatalog();
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+
+    // Keyboard resize: the handle is a real focusable separator, not a
+    // mouse-only affordance. ArrowLeft moves the inline-start edge outward in
+    // LTR, which widens the panel.
+    const handle = await screen.findByTestId('catalog2-panel-resize');
+    fireEvent.keyDown(handle, { key: 'Home' });
+    await waitFor(() =>
+      expect(screen.getByTestId('catalog2-panel')).toHaveAttribute('data-panel-width', '1100'));
+    expect(window.localStorage.getItem('stockiha.catalog2.panelWidth')).toBe('1100');
+
+    first.unmount();
+    cleanup();
+
+    // Remount: the width comes back.
+    render(<App />);
+    await loginAndOpenCatalog();
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    expect(await screen.findByTestId('catalog2-panel')).toHaveAttribute('data-panel-width', '1100');
+  });
+
+  it('clamps a stored width that is out of range, and ignores a corrupt one', async () => {
+    wireInvoke(handlers());
+
+    // Far wider than any supported panel — e.g. carried over from another
+    // monitor. It must clamp, not produce a panel that cannot be resized back.
+    window.localStorage.setItem('stockiha.catalog2.panelWidth', '99999');
+    const wide = render(<App />);
+    await loginAndOpenCatalog();
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    expect(await screen.findByTestId('catalog2-panel')).toHaveAttribute('data-panel-width', '1100');
+    wide.unmount();
+    cleanup();
+
+    window.localStorage.setItem('stockiha.catalog2.panelWidth', '10');
+    const narrow = render(<App />);
+    await loginAndOpenCatalog();
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    expect(await screen.findByTestId('catalog2-panel')).toHaveAttribute('data-panel-width', '560');
+    narrow.unmount();
+    cleanup();
+
+    // Not a number at all: fall back to the proportional default from CSS.
+    window.localStorage.setItem('stockiha.catalog2.panelWidth', 'not-a-width');
+    render(<App />);
+    await loginAndOpenCatalog();
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    expect(await screen.findByTestId('catalog2-panel')).toHaveAttribute('data-panel-width', '');
+    window.localStorage.clear();
+  });
+
+  it('toggles full screen and remembers the mode', async () => {
+    window.localStorage.clear();
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+
+    fireEvent.click(await screen.findByTestId('catalog2-panel-fullscreen'));
+    await waitFor(() =>
+      expect(screen.getByTestId('catalog2-panel')).toHaveAttribute('data-panel-fullscreen', 'true'));
+    expect(window.localStorage.getItem('stockiha.catalog2.panelFullScreen')).toBe('true');
+    // The drag handle is meaningless at full screen and is withdrawn.
+    expect(screen.queryByTestId('catalog2-panel-resize')).not.toBeInTheDocument();
+    window.localStorage.clear();
+  });
+});
+
+describe('create panel discard guard (WS-D-11 R15)', () => {
+  it('confirms before throwing away a half-typed new product', async () => {
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [row()],
+      get_product_detail: () => detailFixture(),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-new-product'));
+    fireEvent.change(await screen.findByTestId('catalog2-create-name'), { target: { value: 'Cushion' } });
+
+    fireEvent.click(screen.getByTestId('catalog2-panel-close'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Discard this new product?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep editing' }));
+
+    // Still there, still typed.
+    expect((screen.getByTestId('catalog2-create-name') as HTMLInputElement).value).toBe('Cushion');
+
+    fireEvent.click(screen.getByTestId('catalog2-panel-close'));
+    const again = await screen.findByRole('dialog', { name: 'Discard this new product?' });
+    fireEvent.click(within(again).getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByTestId('catalog2-create-form')).not.toBeInTheDocument());
+  });
+
+  it('closes without a prompt when nothing has been typed', async () => {
+    wireInvoke(makeHandlers({ list_products_v2: () => [row()] }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-new-product'));
+    await screen.findByTestId('catalog2-create-form');
+    fireEvent.click(screen.getByTestId('catalog2-panel-close'));
+
+    await waitFor(() => expect(screen.queryByTestId('catalog2-create-form')).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
 
