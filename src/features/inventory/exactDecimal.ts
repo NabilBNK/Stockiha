@@ -34,3 +34,33 @@ export function isDecimalLessThanOrEqual(value: string, limit: string): boolean 
 export function isLowStock(quantityOnHand: string, minimumStock: string): boolean {
   return isExactDecimalPositive(minimumStock) && isDecimalLessThanOrEqual(quantityOnHand, minimumStock);
 }
+
+/**
+ * WS-D-9 — exact-decimal summation for display aggregates (a product row's
+ * total stock across its variants).
+ *
+ * BigInt-scaled, never parseFloat, never rounded: the widest scale among the
+ * inputs is preserved, trailing zeroes are trimmed the way formatExactDecimal
+ * does, and a malformed input contributes nothing rather than NaN. Quantities
+ * from `list_products_v2` are unsigned, so this is unsigned by design — the
+ * signed equivalent lives in procurementDecimal.ts and belongs to WS-E.
+ */
+export function sumExactDecimals(values: string[]): string {
+  const parsed = values
+    .filter((value) => EXACT_DECIMAL.test(value))
+    .map((value) => {
+      const [integer, fraction = ''] = value.split('.');
+      return { units: BigInt(`${integer}${fraction}`), scale: fraction.length };
+    });
+  if (parsed.length === 0) return '0';
+  const scale = Math.max(...parsed.map((item) => item.scale));
+  const total = parsed.reduce(
+    (sum, item) => sum + item.units * 10n ** BigInt(scale - item.scale),
+    0n,
+  );
+  if (scale === 0) return total.toString();
+  const padded = total.toString().padStart(scale + 1, '0');
+  const fraction = padded.slice(-scale).replace(/0+$/, '');
+  const integer = padded.slice(0, -scale);
+  return fraction ? `${integer}.${fraction}` : integer;
+}

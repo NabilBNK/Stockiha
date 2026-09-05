@@ -1,0 +1,501 @@
+/*
+ * WS-D-9 — page-scoped warm light theme for the new Catalog page.
+ *
+ * RULING 1. Every token below is redefined ON `.sk-catalog2` ONLY. This file
+ * contains no `:root` rule and no `[data-theme="dark"]` rule, so nothing here
+ * can leak into another screen: the tokens are inherited by this page's
+ * subtree and by nothing else. WS-J still owns the global repaint.
+ *
+ * The page is LIGHT ONLY. When the application is in dark mode the shell
+ * around it stays dark and this page still renders warm-light — deliberate
+ * and expected for a parallel build, per the ruling. There is no dark variant.
+ *
+ * Accent is #2457d6 (blue), overriding DESIGN.md v2's #c25012 per explicit
+ * Owner ruling. 5.9:1 against #fbf9f7 — passes AA for fills and for text.
+ *
+ * Everything directional is logical (inline/block). The one physical property
+ * is the panel's entrance transform, which has no logical equivalent and is
+ * mirrored explicitly under [dir="rtl"].
+ */
+
+.sk-catalog2 {
+  /* Surfaces — DESIGN.md v2 warm light ramp. */
+  --sk-bg: #fbf9f7;
+  --sk-surface: #ffffff;
+  --sk-surface-soft: #f5f2ee;
+  --sk-surface-hover: #f0ece7;
+  --sk-border: #e4ddd3;
+  --sk-border-strong: #d3c9bb;
+
+  /* Text — pinned so the page stays legible under a dark app shell. */
+  --sk-text: #1c1815;
+  --sk-text-soft: #3c352e;
+  --sk-muted: #6d6459;
+
+  /* Accent — Owner ruling: blue, not v2's orange. Do not lighten. */
+  --sk-primary: #2457d6;
+  --sk-primary-hover: #1948bd;
+  --sk-primary-soft: #e9eefc;
+
+  /* Semantic status colours are fixed, never themeable (DESIGN.md §3.3). */
+  --sk-ok: #16815d;
+  --sk-ok-soft: #eaf8f2;
+  --sk-danger: #c0393f;
+  --sk-danger-soft: #fff0f0;
+  --sk-warn: #a2630b;
+  --sk-warn-soft: #fff6df;
+  --sk-info-soft: #ebf1fe;
+
+  /* Warm-tinted shadows per DESIGN.md §8.1 — never pure black. */
+  --sk-shadow: 0 1px 2px rgba(40, 30, 20, .05), 0 8px 24px rgba(40, 30, 20, .07);
+  --sk-shadow-lg: 0 22px 60px rgba(40, 30, 20, .22);
+
+  /* v2 scales. */
+  --sk-radius-sm: 8px;
+  --sk-radius: 12px;
+  --sk-radius-lg: 18px;
+  --sk-touch: 44px;
+  --sk-gap: 18px;
+
+  /* Page-local layout constants. */
+  --sk-catalog2-row: 48px;
+  --sk-catalog2-panel: 560px;
+
+  background: var(--sk-bg);
+  color: var(--sk-text);
+  min-height: 100%;
+  padding: 24px;
+  font-size: 16px;
+}
+
+/* ---------------------------------------------------------------- header */
+
+.sk-catalog2__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-block-end: var(--sk-gap);
+}
+
+.sk-catalog2__header h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 2vw, 2rem);
+  font-weight: 700;
+}
+
+.sk-catalog2__subtitle {
+  margin: 4px 0 0;
+  color: var(--sk-muted);
+  font-size: 15px;
+}
+
+/* --------------------------------------------------------------- toolbar */
+
+.sk-catalog2__toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 2fr) repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+  margin-block-end: var(--sk-gap);
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+  box-shadow: var(--sk-shadow);
+}
+
+.sk-catalog2__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sk-catalog2__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--sk-muted);
+}
+
+.sk-catalog2__input,
+.sk-catalog2__select {
+  min-height: var(--sk-touch);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--sk-text);
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border-strong);
+  border-radius: var(--sk-radius-sm);
+}
+
+.sk-catalog2__input:focus-visible,
+.sk-catalog2__select:focus-visible {
+  outline: 3px solid rgba(36, 87, 214, .25);
+  outline-offset: 1px;
+  border-color: var(--sk-primary);
+}
+
+.sk-catalog2__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--sk-touch);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+/* ----------------------------------------------------------------- table */
+
+.sk-catalog2__table-wrap {
+  overflow-x: auto;
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+  box-shadow: var(--sk-shadow);
+}
+
+.sk-catalog2__table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 16px;
+}
+
+.sk-catalog2__table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--sk-muted);
+  text-align: start;
+  background: var(--sk-surface-soft);
+  border-block-end: 1px solid var(--sk-border);
+}
+
+.sk-catalog2__table td {
+  padding: 6px 14px;
+  height: var(--sk-catalog2-row);
+  border-block-end: 1px solid var(--sk-border);
+  vertical-align: middle;
+}
+
+.sk-catalog2__num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.sk-catalog2__product-row > td {
+  background: var(--sk-surface);
+  font-weight: 600;
+}
+
+.sk-catalog2__product-row:hover > td {
+  background: var(--sk-surface-hover);
+}
+
+.sk-catalog2__product-row--open > td {
+  background: var(--sk-surface-hover);
+}
+
+.sk-catalog2__variant-row > td {
+  background: var(--sk-surface-soft);
+  font-weight: 400;
+}
+
+/* Indentation is inline-start, so it mirrors in Arabic. */
+.sk-catalog2__variant-name {
+  padding-inline-start: 32px;
+}
+
+.sk-catalog2__chevron {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--sk-touch);
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--sk-text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: start;
+}
+
+.sk-catalog2__chevron-glyph {
+  display: inline-block;
+  width: 1em;
+  color: var(--sk-muted);
+}
+
+.sk-catalog2__pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.sk-catalog2__pill--neutral {
+  background: var(--sk-surface-soft);
+  color: var(--sk-muted);
+  border: 1px solid var(--sk-border);
+}
+
+.sk-catalog2__pill--accent {
+  background: var(--sk-primary-soft);
+  color: var(--sk-primary);
+}
+
+.sk-catalog2__pill--warn {
+  background: var(--sk-warn-soft);
+  color: var(--sk-warn);
+}
+
+.sk-catalog2__pill--danger {
+  background: var(--sk-danger-soft);
+  color: var(--sk-danger);
+}
+
+.sk-catalog2__mono {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+  font-size: 15px;
+}
+
+.sk-catalog2__dash {
+  color: var(--sk-muted);
+}
+
+.sk-catalog2__row-menu {
+  min-width: var(--sk-touch);
+  min-height: var(--sk-touch);
+  padding: 0 10px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--sk-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--sk-radius-sm);
+  cursor: pointer;
+}
+
+.sk-catalog2__row-menu:hover {
+  color: var(--sk-text);
+  background: var(--sk-surface);
+  border-color: var(--sk-border-strong);
+}
+
+/* ----------------------------------------------------------- inline cell */
+
+.sk-catalog2__cell-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--sk-radius-sm);
+  cursor: text;
+  text-align: end;
+}
+
+.sk-catalog2__cell-button:hover {
+  background: var(--sk-surface);
+  border-color: var(--sk-border-strong);
+}
+
+.sk-catalog2__cell-input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  color: var(--sk-text);
+  background: var(--sk-surface);
+  border: 2px solid var(--sk-primary);
+  border-radius: var(--sk-radius-sm);
+}
+
+.sk-catalog2__cell-input[aria-invalid="true"] {
+  border-color: var(--sk-danger);
+}
+
+.sk-catalog2__cell-error {
+  display: block;
+  margin-block-start: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sk-danger);
+  text-align: end;
+}
+
+.sk-catalog2__cell-saving {
+  display: block;
+  margin-block-start: 2px;
+  font-size: 12px;
+  color: var(--sk-muted);
+  text-align: end;
+}
+
+/* ----------------------------------------------------------------- panel */
+
+.sk-catalog2__panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(40, 30, 20, .38);
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+.sk-catalog2__panel {
+  position: fixed;
+  z-index: 901;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: min(var(--sk-catalog2-panel), 100vw);
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--sk-bg);
+  color: var(--sk-text);
+  border-inline-start: 1px solid var(--sk-border);
+  box-shadow: var(--sk-shadow-lg);
+  animation: sk-catalog2-slide-in 180ms ease-out;
+}
+
+/* `transform` has no logical form; mirror it explicitly for Arabic so the
+   panel slides in from the left when the document direction is RTL. */
+@keyframes sk-catalog2-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+[dir="rtl"] .sk-catalog2__panel {
+  animation-name: sk-catalog2-slide-in-rtl;
+}
+
+@keyframes sk-catalog2-slide-in-rtl {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-catalog2__panel { animation: none; }
+}
+
+.sk-catalog2__panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block-end: var(--sk-gap);
+}
+
+.sk-catalog2__panel-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.sk-catalog2__panel-section {
+  padding: 18px;
+  margin-block-end: var(--sk-gap);
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+}
+
+.sk-catalog2__panel-section h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--sk-muted);
+}
+
+.sk-catalog2__panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.sk-catalog2__panel-variant {
+  padding: 12px 0;
+  border-block-start: 1px solid var(--sk-border);
+}
+
+.sk-catalog2__panel-variant:first-of-type {
+  border-block-start: 0;
+}
+
+.sk-catalog2__panel-variant-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sk-catalog2__panel-variant-body {
+  margin-block-start: 12px;
+  padding-block-start: 12px;
+  border-block-start: 1px dashed var(--sk-border);
+}
+
+.sk-catalog2__status {
+  margin: 4px 0 0;
+  font-size: 12px;
+  min-height: 1.1em;
+}
+
+.sk-catalog2__status--saved { color: var(--sk-ok); }
+.sk-catalog2__status--saving { color: var(--sk-muted); }
+.sk-catalog2__status--error { color: var(--sk-danger); font-weight: 600; }
+
+/* ------------------------------------------------------------ pagination */
+
+.sk-catalog2__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-block-start: 12px;
+}
+
+.sk-catalog2__footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sk-catalog2__note {
+  color: var(--sk-muted);
+  font-size: 14px;
+}
+
+.sk-catalog2__empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--sk-muted);
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+}

@@ -17,6 +17,7 @@ export type AppView =
   | 'opening_state'
   | 'opening_state_application'
   | 'products'
+  | 'catalog2'
   | 'catalogueSetup'
   | 'inventory'
   | 'stock'
@@ -47,6 +48,9 @@ const NAV: NavItem[] = [
   { view: 'historical_finance', labels: { fr: 'Finance historique', ar: 'المالية التاريخية', en: 'Historical finance' }, group: 'main', icon: '▥' },
   { view: 'settings', labels: { fr: 'Paramètres', ar: 'الإعدادات', en: 'Settings' }, group: 'main', icon: '⚙' },
   { view: 'products', labelKey: 'nav.products', group: 'stock', icon: '□' },
+  // WS-D-9: the rebuilt Catalog page, running alongside the existing
+  // Products page until the Owner approves it. Same capability gate.
+  { view: 'catalog2', labelKey: 'nav.catalog2', group: 'stock', icon: '▣' },
   { view: 'catalogueSetup', labelKey: 'nav.catalogueSetup', group: 'stock', icon: '✎' },
   { view: 'inventory', labelKey: 'nav.inventory', group: 'stock', icon: '▤' },
   { view: 'stock', labelKey: 'nav.stockReceipt', group: 'stock', icon: '↓' },
@@ -159,6 +163,7 @@ export function AppShell({
   function canShow(item: NavItem): boolean {
     switch (item.view) {
       case 'products':
+      case 'catalog2':
       case 'catalogueSetup':
         return inventoryCapabilities?.can_manage_catalog ?? false;
       case 'inventory':

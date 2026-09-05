@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { isDecimalLessThanOrEqual, isLowStock } from '../src/features/inventory/exactDecimal';
+import {
+  isDecimalLessThanOrEqual,
+  isLowStock,
+  sumExactDecimals,
+} from '../src/features/inventory/exactDecimal';
 
 describe('products list low-stock predicate (ws-d-skill.md section 3)', () => {
   it('flags low stock at-or-below the minimum, deliberately', () => {
@@ -28,5 +32,28 @@ describe('products list low-stock predicate (ws-d-skill.md section 3)', () => {
   it('rejects malformed comparison inputs', () => {
     expect(isDecimalLessThanOrEqual('-1', '10')).toBe(false);
     expect(isDecimalLessThanOrEqual('1e2', '100')).toBe(false);
+  });
+});
+
+// WS-D-9 — the Catalog page aggregates a product row's stock by summing its
+// variant quantities. Exact decimals only: no parseFloat, no rounding.
+describe('sumExactDecimals (WS-D-9 product-row stock aggregate)', () => {
+  it('sums differently-scaled decimals without floating point drift', () => {
+    expect(sumExactDecimals(['0.1', '0.2'])).toBe('0.3');
+    expect(sumExactDecimals(['1.005', '2.5', '3'])).toBe('6.505');
+  });
+
+  it('preserves the widest scale and trims only trailing zeroes', () => {
+    expect(sumExactDecimals(['1.500', '0.500'])).toBe('2');
+    expect(sumExactDecimals(['1.250', '0.250'])).toBe('1.5');
+  });
+
+  it('sums magnitudes no JS number can hold exactly', () => {
+    expect(sumExactDecimals(['9007199254740993', '1'])).toBe('9007199254740994');
+  });
+
+  it('returns "0" for an empty list and ignores malformed entries', () => {
+    expect(sumExactDecimals([])).toBe('0');
+    expect(sumExactDecimals(['5', '-1', '1e3', 'abc'])).toBe('5');
   });
 });
