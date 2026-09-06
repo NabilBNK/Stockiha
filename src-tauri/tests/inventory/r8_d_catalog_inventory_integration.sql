@@ -84,8 +84,10 @@ BEGIN
     ORDER BY starts_on DESC
     LIMIT 1;
     SELECT id INTO v_warehouse_id FROM inventory.warehouses WHERE code = 'R8D-WH';
-    v_base_unit_id := catalog.create_unit(v_token, 'PC', 'Piece');
-    v_carton_unit_id := catalog.create_unit(v_token, 'R8D-CARTON', 'Carton');
+    -- WS-D-13 Phase A: create_unit carries allows_fractions; both of these
+    -- are counted items, so neither takes a fractional quantity.
+    v_base_unit_id := catalog.create_unit(v_token, 'PC', 'Piece', false);
+    v_carton_unit_id := catalog.create_unit(v_token, 'R8D-CARTON', 'Carton', false);
     v_attribute_id := catalog.create_attribute(v_token, 'R8-D Size');
     v_small_id := catalog.add_attribute_value(v_token, v_attribute_id, 'Small');
     v_large_id := catalog.add_attribute_value(v_token, v_attribute_id, 'Large');

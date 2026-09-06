@@ -99,14 +99,21 @@ export function useCatalogueSetup(token: string) {
     await loadCategories();
   }, [token, loadCategories]);
 
-  // Units
-  const createUnit = useCallback(async (code: string, name: string) => {
-    await ipc.createUnit(token, code, name);
+  // Units. WS-D-13 Phase A: both writers carry allows_fractions, and
+  // rename assigns it unconditionally — the row editor seeds it from the
+  // current row, so a rename that does not touch the toggle preserves it.
+  const createUnit = useCallback(async (code: string, name: string, allowsFractions: boolean) => {
+    await ipc.createUnit(token, code, name, allowsFractions);
     await loadUnits();
   }, [token, loadUnits]);
 
-  const renameUnit = useCallback(async (id: number, code: string, name: string) => {
-    await ipc.renameUnit(token, id, code, name);
+  const renameUnit = useCallback(async (
+    id: number,
+    code: string,
+    name: string,
+    allowsFractions: boolean,
+  ) => {
+    await ipc.renameUnit(token, id, code, name, allowsFractions);
     await loadUnits();
   }, [token, loadUnits]);
 

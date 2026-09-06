@@ -16,6 +16,13 @@ export interface CodedReferenceItem {
   name: string;
   is_active: boolean;
   usage_count: number;
+  /**
+   * WS-D-13 Phase A — the per-item boolean this widget can edit. Units use it
+   * for `allows_fractions`. Optional so the widget stays usable by a coded
+   * reference type that has no such flag; `flagLabel` is what actually turns
+   * the column on.
+   */
+  flag?: boolean;
 }
 
 export interface CodedReferenceManagerProps {
@@ -26,14 +33,19 @@ export interface CodedReferenceManagerProps {
   nameLabel: string;
   createLabel: string;
   emptyText: string;
-  onCreate: (code: string, name: string) => Promise<void>;
-  onRename: (id: number, code: string, name: string) => Promise<void>;
+  /** Turns the boolean column on. Omit it and no flag UI is rendered. */
+  flagLabel?: string;
+  /** One line under the create checkbox explaining what the flag means. */
+  flagHint?: string;
+  onCreate: (code: string, name: string, flag: boolean) => Promise<void>;
+  onRename: (id: number, code: string, name: string, flag: boolean) => Promise<void>;
   onToggleActive: (id: number, isActive: boolean) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
 }
 
 export function CodedReferenceManager({
   items, loading, error, codeLabel, nameLabel, createLabel, emptyText,
+  flagLabel, flagHint,
   onCreate, onRename, onToggleActive, onDelete,
 }: CodedReferenceManagerProps) {
   const { t } = useI18n();
@@ -41,12 +53,15 @@ export function CodedReferenceManager({
 
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
+  // Matches the column default: a new unit is permissive until said otherwise.
+  const [newFlag, setNewFlag] = useState(true);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingCode, setEditingCode] = useState('');
   const [editingName, setEditingName] = useState('');
+  const [editingFlag, setEditingFlag] = useState(true);
 
   const [busyId, setBusyId] = useState<number | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -61,9 +76,10 @@ export function CodedReferenceManager({
     setCreating(true);
     setCreateError(null);
     try {
-      await onCreate(code, name);
+      await onCreate(code, name, newFlag);
       setNewCode('');
       setNewName('');
+      setNewFlag(true);
     } catch (err) {
       setCreateError(errorText(err));
     } finally {
@@ -75,6 +91,10 @@ export function CodedReferenceManager({
     setEditingId(item.id);
     setEditingCode(item.code);
     setEditingName(item.name);
+    // THE OVERWRITE TRAP: rename assigns the flag unconditionally, so the
+    // editor must be seeded from the row. Leaving this at its previous value
+    // would silently rewrite the unit's semantics on an unrelated rename.
+    setEditingFlag(item.flag ?? true);
     setRowError(null);
   }
 
@@ -85,7 +105,7 @@ export function CodedReferenceManager({
     setBusyId(id);
     setRowError(null);
     try {
-      await onRename(id, code, name);
+      await onRename(id, code, name, editingFlag);
       setEditingId(null);
     } catch (err) {
       setRowError(errorText(err));
@@ -145,6 +165,21 @@ export function CodedReferenceManager({
             disabled={creating}
           />
         </div>
+        {flagLabel ? (
+          <div>
+            <label className="sk-checkbox-row">
+              <input
+                type="checkbox"
+                checked={newFlag}
+                onChange={(e) => setNewFlag(e.target.checked)}
+                disabled={creating}
+                data-testid="coded-ref-create-flag"
+              />
+              <span>{flagLabel}</span>
+            </label>
+            {flagHint ? <p className="sk-muted">{flagHint}</p> : null}
+          </div>
+        ) : null}
         <Button type="submit" loading={creating} disabled={!newCode.trim() || !newName.trim()}>
           {createLabel}
         </Button>
@@ -159,6 +194,7 @@ export function CodedReferenceManager({
               <tr>
                 <th>{codeLabel}</th>
                 <th>{nameLabel}</th>
+                {flagLabel ? <th>{flagLabel}</th> : null}
                 <th>{t('catalogueSetup.common.status')}</th>
                 <th className="sk-num">{t('catalogueSetup.common.usage')}</th>
                 <th></th>
@@ -195,6 +231,28 @@ export function CodedReferenceManager({
                         item.name
                       )}
                     </td>
+                    {flagLabel ? (
+                      <td>
+                        {isEditing ? (
+                          <label className="sk-checkbox-row">
+                            <input
+                              type="checkbox"
+                              checked={editingFlag}
+                              onChange={(e) => setEditingFlag(e.target.checked)}
+                              disabled={isBusy}
+                              data-testid={`coded-ref-edit-flag-${item.id}`}
+                            />
+                            <span>{flagLabel}</span>
+                          </label>
+                        ) : (
+                          <span data-testid={`coded-ref-flag-${item.id}`}>
+                            {item.flag
+                              ? t('catalogueSetup.common.yes')
+                              : t('catalogueSetup.common.no')}
+                          </span>
+                        )}
+                      </td>
+                    ) : null}
                     <td>
                       {item.is_active
                         ? t('catalogueSetup.common.active')

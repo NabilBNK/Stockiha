@@ -26,6 +26,43 @@ export function isDecimalLessThanOrEqual(value: string, limit: string): boolean 
 }
 
 /**
+ * WS-D-13 Phase A — THE ONE quantity/unit validator.
+ *
+ * `catalog.units.allows_fractions` says whether a unit may carry a fractional
+ * quantity: true for Kg and Litre, false for Piece and Box. This function is
+ * the single place that decision is applied, and every quantity-entry screen
+ * calls it. It deliberately lives beside the other exact-decimal helpers
+ * rather than in a new module: six screens each carrying their own copy of
+ * "is this a whole number" is precisely the divergence this repository has
+ * already paid for once.
+ *
+ * STRING-BASED, like everything else in this file. No Number(), no
+ * parseFloat(): `Number("10000000000000000.5")` silently loses the fraction,
+ * which would turn a rejection into an acceptance on exactly the values that
+ * matter most.
+ *
+ * A value that is not an unsigned exact decimal returns false — malformed
+ * input is not "valid for this unit" under any flag. Callers that want to
+ * distinguish "malformed" from "fractional in a whole-only unit" must run
+ * their own format check first; every caller in WS-D-13 does, so the operator
+ * sees "not a number" rather than a confusing unit message.
+ *
+ * NOT AUTHORITATIVE. This is UX guidance in React. The database has no CHECK
+ * constraint backing it, so it prevents honest mistakes, not a determined
+ * client. See "What is NOT enforced" in the WS-D-13 report.
+ */
+export function isQuantityValidForUnit(quantity: string, allowsFractions: boolean): boolean {
+  const trimmed = quantity.trim();
+  if (!EXACT_DECIMAL.test(trimmed)) return false;
+  if (allowsFractions) return true;
+  // Whole-number-only: any fractional part must be absent or all zeroes, so
+  // "2" and "2.000" pass while "2.5" does not. Purely textual — the fraction
+  // is inspected as characters, never converted to a number.
+  const [, fraction = ''] = trimmed.split('.');
+  return /^0*$/.test(fraction);
+}
+
+/**
  * Low-stock predicate (ws-d-skill.md section 3, owner-ruled, not to be
  * reinterpreted): low when minimum_stock > 0 AND quantity_on_hand <=
  * minimum_stock. minimum_stock = 0 disables the warning entirely, at any

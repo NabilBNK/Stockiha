@@ -93,7 +93,8 @@ BEGIN
     SELECT id INTO v_warehouse FROM inventory.warehouses WHERE code = 'S2ADJ-WH';
     SELECT id INTO v_inactive_warehouse FROM inventory.warehouses WHERE code = 'S2ADJ-OFF';
     SELECT id INTO v_base_unit FROM catalog.units WHERE normalized_code = 'UNIT';
-    v_pack := catalog.create_unit('s2adj-admin-token', 'S2PACK', 'S2 Pack');
+    -- WS-D-13 Phase A: create_unit carries allows_fractions.
+    v_pack := catalog.create_unit('s2adj-admin-token', 'S2PACK', 'S2 Pack', false);
 
     v_size := catalog.create_attribute('s2adj-admin-token', 'S2 Size');
     v_color := catalog.create_attribute('s2adj-admin-token', 'S2 Color');

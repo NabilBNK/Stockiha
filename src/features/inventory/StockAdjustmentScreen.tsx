@@ -23,8 +23,10 @@ import {
   formatExactDecimal,
   isExactDecimalPositive,
   isExactDecimalZero,
+  isQuantityValidForUnit,
   localIsoDate,
 } from "./exactDecimal";
+import { useUnitFractionRules } from "./useUnitFractionRules";
 
 type Direction = "increase" | "decrease";
 
@@ -92,6 +94,9 @@ export function StockAdjustmentScreen() {
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [unitsError, setUnitsError] = useState<string | null>(null);
   const [unitId, setUnitId] = useState<number | null>(null);
+  // WS-D-13 Phase A. The quantity is typed in the SELECTED unit, so the flag
+  // consulted is that unit's own, not the variant's base.
+  const { allowsFractionsById } = useUnitFractionRules(token);
   const [direction, setDirection] = useState<Direction>("increase");
   const [quantity, setQuantity] = useState("");
   const [reasonCode, setReasonCode] =
@@ -198,6 +203,22 @@ export function StockAdjustmentScreen() {
     selectedVariant != null &&
     isExactDecimalPositive(selectedVariant.last_known_wac);
   const quantityValid = isPositiveExactQuantity(quantity);
+  /**
+   * WS-D-13 Phase A. The quantity is entered in the SELECTED unit, which may
+   * be an alternate (a Box) rather than the base, so the flag consulted is
+   * that unit's own. `StockAdjustmentUnit` carries no flag, so it is joined
+   * to `listUnitsV2` by unit_id — frontend only, no backend change.
+   */
+  const selectedUnit = units.find((u) => u.unit_id === unitId) ?? null;
+  const selectedUnitAllowsFractions = allowsFractionsById(unitId);
+  const quantityUnitError =
+    quantity !== "" &&
+    quantityValid &&
+    selectedUnit != null &&
+    selectedUnitAllowsFractions === false &&
+    !isQuantityValidForUnit(quantity, false)
+      ? t("units.wholeOnlyQuantity", { unit: selectedUnit.unit_code })
+      : null;
   const noteValid = reasonCode !== "OTHER" || note.trim() !== "";
   const dateValid =
     openFiscalPeriod != null &&
@@ -211,6 +232,7 @@ export function StockAdjustmentScreen() {
     variantId != null &&
     unitId != null &&
     quantityValid &&
+    quantityUnitError == null &&
     noteValid &&
     dateValid &&
     policyEnabled !== false;
@@ -451,8 +473,9 @@ export function StockAdjustmentScreen() {
             error={
               quantity !== "" && !quantityValid
                 ? t("adjustment.quantityError")
-                : undefined
+                : quantityUnitError ?? undefined
             }
+            data-testid="adjustment-quantity"
             required
           />
           <div className="sk-field">

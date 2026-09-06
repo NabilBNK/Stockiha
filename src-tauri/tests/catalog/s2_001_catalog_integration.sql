@@ -50,9 +50,11 @@ BEGIN
     v_b := catalog.add_attribute_value('admintok', v_color, 'Black');
 
     -- Units
-    v_carton := catalog.create_unit('admintok', 'CARTON', 'Carton');
-    v_kg := catalog.create_unit('admintok', 'KG', 'Kilogram');
-    v_gram := catalog.create_unit('admintok', 'G', 'Gram');
+    -- WS-D-13 Phase A: create_unit carries allows_fractions. A Carton is
+    -- whole-number-only; Kilogram and Gram are weights and take decimals.
+    v_carton := catalog.create_unit('admintok', 'CARTON', 'Carton', false);
+    v_kg := catalog.create_unit('admintok', 'KG', 'Kilogram', true);
+    v_gram := catalog.create_unit('admintok', 'G', 'Gram', true);
 
     -- Create a product with TWO variants, attributes and barcodes.
     v_res := catalog.create_product_with_variants('admintok', 'T-Shirt', v_kg, true, jsonb_build_array(

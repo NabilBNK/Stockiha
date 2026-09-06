@@ -947,9 +947,16 @@ export function CatalogCreatePanel({
    * collects one value, so the typed text is used for both and the operator
    * can refine the pair later on Catalogue Setup. Same behaviour as the
    * existing product form.
+   *
+   * WS-D-13 Phase A: this shortcut has no room to ask whether the new unit
+   * takes decimals, so it passes `true` — the same permissive value as the
+   * column default. Tightening it to whole-number-only is a deliberate choice
+   * made on Catalogue Setup, where the toggle and its explanation live. The
+   * permissive direction is the safe one to default to: it blocks nothing the
+   * operator has not explicitly asked to have blocked.
    */
   const createUnit = useCallback(async (label: string) => {
-    const id = await ipc.createUnit(token, label, label);
+    const id = await ipc.createUnit(token, label, label, true);
     await loadRefData();
     return id;
   }, [token, loadRefData]);

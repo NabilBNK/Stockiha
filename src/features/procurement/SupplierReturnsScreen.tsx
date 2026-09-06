@@ -18,6 +18,8 @@ import type {
   SupplierReturnSummary,
 } from '../../shared/ipc/dto';
 import { isDecimalLessThanOrEqual, isPositiveDecimal } from './procurementDecimal';
+import { isQuantityValidForUnit } from '../inventory/exactDecimal';
+import { useUnitFractionRules } from '../inventory/useUnitFractionRules';
 import { PROCUREMENT_COPY } from './procurementCopy';
 
 interface Props {
@@ -27,7 +29,9 @@ interface Props {
 }
 
 export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabilities }: Props) {
-  const { locale } = useI18n();
+  // WS-D-13 Phase A adds the one translated unit message via `t`; the rest of
+  // this screen keeps its existing PROCUREMENT_COPY strings untouched.
+  const { locale, t } = useI18n();
   const text = PROCUREMENT_COPY[locale];
   const errorText = useErrorText();
   const [returns, setReturns] = useState<SupplierReturnSummary[]>([]);
@@ -44,6 +48,7 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
   const [quantity, setQuantity] = useState('1.000');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const { allowsFractionsByCode } = useUnitFractionRules(sessionToken);
   const confirmRequestIds = useRef<Record<number, string>>({});
 
   const loadData = useCallback(async () => {
@@ -82,6 +87,19 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
     });
   }, [purchaseOrderId, receiptLines]);
   const selectedLine = returnableLines.find((line) => line.receipt_line_id === receiptLineId) ?? null;
+
+  // WS-D-13 Phase A. The receipt line carries a unit_code, so the rule is
+  // looked up by code. Format first, unit second: a malformed quantity keeps
+  // its existing message rather than being reported as a unit problem.
+  const returnUnitAllowsFractions = allowsFractionsByCode(selectedLine?.unit_code);
+  const quantityUnitError =
+    quantity !== '' &&
+    isPositiveDecimal(quantity) &&
+    selectedLine != null &&
+    returnUnitAllowsFractions === false &&
+    !isQuantityValidForUnit(quantity, false)
+      ? t('units.wholeOnlyQuantity', { unit: selectedLine.unit_code })
+      : null;
 
   function selectOrder(nextId: number) {
     setPurchaseOrderId(nextId);
@@ -122,6 +140,10 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
     }
     if (!isDecimalLessThanOrEqual(quantity, selectedLine.quantity_returnable_for_variant)) {
       setError(text.quantityExceedsReturnable);
+      return;
+    }
+    if (quantityUnitError) {
+      setError(quantityUnitError);
       return;
     }
     try {
@@ -237,8 +259,13 @@ export function SupplierReturnsScreen({ sessionToken, openFiscalPeriodId, capabi
               {selectedLine ? <p className="sk-muted">{text.returnable}: {selectedLine.quantity_returnable_for_variant} {selectedLine.unit_code}</p> : null}
               <label>
                 {text.quantity}
-                <input value={quantity} inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} required data-testid="return-quantity" />
+                <input value={quantity} inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} required data-testid="return-quantity" aria-invalid={quantityUnitError != null} />
               </label>
+              {quantityUnitError ? (
+                <p className="sk-field__error" role="alert" data-testid="return-quantity-unit-error">
+                  {quantityUnitError}
+                </p>
+              ) : null}
               <label>
                 {text.reason}
                 <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>

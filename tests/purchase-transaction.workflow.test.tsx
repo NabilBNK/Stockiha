@@ -65,6 +65,14 @@ describe('PurchaseTransactionScreen UI Workflow', () => {
     vi.mocked(ipc.listSuppliers).mockResolvedValue(mockSuppliers);
     vi.mocked(ipc.listPurchaseProductOptions).mockResolvedValue(mockProducts);
     vi.mocked(ipc.newRequestId).mockReturnValue('test-request-id-123');
+    // WS-D-13 Phase A: the screen now reads the unit catalogue to check
+    // decimal-vs-whole per line. Both units here are permissive, so these
+    // tests keep asserting exactly what they were written to assert; the
+    // enforcement itself is covered in tests/unit-fractions.workflow.test.tsx.
+    vi.mocked(ipc.listUnitsV2).mockResolvedValue([
+      { id: 1, code: 'PCS', name: 'Pieces', is_active: true, allows_fractions: true, usage_count: 2 },
+      { id: 2, code: 'BOX10', name: 'Box of 10', is_active: true, allows_fractions: true, usage_count: 1 },
+    ]);
   });
 
   const renderComponent = (locale: 'en' | 'fr' | 'ar' = 'en') =>

@@ -98,21 +98,43 @@ END $$;
 DO $$
 DECLARE v_unit_new bigint; v_unit_alt bigint; v_pid bigint; v_vid bigint;
 BEGIN
-    v_unit_new := catalog.create_unit('wsdadmintok', 'CRATE', 'Crate');
-    IF catalog.create_unit('wsdadmintok', ' crate ', 'Crate Dup') <> v_unit_new THEN
+    -- WS-D-13 Phase A: create_unit/rename_unit now carry allows_fractions.
+    -- A Crate holds whole items, so it is created whole-number-only.
+    v_unit_new := catalog.create_unit('wsdadmintok', 'CRATE', 'Crate', false);
+    IF catalog.create_unit('wsdadmintok', ' crate ', 'Crate Dup', true) <> v_unit_new THEN
         RAISE EXCEPTION 'ASSERT FAIL: unit create not normalized/idempotent';
     END IF;
+    -- ...and the get-or-create must NOT have redefined the existing unit's
+    -- fractional semantics as a side effect of the second call passing true.
+    IF (SELECT allows_fractions FROM catalog.units WHERE id = v_unit_new) IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'ASSERT FAIL: create_unit conflict path overwrote allows_fractions';
+    END IF;
 
-    PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'CRATE', 'Wooden Crate');
+    -- Rename carrying the CURRENT flag: the name changes, the flag survives.
+    PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'CRATE', 'Wooden Crate', false);
     IF (SELECT name FROM catalog.units WHERE id = v_unit_new) <> 'Wooden Crate' THEN
         RAISE EXCEPTION 'ASSERT FAIL: unit rename did not persist';
     END IF;
+    IF (SELECT allows_fractions FROM catalog.units WHERE id = v_unit_new) IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'ASSERT FAIL: unit rename did not preserve allows_fractions';
+    END IF;
+    -- A deliberate change of the flag through rename does take effect...
+    PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'CRATE', 'Wooden Crate', true);
+    IF (SELECT allows_fractions FROM catalog.units WHERE id = v_unit_new) IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'ASSERT FAIL: unit rename did not apply allows_fractions';
+    END IF;
+    -- ...and list_units_v2 reports it, which is what the UI reads.
+    IF (SELECT allows_fractions FROM catalog.list_units_v2('wsdadmintok') WHERE id = v_unit_new)
+       IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'ASSERT FAIL: list_units_v2 did not expose allows_fractions';
+    END IF;
+    PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'CRATE', 'Wooden Crate', false);
     PERFORM pg_temp.expect_error(
-        format('SELECT catalog.rename_unit(%L,%s,%L,%L)', 'wsdadmintok', v_unit_new, 'UNIT', 'x'), '22023');
+        format('SELECT catalog.rename_unit(%L,%s,%L,%L,%L)', 'wsdadmintok', v_unit_new, 'UNIT', 'x', false), '22023');
 
     DECLARE v_disposable bigint;
     BEGIN
-        v_disposable := catalog.create_unit('wsdadmintok', 'TEMPU', 'Temp Unit');
+        v_disposable := catalog.create_unit('wsdadmintok', 'TEMPU', 'Temp Unit', true);
         PERFORM catalog.delete_unit('wsdadmintok', v_disposable);
         IF EXISTS (SELECT 1 FROM catalog.units WHERE id = v_disposable) THEN
             RAISE EXCEPTION 'ASSERT FAIL: unused unit not deleted';
@@ -124,7 +146,7 @@ BEGIN
         format('SELECT catalog.delete_unit(%L,%s)', 'wsdadmintok', (SELECT v FROM t WHERE k='unit')), '55000');
 
     -- in-use-by-alternate-unit conversion row blocks delete
-    v_unit_alt := catalog.create_unit('wsdadmintok', 'DOZEN2', 'Dozen (WS-D test)');
+    v_unit_alt := catalog.create_unit('wsdadmintok', 'DOZEN2', 'Dozen (WS-D test)', false);
     SELECT v INTO v_vid FROM t WHERE k = 'v_cola';
     PERFORM catalog.add_variant_alt_unit('wsdadmintok', v_vid, v_unit_alt, 12);
     PERFORM pg_temp.expect_error(format('SELECT catalog.delete_unit(%L,%s)', 'wsdadmintok', v_unit_alt), '55000');

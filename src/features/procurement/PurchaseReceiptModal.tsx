@@ -6,6 +6,8 @@ import { useErrorText } from '../../shared/hooks/useErrorText';
 import { currentBusinessDate } from '../../shared/utils/businessDate';
 import { useAppData } from '../../app/AppDataContext';
 import { isDecimalLessThanOrEqual, isPositiveDecimal } from './procurementDecimal';
+import { isQuantityValidForUnit } from '../inventory/exactDecimal';
+import { useUnitFractionRules } from '../inventory/useUnitFractionRules';
 import { PROCUREMENT_COPY } from './procurementCopy';
 
 interface Props {
@@ -30,7 +32,28 @@ export default function PurchaseReceiptModal({
   const [lineQtys, setLineQtys] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { allowsFractionsByCode } = useUnitFractionRules(sessionToken);
   const requestId = useRef(crypto.randomUUID());
+
+  /**
+   * WS-D-13 Phase A. Receipt lines are received in the PO line's own unit, so
+   * the rule is looked up per line by `unit_code`. Returns the message for a
+   * line, or null when the line is fine (or its unit is unknown).
+   */
+  const lineUnitError = (unitCode: string, quantity: string): string | null => {
+    if (!isPositiveDecimal(quantity)) return null;
+    if (allowsFractionsByCode(unitCode) !== false) return null;
+    return isQuantityValidForUnit(quantity, false)
+      ? null
+      : t('units.wholeOnlyQuantity', { unit: unitCode });
+  };
+
+  const quantityFor = (lineId: number, remaining: string): string =>
+    (lineQtys[lineId] !== undefined
+      ? lineQtys[lineId]
+      : isPositiveDecimal(remaining)
+        ? remaining
+        : '0.000');
 
   useEffect(() => {
     const init = async () => {
@@ -110,6 +133,12 @@ export default function PurchaseReceiptModal({
       if (pol) {
         if (!isDecimalLessThanOrEqual(item.quantity_received, pol.remaining_quantity)) {
           setError(`Quantity for ${pol.variant_name} exceeds remaining quantity (${pol.remaining_quantity}).`);
+          return;
+        }
+        // WS-D-13 Phase A: a whole-number-only unit rejects a fraction.
+        const unitError = lineUnitError(pol.unit_code, item.quantity_received);
+        if (unitError) {
+          setError(unitError);
           return;
         }
       }
@@ -212,7 +241,26 @@ export default function PurchaseReceiptModal({
                       }
                       disabled={parseFloat(l.remaining_quantity) <= 0}
                       data-testid={`receipt-qty-input-${l.id}`}
+                      aria-invalid={
+                        lineUnitError(l.unit_code, quantityFor(l.id, l.remaining_quantity)) != null
+                      }
                     />
+                    {/* WS-D-13 Phase A: per line, because each line has its
+                        own unit. */}
+                    {(() => {
+                      const unitError = lineUnitError(
+                        l.unit_code, quantityFor(l.id, l.remaining_quantity),
+                      );
+                      return unitError ? (
+                        <p
+                          className="sk-field__error"
+                          role="alert"
+                          data-testid={`receipt-qty-unit-error-${l.id}`}
+                        >
+                          {unitError}
+                        </p>
+                      ) : null;
+                    })()}
                   </td>
                   <td>{l.unit_cost} DZD</td>
                 </tr>

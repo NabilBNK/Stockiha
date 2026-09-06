@@ -16,7 +16,8 @@ import { useSession } from '../../shared/session/SessionContext';
 import { useAppData } from '../../app/AppDataContext';
 import * as ipc from '../../shared/ipc/gateway';
 import type { ProductListItem, StockReceiptResult } from '../../shared/ipc/dto';
-import { formatExactDecimal } from './exactDecimal';
+import { formatExactDecimal, isQuantityValidForUnit } from './exactDecimal';
+import { useUnitFractionRules } from './useUnitFractionRules';
 
 const QTY_RE = /^\d+(\.\d{1,3})?$/;
 const COST_RE = /^\d+(\.\d{1,2})?$/;
@@ -36,6 +37,46 @@ export function StockReceiptScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<StockReceiptResult | null>(null);
   const [banner, setBanner] = useState<{ tone: 'success' | 'error' | 'warning'; text: string } | null>(null);
+  /**
+   * WS-D-13 Phase A. This screen posts in the variant's BASE unit, and
+   * `ProductListItem` carries no unit at all, so the unit is looked up per
+   * selection. `inventory.list_stock_adjustment_units` is variant-scoped and
+   * already returns the base unit flagged `is_base`, so NO backend change was
+   * needed; `useUnitFractionRules` then supplies that unit's allows_fractions.
+   * Null while unknown — an unknown unit must never block a quantity.
+   */
+  const [baseUnit, setBaseUnit] = useState<{ id: number; code: string } | null>(null);
+  const { allowsFractionsById } = useUnitFractionRules(token);
+
+  useEffect(() => {
+    if (!token || variantId == null) {
+      setBaseUnit(null);
+      return;
+    }
+    let active = true;
+    void ipc.listStockAdjustmentUnits(token, variantId)
+      .then((variantUnits) => {
+        if (!active) return;
+        const base = variantUnits.find((u) => u.is_base);
+        setBaseUnit(base ? { id: base.unit_id, code: base.unit_code } : null);
+      })
+      .catch(() => {
+        // Guidance only: failing to learn the unit must never stop a receipt.
+        if (active) setBaseUnit(null);
+      });
+    return () => { active = false; };
+  }, [token, variantId]);
+
+  // Format first, then unit fitness, so a typo reads as a typo rather than as
+  // a confusing message about the unit.
+  const baseUnitAllowsFractions = allowsFractionsById(baseUnit?.id);
+  const quantityUnitError = quantity !== ''
+    && QTY_RE.test(quantity)
+    && baseUnit != null
+    && baseUnitAllowsFractions === false
+    && !isQuantityValidForUnit(quantity, false)
+    ? t('units.wholeOnlyQuantity', { unit: baseUnit.code })
+    : null;
 
   useEffect(() => {
     if (!token || selectedWarehouseId == null) return;
@@ -63,6 +104,7 @@ export function StockReceiptScreen() {
     selectedWarehouseId != null &&
     openFiscalPeriod != null &&
     QTY_RE.test(quantity) &&
+    quantityUnitError == null &&
     COST_RE.test(unitCost);
 
   async function onSubmit(event: FormEvent) {
@@ -170,7 +212,12 @@ export function StockReceiptScreen() {
             setQuantity(e.target.value);
             invalidateRequest();
           }}
-          error={quantity !== '' && !QTY_RE.test(quantity) ? t('errors.validation') : undefined}
+          error={
+            quantity !== '' && !QTY_RE.test(quantity)
+              ? t('errors.validation')
+              : quantityUnitError ?? undefined
+          }
+          data-testid="stock-quantity"
           required
         />
         <TextField

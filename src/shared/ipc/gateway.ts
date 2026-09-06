@@ -321,8 +321,22 @@ export function listAttributes(sessionToken: string): Promise<AttributeDefinitio
   return call<AttributeDefinition[]>(COMMANDS.LIST_ATTRIBUTES, { sessionToken });
 }
 
-export function createUnit(sessionToken: string, code: string, name: string): Promise<number> {
-  return call<number>(COMMANDS.CREATE_UNIT, { sessionToken, code, name });
+/**
+ * WS-D-13 Phase A. `allowsFractions` is required, not optional: the SQL
+ * function rejects NULL, and a silent default here is exactly how a
+ * whole-number unit would end up permissive without anyone choosing that.
+ *
+ * Get-or-create: when a unit with this normalized code already exists, its id
+ * is returned and its existing flag is left ALONE. Changing an existing unit's
+ * flag is renameUnit's job.
+ */
+export function createUnit(
+  sessionToken: string,
+  code: string,
+  name: string,
+  allowsFractions: boolean,
+): Promise<number> {
+  return call<number>(COMMANDS.CREATE_UNIT, { sessionToken, code, name, allowsFractions });
 }
 
 export function listUnits(sessionToken: string): Promise<Unit[]> {
@@ -424,8 +438,19 @@ export function listUnitsV2(sessionToken: string): Promise<UnitLifecycleItem[]> 
   return call<UnitLifecycleItem[]>(COMMANDS.LIST_UNITS_V2, { sessionToken });
 }
 
-export function renameUnit(sessionToken: string, unitId: number, code: string, name: string): Promise<void> {
-  return call<void>(COMMANDS.RENAME_UNIT, { sessionToken, unitId, code, name });
+/**
+ * THE OVERWRITE TRAP. `catalog.rename_unit` assigns code, name AND
+ * allows_fractions unconditionally, so `allowsFractions` must carry the unit's
+ * CURRENT value unless the operator deliberately changed it.
+ */
+export function renameUnit(
+  sessionToken: string,
+  unitId: number,
+  code: string,
+  name: string,
+  allowsFractions: boolean,
+): Promise<void> {
+  return call<void>(COMMANDS.RENAME_UNIT, { sessionToken, unitId, code, name, allowsFractions });
 }
 
 export function setUnitActive(sessionToken: string, unitId: number, isActive: boolean): Promise<void> {

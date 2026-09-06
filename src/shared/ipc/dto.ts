@@ -760,7 +760,11 @@ export interface JournalDetail extends JournalSummary {
 
 export interface ReferenceLifecycleItem { id: number; name: string; is_active: boolean; usage_count: number; }
 export interface AttributeValueLifecycleItem { id: number; attribute_id: number; attribute_name: string; value: string; is_active: boolean; usage_count: number; }
-export interface UnitLifecycleItem { id: number; code: string; name: string; is_active: boolean; usage_count: number; }
+// WS-D-13 Phase A: `allows_fractions` says whether quantities in this unit may
+// carry a fractional part (true for Kg/Litre, false for Piece/Box). It is UI
+// guidance, not a database constraint — see isQuantityValidForUnit in
+// src/features/inventory/exactDecimal.ts.
+export interface UnitLifecycleItem { id: number; code: string; name: string; is_active: boolean; allows_fractions: boolean; usage_count: number; }
 
 export interface QuickCreatedProduct { product_id: number; variant_id: number; }
 

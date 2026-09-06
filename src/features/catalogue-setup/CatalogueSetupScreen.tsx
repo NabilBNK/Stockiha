@@ -116,13 +116,18 @@ export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string })
           )}
           {tab === 'units' && (
             <CodedReferenceManager
-              items={units}
+              // WS-D-13 Phase A: allows_fractions is surfaced as the widget's
+              // generic boolean `flag`, so a Kg can be marked decimal-capable
+              // and a Piece whole-number-only at create and at rename.
+              items={units.map((u) => ({ ...u, flag: u.allows_fractions }))}
               loading={unitsLoading}
               error={unitsError}
               codeLabel={t('catalogueSetup.units.code')}
               nameLabel={t('catalogueSetup.units.name')}
               createLabel={t('catalogueSetup.units.create')}
               emptyText={t('catalogueSetup.units.empty')}
+              flagLabel={t('catalogueSetup.units.allowsFractions')}
+              flagHint={t('catalogueSetup.units.allowsFractionsHint')}
               onCreate={createUnit}
               onRename={renameUnit}
               onToggleActive={setUnitActive}

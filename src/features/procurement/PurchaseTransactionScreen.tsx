@@ -16,6 +16,8 @@ import type {
   Supplier,
 } from '../../shared/ipc/dto';
 import { downloadPurchaseReceiptXlsx } from './purchaseReceiptExport';
+import { isQuantityValidForUnit } from '../inventory/exactDecimal';
+import { useUnitFractionRules } from '../inventory/useUnitFractionRules';
 
 interface LineItem {
   id: string;
@@ -229,9 +231,18 @@ function formatMoney(val: number): string {
 }
 
 export function PurchaseTransactionScreen({ sessionToken }: { sessionToken: string }) {
-  const { locale } = useI18n();
+  // WS-D-13 Phase A adds the one translated unit message via `t`; the rest of
+  // this screen keeps its existing UI_COPY strings untouched.
+  const { locale, t } = useI18n();
   const copy = UI_COPY[locale] || UI_COPY.en;
   const getErrorText = useErrorText();
+  /**
+   * WS-D-13 Phase A. A purchase line is entered in the unit SELECTED on that
+   * line (which may be an alternate unit, not the product's default), so the
+   * flag consulted is that unit's own, by id. `lineUnitError` is defined
+   * below, once `productOptions` exists to resolve the unit's code.
+   */
+  const { allowsFractionsById } = useUnitFractionRules(sessionToken);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -241,6 +252,24 @@ export function PurchaseTransactionScreen({ sessionToken }: { sessionToken: stri
   const [productOptions, setProductOptions] = useState<PurchaseProductOption[]>([]);
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState('');
+
+  // WS-D-13 Phase A. Resolves a unit id to its code for the message, from the
+  // options already loaded (default unit, or any of the line's alternates).
+  const unitCodeFor = (unitId: number): string => {
+    for (const option of productOptions) {
+      if (option.default_unit_id === unitId) return option.default_unit_code;
+      const alt = option.alternate_units.find((a) => a.unit_id === unitId);
+      if (alt) return alt.unit_code;
+    }
+    return String(unitId);
+  };
+
+  /** null when the line is fine, or when the unit's rule is unknown. */
+  const lineUnitError = (unitId: number, quantity: string): string | null => {
+    if (allowsFractionsById(unitId) !== false) return null;
+    if (isQuantityValidForUnit(quantity, false)) return null;
+    return t('units.wholeOnlyQuantity', { unit: unitCodeFor(unitId) });
+  };
 
   // Header State
   const [selectedSupplierId, setSelectedSupplierId] = useState<number | ''>('');
@@ -454,6 +483,16 @@ export function PurchaseTransactionScreen({ sessionToken }: { sessionToken: stri
           setFormError(copy.unitUWholeError);
           return;
         }
+      }
+      // WS-D-13 Phase A: the data-driven rule, from catalog.units
+      // .allows_fractions, on whichever unit this line is entered in. Added
+      // alongside the legacy hardcoded 'U' check above rather than replacing
+      // it -- removing that check is a behaviour change beyond this task's
+      // remit (see "Unrelated problems found" in the WS-D-13 report).
+      const unitError = lineUnitError(l.unitId, l.quantity);
+      if (unitError) {
+        setFormError(unitError);
+        return;
       }
     }
     setConfirmModalOpen(true);
@@ -812,7 +851,19 @@ export function PurchaseTransactionScreen({ sessionToken }: { sessionToken: stri
                           value={line.quantity}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
+                          aria-invalid={lineUnitError(line.unitId, line.quantity) != null}
                         />
+                        {/* WS-D-13 Phase A: per line, because each line has
+                            its own selected unit. */}
+                        {lineUnitError(line.unitId, line.quantity) ? (
+                          <p
+                            className="sk-field__error"
+                            role="alert"
+                            data-testid={`purchase-line-unit-error-${line.id}`}
+                          >
+                            {lineUnitError(line.unitId, line.quantity)}
+                          </p>
+                        ) : null}
                       </td>
                       <td>
                         <input

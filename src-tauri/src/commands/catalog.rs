@@ -257,9 +257,10 @@ pub(crate) async fn create_unit(
     session_token: String,
     code: String,
     name: String,
+    allows_fractions: bool,
 ) -> Result<i64, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::create_unit(pool, &session_token, &code, &name)
+    catalog::create_unit(pool, &session_token, &code, &name, allows_fractions)
         .await
         .map_err(IpcError::from)
 }
@@ -486,6 +487,7 @@ pub(crate) struct UnitLifecycleItemResponse {
     pub code: String,
     pub name: String,
     pub is_active: bool,
+    pub allows_fractions: bool,
     pub usage_count: i64,
 }
 
@@ -735,6 +737,7 @@ pub(crate) async fn list_units_v2(
                     code: i.code,
                     name: i.name,
                     is_active: i.is_active,
+                    allows_fractions: i.allows_fractions,
                     usage_count: i.usage_count,
                 })
                 .collect()
@@ -749,11 +752,19 @@ pub(crate) async fn rename_unit(
     unit_id: i64,
     code: String,
     name: String,
+    allows_fractions: bool,
 ) -> Result<(), IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::rename_unit(pool, &session_token, unit_id, &code, &name)
-        .await
-        .map_err(IpcError::from)
+    catalog::rename_unit(
+        pool,
+        &session_token,
+        unit_id,
+        &code,
+        &name,
+        allows_fractions,
+    )
+    .await
+    .map_err(IpcError::from)
 }
 
 #[tauri::command]
