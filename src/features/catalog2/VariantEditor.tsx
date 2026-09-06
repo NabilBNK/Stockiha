@@ -106,6 +106,7 @@ export function VariantEditor({
   onCreateAttribute,
   onAddValue,
   barcodes,
+  altUnits,
 }: {
   variant: VariantDetail;
   attributes: AttributeDefinition[];
@@ -124,6 +125,8 @@ export function VariantEditor({
   onAddValue: (attributeId: number, value: string) => Promise<number>;
   /** The barcode section, supplied by the panel so IPC stays in one place. */
   barcodes: ReactNode;
+  /** The alternate-units section, supplied by the panel for the same reason. */
+  altUnits: ReactNode;
 }) {
   const { t } = useI18n();
   const format = useDecimalFormat();
@@ -181,9 +184,25 @@ export function VariantEditor({
 
       {/* 3. Barcodes (C4) — moved above pricing; collapse behaviour unchanged. */}
       <div className="sk-catalog2__veditor-section">
-        <CollapsibleBarcodes count={variant.barcodes.length} variantId={variant.variant_id}>
+        <CollapsibleSection
+          title={t('catalog2.barcodesWithCount', { count: variant.barcodes.length })}
+          testId={`catalog2-barcodes-toggle-${variant.variant_id}`}
+        >
           {barcodes}
-        </CollapsibleBarcodes>
+        </CollapsibleSection>
+      </div>
+
+      {/* 3b. Alternate units (WS-D-13 Phase B) — after Barcodes and before
+          pricing, per the Owner's ordering. Collapsed by default like
+          Barcodes: most variants have none. */}
+      <div className="sk-catalog2__veditor-section">
+        <CollapsibleSection
+          // `?? []`: a build running one migration behind gets no such key.
+          title={t('catalog2.altUnitsWithCount', { count: (variant.alt_units ?? []).length })}
+          testId={`catalog2-alt-units-toggle-${variant.variant_id}`}
+        >
+          {altUnits}
+        </CollapsibleSection>
       </div>
 
       {/* 4. Sale price + Minimum stock, editable (C4, C5). Same InlineCell the
@@ -238,14 +257,21 @@ export function VariantEditor({
   );
 }
 
-/** R12 — closed by default, labelled with the count. */
-function CollapsibleBarcodes({
-  count,
-  variantId,
+/**
+ * R12 — closed by default, labelled with a count.
+ *
+ * WS-D-13 Phase B generalised this from the barcodes-only version so the new
+ * alternate-units section behaves identically rather than reimplementing the
+ * same collapse. `testId` is passed in explicitly so the barcode toggle keeps
+ * the exact id its existing regression test asserts.
+ */
+function CollapsibleSection({
+  title,
+  testId,
   children,
 }: {
-  count: number;
-  variantId: number;
+  title: string;
+  testId: string;
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -254,13 +280,13 @@ function CollapsibleBarcodes({
   return (
     <div>
       <div className="sk-catalog2__section-head">
-        <h3>{t('catalog2.barcodesWithCount', { count })}</h3>
+        <h3>{title}</h3>
         <Button
           type="button"
           variant="secondary"
           aria-expanded={open}
           onClick={() => setOpen((prev) => !prev)}
-          data-testid={`catalog2-barcodes-toggle-${variantId}`}
+          data-testid={testId}
         >
           {open ? t('variants.collapse') : t('variants.expand')}
         </Button>

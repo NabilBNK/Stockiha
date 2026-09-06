@@ -110,6 +110,7 @@ import {
   type VariantDraft,
 } from './VariantDraftFields';
 import { useDecimalFormat } from './useDecimalFormat';
+import { isExactDecimalPositive } from '../inventory/exactDecimal';
 
 /**
  * P1 (WS-D-8b pre-phase) — a stable, empty `VariantDetail` shape handed to
@@ -806,6 +807,19 @@ export function CatalogPanel({
                         }}
                       />
                     )}
+                    altUnits={(
+                      <AlternateUnitsSection
+                        token={token}
+                        variant={selectedVariant}
+                        units={units}
+                        baseUnitCode={detail.unit_code}
+                        busy={busy}
+                        onChanged={async () => {
+                          changedRef.current = true;
+                          await refresh();
+                        }}
+                      />
+                    )}
                   />
                 ) : (
                   <VariantEditorEmpty />
@@ -1165,6 +1179,215 @@ export function CatalogCreatePanel({
         </div>
       </form>
     </PanelShell>
+  );
+}
+
+/**
+ * WS-D-13 Phase B — alternate units for ONE variant ("a BOX that equals 6
+ * pieces, or 50 Kg").
+ *
+ * Conversions are PER VARIANT and stay that way: a box of pillows and a box
+ * of nails hold different counts, so a global "BOX = 6" would be wrong.
+ *
+ * `conversion_factor` is an exact-decimal STRING end to end. Nothing here
+ * parses it, rounds it or does arithmetic on it; `isExactDecimalPositive`
+ * checks the string shape, which is what rejects a blank or a zero before
+ * anything is sent.
+ *
+ * THE RULES LIVE IN SQL, NOT HERE. `catalog.add_variant_alt_unit` already
+ * rejects a unit equal to the variant's base unit, a non-positive factor, and
+ * a duplicate unit for the same variant. This component does not restate any
+ * of that — the base unit in particular is a variant-level column this
+ * payload does not carry, so re-deriving it in React would be guesswork. The
+ * backend decides and its rejection is surfaced through `useErrorText`, the
+ * one path this codebase allows (raw diagnostics never reach the UI).
+ *
+ * Removing a conversion is structural, so it is confirmed (RULING 6), exactly
+ * like removing a barcode.
+ */
+function AlternateUnitsSection({
+  token,
+  variant,
+  units,
+  baseUnitCode,
+  busy,
+  onChanged,
+}: {
+  token: string;
+  variant: VariantDetail;
+  units: UnitLifecycleItem[];
+  /** The product's unit code, for the "BOX = 6 UNIT" reading. */
+  baseUnitCode: string;
+  busy: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const errorText = useErrorText();
+  const [unitId, setUnitId] = useState('');
+  const [factor, setFactor] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  // `?? []`: a build running one migration behind receives no alt_units key.
+  const altUnitRows = variant.alt_units ?? [];
+  // Only active units may be newly assigned. Units this variant already uses
+  // are excluded from the picker because the backend rejects a duplicate
+  // anyway; offering them would be offering a guaranteed error.
+  const assigned = new Set(altUnitRows.map((a) => a.unit_id));
+  const options = units.filter((u) => u.is_active && !assigned.has(u.id));
+
+  const factorValid = isExactDecimalPositive(factor.trim());
+  const canAdd = unitId !== '' && factorValid && !adding && !busy;
+
+  async function add() {
+    if (!canAdd) return;
+    setAdding(true);
+    setError(null);
+    try {
+      await ipc.addVariantAltUnit(token, variant.variant_id, Number(unitId), factor.trim());
+      setUnitId('');
+      setFactor('');
+      await onChanged();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function remove(variantUnitId: number) {
+    setRemoving(true);
+    setError(null);
+    try {
+      await ipc.removeVariantAltUnit(token, variantUnitId);
+      setConfirmRemoveId(null);
+      await onChanged();
+    } catch (err) {
+      setError(errorText(err));
+      setConfirmRemoveId(null);
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  const confirmTarget = altUnitRows.find((a) => a.id === confirmRemoveId) ?? null;
+
+  return (
+    <div>
+      {error ? <Banner tone="error" testId="catalog2-alt-unit-error">{error}</Banner> : null}
+
+      {/* B3 — these conversions are DEFINABLE and VISIBLE only. Nothing in
+          Stock Receipt, Purchases or POS applies them yet, and the UI must
+          not imply otherwise. */}
+      <p className="sk-catalog2__note">{t('catalog2.altUnitsNotAppliedYet')}</p>
+
+      {altUnitRows.length === 0 ? (
+        <p className="sk-catalog2__note" data-testid={`catalog2-alt-units-empty-${variant.variant_id}`}>
+          {t('catalog2.altUnitsEmpty')}
+        </p>
+      ) : (
+        <ul className="sk-catalog2__barcode-list">
+          {altUnitRows.map((alt) => (
+            <li key={alt.id} className="sk-catalog2__barcode-row">
+              <span data-testid={`catalog2-alt-unit-${alt.id}`}>
+                <strong>{alt.unit_code}</strong>
+                {' = '}
+                <span className="sk-catalog2__mono">{alt.conversion_factor}</span>
+                {' '}
+                {baseUnitCode}
+              </span>
+              <Button
+                type="button"
+                variant="danger"
+                disabled={busy || removing}
+                onClick={() => setConfirmRemoveId(alt.id)}
+                data-testid={`catalog2-remove-alt-unit-${alt.id}`}
+              >
+                {t('barcodes.remove')}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="sk-catalog2__panel-grid">
+        <div className="sk-catalog2__field">
+          <label className="sk-catalog2__label" htmlFor={`catalog2-alt-unit-select-${variant.variant_id}`}>
+            {t('catalog2.altUnitUnit')}
+          </label>
+          <select
+            id={`catalog2-alt-unit-select-${variant.variant_id}`}
+            className="sk-catalog2__select"
+            value={unitId}
+            onChange={(e) => setUnitId(e.target.value)}
+            disabled={adding || busy}
+            data-testid={`catalog2-alt-unit-select-${variant.variant_id}`}
+          >
+            <option value="">{t('common.none')}</option>
+            {options.map((u) => (
+              <option key={u.id} value={u.id}>{u.code} — {u.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="sk-catalog2__field">
+          <label className="sk-catalog2__label" htmlFor={`catalog2-alt-unit-factor-${variant.variant_id}`}>
+            {t('catalog2.altUnitFactor')}
+          </label>
+          <input
+            id={`catalog2-alt-unit-factor-${variant.variant_id}`}
+            className="sk-catalog2__input"
+            inputMode="decimal"
+            value={factor}
+            onChange={(e) => setFactor(e.target.value)}
+            disabled={adding || busy}
+            aria-invalid={factor.trim() !== '' && !factorValid}
+            data-testid={`catalog2-alt-unit-factor-${variant.variant_id}`}
+          />
+          <p className="sk-catalog2__note">
+            {t('catalog2.altUnitFactorHint', { base: baseUnitCode })}
+          </p>
+          {factor.trim() !== '' && !factorValid ? (
+            <p
+              className="sk-catalog2__status sk-catalog2__status--error"
+              role="alert"
+              data-testid={`catalog2-alt-unit-factor-error-${variant.variant_id}`}
+            >
+              {t('catalog2.altUnitInvalidFactor')}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <div className="sk-catalog2__actions sk-catalog2__actions--end">
+        <Button
+          type="button"
+          loading={adding}
+          disabled={!canAdd}
+          onClick={() => void add()}
+          data-testid={`catalog2-add-alt-unit-${variant.variant_id}`}
+        >
+          {t('catalog2.altUnitAdd')}
+        </Button>
+      </div>
+
+      {confirmTarget ? (
+        <ConfirmDialog
+          title={t('catalog2.altUnitConfirmRemoveTitle')}
+          body={t('catalog2.altUnitConfirmRemoveBody', {
+            unit: confirmTarget.unit_code,
+            factor: confirmTarget.conversion_factor,
+            base: baseUnitCode,
+          })}
+          confirmLabel={t('barcodes.remove')}
+          cancelLabel={t('common.cancel')}
+          confirmVariant="danger"
+          busy={removing}
+          onConfirm={() => void remove(confirmTarget.id)}
+          onCancel={() => setConfirmRemoveId(null)}
+        />
+      ) : null}
+    </div>
   );
 }
 

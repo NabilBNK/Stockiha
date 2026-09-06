@@ -2336,4 +2336,201 @@ describe('bulk variant generation (WS-D-8b Part 2)', () => {
  * parts add new surfaces (attribute assignment on create, bulk generation)
  * that call `attributeSelection.tsx`'s exports as-is; neither the component,
  * its exports, nor the moved CR2 test's assertions were touched.
+ *
+ * WS-D-13 leaves it untouched as well: Phase B adds an alternate-units section
+ * to the same VariantEditor, and the CR2 fixture — which carries no
+ * `alt_units` key — still renders, because that key is optional for exactly
+ * the case of a build running one migration behind.
  */
+
+/**
+ * WS-D-13 Phase B — per-variant alternate units, surfaced in the panel.
+ *
+ * The conversions themselves (catalog.variant_units, add_variant_alt_unit,
+ * remove_variant_alt_unit) have existed since 20260724120100 and were
+ * unreachable from every screen. These cover the read path
+ * (get_product_detail now returns alt_units) and both writes.
+ */
+describe('alternate units (WS-D-13 Phase B)', () => {
+  function detailWithAltUnits(altUnits: Record<string, unknown>[] = []) {
+    return detailFixture({
+      unit_code: 'UNIT',
+      variants: [{
+        variant_id: 10, sku: 'PIL-1', name_override: null,
+        effective_variant_name: 'Pillow', primary_barcode: null,
+        operational_identifier: 'PIL-1', identifier_type: 'SKU',
+        sale_price: '1250.50', minimum_stock: '5.500', is_active: true,
+        attribute_signature: '', attributes: [], barcodes: [],
+        alt_units: altUnits,
+      }] as unknown as VariantFixture[],
+    });
+  }
+
+  const handlers = (extra: Handlers = {}) => makeHandlers({
+    list_products_v2: () => [row()],
+    list_units_v2: () => [
+      { id: 1, code: 'UNIT', name: 'Unit', is_active: true, allows_fractions: true, usage_count: 3 },
+      { id: 2, code: 'BOX', name: 'Box', is_active: true, allows_fractions: false, usage_count: 0 },
+      { id: 3, code: 'OLD', name: 'Retired', is_active: false, allows_fractions: true, usage_count: 0 },
+    ],
+    ...extra,
+  });
+
+  async function openAltUnits() {
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-editor-10');
+    // Collapsed by default, like Barcodes.
+    expect(screen.queryByTestId('catalog2-alt-unit-select-10')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('catalog2-alt-units-toggle-10'));
+    return screen.findByTestId('catalog2-alt-unit-select-10');
+  }
+
+  it('lists an existing conversion as "BOX = 6 UNIT"', async () => {
+    wireInvoke(handlers({
+      get_product_detail: () => detailWithAltUnits([
+        { id: 55, variant_id: 10, unit_id: 2, conversion_factor: '6', unit_code: 'BOX', unit_name: 'Box' },
+      ]),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openAltUnits();
+
+    const altRow = screen.getByTestId('catalog2-alt-unit-55');
+    expect(altRow).toHaveTextContent('BOX');
+    expect(altRow).toHaveTextContent('6');
+    // The base unit is the product's own unit, so the line reads as a sentence.
+    expect(altRow).toHaveTextContent('UNIT');
+    // The count rides on the collapsed header.
+    expect(screen.getByText('Alternate units (1)')).toBeInTheDocument();
+  });
+
+  it('sends the exact conversion factor string, never a parsed number', async () => {
+    let addCall: Record<string, unknown> | null = null;
+    wireInvoke(handlers({
+      get_product_detail: () => detailWithAltUnits(),
+      add_variant_alt_unit: (args) => { addCall = args; return 77; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    const select = await openAltUnits();
+
+    expect(await screen.findByTestId('catalog2-alt-units-empty-10')).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: '2' } });
+    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '6.250' } });
+    fireEvent.click(screen.getByTestId('catalog2-add-alt-unit-10'));
+
+    await waitFor(() => expect(addCall).not.toBeNull());
+    expect(addCall!.variantId).toBe(10);
+    expect(addCall!.unitId).toBe(2);
+    // Byte-for-byte as typed: trailing zeroes survive, nothing is rounded.
+    expect(addCall!.conversionFactor).toBe('6.250');
+    expect(typeof addCall!.conversionFactor).toBe('string');
+  });
+
+  it('refuses a blank or zero factor before anything is sent', async () => {
+    wireInvoke(handlers({
+      get_product_detail: () => detailWithAltUnits(),
+      add_variant_alt_unit: () => 77,
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    const select = await openAltUnits();
+
+    fireEvent.change(select, { target: { value: '2' } });
+    const add = screen.getByTestId('catalog2-add-alt-unit-10');
+
+    // Blank: nothing to send, so the control stays shut.
+    expect(add).toBeDisabled();
+
+    // Zero is a real number and a meaningless conversion; it is refused here
+    // rather than sent for the backend to reject.
+    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '0' } });
+    expect(screen.getByTestId('catalog2-alt-unit-factor-error-10')).toBeInTheDocument();
+    expect(add).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '0.000' } });
+    expect(add).toBeDisabled();
+
+    invokeMock.mockClear();
+    fireEvent.click(add);
+    expect(invokeMock).not.toHaveBeenCalled();
+
+    // A positive factor unlocks it.
+    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '6' } });
+    expect(screen.queryByTestId('catalog2-alt-unit-factor-error-10')).not.toBeInTheDocument();
+    expect(add).not.toBeDisabled();
+  });
+
+  it('confirms before removing a conversion, then calls removeVariantAltUnit', async () => {
+    let removeCall: Record<string, unknown> | null = null;
+    wireInvoke(handlers({
+      get_product_detail: () => detailWithAltUnits([
+        { id: 55, variant_id: 10, unit_id: 2, conversion_factor: '6', unit_code: 'BOX', unit_name: 'Box' },
+      ]),
+      remove_variant_alt_unit: (args) => { removeCall = args; return null; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openAltUnits();
+
+    fireEvent.click(screen.getByTestId('catalog2-remove-alt-unit-55'));
+    // Structural, so it never happens on one click (RULING 6).
+    expect(removeCall).toBeNull();
+
+    const dialog = await screen.findByRole('dialog', { name: 'Remove this alternate unit?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() => expect(removeCall).not.toBeNull());
+    expect(removeCall!.variantUnitId).toBe(55);
+  });
+
+  // The base-unit rule lives in catalog.add_variant_alt_unit (it reads
+  // v_base_unit). React must not restate it — this payload does not even carry
+  // the variant's base unit — so a rejection is surfaced, not pre-empted.
+  it('surfaces a backend rejection instead of duplicating the rule', async () => {
+    wireInvoke(handlers({
+      get_product_detail: () => detailWithAltUnits(),
+      add_variant_alt_unit: () => { throw { code: 'VALIDATION_ERROR' }; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    const select = await openAltUnits();
+
+    fireEvent.change(select, { target: { value: '2' } });
+    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '6' } });
+    fireEvent.click(screen.getByTestId('catalog2-add-alt-unit-10'));
+
+    expect(await screen.findByTestId('catalog2-alt-unit-error')).toHaveTextContent(
+      'Some of the entered values are invalid.',
+    );
+  });
+
+  it('offers only active units, and not one already configured', async () => {
+    wireInvoke(handlers({
+      get_product_detail: () => detailWithAltUnits([
+        { id: 55, variant_id: 10, unit_id: 2, conversion_factor: '6', unit_code: 'BOX', unit_name: 'Box' },
+      ]),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    const select = await openAltUnits();
+
+    // BOX is already configured; OLD is retired. Neither is offered.
+    expect(within(select).queryByText(/BOX/)).not.toBeInTheDocument();
+    expect(within(select).queryByText(/OLD/)).not.toBeInTheDocument();
+    expect(within(select).getByText('UNIT — Unit')).toBeInTheDocument();
+  });
+
+  // B3 — this phase makes conversions definable and visible, nothing more.
+  it('says plainly that the conversions are not applied to transactions yet', async () => {
+    wireInvoke(handlers({ get_product_detail: () => detailWithAltUnits() }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openAltUnits();
+
+    expect(screen.getByText(
+      'These conversions are recorded for this variant. They are not yet applied automatically to receipts, purchases or sales.',
+    )).toBeInTheDocument();
+  });
+});

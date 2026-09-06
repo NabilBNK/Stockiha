@@ -155,7 +155,46 @@ BEGIN
         RAISE EXCEPTION 'ASSERT FAIL: unit usage_count not 1 for alt-unit-only usage';
     END IF;
 
-    RAISE NOTICE 'unit CRUD (incl. alt-unit-in-use) OK';
+    -- WS-D-13 Phase B: the conversion just created must be READABLE, or the
+    -- panel can only ever add alternate units blind. conversion_factor
+    -- crosses as text, like sale_price and minimum_stock.
+    DECLARE
+        v_variant jsonb;
+        v_alt jsonb;
+    BEGIN
+        SELECT vv INTO v_variant
+            FROM jsonb_array_elements(
+                catalog.get_product_detail('wsdadmintok', (SELECT product_id FROM catalog.product_variants WHERE id = v_vid)) -> 'variants'
+            ) vv
+            WHERE (vv ->> 'variant_id')::bigint = v_vid;
+        IF v_variant IS NULL THEN
+            RAISE EXCEPTION 'ASSERT FAIL: variant % absent from get_product_detail', v_vid;
+        END IF;
+        IF jsonb_array_length(v_variant -> 'alt_units') <> 1 THEN
+            RAISE EXCEPTION 'ASSERT FAIL: alt_units missing from get_product_detail: %',
+                v_variant -> 'alt_units';
+        END IF;
+        v_alt := v_variant -> 'alt_units' -> 0;
+        IF jsonb_typeof(v_alt -> 'conversion_factor') <> 'string' THEN
+            RAISE EXCEPTION 'ASSERT FAIL: conversion_factor must cross as text, got %',
+                jsonb_typeof(v_alt -> 'conversion_factor');
+        END IF;
+        IF (v_alt ->> 'unit_code') <> 'DOZEN2' OR (v_alt ->> 'unit_id')::bigint <> v_unit_alt THEN
+            RAISE EXCEPTION 'ASSERT FAIL: alt_units row does not describe the configured unit: %', v_alt;
+        END IF;
+        -- ADD ONLY: the keys WS-D-5B and earlier established must all survive.
+        IF NOT (v_variant ? 'variant_id' AND v_variant ? 'sku' AND v_variant ? 'name_override'
+            AND v_variant ? 'effective_variant_name' AND v_variant ? 'primary_barcode'
+            AND v_variant ? 'operational_identifier' AND v_variant ? 'identifier_type'
+            AND v_variant ? 'sale_price' AND v_variant ? 'is_active'
+            AND v_variant ? 'attribute_signature' AND v_variant ? 'attributes'
+            AND v_variant ? 'barcodes' AND v_variant ? 'minimum_stock') THEN
+            RAISE EXCEPTION 'ASSERT FAIL: get_product_detail lost an existing variant key: %',
+                (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(v_variant) k);
+        END IF;
+    END;
+
+    RAISE NOTICE 'unit CRUD (incl. alt-unit-in-use, alt_units in detail) OK';
 END $$;
 
 -- ---- 3. Attribute + attribute value CRUD -------------------------------------

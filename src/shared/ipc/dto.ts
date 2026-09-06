@@ -189,7 +189,16 @@ export interface VariantBarcode { id: number; barcode: string; is_primary: boole
 // writers overwrite those columns unconditionally, so a form that could not
 // read them would silently clear them on every save. minimum_stock crosses IPC
 // as an exact decimal string, identical treatment to sale_price.
-export interface VariantDetail { variant_id: number; sku: string; name_override: string | null; effective_variant_name: string; primary_barcode: string | null; operational_identifier: string; identifier_type: 'BARCODE' | 'SKU'; sale_price: string; minimum_stock: string; is_active: boolean; attribute_signature: string; attributes: VariantAttribute[]; barcodes: VariantBarcode[]; }
+// WS-D-13 Phase B added `alt_units`: the variant's alternate-unit conversions,
+// which catalog.variant_units has stored since 20260724120100 but which
+// get_product_detail never returned, so no screen could show them.
+// `conversion_factor` crosses as an exact-decimal STRING, like sale_price.
+//
+// OPTIONAL, unlike minimum_stock/category_id in WS-D-5B, and deliberately so:
+// this key only exists once migration 20260907090000 has been applied, so a
+// build running against a database that is one migration behind receives a
+// variant without it. Consumers read it as `alt_units ?? []`.
+export interface VariantDetail { variant_id: number; sku: string; name_override: string | null; effective_variant_name: string; primary_barcode: string | null; operational_identifier: string; identifier_type: 'BARCODE' | 'SKU'; sale_price: string; minimum_stock: string; is_active: boolean; attribute_signature: string; attributes: VariantAttribute[]; barcodes: VariantBarcode[]; alt_units?: VariantAltUnit[]; }
 export interface ProductDetail { product_id: number; name: string; unit_id: number; unit_code: string; unit_name: string; is_active: boolean; category_id: number | null; variants: VariantDetail[]; }
 export interface CreatedProductWithVariants { product_id: number; variant_ids: number[]; }
 
