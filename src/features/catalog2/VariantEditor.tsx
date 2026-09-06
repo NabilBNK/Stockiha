@@ -47,7 +47,7 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { Banner, Button } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
 import type { AttributeDefinition, VariantDetail } from '../../shared/ipc/dto';
-import { AttributeManagerForVariant } from '../products/ProductEditor';
+import { AttributeManagerForVariant } from './attributeSelection';
 import { InlineCell } from './InlineCell';
 import { isValidMinimumStock, isValidPrice } from './catalogValidation';
 import { PanelField } from './PanelFields';

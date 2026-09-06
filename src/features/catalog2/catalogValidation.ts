@@ -3,8 +3,8 @@
  *
  * Both are EXACT DECIMAL STRINGS and are checked as strings. Nothing here
  * parses, rounds, or does arithmetic on them (ws-d-skill.md section 6). The
- * same shapes VariantForm uses on the existing products page, so a value
- * accepted on one screen is accepted on the other.
+ * same shapes the variant draft form uses, so a value accepted in one place
+ * on this page is accepted in the others.
  *
  * "0" is a valid minimum stock and a meaningful one — it means "never warn me
  * about this item" — so it must pass, not be treated as blank.

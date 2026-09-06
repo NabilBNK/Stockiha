@@ -98,11 +98,8 @@ export const COMMANDS = {
   LIST_JOURNALS: 'list_journals',
   GET_JOURNAL_DETAIL: 'get_journal_detail',
   // Slice 2 — variant catalog
-  CREATE_PRODUCT_WITH_VARIANTS: 'create_product_with_variants',
   ADD_VARIANT: 'add_variant',
-  UPDATE_VARIANT: 'update_variant',
   SET_VARIANT_ACTIVE: 'set_variant_active',
-  UPDATE_PRODUCT: 'update_product',
   CREATE_ATTRIBUTE: 'create_attribute',
   ADD_ATTRIBUTE_VALUE: 'add_attribute_value',
   LIST_ATTRIBUTES: 'list_attributes',

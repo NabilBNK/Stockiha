@@ -515,13 +515,6 @@
    One gap value from the spacing scale, no ad-hoc margins.
    ------------------------------------------------------------------ */
 
-.sk-catalog2__vrow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-}
-
 .sk-catalog2__vrow-main {
   display: flex;
   flex-wrap: wrap;
@@ -533,11 +526,6 @@
 .sk-catalog2__vrow-name {
   flex: 1 1 12ch;
   min-width: 0;
-}
-
-.sk-catalog2__vrow-id {
-  flex: 0 0 auto;
-  color: var(--sk-muted);
 }
 
 .sk-catalog2__vrow-figures {

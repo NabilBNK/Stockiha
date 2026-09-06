@@ -13,35 +13,6 @@ import type { VariantInput } from '../src/shared/ipc/dto';
 
 beforeEach(() => { invokeMock.mockReset(); });
 
-describe('createProductWithVariants', () => {
-  it('sends the correct command with product unitId and VariantInput array', async () => {
-    invokeMock.mockResolvedValue({ product_id: 1, variant_ids: [10, 11] });
-    const variants: VariantInput[] = [
-      { name_override: 'Red', sale_price: '10.00', is_active: true },
-      { sale_price: '12.00', is_active: true },
-    ];
-    const result = await ipc.createProductWithVariants('tok', 'T-Shirt', 2, true, variants);
-    expect(invokeMock).toHaveBeenCalledWith(COMMANDS.CREATE_PRODUCT_WITH_VARIANTS, {
-      sessionToken: 'tok',
-      name: 'T-Shirt',
-      unitId: 2,
-      isActive: true,
-      variants,
-    });
-    expect(result.product_id).toBe(1);
-    expect(result.variant_ids).toEqual([10, 11]);
-  });
-
-  it('keeps sale_price as a string (never a number)', async () => {
-    invokeMock.mockResolvedValue({ product_id: 2, variant_ids: [12] });
-    const variants: VariantInput[] = [{ sale_price: '99.99', is_active: true }];
-    await ipc.createProductWithVariants('tok', 'Widget', 1, false, variants);
-    const [, args] = invokeMock.mock.calls[0];
-    expect(typeof args.variants[0].sale_price).toBe('string');
-    expect(args.variants[0].sale_price).toBe('99.99');
-  });
-});
-
 describe('addVariant', () => {
   it('sends correct command with productId and variant payload', async () => {
     invokeMock.mockResolvedValue(42);
@@ -59,34 +30,6 @@ describe('addVariant', () => {
       variant,
     });
     expect(result).toBe(42);
-  });
-});
-
-describe('updateProduct', () => {
-  it('sends product_id, name, unitId, and isActive', async () => {
-    invokeMock.mockResolvedValue(null);
-    await ipc.updateProduct('tok', 5, 'Pillow Cover', 3, true);
-    expect(invokeMock).toHaveBeenCalledWith(COMMANDS.UPDATE_PRODUCT, {
-      sessionToken: 'tok',
-      productId: 5,
-      name: 'Pillow Cover',
-      unitId: 3,
-      isActive: true,
-    });
-  });
-});
-
-describe('updateVariant', () => {
-  it('sends variant_id, nameOverride, salePrice, and isActive', async () => {
-    invokeMock.mockResolvedValue(null);
-    await ipc.updateVariant('tok', 10, 'Classic Red', '15.00', true);
-    expect(invokeMock).toHaveBeenCalledWith(COMMANDS.UPDATE_VARIANT, {
-      sessionToken: 'tok',
-      variantId: 10,
-      nameOverride: 'Classic Red',
-      salePrice: '15.00',
-      isActive: true,
-    });
   });
 });
 

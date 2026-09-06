@@ -14,7 +14,6 @@ import type {
   CashSessionDetail,
   CatalogProduct,
   CreatedProduct,
-  CreatedProductWithVariants,
   DashboardSummary,
   DocumentJob,
   FiscalPeriod,
@@ -302,24 +301,12 @@ export function listDocumentJobs(sessionToken: string, documentId: number): Prom
 
 // Slice 2 — variant catalog gateway wrappers
 
-export function createProductWithVariants(sessionToken: string, name: string, unitId: number, isActive: boolean, variants: VariantInput[]): Promise<CreatedProductWithVariants> {
-  return call<CreatedProductWithVariants>(COMMANDS.CREATE_PRODUCT_WITH_VARIANTS, { sessionToken, name, unitId, isActive, variants });
-}
-
 export function addVariant(sessionToken: string, productId: number, variant: VariantInput): Promise<number> {
   return call<number>(COMMANDS.ADD_VARIANT, { sessionToken, productId, variant });
 }
 
-export function updateVariant(sessionToken: string, variantId: number, nameOverride: string | null, salePrice: string, isActive: boolean): Promise<void> {
-  return call<void>(COMMANDS.UPDATE_VARIANT, { sessionToken, variantId, nameOverride, salePrice, isActive });
-}
-
 export function setVariantActive(sessionToken: string, variantId: number, isActive: boolean): Promise<void> {
   return call<void>(COMMANDS.SET_VARIANT_ACTIVE, { sessionToken, variantId, isActive });
-}
-
-export function updateProduct(sessionToken: string, productId: number, name: string, unitId: number, isActive: boolean): Promise<void> {
-  return call<void>(COMMANDS.UPDATE_PRODUCT, { sessionToken, productId, name, unitId, isActive });
 }
 
 export function createAttribute(sessionToken: string, name: string): Promise<number> {

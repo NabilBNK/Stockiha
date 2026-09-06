@@ -31,7 +31,7 @@
  * keystroke.
  *
  * CR2 REUSE. The attribute section renders `AttributeManagerForVariant` from
- * ProductEditor.tsx — the component that owns the `mergeAssignedValues`
+ * attributeSelection.tsx — the component that owns the `mergeAssignedValues`
  * wiring, which keeps a RETIRED value a variant already holds visible,
  * selectable and marked. A fresh picker here would reintroduce that data-loss
  * defect, so the existing component is reused whole.
@@ -96,7 +96,7 @@ import type {
   VariantDetail,
   VariantInput,
 } from '../../shared/ipc/dto';
-import { InlineCreateSelect } from '../products/InlineCreateSelect';
+import { InlineCreateSelect } from './InlineCreateSelect';
 import { PanelField, PanelSelect } from './PanelFields';
 import { PanelShell, usePanelNarrow } from './PanelShell';
 import { VariantEditor, VariantEditorEmpty } from './VariantEditor';

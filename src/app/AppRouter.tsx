@@ -18,7 +18,6 @@ import { AppShell, type AppView } from './AppShell';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
-import { ProductsScreen } from '../features/products/ProductsScreen';
 import { CatalogScreen } from '../features/catalog2/CatalogScreen';
 import { CatalogueSetupScreen } from '../features/catalogue-setup/CatalogueSetupScreen';
 import { StockAdjustmentScreen } from '../features/inventory/StockAdjustmentScreen';
@@ -277,7 +276,6 @@ function AuthenticatedApp() {
     if (!inventoryCapabilities) return;
     const allowed =
       (view !== 'products' || inventoryCapabilities.can_manage_catalog)
-      && (view !== 'catalog2' || inventoryCapabilities.can_manage_catalog)
       && (view !== 'catalogueSetup' || inventoryCapabilities.can_manage_catalog)
       && (view !== 'inventory' || inventoryCapabilities.can_view_inventory)
       && (view !== 'stock' || inventoryCapabilities.can_post_stock_receipt)
@@ -357,8 +355,7 @@ function AuthenticatedApp() {
           <UserManagementSettingsScreen sessionToken={user?.token ?? ''} />
         </>
       )}
-      {view === 'products' && <ProductsScreen />}
-      {view === 'catalog2' && <CatalogScreen />}
+      {view === 'products' && <CatalogScreen />}
       {view === 'catalogueSetup' && <CatalogueSetupScreen sessionToken={user?.token ?? ''} />}
       {view === 'inventory' && <InventoryScreen />}
       {view === 'stock' && <StockReceiptScreen />}

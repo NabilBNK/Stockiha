@@ -136,7 +136,7 @@ async function loginAndOpenCatalog() {
   fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Catalog (new)' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Products' }));
   await screen.findByTestId('catalog2-screen');
 }
 
@@ -1270,6 +1270,8 @@ describe('attribute selection (WS-D-11)', () => {
 
     fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
     await screen.findByTestId('catalog2-variant-editor-10');
+    // The chips need list_attributes as well as get_product_detail.
+    await screen.findByTestId('attr-add-value-1');
 
     expect(screen.queryByLabelText('Attribute name')).not.toBeInTheDocument();
     expect(screen.getByText('Attribute types are created and managed in Catalogue setup.'))
@@ -1285,6 +1287,8 @@ describe('attribute selection (WS-D-11)', () => {
 
     fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
     await screen.findByTestId('catalog2-variant-editor-10');
+    // The chips need list_attributes as well as get_product_detail.
+    await screen.findByRole('radio', { name: 'M' });
 
     // "Size" has nothing selected and must still be visible.
     expect(screen.getByText('Size')).toBeInTheDocument();
@@ -1311,7 +1315,13 @@ describe('attribute selection (WS-D-11)', () => {
     fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
     await screen.findByTestId('catalog2-variant-editor-10');
 
-    expect(screen.getByRole('radio', { name: 'Red' })).toBeChecked();
+    // The editor appears as soon as get_product_detail resolves, but the chips
+    // need list_attributes too — two independent loads. Waiting on the radio
+    // itself waits for both, and for the effect that seeds the selection from
+    // the variant. Reading it synchronously made this test flaky.
+    const red = await screen.findByRole('radio', { name: 'Red' });
+    await waitFor(() => expect(red).toBeChecked());
+
     fireEvent.click(screen.getByTestId('attr-none-1'));
     expect(screen.getByTestId('attr-none-1')).toBeChecked();
 
@@ -1336,6 +1346,8 @@ describe('attribute selection (WS-D-11)', () => {
 
     fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
     await screen.findByTestId('catalog2-variant-editor-10');
+    // The chips need list_attributes as well as get_product_detail.
+    await screen.findByRole('radio', { name: 'Blue' });
 
     fireEvent.click(screen.getByRole('radio', { name: 'Blue' }));
     expect(screen.getByRole('radio', { name: 'Blue' })).toBeChecked();
@@ -1747,8 +1759,147 @@ describe('create panel discard guard (WS-D-11 R15)', () => {
   });
 });
 
-describe('the existing Products page is untouched', () => {
-  it('still appears in the navigation alongside the new Catalog page', async () => {
+/**
+ * WS-D-12 — moved here from tests/catalog.workflow.test.tsx when the old
+ * Products page and its test file were retired.
+ *
+ * *** CR2 — THE RETIRED-VALUE GUARD. ***
+ * This is the regression test for a real data-loss defect: deactivating an
+ * attribute value used to silently strip it off every variant that already
+ * held it, on the next save. It has guarded `mergeAssignedValues` since
+ * WS-D-CORRECTION-2.
+ *
+ * Everything from "// Case 1:" downwards is BYTE-IDENTICAL to its text at
+ * f7ec385 — spliced in, not retyped. Only the navigation above it changed,
+ * from the deleted page's edit-product/variant-row path to the surviving
+ * panel. Do not weaken an assertion in this test; if it fails, the guard is
+ * gone, not stale.
+ */
+describe('variant attribute configuration (CR2, moved in WS-D-12)', () => {
+  it('keeps a retired attribute value visible, selected, and saved for a variant that already holds it', async () => {
+    let setAttrsCall: Record<string, unknown> | null = null;
+    const detail = {
+      product_id: 1, name: 'Pillow', is_active: true, unit_id: 1, category_id: null,
+      variants: [{
+        variant_id: 10, sku: 'PIL-1', operational_identifier: 'PIL-1', identifier_type: 'SKU',
+        sale_price: '10.00', minimum_stock: '0', is_active: true,
+        effective_variant_name: 'Pillow', name_override: null, primary_barcode: null,
+        attribute_signature: '1:3|2:9',
+        attributes: [
+          // value retired, attribute still active
+          { attribute_id: 1, attribute_name: 'Color', attribute_value_id: 3, value: 'Burgendy' },
+          // whole attribute retired -> absent from list_attributes entirely
+          { attribute_id: 2, attribute_name: 'Retired Attr', attribute_value_id: 9, value: 'OldValue' },
+        ],
+        barcodes: [],
+      }],
+    };
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [row({ product_name: 'Pillow' })],
+      get_product_detail: () => detail,
+      // Backend offers only what is still active: 'Burgendy' (id 3) is gone,
+      // and attribute 2 is missing altogether.
+      list_attributes: () => [
+        {
+          attribute_id: 1,
+          name: 'Color',
+          attribute_values: [{ id: 4, value: 'Blue', is_active: true }],
+        },
+      ],
+      set_variant_attributes: (args) => {
+        setAttrsCall = args;
+        return null;
+      },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    // WS-D-12: the only change to this test. The panel opens on the product's
+    // first variant, so its attribute chips are on screen immediately.
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    await screen.findByTestId('catalog2-variant-editor-10');
+
+    // Case 1: the retired value is still rendered, still selected, and flagged.
+    const retiredValue = await screen.findByRole('radio', { name: /Burgendy/ });
+    expect(retiredValue).toBeChecked();
+    expect(screen.getByTestId('attr-value-inactive-3')).toBeInTheDocument();
+
+    // Case 2: the retired ATTRIBUTE and its assigned value are rendered too.
+    expect(screen.getByText('Retired Attr')).toBeInTheDocument();
+    const retiredAttrValue = screen.getByRole('radio', { name: /OldValue/ });
+    expect(retiredAttrValue).toBeChecked();
+    expect(screen.getByTestId('attr-value-inactive-9')).toBeInTheDocument();
+
+    // Still-active values remain offered and unflagged.
+    expect(screen.getByRole('radio', { name: 'Blue' })).toBeInTheDocument();
+    expect(screen.queryByTestId('attr-value-inactive-4')).not.toBeInTheDocument();
+
+    // Saving without touching anything must preserve BOTH retired assignments.
+    fireEvent.click(screen.getByRole('button', { name: 'Assign attributes' }));
+    await waitFor(() => expect(setAttrsCall).not.toBeNull());
+    expect(setAttrsCall!.attributeValueIds).toEqual(expect.arrayContaining([3, 9]));
+  });
+});
+
+describe('locale / RTL rendering', () => {
+  it('sets dir=rtl and renders Arabic text when locale is switched in the app shell', async () => {
+    wireInvoke(makeHandlers());
+    render(<App />);
+
+    // Login first to get to authenticated area where locale switcher lives
+    await screen.findByRole('heading', { name: 'Sign in' });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    // Wait for authenticated area (AppShell has locale buttons)
+    await screen.findByRole('button', { name: 'ع' });
+
+    // Switch to Arabic
+    fireEvent.click(screen.getByRole('button', { name: 'ع' }));
+
+    // dir should be rtl
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('dir')).toBe('rtl');
+    });
+
+    // Arabic nav items should appear
+    expect(screen.getByRole('button', { name: 'المنتجات' })).toBeInTheDocument();
+  });
+
+  it('renders catalog empty state in Arabic after switching locale in the shell', async () => {
+    wireInvoke(makeHandlers());
+    render(<App />);
+
+    // Login
+    await screen.findByRole('heading', { name: 'Sign in' });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    // Wait for shell, then switch to Arabic
+    const arBtn = await screen.findByRole('button', { name: 'ع' });
+    fireEvent.click(arBtn);
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('dir')).toBe('rtl');
+    });
+
+    // Navigate to products (in Arabic)
+    const productsNav = screen.getByRole('button', { name: 'المنتجات' });
+    fireEvent.click(productsNav);
+
+    // Arabic empty state for catalog (WS-D-4: variant-level list_products_v2 empty state)
+    expect(await screen.findByText('لا توجد أصناف مطابقة لهذه المرشحات.')).toBeInTheDocument();
+    expect(document.documentElement.getAttribute('dir')).toBe('rtl');
+  });
+});
+
+// WS-D-12 — the old page was retired after Owner acceptance. Where this block
+// used to assert that BOTH pages were in the nav, it now asserts there is
+// exactly one, so a re-introduced duplicate would fail rather than pass.
+describe('the retired Products page is gone (WS-D-12)', () => {
+  it('leaves exactly one Products nav entry, and no "(new)" label', async () => {
     wireInvoke(makeHandlers());
     render(<App />);
     await screen.findByRole('heading', { name: 'Sign in' });
@@ -1757,6 +1908,18 @@ describe('the existing Products page is untouched', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
     expect(await screen.findByRole('button', { name: 'Products' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Catalog (new)' })).toBeInTheDocument();
+    // getAllByRole would return two if the old entry ever came back.
+    expect(screen.getAllByRole('button', { name: 'Products' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Catalog (new)' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /\(new\)/ })).not.toBeInTheDocument();
+  });
+
+  it('renders the surviving page under the Products nav entry, titled Products', async () => {
+    wireInvoke(makeHandlers({ list_products_v2: () => [row()] }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    expect(screen.getByTestId('catalog2-screen')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Products', level: 1 })).toBeInTheDocument();
   });
 });

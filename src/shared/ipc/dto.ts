@@ -175,7 +175,7 @@ export interface CashSaleLineInput {
 // product form can merge in, in the same shape, a variant's
 // already-assigned-but-now-inactive values (from get_product_detail) and mark
 // them as retired rather than silently dropping them — see
-// mergeAssignedValues in ProductEditor.tsx.
+// mergeAssignedValues in src/features/catalog2/attributeSelection.tsx.
 export interface AttributeValue { id: number; value: string; is_active: boolean; }
 export interface AttributeDefinition { attribute_id: number; name: string; attribute_values: AttributeValue[]; }
 export interface Unit { id: number; code: string; name: string; }
