@@ -183,6 +183,45 @@
   border-block-end: 1px solid var(--sk-border);
 }
 
+/* P4 (WS-D-8b) — a sortable column header. The button fills the `<th>` so
+   the whole header is the click/keyboard target, not just the text. */
+.sk-catalog2__sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.sk-catalog2__num .sk-catalog2__sort-btn {
+  justify-content: flex-end;
+}
+
+.sk-catalog2__sort-btn:hover,
+.sk-catalog2__sort-btn:focus-visible {
+  color: var(--sk-primary);
+}
+
+.sk-catalog2__sort-btn:focus-visible {
+  outline: 3px solid rgba(36, 87, 214, .25);
+  outline-offset: 1px;
+}
+
+.sk-catalog2__sort-glyph {
+  display: inline-block;
+  min-width: 0.8em;
+  font-size: 10px;
+}
+
 .sk-catalog2__table td {
   padding: 6px 14px;
   height: var(--sk-catalog2-row);
@@ -343,10 +382,12 @@
   outline-offset: 1px;
 }
 
-/* The whole row opens the panel, so it reads as clickable — except where a
-   sub-control owns its click (the chevron, and the inline-editable cells). */
-.sk-catalog2__product-row,
-.sk-catalog2__variant-row {
+/* P5 (WS-D-8b pre-phase) — the product row expands/collapses on click, so it
+   still reads as clickable, except where a sub-control owns its click (the
+   chevron, the Edit button, and the inline-editable cells). A variant row does
+   nothing on a plain click any more — the panel opens only via its Edit
+   button — so it no longer gets the pointer cursor either. */
+.sk-catalog2__product-row {
   cursor: pointer;
 }
 
@@ -500,6 +541,17 @@
 .sk-catalog2__panel-variant {
   padding: 12px 0;
   border-block-start: 1px solid var(--sk-border);
+  /* P2 (WS-D-8b) — `.sk-catalog2__vlist-items` is a flex COLUMN, and a flex
+     item's default min-inline-size is `auto` (its content's own minimum),
+     not 0. Without this override a row's unbreakable content (a long
+     combination, price and stock on one line) refuses to shrink below that
+     minimum, the row overflows its column, and because `.sk-catalog2__panel`
+     sets `overflow-y: auto` the UA computes its `overflow-x` to `auto` too
+     (CSS Overflow §3) — which is the horizontal scrollbar the Owner reported.
+     Truncation with a `title` attribute already handles the visible text; this
+     is what lets that truncation actually take effect instead of being
+     overridden by the flex item's own minimum size. */
+  min-inline-size: 0;
 }
 
 .sk-catalog2__panel-variant:first-of-type {
@@ -787,6 +839,19 @@
   min-height: var(--sk-touch);
   justify-content: flex-start;
   text-align: start;
+}
+
+/* P3 (WS-D-8b) — the shared `.sk-catalog2__cell-button` (InlineCell's idle
+   state) has a transparent border everywhere else in this page, which is
+   correct for a table cell that should read as part of the row. Presented as
+   a standalone form field, though, that same transparency makes price and
+   minimum stock look like plain, non-interactive text. A light border, using
+   the same token every other panel input already uses, is enough to say
+   "this is a field" without touching the table's own cells or any global
+   token. */
+.sk-catalog2__panel-cell .sk-catalog2__cell-button {
+  background: var(--sk-surface);
+  border-color: var(--sk-border-strong);
 }
 
 .sk-catalog2__panel-cell .sk-catalog2__cell-error,

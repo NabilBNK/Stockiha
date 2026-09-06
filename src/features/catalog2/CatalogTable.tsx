@@ -9,6 +9,45 @@ import { useI18n } from '../../shared/i18n';
 import { ProductGroupRow } from './ProductGroupRow';
 import { VariantLine } from './VariantLine';
 import type { CatalogProductGroup } from './useCatalogList';
+import type { SortColumn, SortState } from './sorting';
+
+/**
+ * P4 (WS-D-8b) — one sortable column header. A real `<button>` inside the
+ * `<th>` so the control is keyboard-activatable (Enter/Space) without extra
+ * wiring, and `aria-sort` on the `<th>` itself, which is where assistive
+ * tech expects it.
+ */
+function SortableHeader({
+  column,
+  label,
+  numeric,
+  sort,
+  onSort,
+}: {
+  column: SortColumn;
+  label: string;
+  numeric?: boolean;
+  sort: SortState | null;
+  onSort: (column: SortColumn) => void;
+}) {
+  const active = sort?.column === column;
+  const ariaSort = active ? (sort!.direction === 'asc' ? 'ascending' : 'descending') : 'none';
+  return (
+    <th scope="col" className={numeric ? 'sk-catalog2__num' : undefined} aria-sort={ariaSort}>
+      <button
+        type="button"
+        className="sk-catalog2__sort-btn"
+        onClick={() => onSort(column)}
+        data-testid={`catalog2-sort-${column}`}
+      >
+        {label}
+        <span className="sk-catalog2__sort-glyph" aria-hidden>
+          {active ? (sort!.direction === 'asc' ? '▲' : '▼') : ''}
+        </span>
+      </button>
+    </th>
+  );
+}
 
 export function CatalogTable({
   groups,
@@ -16,6 +55,8 @@ export function CatalogTable({
   onToggleProduct,
   onOpenPanel,
   onCommitField,
+  sort,
+  onSort,
 }: {
   groups: CatalogProductGroup[];
   expandedProductIds: ReadonlySet<number>;
@@ -26,6 +67,8 @@ export function CatalogTable({
     productId: number,
     patch: { salePrice?: string; minimumStock?: string },
   ) => Promise<void>;
+  sort: SortState | null;
+  onSort: (column: SortColumn) => void;
 }) {
   const { t } = useI18n();
 
@@ -45,12 +88,12 @@ export function CatalogTable({
         </colgroup>
         <thead>
           <tr>
-            <th scope="col">{t('catalog.name')}</th>
+            <SortableHeader column="name" label={t('catalog.name')} sort={sort} onSort={onSort} />
             <th scope="col">{t('productsList.identifier')}</th>
-            <th scope="col">{t('productsList.category')}</th>
-            <th scope="col" className="sk-catalog2__num">{t('productsList.stock')}</th>
-            <th scope="col" className="sk-catalog2__num">{t('productsList.min')}</th>
-            <th scope="col" className="sk-catalog2__num">{t('productsList.price')}</th>
+            <SortableHeader column="category" label={t('productsList.category')} sort={sort} onSort={onSort} />
+            <SortableHeader column="stock" label={t('productsList.stock')} numeric sort={sort} onSort={onSort} />
+            <SortableHeader column="minStock" label={t('productsList.min')} numeric sort={sort} onSort={onSort} />
+            <SortableHeader column="price" label={t('productsList.price')} numeric sort={sort} onSort={onSort} />
             <th scope="col">{t('productsList.actions')}</th>
           </tr>
         </thead>

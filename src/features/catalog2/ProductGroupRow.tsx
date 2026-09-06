@@ -19,9 +19,15 @@
  *
  * WS-D-9B — discoverability. The row's edit affordance was a bare "…", which
  * the Owner did not recognise: he opened the page and concluded that editing
- * did not exist. It is now a labelled "Edit" button, and the whole row opens
- * the panel too. `data-row-click="ignore"` marks the sub-controls that own
- * their own click — the chevron expands rather than opening the panel.
+ * did not exist. It is now a labelled "Edit" button.
+ *
+ * P5 (WS-D-8b pre-phase) — the Owner has since found opening the panel on a
+ * plain row click intrusive. Clicking the row now expands/collapses its
+ * variants (the same action as the chevron) instead of opening the panel; the
+ * panel opens ONLY via the explicit "Edit" button below, which is why it also
+ * carries `data-row-click="ignore"` — without it, clicking Edit would bubble
+ * to the row handler and toggle the expansion at the same time it opens the
+ * panel.
  */
 import { useI18n } from '../../shared/i18n';
 import { isRowClickIgnored } from './rowClick';
@@ -52,7 +58,9 @@ export function ProductGroupRow({
       data-testid={`catalog2-product-${group.productId}`}
       onClick={(e) => {
         if (isRowClickIgnored(e.target)) return;
-        onOpenPanel(group.productId);
+        // P5 — the row itself expands/collapses; opening the panel is now
+        // exclusively the Edit button's job (marked ignore, below).
+        onToggle();
       }}
     >
       <td>
@@ -113,6 +121,7 @@ export function ProductGroupRow({
           type="button"
           className="sk-catalog2__row-edit"
           aria-label={`${t('catalog2.edit')} — ${group.productName}`}
+          data-row-click="ignore"
           onClick={() => onOpenPanel(group.productId)}
           data-testid={`catalog2-product-menu-${group.productId}`}
         >

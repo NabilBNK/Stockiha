@@ -24,6 +24,7 @@ import { useI18n } from '../../shared/i18n';
 import { useSession } from '../../shared/session/SessionContext';
 import { CatalogCreatePanel, CatalogPanel } from './CatalogPanel';
 import { CatalogTable } from './CatalogTable';
+import { sortGroups, type SortColumn, type SortState } from './sorting';
 import { useCatalogList } from './useCatalogList';
 import './catalog2.css';
 
@@ -38,7 +39,7 @@ type PanelState =
   | null;
 
 export function CatalogScreen() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { user } = useSession();
   const token = user?.token ?? '';
 
@@ -57,7 +58,31 @@ export function CatalogScreen() {
 
   const [expandedProductIds, setExpandedProductIds] = useState<ReadonlySet<number>>(new Set());
   const [panel, setPanel] = useState<PanelState>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+
+  /**
+   * P4 — client-side sort of the loaded PAGE only; see sorting.ts. Clicking a
+   * header toggles asc -> desc -> asc on the same column; clicking a
+   * different column starts it at asc.
+   */
+  const handleSort = useCallback((column: SortColumn) => {
+    setSort((prev) => {
+      if (prev?.column === column) {
+        return { column, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { column, direction: 'asc' };
+    });
+  }, []);
+
+  const sortedGroups = useMemo(() => sortGroups(groups, sort, locale), [groups, sort, locale]);
+  // P4 — HONEST LIMITATION. There is no sort parameter on list_products_v2
+  // (ws-d-skill.md §2.4 traps aside — this is a hard API limit, not an
+  // oversight), so a sort here only ever reorders the page already loaded. A
+  // silent "cheapest" on page 1 of a 5,000-product result set would read as a
+  // global sort it is not; this note is what keeps that from being a quiet lie.
+  const sortAppliesToPageOnly = sort != null && (hasPreviousPage || hasNextPage);
 
   const toggleProduct = useCallback((productId: number) => {
     setExpandedProductIds((prev) => {
@@ -82,7 +107,7 @@ export function CatalogScreen() {
     searchRef.current?.focus();
   }, [reload]);
 
-  const handleCreated = useCallback((productId: number) => {
+  const handleCreated = useCallback((productId: number, warning?: string) => {
     // Refresh the list and land the operator straight on the new product, with
     // its first variant already there and the add-variant control one click
     // away. Making them search for what they just created is the kind of extra
@@ -90,6 +115,10 @@ export function CatalogScreen() {
     void reload();
     setExpandedProductIds((prev) => new Set(prev).add(productId));
     setPanel({ mode: 'edit', target: { productId, variantId: null } });
+    // P1 — quickCreateProduct and setVariantAttributes are not atomic; a
+    // warning here means the product was created but its attributes were not
+    // applied. The operator still lands on the product, ready to retry there.
+    setNotice(warning ?? null);
   }, [reload]);
 
   /**
@@ -206,6 +235,15 @@ export function CatalogScreen() {
         </Banner>
       ) : null}
 
+      {notice ? (
+        <Banner tone="warning" testId="catalog2-notice">
+          {notice}{' '}
+          <Button variant="secondary" type="button" onClick={() => setNotice(null)}>
+            {t('common.close')}
+          </Button>
+        </Banner>
+      ) : null}
+
       {selectedWarehouseId == null ? (
         <div className="sk-catalog2__empty">{t('productsList.selectWarehouse')}</div>
       ) : loading && groups.length === 0 ? (
@@ -214,12 +252,20 @@ export function CatalogScreen() {
         <div className="sk-catalog2__empty" data-testid="catalog2-empty">{t('productsList.empty')}</div>
       ) : (
         <>
+          {sortAppliesToPageOnly ? (
+            <p className="sk-catalog2__note" data-testid="catalog2-sort-page-only-note">
+              {t('catalog2.sortAppliesToPageOnly')}
+            </p>
+          ) : null}
+
           <CatalogTable
-            groups={groups}
+            groups={sortedGroups}
             expandedProductIds={expandedProductIds}
             onToggleProduct={toggleProduct}
             onOpenPanel={openPanel}
             onCommitField={commitVariantField}
+            sort={sort}
+            onSort={handleSort}
           />
 
           <div className="sk-catalog2__footer">

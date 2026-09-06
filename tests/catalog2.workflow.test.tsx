@@ -819,19 +819,35 @@ describe('discoverability (WS-D-9B)', () => {
     expect(screen.getByTestId('catalog2-variant-menu-10').textContent).toBe('Edit');
   });
 
-  it('opens the panel when the row itself is clicked', async () => {
+  // P5 (WS-D-8b pre-phase) — this reverses part of WS-D-9B: the Owner found
+  // opening the panel on a plain row click intrusive. The row still reacts to
+  // a click, but now toggles the expansion instead of sliding the panel over
+  // the table.
+  it('expands the product, and does NOT open the panel, when the row itself is clicked', async () => {
     wireInvoke(handlers());
     render(<App />);
     await loginAndOpenCatalog();
 
     // The product name cell is not an editable cell, so the row handler runs.
     fireEvent.click((await screen.findByTestId('catalog2-product-1')).querySelectorAll('td')[2]);
+    expect(await screen.findByTestId('catalog2-variant-10')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog2-panel')).not.toBeInTheDocument();
+  });
+
+  it('opens the panel only through the explicit Edit control', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    expect(screen.queryByTestId('catalog2-panel')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
     expect(await screen.findByTestId('catalog2-panel')).toBeInTheDocument();
   });
 
   // Cell edit takes precedence: if the row handler also ran, the panel would
-  // slide over the input the user just opened.
-  it('edits the cell, and does NOT open the panel, when an editable cell is clicked', async () => {
+  // slide over the input the user just opened, or (post-P5) the row would
+  // collapse out from under the very cell being edited.
+  it('edits the cell, and does NOT open the panel or toggle the expansion, when an editable cell is clicked', async () => {
     wireInvoke(handlers());
     render(<App />);
     await loginAndOpenCatalog();
@@ -841,12 +857,15 @@ describe('discoverability (WS-D-9B)', () => {
 
     expect(await screen.findByTestId('catalog2-price-10')).toBeInTheDocument();
     expect(screen.queryByTestId('catalog2-panel')).not.toBeInTheDocument();
+    // Still expanded — the cell click must not have bubbled into a collapse.
+    expect(screen.getByTestId('catalog2-variant-10')).toBeInTheDocument();
 
     // The same applies to the minimum-stock cell.
     fireEvent.keyDown(screen.getByTestId('catalog2-price-10'), { key: 'Escape' });
     fireEvent.click(screen.getByTestId('catalog2-min-10-trigger'));
     expect(await screen.findByTestId('catalog2-min-10')).toBeInTheDocument();
     expect(screen.queryByTestId('catalog2-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('catalog2-variant-10')).toBeInTheDocument();
   });
 
   it('opens the panel expanded on the variant whose edit control was used', async () => {
@@ -1921,5 +1940,149 @@ describe('the retired Products page is gone (WS-D-12)', () => {
 
     expect(screen.getByTestId('catalog2-screen')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Products', level: 1 })).toBeInTheDocument();
+  });
+});
+
+/**
+ * P1 (WS-D-8b pre-phase) — attribute assignment on the create panel, wired
+ * through the SAME AttributeManagerForVariant used everywhere else (CR2).
+ */
+describe('create product with attributes (WS-D-8b P1)', () => {
+  const attrHandlers = (extra: Handlers = {}) => makeHandlers({
+    list_categories: () => [{ id: 7, name: 'Bedding', is_active: true, usage_count: 0 }],
+    list_attributes: () => [
+      { attribute_id: 1, name: 'Color', attribute_values: [{ id: 4, value: 'Red', is_active: true }] },
+    ],
+    get_product_detail: () => detailFixture({ product_id: 42, name: 'Cushion' }),
+    ...extra,
+  });
+
+  it('calls setVariantAttributes on the returned variant_id after quickCreateProduct', async () => {
+    let setAttrsCall: Record<string, unknown> | null = null;
+    wireInvoke(attrHandlers({
+      quick_create_product: () => ({ product_id: 42, variant_id: 420 }),
+      set_variant_attributes: (args) => { setAttrsCall = args; return null; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-new-product'));
+    fireEvent.change(await screen.findByTestId('catalog2-create-name'), { target: { value: 'Cushion' } });
+    fireEvent.change(screen.getByTestId('catalog2-create-variant-price'), { target: { value: '900' } });
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Red' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assign attributes' }));
+
+    const submit = screen.getByTestId('catalog2-create-submit');
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(setAttrsCall).not.toBeNull());
+    // quickCreateProduct's returned variant_id, not a guessed/first-variant id.
+    expect(setAttrsCall!.variantId).toBe(420);
+    expect(setAttrsCall!.attributeValueIds).toEqual([4]);
+  });
+
+  it('reports "created, attributes not applied" rather than "create failed" when setVariantAttributes fails', async () => {
+    wireInvoke(attrHandlers({
+      quick_create_product: () => ({ product_id: 42, variant_id: 420 }),
+      set_variant_attributes: () => { throw { code: 'VALIDATION_ERROR' }; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+
+    fireEvent.click(await screen.findByTestId('catalog2-new-product'));
+    fireEvent.change(await screen.findByTestId('catalog2-create-name'), { target: { value: 'Cushion' } });
+    fireEvent.change(screen.getByTestId('catalog2-create-variant-price'), { target: { value: '900' } });
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Red' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assign attributes' }));
+
+    const submit = screen.getByTestId('catalog2-create-submit');
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    fireEvent.click(submit);
+
+    // The product EXISTS either way — never reported as a create failure,
+    // which would send the operator to create a duplicate.
+    expect(await screen.findByTestId('catalog2-notice')).toHaveTextContent(
+      'Product created, but the attributes could not be applied:',
+    );
+    expect(screen.queryByTestId('catalog2-create-error')).not.toBeInTheDocument();
+    // Landed on the new product, ready to retry from there.
+    expect(await screen.findByTestId('catalog2-add-variant-toggle')).toBeInTheDocument();
+  });
+});
+
+/**
+ * P4 (WS-D-8b pre-phase) — client-side sort of the loaded page, honest about
+ * its own limitation (sorting.ts).
+ */
+describe('sortable columns (WS-D-8b P4)', () => {
+  it('sorts price by VALUE, not lexically — "9" before "10" ascending', async () => {
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [
+        row({
+          product_id: 1, variant_id: 10, sku: 'A', display_identifier: 'A',
+          product_name: 'Ten', sale_price: '10', total_count: 2,
+        }),
+        row({
+          product_id: 2, variant_id: 20, sku: 'B', display_identifier: 'B',
+          product_name: 'Nine', sale_price: '9', total_count: 2,
+        }),
+      ],
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await screen.findByTestId('catalog2-product-1');
+
+    fireEvent.click(screen.getByTestId('catalog2-sort-price'));
+    const table = screen.getByTestId('catalog2-table');
+    const ascending = Array.from(table.querySelectorAll('tbody tr[data-testid^="catalog2-product-"]'))
+      .map((el) => el.getAttribute('data-testid'));
+    // Lexical order would put "10" before "9"; value order does the opposite.
+    expect(ascending).toEqual(['catalog2-product-2', 'catalog2-product-1']);
+    expect(screen.getByTestId('catalog2-sort-price').closest('th')).toHaveAttribute('aria-sort', 'ascending');
+
+    fireEvent.click(screen.getByTestId('catalog2-sort-price'));
+    const descending = Array.from(table.querySelectorAll('tbody tr[data-testid^="catalog2-product-"]'))
+      .map((el) => el.getAttribute('data-testid'));
+    expect(descending).toEqual(['catalog2-product-1', 'catalog2-product-2']);
+    expect(screen.getByTestId('catalog2-sort-price').closest('th')).toHaveAttribute('aria-sort', 'descending');
+  });
+
+  it('keeps a product\'s variants nested directly beneath it after sorting', async () => {
+    wireInvoke(makeHandlers({
+      list_products_v2: () => [
+        row({
+          product_id: 1, variant_id: 10, sku: 'A1', display_identifier: 'A1',
+          product_name: 'Zeta', total_count: 3,
+        }),
+        row({
+          product_id: 1, variant_id: 11, sku: 'A2', display_identifier: 'A2',
+          product_name: 'Zeta', total_count: 3,
+        }),
+        row({
+          product_id: 2, variant_id: 20, sku: 'B1', display_identifier: 'B1',
+          product_name: 'Alpha', total_count: 3,
+        }),
+      ],
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await screen.findByTestId('catalog2-product-1');
+
+    fireEvent.click(screen.getByTestId('catalog2-sort-name'));
+    fireEvent.click(screen.getByTestId('catalog2-expand-1'));
+    fireEvent.click(screen.getByTestId('catalog2-expand-2'));
+
+    const table = screen.getByTestId('catalog2-table');
+    const order = Array.from(table.querySelectorAll('tbody tr')).map((el) => el.getAttribute('data-testid'));
+    // "Alpha" (product 2) sorts before "Zeta" (product 1) ascending; each
+    // product's own variants stay grouped directly under it — never flattened
+    // or interleaved with the other product's rows.
+    expect(order).toEqual([
+      'catalog2-product-2', 'catalog2-variant-20',
+      'catalog2-product-1', 'catalog2-variant-10', 'catalog2-variant-11',
+    ]);
   });
 });

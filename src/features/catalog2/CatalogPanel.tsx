@@ -96,6 +96,7 @@ import type {
   VariantDetail,
   VariantInput,
 } from '../../shared/ipc/dto';
+import { AttributeManagerForVariant } from './attributeSelection';
 import { InlineCreateSelect } from './InlineCreateSelect';
 import { PanelField, PanelSelect } from './PanelFields';
 import { PanelShell, usePanelNarrow } from './PanelShell';
@@ -108,6 +109,35 @@ import {
   type VariantDraft,
 } from './VariantDraftFields';
 import { useDecimalFormat } from './useDecimalFormat';
+
+/**
+ * P1 (WS-D-8b pre-phase) — a stable, empty `VariantDetail` shape handed to
+ * `AttributeManagerForVariant` while creating a product's first variant.
+ *
+ * `mergeAssignedValues` only does anything when `variant.attributes` is
+ * non-empty, so an empty array is always safe here — there is no variant yet.
+ * The object identity must stay stable across renders: the component reseeds
+ * its internal selection from `variant` in a `useEffect` keyed on that
+ * reference, so a fresh object on every keystroke (e.g. from `salePrice`
+ * changing) would silently wipe out attribute values the operator just
+ * picked. A module-level constant, not `useMemo`, is what actually guarantees
+ * that stability.
+ */
+const DRAFT_ATTRIBUTE_VARIANT: VariantDetail = {
+  variant_id: 0,
+  sku: '',
+  name_override: null,
+  effective_variant_name: '',
+  primary_barcode: null,
+  operational_identifier: '',
+  identifier_type: 'SKU',
+  sale_price: '0',
+  minimum_stock: '0',
+  is_active: true,
+  attribute_signature: '',
+  attributes: [],
+  barcodes: [],
+};
 
 interface ProductPatch {
   name?: string;
@@ -790,7 +820,12 @@ export function CatalogCreatePanel({
 }: {
   token: string;
   onClose: () => void;
-  onCreated: (productId: number) => void;
+  /**
+   * P1 — `warning` is set when `quickCreateProduct` succeeded but the
+   * attribute assignment that followed it did not. The product exists either
+   * way, so this is never a failure signal — see `submit` below.
+   */
+  onCreated: (productId: number, warning?: string) => void;
 }) {
   const { t } = useI18n();
   const errorText = useErrorText();
@@ -800,9 +835,15 @@ export function CatalogCreatePanel({
   const [unitId, setUnitId] = useState<number | null>(null);
   const [isActive, setIsActive] = useState(true);
   const [draft, setDraft] = useState<VariantDraft>({ ...EMPTY_VARIANT_DRAFT });
+  // P1 — attribute_id -> attribute_value_id, staged locally until the product
+  // (and its first variant) exist. See `submit`: quickCreateProduct returns
+  // the new variant_id, and only THEN can setVariantAttributes be called.
+  const [attrSelection, setAttrSelection] = useState<Record<number, number>>({});
 
   const [categories, setCategories] = useState<ReferenceLifecycleItem[]>([]);
   const [units, setUnits] = useState<UnitLifecycleItem[]>([]);
+  const [attributes, setAttributes] = useState<AttributeDefinition[]>([]);
+  const [refLoading, setRefLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -818,7 +859,8 @@ export function CatalogCreatePanel({
     || draft.nameOverride.trim() !== ''
     || draft.barcode.trim() !== ''
     || draft.salePrice.trim() !== ''
-    || draft.minimumStock !== EMPTY_VARIANT_DRAFT.minimumStock;
+    || draft.minimumStock !== EMPTY_VARIANT_DRAFT.minimumStock
+    || Object.keys(attrSelection).length > 0;
 
   function requestClose() {
     if (dirty && !submitting) {
@@ -829,16 +871,21 @@ export function CatalogCreatePanel({
   }
 
   const loadRefData = useCallback(async () => {
+    setRefLoading(true);
     try {
-      const [cats, us] = await Promise.all([
+      const [cats, us, attrs] = await Promise.all([
         ipc.listCategories(token),
         ipc.listUnitsV2(token),
+        ipc.listAttributes(token),
       ]);
       setCategories(cats);
       setUnits(us);
+      setAttributes(attrs);
       setUnitId((current) => current ?? us.find((u) => u.is_active)?.id ?? null);
     } catch {
       // The pickers stay empty; the form still reports its own submit errors.
+    } finally {
+      setRefLoading(false);
     }
   }, [token]);
 
@@ -869,6 +916,40 @@ export function CatalogCreatePanel({
     && isVariantDraftValid(draft)
     && !submitting;
 
+  const handleCreateAttribute = useCallback(async (attrName: string) => {
+    const id = await ipc.createAttribute(token, attrName);
+    await loadRefData();
+    return id;
+  }, [token, loadRefData]);
+
+  const handleAddValue = useCallback(async (attributeId: number, value: string) => {
+    const id = await ipc.addAttributeValue(token, attributeId, value);
+    await loadRefData();
+    return id;
+  }, [token, loadRefData]);
+
+  /**
+   * P1 — the picker only stages a local selection (`setAttrSelection`); it
+   * never calls the backend directly, because there is no variant to attach
+   * values to until `quickCreateProduct` returns one below.
+   */
+  const handleStageAttributes = useCallback(async (sel: Record<number, number>) => {
+    setAttrSelection(sel);
+  }, []);
+
+  /**
+   * P1 — ORDERING CONSTRAINT. `quickCreateProduct` creates the product and its
+   * first variant in one call and returns `variant_id`; only then can
+   * `setVariantAttributes` run.
+   *
+   * THE TWO CALLS ARE NOT ATOMIC. If `quickCreateProduct` succeeds and
+   * `setVariantAttributes` then fails, the product EXISTS — reporting
+   * "create failed" here would send the operator to create a duplicate. So,
+   * matching the existing add-variant/minimum-stock partial-failure pattern
+   * (`submitAddVariant` above), a failed attribute assignment is reported as
+   * exactly that, and the operator still lands on the new product to retry
+   * from there.
+   */
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!canSubmit || unitId == null) {
@@ -877,8 +958,9 @@ export function CatalogCreatePanel({
     }
     setSubmitting(true);
     setError(null);
+    let created: { product_id: number; variant_id: number };
     try {
-      const created = await ipc.quickCreateProduct(token, {
+      created = await ipc.quickCreateProduct(token, {
         name: name.trim(),
         unitId,
         // Exact decimal strings, forwarded verbatim — never parsed, never
@@ -889,12 +971,25 @@ export function CatalogCreatePanel({
         barcode: draft.barcode.trim() || null,
         isActive,
       });
-      onCreated(created.product_id);
     } catch (err) {
       setError(errorText(err));
-    } finally {
       setSubmitting(false);
+      return;
     }
+
+    const attributeValueIds = Object.values(attrSelection).filter((id) => id > 0);
+    if (attributeValueIds.length > 0) {
+      try {
+        await ipc.setVariantAttributes(token, created.variant_id, attributeValueIds);
+      } catch (err) {
+        setSubmitting(false);
+        onCreated(created.product_id, `${t('catalog2.createdAttributesNotApplied')} ${errorText(err)}`);
+        return;
+      }
+    }
+
+    setSubmitting(false);
+    onCreated(created.product_id);
   }
 
   const categoryOptions = categories
@@ -984,6 +1079,24 @@ export function CatalogCreatePanel({
             onChange={setDraft}
             disabled={submitting}
             showActive={false}
+          />
+        </section>
+
+        {/* P1 — the same picker used everywhere else (CR2). Staged locally;
+            applied to the real variant only after quickCreateProduct returns
+            its id, in `submit` above. */}
+        <section
+          className="sk-catalog2__panel-section"
+          aria-label={t('attrs.title')}
+          data-testid="catalog2-create-attributes"
+        >
+          <AttributeManagerForVariant
+            attributes={attributes}
+            refLoading={refLoading}
+            variant={DRAFT_ATTRIBUTE_VARIANT}
+            onSetAttributes={handleStageAttributes}
+            onCreateAttribute={handleCreateAttribute}
+            onAddValue={handleAddValue}
           />
         </section>
 

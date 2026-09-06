@@ -322,6 +322,8 @@ const fr = {
   'catalog2.addVariantTitle': 'Nouvelle variante',
   'catalog2.variantAdded': 'Variante ajout\u00e9e.',
   'catalog2.variantAddedMinimumStockFailed': 'Variante cr\u00e9\u00e9e, mais le stock minimum n\u2019a pas pu \u00eatre appliqu\u00e9 :',
+  'catalog2.createdAttributesNotApplied': 'Produit cr\u00e9\u00e9, mais les attributs n\u2019ont pas pu \u00eatre appliqu\u00e9s :',
+  'catalog2.sortAppliesToPageOnly': 'Le tri s\u2019applique uniquement \u00e0 la page actuelle, pas \u00e0 l\u2019ensemble des r\u00e9sultats.',
   // variants
   'variants.title': 'Variantes',
   'variants.add': 'Ajouter une variante',
@@ -761,6 +763,8 @@ const ar: Record<MessageKey, string> = {
   'catalog2.addVariantTitle': '\u0635\u0646\u0641 \u062c\u062f\u064a\u062f',
   'catalog2.variantAdded': '\u062a\u0645\u062a \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0635\u0646\u0641.',
   'catalog2.variantAddedMinimumStockFailed': '\u062a\u0645 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0635\u0646\u0641\u060c \u0644\u0643\u0646 \u062a\u0639\u0630\u0651\u0631 \u062a\u0637\u0628\u064a\u0642 \u0627\u0644\u062d\u062f \u0627\u0644\u0623\u062f\u0646\u0649 \u0644\u0644\u0645\u062e\u0632\u0648\u0646:',
+  'catalog2.createdAttributesNotApplied': '\u062a\u0645 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0645\u0646\u062a\u062c\u060c \u0644\u0643\u0646 \u062a\u0639\u0630\u0651\u0631 \u062a\u0637\u0628\u064a\u0642 \u0627\u0644\u0633\u0645\u0627\u062a:',
+  'catalog2.sortAppliesToPageOnly': '\u0627\u0644\u062a\u0631\u062a\u064a\u0628 \u064a\u0646\u0637\u0628\u0642 \u0639\u0644\u0649 \u0627\u0644\u0635\u0641\u062d\u0629 \u0627\u0644\u062d\u0627\u0644\u064a\u0629 \u0641\u0642\u0637\u060c \u0648\u0644\u064a\u0633 \u0639\u0644\u0649 \u062c\u0645\u064a\u0639 \u0627\u0644\u0646\u062a\u0627\u0626\u062c.',
   // variants
   'variants.title': '\u0627\u0644\u0623\u0635\u0646\u0627\u0641',
   'variants.add': '\u0625\u0636\u0627\u0641\u0629 \u0635\u0646\u0641',
@@ -1197,6 +1201,8 @@ const en: Record<MessageKey, string> = {
   'catalog2.addVariantTitle': 'New variant',
   'catalog2.variantAdded': 'Variant added.',
   'catalog2.variantAddedMinimumStockFailed': 'Variant created, but the minimum stock could not be applied:',
+  'catalog2.createdAttributesNotApplied': 'Product created, but the attributes could not be applied:',
+  'catalog2.sortAppliesToPageOnly': 'Sorting applies to the current page only, not the whole result set.',
   // variants
   'variants.title': 'Variants',
   'variants.add': 'Add variant',

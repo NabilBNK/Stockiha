@@ -12,10 +12,15 @@
  * Stock is NOT editable: it is derived from stock movements and owned by Stock
  * Receipt and Inventory Corrections. Display only.
  *
- * WS-D-9B — the row opens the panel already expanded on THIS variant, and the
- * edit affordance is a labelled button rather than a bare "…". The two
- * inline-editable cells are marked `data-row-click="ignore"` so clicking a
- * price edits the price instead of sliding a panel over it.
+ * WS-D-9B — the edit affordance is a labelled button rather than a bare "…".
+ * The two inline-editable cells are marked `data-row-click="ignore"` so
+ * clicking a price edits the price instead of sliding a panel over it.
+ *
+ * P5 (WS-D-8b pre-phase) — a variant row no longer opens the panel on click
+ * (that intrusiveness is exactly what the Owner asked to have reversed); the
+ * row simply does nothing on a plain click. The panel opens ONLY through the
+ * "Edit" button, which also carries `data-row-click="ignore"` for the same
+ * reason the price/minimum-stock cells do.
  *
  * WS-D-10 — every number is formatted for display (RULING 1) and every numeric
  * cell is right-aligned with tabular numerals (RULING 2). The stock cell gives
@@ -31,7 +36,6 @@ import type { ProductListItemV2 } from '../../shared/ipc/dto';
 import { isExactDecimalZero, isLowStock } from '../inventory/exactDecimal';
 import { InlineCell } from './InlineCell';
 import { isValidMinimumStock, isValidPrice } from './catalogValidation';
-import { isRowClickIgnored } from './rowClick';
 import { useDecimalFormat } from './useDecimalFormat';
 
 export function VariantLine({
@@ -59,10 +63,6 @@ export function VariantLine({
     <tr
       className="sk-catalog2__variant-row"
       data-testid={`catalog2-variant-${variant.variant_id}`}
-      onClick={(e) => {
-        if (isRowClickIgnored(e.target)) return;
-        onOpenPanel(variant.product_id, variant.variant_id);
-      }}
     >
       <td className="sk-catalog2__variant-name">
         <div className="sk-catalog2__name-cell">
