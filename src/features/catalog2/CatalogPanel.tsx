@@ -97,6 +97,7 @@ import type {
   VariantInput,
 } from '../../shared/ipc/dto';
 import { AttributeManagerForVariant } from './attributeSelection';
+import { BulkVariantGenerator } from './BulkVariantGenerator';
 import { InlineCreateSelect } from './InlineCreateSelect';
 import { PanelField, PanelSelect } from './PanelFields';
 import { PanelShell, usePanelNarrow } from './PanelShell';
@@ -200,6 +201,9 @@ export function CatalogPanel({
   // never an IPC call.
   const [variantSearch, setVariantSearch] = useState('');
   const [addingVariant, setAddingVariant] = useState(false);
+  // Part 2 (WS-D-8b) — bulk variant generation occupies the detail column the
+  // same way adding one variant does; exactly one of the two is ever active.
+  const [generatingVariants, setGeneratingVariants] = useState(false);
   const [addDraft, setAddDraft] = useState<VariantDraft>({ ...EMPTY_VARIANT_DRAFT });
   const [addError, setAddError] = useState<string | null>(null);
   const [addBusy, setAddBusy] = useState(false);
@@ -440,6 +444,7 @@ export function CatalogPanel({
    */
   const selectVariant = useCallback((variantId: number) => {
     setAddingVariant(false);
+    setGeneratingVariants(false);
     setSelectedVariantId(variantId);
   }, []);
 
@@ -488,8 +493,9 @@ export function CatalogPanel({
 
     // R4 fallback: one column at a time, with a way back to the list.
     // C3 — adding a variant occupies the detail column too, so it counts as
-    // "detail active" the same way an actual selection does.
-    const detailActive = addingVariant || selectedVariantId != null;
+    // "detail active" the same way an actual selection does. Part 2 —
+    // generating variants in bulk does too.
+    const detailActive = addingVariant || generatingVariants || selectedVariantId != null;
     const showList = !narrow || !detailActive;
     const showDetail = !narrow || detailActive;
 
@@ -604,6 +610,7 @@ export function CatalogPanel({
                     variant="secondary"
                     aria-expanded={addingVariant}
                     onClick={() => {
+                      setGeneratingVariants(false);
                       setAddDraft({ ...EMPTY_VARIANT_DRAFT });
                       setAddError(null);
                       setAddingVariant((prev) => !prev);
@@ -612,12 +619,31 @@ export function CatalogPanel({
                   >
                     {addingVariant ? t('common.cancel') : `+ ${t('variants.add')}`}
                   </Button>
+                  {/* Part 2 (WS-D-8b) — bulk creation from an attribute grid,
+                      alongside adding one variant at a time. */}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    aria-expanded={generatingVariants}
+                    onClick={() => {
+                      setAddingVariant(false);
+                      setGeneratingVariants((prev) => !prev);
+                    }}
+                    data-testid="catalog2-generate-variants-toggle"
+                  >
+                    {generatingVariants ? t('common.cancel') : t('catalog2.bulkTitle')}
+                  </Button>
                 </div>
 
                 {/* C3 — makes it obvious no existing variant is selected while
                     a new one is being drafted in the detail column. */}
                 {addingVariant ? (
                   <p className="sk-catalog2__note" data-testid="catalog2-adding-variant-hint">
+                    {t('catalog2.addingVariantHint')}
+                  </p>
+                ) : null}
+                {generatingVariants ? (
+                  <p className="sk-catalog2__note" data-testid="catalog2-generating-variant-hint">
                     {t('catalog2.addingVariantHint')}
                   </p>
                 ) : null}
@@ -643,7 +669,7 @@ export function CatalogPanel({
                   >
                     {filteredVariants.map((variant) => {
                       const attrs = variant.attributes.map((a) => a.value).join(' \u00b7 ');
-                      const selected = !addingVariant && variant.variant_id === selectedVariantId;
+                      const selected = !addingVariant && !generatingVariants && variant.variant_id === selectedVariantId;
                       const stock = stockByVariant?.[variant.variant_id];
                       return (
                         <div
@@ -694,6 +720,7 @@ export function CatalogPanel({
                       variant="secondary"
                       onClick={() => {
                         setAddingVariant(false);
+                        setGeneratingVariants(false);
                         setSelectedVariantId(null);
                       }}
                       data-testid="catalog2-variant-back"
@@ -732,6 +759,22 @@ export function CatalogPanel({
                       </Button>
                     </div>
                   </form>
+                ) : generatingVariants ? (
+                  /* Part 2 (WS-D-8b) — bulk creation from an attribute grid,
+                     replacing whatever else the detail column would show,
+                     exactly like the add-variant form above. */
+                  <BulkVariantGenerator
+                    token={token}
+                    productId={productId}
+                    attributes={attributes}
+                    refLoading={refLoading}
+                    existingVariants={detail.variants}
+                    onCancel={() => setGeneratingVariants(false)}
+                    onCreated={async () => {
+                      changedRef.current = true;
+                      await refresh();
+                    }}
+                  />
                 ) : selectedVariant ? (
                   <VariantEditor
                     key={selectedVariant.variant_id}

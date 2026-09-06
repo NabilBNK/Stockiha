@@ -2086,3 +2086,254 @@ describe('sortable columns (WS-D-8b P4)', () => {
     ]);
   });
 });
+
+/**
+ * Part 2 (WS-D-8b) — bulk variant creation from an attribute grid.
+ */
+describe('bulk variant generation (WS-D-8b Part 2)', () => {
+  function bulkAttributes() {
+    return [
+      {
+        attribute_id: 10,
+        name: 'Size',
+        attribute_values: [
+          { id: 1, value: 'S', is_active: true },
+          { id: 2, value: 'M', is_active: true },
+          { id: 3, value: 'L', is_active: true },
+        ],
+      },
+      {
+        attribute_id: 20,
+        name: 'Colour',
+        attribute_values: [
+          { id: 4, value: 'Red', is_active: true },
+          { id: 5, value: 'Blue', is_active: true },
+        ],
+      },
+    ];
+  }
+
+  const handlers = (extra: Handlers = {}) => makeHandlers({
+    list_products_v2: () => [row()],
+    get_product_detail: () => detailFixture(),
+    list_attributes: () => bulkAttributes(),
+    ...extra,
+  });
+
+  function openGenerator() {
+    return screen.findByTestId('catalog2-bulk-generator');
+  }
+
+  async function openGeneratorFromPanel() {
+    fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
+    fireEvent.click(await screen.findByTestId('catalog2-generate-variants-toggle'));
+    return openGenerator();
+  }
+
+  it('previews exactly 6 combinations for S,M,L × Red,Blue', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openGeneratorFromPanel();
+
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-1'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-2'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-3'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-4'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-5'));
+    expect(screen.getByTestId('catalog2-bulk-combination-count').textContent).toBe('6 combination(s)');
+
+    fireEvent.click(screen.getByTestId('catalog2-bulk-preview'));
+    const table = await screen.findByTestId('catalog2-bulk-preview-table');
+    // 1 header row + 6 combination rows.
+    expect(within(table).getAllByRole('row')).toHaveLength(7);
+  });
+
+  // C-A — identity is the set of assigned attribute_value_ids, compared
+  // against the product's already-loaded variants; never attribute_signature.
+  it('flags an existing combination and excludes it by default', async () => {
+    wireInvoke(handlers({
+      get_product_detail: () => detailFixture({
+        variants: [{
+          variant_id: 10, sku: 'PIL-1', name_override: null,
+          effective_variant_name: 'Pillow S Red', primary_barcode: null,
+          operational_identifier: 'PIL-1', identifier_type: 'SKU',
+          sale_price: '1250.50', minimum_stock: '5.500', is_active: true,
+          attribute_signature: '10:1|20:4',
+          attributes: [
+            { attribute_id: 10, attribute_name: 'Size', attribute_value_id: 1, value: 'S' },
+            { attribute_id: 20, attribute_name: 'Colour', attribute_value_id: 4, value: 'Red' },
+          ],
+          barcodes: [],
+        }],
+      }),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openGeneratorFromPanel();
+
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-1')); // S
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-4')); // Red
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-5')); // Blue
+    fireEvent.click(screen.getByTestId('catalog2-bulk-preview'));
+    await screen.findByTestId('catalog2-bulk-preview-table');
+
+    // S-Red (1-4) already exists: flagged, and excluded by default.
+    expect(screen.getByTestId('catalog2-bulk-row-1-4-existing')).toBeInTheDocument();
+    expect((screen.getByTestId('catalog2-bulk-row-1-4-include') as HTMLInputElement).checked).toBe(false);
+
+    // S-Blue (1-5) does not exist: not flagged, included by default.
+    expect(screen.queryByTestId('catalog2-bulk-row-1-5-existing')).not.toBeInTheDocument();
+    expect((screen.getByTestId('catalog2-bulk-row-1-5-include') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('bulk-fills price to the exact string on every row', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openGeneratorFromPanel();
+
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-1'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-4'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-5'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-preview'));
+    await screen.findByTestId('catalog2-bulk-preview-table');
+
+    fireEvent.change(screen.getByTestId('catalog2-bulk-fill-price'), { target: { value: '1500.00' } });
+    fireEvent.click(screen.getByTestId('catalog2-bulk-fill-price-apply'));
+
+    expect((screen.getByTestId('catalog2-bulk-row-1-4-price') as HTMLInputElement).value).toBe('1500.00');
+    expect((screen.getByTestId('catalog2-bulk-row-1-5-price') as HTMLInputElement).value).toBe('1500.00');
+  });
+
+  it('writes nothing until Create is pressed', async () => {
+    wireInvoke(handlers());
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openGeneratorFromPanel();
+
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-1'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-4'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-5'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-preview'));
+    await screen.findByTestId('catalog2-bulk-preview-table');
+
+    invokeMock.mockClear();
+    fireEvent.change(screen.getByTestId('catalog2-bulk-fill-price'), { target: { value: '1500.00' } });
+    fireEvent.click(screen.getByTestId('catalog2-bulk-fill-price-apply'));
+    fireEvent.change(screen.getByTestId('catalog2-bulk-row-1-4-barcode'), { target: { value: '123' } });
+    fireEvent.change(screen.getByTestId('catalog2-bulk-row-1-4-name'), { target: { value: 'Custom' } });
+
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  // C-B — sequential, per-row status; a mid-run failure never rolls back a
+  // row already created and never reports one blanket failure.
+  it('reports per-row outcomes on a mid-run failure, and keeps successful rows created', async () => {
+    let addCalls = 0;
+    wireInvoke(handlers({
+      add_variant: (args) => {
+        addCalls += 1;
+        const v = args.variant as Record<string, unknown>;
+        if (v.name_override === 'FAIL_MARKER') throw { code: 'VALIDATION_ERROR' };
+        return 100 + addCalls;
+      },
+      update_variant_v2: () => null,
+      set_variant_attributes: () => null,
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openGeneratorFromPanel();
+
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-1')); // S
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-2')); // M
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-4')); // Red
+    fireEvent.click(screen.getByTestId('catalog2-bulk-preview'));
+    await screen.findByTestId('catalog2-bulk-preview-table');
+    // Two combinations: S-Red (1-4), M-Red (2-4). Both rows need a VALID
+    // price (isValidPrice gates the Create button); the failure trigger lives
+    // in the name field instead, which carries no such format constraint.
+    fireEvent.change(screen.getByTestId('catalog2-bulk-row-1-4-price'), { target: { value: '1000.00' } });
+    fireEvent.change(screen.getByTestId('catalog2-bulk-row-2-4-price'), { target: { value: '1000.00' } });
+    fireEvent.change(screen.getByTestId('catalog2-bulk-row-2-4-name'), { target: { value: 'FAIL_MARKER' } });
+    fireEvent.click(screen.getByTestId('catalog2-bulk-create'));
+
+    await waitFor(() => expect(screen.getByTestId('catalog2-bulk-row-1-4-status').textContent).toBe('Created'));
+    expect(screen.getByTestId('catalog2-bulk-row-2-4-status').textContent).toContain('Failed:');
+    expect(await screen.findByTestId('catalog2-bulk-summary')).toHaveTextContent('1 of 2 variant(s) created');
+  });
+
+  it('retries only the failed rows, not the ones already created', async () => {
+    let addCalls = 0;
+    let failFirstAttempt = true;
+    wireInvoke(handlers({
+      add_variant: (args) => {
+        addCalls += 1;
+        const v = args.variant as Record<string, unknown>;
+        if (v.name_override === 'FAIL_MARKER' && failFirstAttempt) {
+          failFirstAttempt = false;
+          throw { code: 'VALIDATION_ERROR' };
+        }
+        return 200 + addCalls;
+      },
+      update_variant_v2: () => null,
+      set_variant_attributes: () => null,
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openGeneratorFromPanel();
+
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-1'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-2'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-4'));
+    fireEvent.click(screen.getByTestId('catalog2-bulk-preview'));
+    await screen.findByTestId('catalog2-bulk-preview-table');
+
+    fireEvent.change(screen.getByTestId('catalog2-bulk-row-1-4-price'), { target: { value: '1000.00' } });
+    fireEvent.change(screen.getByTestId('catalog2-bulk-row-2-4-price'), { target: { value: '1000.00' } });
+    fireEvent.change(screen.getByTestId('catalog2-bulk-row-2-4-name'), { target: { value: 'FAIL_MARKER' } });
+    fireEvent.click(screen.getByTestId('catalog2-bulk-create'));
+    await waitFor(() => expect(screen.getByTestId('catalog2-bulk-row-2-4-status').textContent).toContain('Failed:'));
+
+    const callsBeforeRetry = addCalls;
+    fireEvent.click(await screen.findByTestId('catalog2-bulk-retry'));
+
+    await waitFor(() => expect(screen.getByTestId('catalog2-bulk-row-2-4-status').textContent).toBe('Created'));
+    // Only the failed row was retried — one more addVariant call, not two;
+    // the already-created row was never sent again.
+    expect(addCalls).toBe(callsBeforeRetry + 1);
+    expect(screen.getByTestId('catalog2-bulk-row-1-4-status').textContent).toBe('Created');
+  });
+
+  // C-C — the scale guard. 6 x 6 x 6 = 216, well past MAX_COMBINATIONS (100).
+  it('blocks generation beyond the combination cap', async () => {
+    const manyAttributes = Array.from({ length: 3 }, (_, i) => ({
+      attribute_id: 100 + i,
+      name: `Attr${i}`,
+      attribute_values: Array.from({ length: 6 }, (_, j) => ({
+        id: (100 + i) * 10 + j, value: `V${i}-${j}`, is_active: true,
+      })),
+    }));
+    wireInvoke(handlers({ list_attributes: () => manyAttributes }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openGeneratorFromPanel();
+
+    for (const attr of manyAttributes) {
+      for (const v of attr.attribute_values) {
+        fireEvent.click(screen.getByTestId(`catalog2-bulk-attr-value-${attr.attribute_id}-${v.id}`));
+      }
+    }
+
+    expect(screen.getByTestId('catalog2-bulk-cap-error')).toBeInTheDocument();
+    expect(screen.getByTestId('catalog2-bulk-preview')).toBeDisabled();
+  });
+});
+
+/**
+ * CR2 GUARD — this file's CR2 test ("variant attribute configuration (CR2,
+ * moved in WS-D-12)", above) is UNMODIFIED by WS-D-8b Part 1 or Part 2. Both
+ * parts add new surfaces (attribute assignment on create, bulk generation)
+ * that call `attributeSelection.tsx`'s exports as-is; neither the component,
+ * its exports, nor the moved CR2 test's assertions were touched.
+ */
