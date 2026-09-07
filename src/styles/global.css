@@ -26,7 +26,12 @@
   --sk-nav-border: #d3cabd;
   --sk-danger: #c0393f;
   --sk-danger-soft: #fff0f0;
-  --sk-ok: #16815d;
+  /* WS-J-1.2 — Owner ruling: #16815d on ok-soft measured 4.43:1, below the
+     4.5 AA floor (tests/contrast.test.ts's 'ok on ok-soft' case). #127057
+     is the same hue darkened; measured 5.52:1 on ok-soft, 5.74:1 on bg,
+     6.03:1 as white-on-fill (button/chip contexts) — see the WS-J-1.2
+     report's "ok fill contrast" table for every consuming site checked. */
+  --sk-ok: #127057;
   --sk-ok-soft: #eaf8f2;
   --sk-warn: #a2630b;
   --sk-warn-soft: #fff6df;

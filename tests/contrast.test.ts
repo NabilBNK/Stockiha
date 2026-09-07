@@ -68,16 +68,32 @@ describe('WS-J-1 — light theme contrast (WCAG AA)', () => {
   it.each([
     ['text on bg', light.text, light.bg, AA_BODY],
     ['text on surface', light.text, light.surface, AA_BODY],
+    ['text on surface-soft', light.text, light['surface-soft'], AA_BODY],
     ['text-soft on bg', light['text-soft'], light.bg, AA_BODY],
+    ['text-soft on surface', light['text-soft'], light.surface, AA_BODY],
     ['muted on bg', light.muted, light.bg, AA_BODY],
     ['muted on surface', light.muted, light.surface, AA_BODY],
+    ['muted on surface-soft (table headers)', light.muted, light['surface-soft'], AA_BODY],
     ['primary on bg (button fill role)', light.primary, light.bg, AA_BODY],
+    ['primary on surface (used as text)', light.primary, light.surface, AA_BODY],
     ['primary-contrast on primary (button text)', light['primary-contrast'], light.primary, AA_BODY],
+    // WS-J-1.2 — this pair was previously omitted from this list while its
+    // dark-theme counterpart was included and its two siblings (danger,
+    // warn) were both included: exactly the asymmetry that let #16815d's
+    // 4.43:1 failure ship unguarded. Never narrow this list to avoid a
+    // known failure again — fix the value, or leave the test red and stop.
+    ['ok on ok-soft', light.ok, light['ok-soft'], AA_BODY],
+    ['ok-contrast on ok (button text)', light['ok-contrast'], light.ok, AA_BODY],
+    ['danger-contrast on danger (button text)', light['danger-contrast'], light.danger, AA_BODY],
     ['nav-text on nav', light['nav-text'], light.nav, AA_BODY],
     ['nav-text-muted on nav', light['nav-text-muted'], light.nav, AA_BODY],
     ['text on primary-soft (active nav item)', light.text, light['primary-soft'], AA_BODY],
     ['danger on danger-soft', light.danger, light['danger-soft'], AA_BODY],
     ['warn on warn-soft', light.warn, light['warn-soft'], AA_BODY],
+    ['chart-sales on surface', light['chart-sales'], light.surface, AA_LARGE],
+    ['chart-purchases on surface', light['chart-purchases'], light.surface, AA_LARGE],
+    ['chart-expenses on surface', light['chart-expenses'], light.surface, AA_LARGE],
+    ['chart-benefit on surface', light['chart-benefit'], light.surface, AA_LARGE],
   ])('%s >= %s:1 (measured %s)', (_label, fg, bg, min) => {
     const ratio = contrast(fg, bg);
     expect(ratio).toBeGreaterThanOrEqual(min);
@@ -99,9 +115,12 @@ describe('WS-J-1 — dark theme contrast (WCAG AA)', () => {
   it.each([
     ['text on bg', dark.text, dark.bg, AA_BODY],
     ['text on surface', dark.text, dark.surface, AA_BODY],
+    ['text on surface-soft', dark.text, dark['surface-soft'], AA_BODY],
     ['text-soft on bg', dark['text-soft'], dark.bg, AA_BODY],
+    ['text-soft on surface', dark['text-soft'], dark.surface, AA_BODY],
     ['muted on bg', dark.muted, dark.bg, AA_BODY],
     ['muted on surface', dark.muted, dark.surface, AA_BODY],
+    ['muted on surface-soft (table headers)', dark.muted, dark['surface-soft'], AA_BODY],
     ['primary on bg (used as text)', dark.primary, dark.bg, AA_BODY],
     ['primary on surface (used as text)', dark.primary, dark.surface, AA_BODY],
     ['primary-contrast on primary (button text)', dark['primary-contrast'], dark.primary, AA_BODY],
@@ -130,10 +149,10 @@ describe('WS-J-1 — dark theme contrast (WCAG AA)', () => {
   });
 
   it('sidebar is a visibly distinct surface step from the page background', () => {
+    // Same structure as the light-theme version of this check, for parity.
     const navVsBg = contrast(dark.nav, dark.bg);
     const surfaceVsBg = contrast(dark.surface, dark.bg);
-    expect(navVsBg).toBeGreaterThan(1.15);
-    expect(surfaceVsBg).toBeGreaterThan(1.0);
+    expect(navVsBg).toBeGreaterThan(surfaceVsBg);
   });
 });
 
