@@ -17,6 +17,7 @@ import type { Customer } from '../../shared/ipc/customerDto';
 import type { CreditSaleResult } from '../../shared/ipc/creditSaleDto';
 import type { ProductListItem } from '../../shared/ipc/dto';
 import { ReceiptView } from '../documents/ReceiptView';
+import { resolveBarcodeFirst } from '../../shared/search/barcodeFirstSearch';
 
 interface CartLine {
   variantId: number;
@@ -140,6 +141,41 @@ export function PosScreen() {
   function selectCustomer(value: string) {
     setCustomerId(value ? Number(value) : null);
     invalidateSaleIntent();
+  }
+
+  /**
+   * WS-D-15 A4 — the POS search box, on Enter, routes through the SAME
+   * barcode-first resolver the global shell search uses
+   * (src/shared/search/barcodeFirstSearch.ts). An exact match adds that
+   * variant to the cart directly, no intermediate list, matched against the
+   * warehouse's already-loaded `products` (POS's existing pattern — no new
+   * IPC call for the fallback). Typing without Enter is UNCHANGED: it only
+   * ever drives the existing client-side `filteredProducts` filter; this
+   * handler never fires resolveBarcode on a keystroke.
+   */
+  async function handleSearchEnter() {
+    const trimmed = search.trim();
+    if (!trimmed || !token) return;
+    const result = await resolveBarcodeFirst(token, trimmed);
+    if (result.type === 'match') {
+      const matchedProduct = products.find((p) => p.variant_id === result.resolved.variant_id);
+      if (matchedProduct) {
+        addToCart(matchedProduct);
+        setSearch('');
+        setBanner(null);
+        return;
+      }
+      // Resolved by the database but not present in this warehouse's loaded
+      // catalog (e.g. no stock position here) — say so rather than silently
+      // doing nothing or fabricating a cart line from partial data.
+      setBanner({ tone: 'warning', text: t('pos.barcodeNotInWarehouse', { query: trimmed }) });
+      return;
+    }
+    // A2's rule, unchanged here: no fuzzy fallback. The existing
+    // filteredProducts list (already showing whatever matches the typed
+    // text) stays as-is; this just says the SCAN specifically was not found,
+    // and keeps the scanned value visible in the field.
+    setBanner({ tone: 'warning', text: t('pos.barcodeNotFound', { query: trimmed }) });
   }
 
   function addToCart(p: ProductListItem) {
@@ -332,7 +368,20 @@ export function PosScreen() {
             <div><h2>{t('pos.catalog')}</h2><span>{t('pos.productsAvailable', { count: filteredProducts.length })}</span></div>
             <label className="sk-pos__search">
               <span className="sk-visually-hidden">{t('pos.search')}</span><span aria-hidden>⌕</span>
-              <input type="search" value={search} placeholder={t('pos.search')} onChange={(event) => setSearch(event.target.value)} />
+              <input
+                type="search"
+                value={search}
+                placeholder={t('pos.search')}
+                autoComplete="off"
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void handleSearchEnter();
+                  }
+                }}
+                data-testid="pos-search"
+              />
             </label>
           </div>
 

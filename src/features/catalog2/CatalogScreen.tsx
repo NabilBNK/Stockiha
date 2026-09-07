@@ -17,7 +17,7 @@
  * so adding its remaining variants, attributes and barcodes is the next
  * click rather than a hunt through the list.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Banner, Button, Spinner } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
@@ -38,7 +38,21 @@ type PanelState =
   | { mode: 'create' }
   | null;
 
-export function CatalogScreen() {
+export function CatalogScreen({
+  pendingSelection,
+  onPendingSelectionConsumed,
+}: {
+  /**
+   * WS-D-15 A3 — set by the app shell's global barcode-first search
+   * (AppRouter.tsx) when a scan resolves directly to a variant, so this page
+   * opens on it with no extra click — the whole point of the feature.
+   * Consumed exactly once via the effect below, then cleared through
+   * `onPendingSelectionConsumed` so navigating away and back does not
+   * re-trigger it.
+   */
+  pendingSelection?: { productId: number; variantId: number } | null;
+  onPendingSelectionConsumed?: () => void;
+} = {}) {
   const { t, locale } = useI18n();
   const { user } = useSession();
   const token = user?.token ?? '';
@@ -96,6 +110,18 @@ export function CatalogScreen() {
   const openPanel = useCallback((productId: number, variantId?: number) => {
     setPanel({ mode: 'edit', target: { productId, variantId: variantId ?? null } });
   }, []);
+
+  // WS-D-15 A3 — reuses openPanel/expandedProductIds verbatim; no parallel
+  // "open this variant" path is added. Runs once per pendingSelection value
+  // (a fresh object each time AppRouter arms it), then hands back control by
+  // calling onPendingSelectionConsumed so a later view switch away from and
+  // back to Products does not reopen the same panel.
+  useEffect(() => {
+    if (!pendingSelection) return;
+    setExpandedProductIds((prev) => new Set(prev).add(pendingSelection.productId));
+    openPanel(pendingSelection.productId, pendingSelection.variantId);
+    onPendingSelectionConsumed?.();
+  }, [pendingSelection, openPanel, onPendingSelectionConsumed]);
 
   const closePanel = useCallback((changed: boolean) => {
     setPanel(null);

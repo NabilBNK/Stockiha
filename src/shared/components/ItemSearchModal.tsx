@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useI18n } from "../i18n";
 import type { ProductListItem } from "../ipc/dto";
 import { formatExactDecimal } from "../../features/inventory/exactDecimal";
@@ -11,6 +11,33 @@ export interface ItemSearchModalProps {
   loading?: boolean;
   error?: string | null;
   selectedVariantId?: number | null;
+  /**
+   * WS-D-15 (D-7) — when provided, the modal stops filtering `items` itself
+   * (`matchesItemQuery`) and becomes a thin, controlled surface: `items` is
+   * whatever the caller currently wants shown, and every keystroke is
+   * forwarded here so the caller can run its own (debounced) server search.
+   * StockAdjustmentScreen's existing usage passes neither this nor `onEnter`,
+   * so its pure client-side filtering over an already-loaded, fixed `items`
+   * array is completely unchanged.
+   */
+  onQueryChange?: (query: string) => void;
+  /**
+   * Enter was pressed. The caller should attempt barcode-first resolution
+   * (see src/shared/search/barcodeFirstSearch.ts) before falling back to a
+   * text search — this modal has no opinion on that order, it only reports
+   * the deliberate submit.
+   */
+  onEnter?: (query: string) => void;
+  /**
+   * A short message shown above the results, e.g. "Barcode 613... not
+   * found — showing name/SKU matches instead." Distinct from `error`: this is
+   * an expected, non-error outcome of a scan, not a failure.
+   */
+  notice?: string | null;
+  /** Overrides the dialog title/aria-label. Defaults to the StockAdjustmentScreen copy. */
+  title?: string;
+  /** Overrides the input placeholder/aria-label. Defaults to the StockAdjustmentScreen copy. */
+  placeholder?: string;
 }
 
 export function matchesItemQuery(item: ProductListItem, rawQuery: string): boolean {
@@ -72,11 +99,19 @@ export function ItemSearchModal({
   loading = false,
   error = null,
   selectedVariantId = null,
+  onQueryChange,
+  onEnter,
+  notice = null,
+  title,
+  placeholder,
 }: ItemSearchModalProps) {
   const { t } = useI18n();
   const searchInputId = useId();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  // WS-D-15: server-controlled mode is opt-in per caller, never guessed —
+  // StockAdjustmentScreen's existing usage stays on pure client filtering.
+  const serverControlled = onQueryChange != null;
 
   useEffect(() => {
     if (isOpen) {
@@ -100,8 +135,28 @@ export function ItemSearchModal({
   }, [isOpen, onClose]);
 
   const filteredItems = useMemo(() => {
+    // Server-controlled: `items` is already whatever the caller wants shown
+    // (a barcode-first result, or server text-search matches) — filtering it
+    // again against the raw query here would be a SECOND, differently-shaped
+    // matcher racing the caller's own logic.
+    if (serverControlled) return items;
     return items.filter((item) => matchesItemQuery(item, searchQuery));
-  }, [items, searchQuery]);
+  }, [items, searchQuery, serverControlled]);
+
+  function handleQueryChange(value: string) {
+    setSearchQuery(value);
+    onQueryChange?.(value);
+  }
+
+  function handleInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter" && onEnter) {
+      event.preventDefault();
+      onEnter(searchQuery);
+    }
+  }
+
+  const resolvedTitle = title ?? t("adjustment.searchModalTitle");
+  const resolvedPlaceholder = placeholder ?? t("adjustment.searchModalPlaceholder");
 
   if (!isOpen) return null;
 
@@ -116,14 +171,14 @@ export function ItemSearchModal({
         className="sk-modal sk-modal-content--large"
         role="dialog"
         aria-modal="true"
-        aria-label={t("adjustment.searchModalTitle")}
+        aria-label={resolvedTitle}
         onClick={(e) => e.stopPropagation()}
         style={{ width: "min(100%, 780px)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
         data-testid="item-search-modal"
       >
         <div className="sk-modal-header" style={{ marginBottom: 12 }}>
           <div>
-            <h2 className="sk-modal__title">{t("adjustment.searchModalTitle")}</h2>
+            <h2 className="sk-modal__title">{resolvedTitle}</h2>
           </div>
           <button
             type="button"
@@ -138,20 +193,33 @@ export function ItemSearchModal({
 
         <div style={{ marginBlockEnd: 14 }}>
           <label className="sk-sr-only" htmlFor={searchInputId}>
-            {t("adjustment.searchModalTitle")}
+            {resolvedTitle}
           </label>
           <input
             id={searchInputId}
             ref={searchInputRef}
             type="text"
             className="sk-field__input"
-            placeholder={t("adjustment.searchModalPlaceholder")}
+            placeholder={resolvedPlaceholder}
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            onKeyDown={handleInputKeyDown}
+            autoComplete="off"
             data-testid="item-search-input"
-            aria-label={t("adjustment.searchModalPlaceholder")}
+            aria-label={resolvedPlaceholder}
           />
         </div>
+
+        {notice ? (
+          <div
+            className="sk-banner sk-banner--warning"
+            role="status"
+            style={{ marginBlockEnd: 12 }}
+            data-testid="item-search-notice"
+          >
+            {notice}
+          </div>
+        ) : null}
 
         <div
           style={{

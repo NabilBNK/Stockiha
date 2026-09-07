@@ -157,6 +157,17 @@ function AuthenticatedApp() {
   const { user, refreshActiveCashSession, clearSession } = useSession();
   const { error, openFiscalPeriod } = useAppData();
   const [view, setView] = useState<AppView>('dashboard');
+  /**
+   * WS-D-15 A3 — the minimal hand-off authorized to complete the global
+   * search's "no extra click" requirement. AppShell (inside the D-7 blast
+   * radius exception) cannot reach CatalogScreen directly — it is rendered
+   * only here — so this is the one piece of state carrying "open on this
+   * variant" across that boundary. Cleared by CatalogScreen itself via
+   * onPendingSelectionConsumed once it has acted on it, so switching away
+   * from Products and back does not re-open the same panel.
+   */
+  const [pendingProductSelection, setPendingProductSelection] =
+    useState<{ productId: number; variantId: number } | null>(null);
   const [openingStateStatus, setOpeningStateStatus] =
     useState<OpeningStateOnboardingStatusResult | null>(null);
   const [inventoryCapabilities, setInventoryCapabilities] =
@@ -297,6 +308,14 @@ function AuthenticatedApp() {
     }
   }, [procurementCapabilities, view]);
 
+  // WS-D-15 A3 — navigates to Products and arms the hand-off CatalogScreen
+  // picks up. Reuses the existing 'products' view id; no parallel navigation
+  // mechanism is added.
+  function goToVariant(productId: number, variantId: number) {
+    setPendingProductSelection({ productId, variantId });
+    setView('products');
+  }
+
   async function finishOpeningStateApplication() {
     await refreshOpeningStateStatus();
     setView('settings');
@@ -306,6 +325,7 @@ function AuthenticatedApp() {
     <AppShell
       currentView={view}
       onNavigate={setView}
+      onNavigateToVariant={goToVariant}
       inventoryCapabilities={inventoryCapabilities}
       inventoryCorrectionsEnabled={inventoryCorrectionsEnabled}
       procurementCapabilities={procurementCapabilities}
@@ -355,7 +375,12 @@ function AuthenticatedApp() {
           <UserManagementSettingsScreen sessionToken={user?.token ?? ''} />
         </>
       )}
-      {view === 'products' && <CatalogScreen />}
+      {view === 'products' && (
+        <CatalogScreen
+          pendingSelection={pendingProductSelection}
+          onPendingSelectionConsumed={() => setPendingProductSelection(null)}
+        />
+      )}
       {view === 'catalogueSetup' && <CatalogueSetupScreen sessionToken={user?.token ?? ''} />}
       {view === 'inventory' && <InventoryScreen />}
       {view === 'stock' && <StockReceiptScreen />}
