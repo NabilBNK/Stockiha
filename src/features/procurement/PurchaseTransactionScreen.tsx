@@ -92,7 +92,6 @@ const UI_COPY: Record<Locale, Record<string, string>> = {
     cashSessionError: 'An active open cash session is required to post cash payments to suppliers.',
     noSupplierSelected: 'Please select a supplier.',
     invalidLineCost: 'Please enter a valid purchase cost (≥ 0) for all line items.',
-    unitUWholeError: 'Quantity for unit U must be a whole number.',
     loadSuppliersError: 'Failed to load suppliers. Please check database connection.',
     loadProductsError: 'Failed to load product catalog. Please retry.',
     retry: 'Retry',
@@ -155,7 +154,6 @@ const UI_COPY: Record<Locale, Record<string, string>> = {
     cashSessionError: 'Une session de caisse ouverte est requise pour effectuer un paiement en espèces.',
     noSupplierSelected: 'Veuillez sélectionner un fournisseur.',
     invalidLineCost: 'Veuillez saisir un coût d’achat valide (≥ 0) pour toutes les lignes.',
-    unitUWholeError: 'La quantité pour l’unité U doit être un nombre entier.',
     loadSuppliersError: 'Impossible de charger les fournisseurs.',
     loadProductsError: 'Impossible de charger le catalogue produits.',
     retry: 'Réessayer',
@@ -218,7 +216,6 @@ const UI_COPY: Record<Locale, Record<string, string>> = {
     cashSessionError: 'يجب فتح جلسة صندوق نشطة قبل دفع المورد نقداً.',
     noSupplierSelected: 'يرجى اختيار مورد.',
     invalidLineCost: 'يرجى إدخال سعر شراء صحيح لجميع المنتجات.',
-    unitUWholeError: 'يجب أن تكون الكمية للوحدة U عدداً صحيحاً.',
     loadSuppliersError: 'تعذر تحميل قائمة الموردين.',
     loadProductsError: 'تعذر تحميل كتالوج المنتجات.',
     retry: 'إعادة المحاولة',
@@ -475,20 +472,18 @@ export function PurchaseTransactionScreen({ sessionToken }: { sessionToken: stri
         setFormError(copy.invalidLineCost);
         return;
       }
-      const opt = productOptions.find((p) => p.variant_id === l.variantId);
-      const isUnitU = opt ? opt.default_unit_code === 'U' : true;
-      if (isUnitU) {
-        const qtyNum = parseFloat(l.quantity);
-        if (isNaN(qtyNum) || qtyNum <= 0 || !Number.isInteger(qtyNum)) {
-          setFormError(copy.unitUWholeError);
-          return;
-        }
-      }
-      // WS-D-13 Phase A: the data-driven rule, from catalog.units
-      // .allows_fractions, on whichever unit this line is entered in. Added
-      // alongside the legacy hardcoded 'U' check above rather than replacing
-      // it -- removing that check is a behaviour change beyond this task's
-      // remit (see "Unrelated problems found" in the WS-D-13 report).
+      // WS-D-14 Part 1 (shadowing audit): a hardcoded whole-number rule keyed
+      // to a literal unit code 'U' lived here through WS-D-13. No unit with
+      // that code exists, so it was dead for every real product -- EXCEPT
+      // when `opt` (the product option lookup) came back undefined, which
+      // made it default to `isUnitU = true` and force a whole number
+      // regardless of the line's actual unit. That fallback is a genuine
+      // shadowing risk (a decimal-capable unit rejected because of a lookup
+      // miss, not because of its own allows_fractions flag), so the whole
+      // mechanism is removed rather than kept alongside the data-driven
+      // check. The data-driven rule below, from catalog.units
+      // .allows_fractions on whichever unit this line is entered in, is now
+      // the ONLY quantity-shape rule for purchase lines.
       const unitError = lineUnitError(l.unitId, l.quantity);
       if (unitError) {
         setFormError(unitError);
@@ -801,7 +796,6 @@ export function PurchaseTransactionScreen({ sessionToken }: { sessionToken: stri
                 {lines.map((line) => {
                   const lineGross = (parseFloat(line.quantity) || 0) * (parseFloat(line.unitCost) || 0);
                   const currentOpt = productOptions.find((p) => p.variant_id === line.variantId);
-                  const isUnitU = currentOpt ? currentOpt.default_unit_code === 'U' : true;
 
                   const displayName = currentOpt
                     ? (currentOpt.variant_name && currentOpt.variant_name !== currentOpt.product_name
@@ -844,7 +838,7 @@ export function PurchaseTransactionScreen({ sessionToken }: { sessionToken: stri
                       <td>
                         <input
                           type="number"
-                          step={isUnitU ? '1' : '0.001'}
+                          step="0.001"
                           min="1"
                           className="sk-field__input"
                           style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}

@@ -54,9 +54,20 @@ function itemIdentifiers(item: { primary_barcode?: string | null; sku: string })
   return barcode ?? item.sku;
 }
 
-const EXACT_NATURAL_QUANTITY = /^[1-9]\d*$/;
+/**
+ * WS-D-14 Part 1 — format check ONLY: a positive exact decimal, any number of
+ * fractional digits. Whether a FRACTION is actually allowed is a separate
+ * question that depends on the selected unit's `allows_fractions` flag (see
+ * `quantityUnitError` below, driven by `isQuantityValidForUnit`) — never on
+ * this function, which used to hardcode whole-numbers-only for every unit via
+ * `EXACT_NATURAL_QUANTITY = /^[1-9]\d*$/` and rejected "2.5" even for a
+ * decimal-capable unit like Kg before the unit-aware check ever ran. Reuses
+ * `isExactDecimalPositive` rather than a second decimal regex (ws-d-skill.md
+ * section 7: one decimal module). Zero, negatives, blank and malformed input
+ * are still rejected — a correction of zero is meaningless regardless of unit.
+ */
 export function isPositiveExactQuantity(value: string): boolean {
-  return EXACT_NATURAL_QUANTITY.test(value);
+  return isExactDecimalPositive(value);
 }
 export function signedQuantityDelta(
   direction: Direction,

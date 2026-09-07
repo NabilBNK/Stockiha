@@ -99,25 +99,29 @@ beforeEach(() => {
 });
 
 describe('exact signed quantity helpers', () => {
-  it('accepts only natural whole positive numbers', () => {
+  // WS-D-14 Part 1 — this is now a FORMAT check only: a positive exact
+  // decimal, any number of fractional digits. Whether a fraction is actually
+  // ALLOWED depends on the selected unit's allows_fractions flag, checked
+  // separately via isQuantityValidForUnit in the screen itself (see the
+  // 'stock adjustment workflow' describe block below) — never here. Before
+  // WS-D-14 this function hardcoded whole-numbers-only for every unit, which
+  // rejected "2.5" even for a decimal-capable unit like Kg.
+  it('accepts any positive exact decimal, not just whole numbers', () => {
     expect(isPositiveExactQuantity('1')).toBe(true);
     expect(isPositiveExactQuantity('2')).toBe(true);
-    expect(isPositiveExactQuantity('3')).toBe(true);
-    expect(isPositiveExactQuantity('4')).toBe(true);
-    expect(isPositiveExactQuantity('5')).toBe(true);
     expect(isPositiveExactQuantity('34')).toBe(true);
     expect(isPositiveExactQuantity('100')).toBe(true);
     expect(isPositiveExactQuantity('500')).toBe(true);
 
-    // Reject floating-point decimals
-    expect(isPositiveExactQuantity('0.5')).toBe(false);
-    expect(isPositiveExactQuantity('1.5')).toBe(false);
-    expect(isPositiveExactQuantity('53.1')).toBe(false);
-    expect(isPositiveExactQuantity('0.999')).toBe(false);
-    expect(isPositiveExactQuantity('0.25')).toBe(false);
-    expect(isPositiveExactQuantity('12.125')).toBe(false);
-    expect(isPositiveExactQuantity('2.500')).toBe(false);
-    expect(isPositiveExactQuantity('1.0')).toBe(false);
+    // Decimals are a FORMAT match now; unit fitness is checked separately.
+    expect(isPositiveExactQuantity('0.5')).toBe(true);
+    expect(isPositiveExactQuantity('1.5')).toBe(true);
+    expect(isPositiveExactQuantity('53.1')).toBe(true);
+    expect(isPositiveExactQuantity('0.999')).toBe(true);
+    expect(isPositiveExactQuantity('0.25')).toBe(true);
+    expect(isPositiveExactQuantity('12.125')).toBe(true);
+    expect(isPositiveExactQuantity('2.500')).toBe(true);
+    expect(isPositiveExactQuantity('1.0')).toBe(true);
 
     // Reject letters, symbols, and malformed inputs
     expect(isPositiveExactQuantity('abc')).toBe(false);
@@ -127,7 +131,8 @@ describe('exact signed quantity helpers', () => {
     expect(isPositiveExactQuantity('--')).toBe(false);
     expect(isPositiveExactQuantity('++')).toBe(false);
 
-    // Reject empty, zero, and negative
+    // Reject empty, zero, and negative -- a correction of zero is meaningless
+    // regardless of unit, and this stays true after WS-D-14.
     expect(isPositiveExactQuantity('')).toBe(false);
     expect(isPositiveExactQuantity('0')).toBe(false);
     expect(isPositiveExactQuantity('0.000')).toBe(false);
@@ -135,9 +140,13 @@ describe('exact signed quantity helpers', () => {
     expect(isPositiveExactQuantity('-2')).toBe(false);
   });
 
-  it('converts direction to a signed integer string without numeric arithmetic', () => {
+  it('converts direction to a signed string without numeric arithmetic, decimals included', () => {
     expect(signedQuantityDelta('increase', '25')).toBe('25');
     expect(signedQuantityDelta('decrease', '25')).toBe('-25');
+    // WS-D-14: a decimal decrease must produce the correct negative STRING --
+    // no Number()/parseFloat() anywhere near it.
+    expect(signedQuantityDelta('decrease', '2.5')).toBe('-2.5');
+    expect(signedQuantityDelta('increase', '2.5')).toBe('2.5');
   });
 
   it('keeps dates inside the fiscal-period bounds without UTC conversion', () => {
@@ -148,7 +157,10 @@ describe('exact signed quantity helpers', () => {
 });
 
 describe('stock adjustment workflow', () => {
-  it('validates natural whole number quantity input and updates error message dynamically', async () => {
+  it('validates quantity format independently of any unit, and updates the error dynamically', async () => {
+    // No list_units_v2 handler here: the flag is unknown for every unit, so
+    // this test isolates the pure FORMAT check (isPositiveExactQuantity),
+    // never the unit-specific one -- that is covered in the next test.
     wireInvoke(handlers());
     render(<App />);
     await loginAndNavigate();
@@ -159,29 +171,73 @@ describe('stock adjustment workflow', () => {
     // Empty quantity: submit disabled, no error yet
     expect(submitBtn).toBeDisabled();
 
-    // Invalid quantity (alphabetic): error visible, submit disabled
+    // Invalid quantity (alphabetic): the FORMAT message, not a unit message.
     fireEvent.change(qtyInput, { target: { value: 'abc' } });
-    expect(await screen.findByText('Enter a valid positive whole quantity.')).toBeInTheDocument();
+    expect(await screen.findByText('Enter a valid positive quantity.')).toBeInTheDocument();
     expect(submitBtn).toBeDisabled();
 
-    // Invalid quantity (decimal 1.5): error visible, submit disabled
-    fireEvent.change(qtyInput, { target: { value: '1.5' } });
-    expect(screen.getByText('Enter a valid positive whole quantity.')).toBeInTheDocument();
-    expect(submitBtn).toBeDisabled();
-
-    // Invalid quantity (decimal 53.1): error visible, submit disabled
-    fireEvent.change(qtyInput, { target: { value: '53.1' } });
-    expect(screen.getByText('Enter a valid positive whole quantity.')).toBeInTheDocument();
-    expect(submitBtn).toBeDisabled();
-
-    // Invalid quantity (zero): error visible, submit disabled
+    // Invalid quantity (zero): a correction of zero is meaningless regardless
+    // of unit, so this is still rejected after WS-D-14.
     fireEvent.change(qtyInput, { target: { value: '0' } });
-    expect(screen.getByText('Enter a valid positive whole quantity.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a valid positive quantity.')).toBeInTheDocument();
     expect(submitBtn).toBeDisabled();
 
-    // Valid natural whole quantity (34): error cleared, submit enabled
+    fireEvent.change(qtyInput, { target: { value: '-1' } });
+    expect(screen.getByText('Enter a valid positive quantity.')).toBeInTheDocument();
+    expect(submitBtn).toBeDisabled();
+
+    // Valid whole quantity: error cleared, submit enabled.
     fireEvent.change(qtyInput, { target: { value: '34' } });
-    expect(screen.queryByText('Enter a valid positive whole quantity.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Enter a valid positive quantity.')).not.toBeInTheDocument();
+    expect(submitBtn).toBeEnabled();
+
+    // WS-D-14: a decimal is a VALID FORMAT on its own -- whether it is
+    // actually accepted depends on the selected unit, which is unknown here
+    // (no list_units_v2 wired), so nothing blocks it: fail-open, never
+    // fail-closed, when the flag cannot be resolved.
+    fireEvent.change(qtyInput, { target: { value: '1.5' } });
+    expect(screen.queryByText('Enter a valid positive quantity.')).not.toBeInTheDocument();
+    expect(submitBtn).toBeEnabled();
+  });
+
+  // WS-D-14 Part 1 -- THE DEFECT. Before this fix, isPositiveExactQuantity
+  // rejected every decimal unconditionally, so isQuantityValidForUnit never
+  // ran for one: the old whole-number rule always won first, even for a
+  // unit whose allows_fractions is true.
+  it('lets the SELECTED UNIT decide decimal fitness, not the quantity field', async () => {
+    wireInvoke(handlers({
+      // UNIT is whole-number-only; PACK is decimal-capable -- the reverse of
+      // which one is the default-selected base unit, so switching between
+      // them is what actually exercises the unit-driven branch.
+      list_units_v2: () => [
+        { id: 1, code: 'UNIT', name: 'Unit', is_active: true, allows_fractions: false, usage_count: 1 },
+        { id: 2, code: 'PACK', name: 'Pack', is_active: true, allows_fractions: true, usage_count: 1 },
+      ],
+    }));
+    render(<App />);
+    await loginAndNavigate();
+
+    const qtyInput = screen.getByLabelText('Positive quantity');
+    const submitBtn = screen.getByRole('button', { name: 'Confirm adjustment' });
+
+    // Default-selected unit is UNIT (is_base), which rejects fractions.
+    await waitFor(() => expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('1'));
+    fireEvent.change(qtyInput, { target: { value: '2.5' } });
+    expect(await screen.findByText('UNIT does not accept decimal quantities.')).toBeInTheDocument();
+    expect(submitBtn).toBeDisabled();
+    // Never the generic format message for a well-formed decimal.
+    expect(screen.queryByText('Enter a valid positive quantity.')).not.toBeInTheDocument();
+
+    // A whole quantity in the same unit is fine.
+    fireEvent.change(qtyInput, { target: { value: '2' } });
+    expect(screen.queryByText('UNIT does not accept decimal quantities.')).not.toBeInTheDocument();
+    expect(submitBtn).toBeEnabled();
+
+    // Switching to PACK (decimal-capable) accepts the same "2.5" outright.
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '2' } });
+    fireEvent.change(qtyInput, { target: { value: '2.5' } });
+    await waitFor(() =>
+      expect(screen.queryByText('UNIT does not accept decimal quantities.')).not.toBeInTheDocument());
     expect(submitBtn).toBeEnabled();
   });
 
