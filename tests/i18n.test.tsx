@@ -21,7 +21,7 @@ function Probe() {
       <span data-testid="locale">{locale}</span>
       <span data-testid="dir">{dir}</span>
       <span data-testid="nav">{t('nav.pos')}</span>
-      <span data-testid="interp">{t('session.active', { id: 7 })}</span>
+      <span data-testid="interp">{t('pos.productsAvailable', { count: 7 })}</span>
       <span data-testid="err">{errorText(new GatewayError('PERMISSION_DENIED'))}</span>
       <button onClick={() => setLocale('ar')}>ar</button>
       <button onClick={() => setLocale('en')}>en</button>

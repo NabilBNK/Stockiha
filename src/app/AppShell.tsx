@@ -356,7 +356,7 @@ export function AppShell({
             <span className="sk-shell__logo" aria-hidden>S</span>
             <span className="sk-shell__brand-copy">
               <strong>{t('app.name')}</strong>
-              <small>Inventory control</small>
+              <small>{t('app.tagline')}</small>
             </span>
           </div>
         </div>

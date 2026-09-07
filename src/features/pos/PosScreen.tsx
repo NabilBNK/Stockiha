@@ -442,7 +442,7 @@ export function PosScreen() {
                   <li key={l.variantId} className="sk-cart__line">
                     <div className="sk-cart__identity"><span className="sk-cart__name">{l.name}</span><span className="sk-cart__sku">{l.sku}</span></div>
                     <span className="sk-cart__line-total sk-num">{(Number(l.unitPrice) * l.qty).toFixed(2)}</span>
-                    <div className="sk-cart__qty"><button type="button" aria-label="decrement" onClick={() => changeQty(l.variantId, -1)}>−</button><span data-testid={`qty-${l.variantId}`}>{l.qty}</span><button type="button" aria-label="increment" onClick={() => changeQty(l.variantId, 1)}>+</button></div>
+                    <div className="sk-cart__qty"><button type="button" aria-label={t('pos.decrement')} onClick={() => changeQty(l.variantId, -1)}>−</button><span data-testid={`qty-${l.variantId}`}>{l.qty}</span><button type="button" aria-label={t('pos.increment')} onClick={() => changeQty(l.variantId, 1)}>+</button></div>
                     <button type="button" className="sk-cart__remove" onClick={() => removeLine(l.variantId)}>{t('pos.remove')}</button>
                   </li>
                 ))}
