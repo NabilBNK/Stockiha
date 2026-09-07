@@ -209,7 +209,10 @@ describe('S4 Customer Workflow', () => {
     wireInvoke(baseHandlers());
     render(<App />);
     await login();
-    fireEvent.click(screen.getByRole('button', { name: 'Customers' }));
+    // WS-J-1: the Customers nav item is now gated on an async
+    // get_customer_capabilities fetch (role-based navigation hiding), so it
+    // is not necessarily in the DOM the instant login() resolves.
+    fireEvent.click(await screen.findByRole('button', { name: 'Customers' }));
     expect(await screen.findByRole('heading', { name: 'Customers' })).toBeInTheDocument();
     expect(screen.getByText('CUS-041')).toBeInTheDocument();
     expect(screen.getByText('170000.00')).toBeInTheDocument();
@@ -230,7 +233,10 @@ describe('S4 Customer Workflow', () => {
     }));
     render(<App />);
     await login();
-    fireEvent.click(screen.getByRole('button', { name: 'Customers' }));
+    // WS-J-1: the Customers nav item is now gated on an async
+    // get_customer_capabilities fetch (role-based navigation hiding), so it
+    // is not necessarily in the DOM the instant login() resolves.
+    fireEvent.click(await screen.findByRole('button', { name: 'Customers' }));
     expect(await screen.findByTestId('customers-read-only')).toHaveTextContent('Read-only customer access');
     expect(screen.queryByTestId('add-customer-btn')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
@@ -255,7 +261,10 @@ describe('S4 Customer Workflow', () => {
     }));
     render(<App />);
     await login();
-    fireEvent.click(screen.getByRole('button', { name: 'Customers' }));
+    // WS-J-1: the Customers nav item is now gated on an async
+    // get_customer_capabilities fetch (role-based navigation hiding), so it
+    // is not necessarily in the DOM the instant login() resolves.
+    fireEvent.click(await screen.findByRole('button', { name: 'Customers' }));
     await screen.findByRole('heading', { name: 'Customers' });
     fireEvent.click(screen.getByTestId('add-customer-btn'));
     expect(screen.queryByText('Generated automatically when the customer is saved.')).not.toBeInTheDocument();
@@ -284,7 +293,10 @@ describe('S4 Customer Workflow', () => {
     wireInvoke(baseHandlers());
     render(<App />);
     await login();
-    fireEvent.click(screen.getByRole('button', { name: 'Customers' }));
+    // WS-J-1: the Customers nav item is now gated on an async
+    // get_customer_capabilities fetch (role-based navigation hiding), so it
+    // is not necessarily in the DOM the instant login() resolves.
+    fireEvent.click(await screen.findByRole('button', { name: 'Customers' }));
     await screen.findByRole('heading', { name: 'Customers' });
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
     const detail = await screen.findByTestId('customer-financial-detail');
@@ -428,7 +440,10 @@ describe('S4 Customer Workflow', () => {
 
     render(<App />);
     await login();
-    fireEvent.click(screen.getByRole('button', { name: 'Customers' }));
+    // WS-J-1: the Customers nav item is now gated on an async
+    // get_customer_capabilities fetch (role-based navigation hiding), so it
+    // is not necessarily in the DOM the instant login() resolves.
+    fireEvent.click(await screen.findByRole('button', { name: 'Customers' }));
     await screen.findByRole('heading', { name: 'Customers' });
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
     await screen.findByTestId('customer-financial-detail');

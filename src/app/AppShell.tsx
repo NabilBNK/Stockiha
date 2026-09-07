@@ -26,6 +26,7 @@ import type {
   ProductListItem,
   ProductListItemV2,
 } from '../shared/ipc/dto';
+import type { CustomerCapabilities } from '../shared/ipc/customerDto';
 
 export type AppView =
   | 'dashboard'
@@ -133,6 +134,7 @@ export function AppShell({
   inventoryCapabilities,
   inventoryCorrectionsEnabled,
   procurementCapabilities,
+  customerCapabilities,
   children,
 }: {
   currentView: AppView;
@@ -148,6 +150,7 @@ export function AppShell({
   inventoryCapabilities: InventoryCapabilities | null;
   inventoryCorrectionsEnabled: boolean | null;
   procurementCapabilities: ProcurementCapabilities | null;
+  customerCapabilities: CustomerCapabilities | null;
   children: ReactNode;
 }) {
   const { t, locale, setLocale } = useI18n();
@@ -309,6 +312,24 @@ export function AppShell({
     return item.view;
   }
 
+  /**
+   * WS-J-1 Part 3b — extends the existing capability mechanism to every nav
+   * entry rather than adding a second one. `dashboard`, `journals`,
+   * `historical_finance`, `settings`, `pos`, `session`, and `documents` have
+   * NO capability DTO anywhere in the codebase (verified: only
+   * InventoryCapabilities, ProcurementCapabilities and CustomerCapabilities
+   * exist in src/shared/ipc/*.ts) — per the task brief, an entry with no
+   * obvious capability is left visible rather than guessed at, so they fall
+   * through to `default: true`. This mirrors Settings' own internal model:
+   * access is enforced by server-side RBAC on each action, not by a
+   * capabilities projection the shell can gate on.
+   *
+   * UI HIDING IS NOT AUTHORISATION. Every one of these capability flags is a
+   * best-effort projection for usability; the real boundary is the
+   * PostgreSQL SECURITY DEFINER check each backend command performs. A user
+   * who reaches a hidden view by some other path (or a stale/racy
+   * capability read) is still stopped there, same as always.
+   */
   function canShow(item: NavItem): boolean {
     switch (item.view) {
       case 'products':
@@ -326,6 +347,8 @@ export function AppShell({
       case 'supplier_liabilities':
       case 'supplier_returns':
         return procurementCapabilities?.can_manage_procurement ?? false;
+      case 'customers':
+        return customerCapabilities?.can_view_customers ?? false;
       default:
         return true;
     }

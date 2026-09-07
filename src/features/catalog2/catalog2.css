@@ -1,17 +1,21 @@
 /*
- * WS-D-9 — page-scoped warm light theme for the new Catalog page.
+ * WS-D-9 — quarantine REMOVED in WS-J-1.
  *
- * RULING 1. Every token below is redefined ON `.sk-catalog2` ONLY. This file
- * contains no `:root` rule and no `[data-theme="dark"]` rule, so nothing here
- * can leak into another screen: the tokens are inherited by this page's
- * subtree and by nothing else. WS-J still owns the global repaint.
+ * Until WS-J-1, this file redefined `--sk-bg`, `--sk-surface*`, `--sk-border*`,
+ * `--sk-text*`, `--sk-muted`, `--sk-primary*`, the semantic status colours,
+ * and the shadow tokens on `.sk-catalog2` ONLY, because the global theme was
+ * still the old cold cobalt/navy palette. WS-J-1 made `src/styles/global.css`
+ * warm globally (light AND dark), so that page-scoped override became pure
+ * duplication and a future drift source — removed. This page now inherits
+ * every colour/shadow token from the global `:root` / `[data-theme="dark"]`
+ * rules like any other screen, including the Owner's blue accent override
+ * (`--sk-primary`) and dark-mode support this page previously lacked.
  *
- * The page is LIGHT ONLY. When the application is in dark mode the shell
- * around it stays dark and this page still renders warm-light — deliberate
- * and expected for a parallel build, per the ruling. There is no dark variant.
- *
- * Accent is #2457d6 (blue), overriding DESIGN.md v2's #c25012 per explicit
- * Owner ruling. 5.9:1 against #fbf9f7 — passes AA for fills and for text.
+ * The layout-scale tokens below (`--sk-radius-*`, `--sk-touch`, `--sk-gap`,
+ * `--sk-catalog2-row`, `--sk-catalog2-panel`) are NOT colours — they matched
+ * the global scale already and stay local per the task brief ("keep
+ * catalog2.css's LAYOUT rules — only the colour/custom-property
+ * redefinitions go").
  *
  * Everything directional is logical (inline/block). The one physical property
  * is the panel's entrance transform, which has no logical equivalent and is
@@ -19,38 +23,8 @@
  */
 
 .sk-catalog2 {
-  /* Surfaces — DESIGN.md v2 warm light ramp. */
-  --sk-bg: #fbf9f7;
-  --sk-surface: #ffffff;
-  --sk-surface-soft: #f5f2ee;
-  --sk-surface-hover: #f0ece7;
-  --sk-border: #e4ddd3;
-  --sk-border-strong: #d3c9bb;
-
-  /* Text — pinned so the page stays legible under a dark app shell. */
-  --sk-text: #1c1815;
-  --sk-text-soft: #3c352e;
-  --sk-muted: #6d6459;
-
-  /* Accent — Owner ruling: blue, not v2's orange. Do not lighten. */
-  --sk-primary: #2457d6;
-  --sk-primary-hover: #1948bd;
-  --sk-primary-soft: #e9eefc;
-
-  /* Semantic status colours are fixed, never themeable (DESIGN.md §3.3). */
-  --sk-ok: #16815d;
-  --sk-ok-soft: #eaf8f2;
-  --sk-danger: #c0393f;
-  --sk-danger-soft: #fff0f0;
-  --sk-warn: #a2630b;
-  --sk-warn-soft: #fff6df;
-  --sk-info-soft: #ebf1fe;
-
-  /* Warm-tinted shadows per DESIGN.md §8.1 — never pure black. */
-  --sk-shadow: 0 1px 2px rgba(40, 30, 20, .05), 0 8px 24px rgba(40, 30, 20, .07);
-  --sk-shadow-lg: 0 22px 60px rgba(40, 30, 20, .22);
-
-  /* v2 scales. */
+  /* v2 scales — unchanged duplicates of the global values, kept local as a
+     layout concern, not a colour concern. */
   --sk-radius-sm: 8px;
   --sk-radius: 12px;
   --sk-radius-lg: 18px;
@@ -137,7 +111,7 @@
 
 .sk-catalog2__input:focus-visible,
 .sk-catalog2__select:focus-visible {
-  outline: 3px solid rgba(36, 87, 214, .25);
+  outline: 3px solid color-mix(in srgb, var(--sk-primary) 25%, transparent);
   outline-offset: 1px;
   border-color: var(--sk-primary);
 }
@@ -212,7 +186,7 @@
 }
 
 .sk-catalog2__sort-btn:focus-visible {
-  outline: 3px solid rgba(36, 87, 214, .25);
+  outline: 3px solid color-mix(in srgb, var(--sk-primary) 25%, transparent);
   outline-offset: 1px;
 }
 
@@ -378,7 +352,7 @@
 }
 
 .sk-catalog2__row-edit:focus-visible {
-  outline: 3px solid rgba(36, 87, 214, .25);
+  outline: 3px solid color-mix(in srgb, var(--sk-primary) 25%, transparent);
   outline-offset: 1px;
 }
 
@@ -824,7 +798,7 @@
 }
 
 .sk-catalog2__vlist-items:focus-visible {
-  outline: 3px solid rgba(36, 87, 214, .25);
+  outline: 3px solid color-mix(in srgb, var(--sk-primary) 25%, transparent);
   outline-offset: 2px;
 }
 

@@ -13,6 +13,8 @@ import { useSession } from '../shared/session/SessionContext';
 import * as ipc from '../shared/ipc/gateway';
 import { getOpeningStateOnboardingStatus } from '../shared/ipc/openingStateLifecycleGateway';
 import type { OpeningStateOnboardingStatusResult } from '../shared/ipc/openingStateLifecycleDto';
+import { getCustomerCapabilities } from '../shared/ipc/customerGateway';
+import type { CustomerCapabilities } from '../shared/ipc/customerDto';
 import { AppDataProvider, useAppData } from './AppDataContext';
 import { AppShell, type AppView } from './AppShell';
 import { LoginScreen } from '../features/auth/LoginScreen';
@@ -175,6 +177,8 @@ function AuthenticatedApp() {
   const [inventoryCorrectionsEnabled, setInventoryCorrectionsEnabled] = useState<boolean | null>(null);
   const [procurementCapabilities, setProcurementCapabilities] =
     useState<ProcurementCapabilities | null>(null);
+  const [customerCapabilities, setCustomerCapabilities] =
+    useState<CustomerCapabilities | null>(null);
 
   const refreshOpeningStateStatus = useCallback(async () => {
     const token = user?.token;
@@ -218,6 +222,36 @@ function AuthenticatedApp() {
             can_post_supplier_invoice: false,
             can_post_supplier_return: false,
             can_post_supplier_payment: false,
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.token]);
+
+  useEffect(() => {
+    const token = user?.token;
+    if (!token) {
+      setCustomerCapabilities(null);
+      return;
+    }
+    let active = true;
+    void getCustomerCapabilities(token)
+      .then((capabilities) => {
+        if (active) setCustomerCapabilities(capabilities);
+      })
+      .catch(() => {
+        if (active) {
+          // Safe-deny the UI projection. Database checks remain authoritative.
+          setCustomerCapabilities({
+            can_view_customers: false,
+            can_manage_customers: false,
+            can_post_credit_sale: false,
+            can_post_customer_payment: false,
+            can_post_customer_refund: false,
+            can_manage_drawer_policy: false,
+            can_override_credit_limit: false,
           });
         }
       });
@@ -308,6 +342,13 @@ function AuthenticatedApp() {
     }
   }, [procurementCapabilities, view]);
 
+  useEffect(() => {
+    if (!customerCapabilities) return;
+    if (view === 'customers' && !customerCapabilities.can_view_customers) {
+      setView('dashboard');
+    }
+  }, [customerCapabilities, view]);
+
   // WS-D-15 A3 — navigates to Products and arms the hand-off CatalogScreen
   // picks up. Reuses the existing 'products' view id; no parallel navigation
   // mechanism is added.
@@ -329,6 +370,7 @@ function AuthenticatedApp() {
       inventoryCapabilities={inventoryCapabilities}
       inventoryCorrectionsEnabled={inventoryCorrectionsEnabled}
       procurementCapabilities={procurementCapabilities}
+      customerCapabilities={customerCapabilities}
     >
       {view === 'dashboard' && <DashboardScreen />}
       {view === 'historical_finance' && (

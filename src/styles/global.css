@@ -1,32 +1,53 @@
 :root {
-  --sk-bg: #f4f7fb;
+  /* WS-J-1 — DESIGN.md v2 warm palette. Accent is the Owner's BLUE override
+     (2026-09-07): DESIGN.md's default accent is #c25012 (orange); the Owner
+     ruled blue for this product. See DESIGN.md §3.1 for the recorded override. */
+  --sk-bg: #fbf9f7;
   --sk-surface: #ffffff;
-  --sk-surface-soft: #f8fafc;
-  --sk-surface-hover: #f3f6fb;
-  --sk-border: #dce3ec;
-  --sk-border-strong: #c8d2df;
-  --sk-text: #172033;
-  --sk-text-soft: #37445a;
-  --sk-muted: #637083;
+  --sk-surface-soft: #f5f2ee;
+  --sk-surface-hover: #f0ece7;
+  --sk-surface-sunken: #ebe6df;
+  --sk-border: #e2dcd4;
+  --sk-border-strong: #cfc6bb;
+  --sk-text: #1c1917;
+  --sk-text-soft: #57534e;
+  --sk-muted: #6f675e;
+  --sk-disabled: #9c948a;
   --sk-primary: #2457d6;
   --sk-primary-hover: #1948bd;
-  --sk-primary-soft: #edf3ff;
-  --sk-nav: #111b33;
-  --sk-nav-soft: #1b2947;
+  --sk-primary-soft: #ebf1fe;
+  --sk-primary-contrast: #ffffff;
+  --sk-ok-contrast: #ffffff;
+  --sk-danger-contrast: #ffffff;
+  --sk-nav: #e8e1d7;
+  --sk-nav-soft: #ded6ca;
+  --sk-nav-text: #332e29;
+  --sk-nav-text-muted: #655d55;
+  --sk-nav-border: #d3cabd;
   --sk-danger: #c0393f;
   --sk-danger-soft: #fff0f0;
   --sk-ok: #16815d;
   --sk-ok-soft: #eaf8f2;
   --sk-warn: #a2630b;
   --sk-warn-soft: #fff6df;
-  --sk-info-soft: #edf3ff;
+  --sk-info-soft: #ebf1fe;
+  /* WS-J-1 Part 5a — chart series colours, promoted from a page-local
+     override in historical-finance.css so both themes can define them.
+     Legitimate exception to "read from a semantic token": a 4-series chart
+     needs 4 distinguishable hues, which no single semantic token provides. */
+  --sk-chart-sales: #16815d;
+  --sk-chart-purchases: #0e7490;
+  --sk-chart-expenses: #a2630b;
+  --sk-chart-benefit: #7c5ce5;
   --sk-radius-sm: 8px;
   --sk-radius: 12px;
   --sk-radius-lg: 18px;
   --sk-touch: 44px;
   --sk-gap: 18px;
-  --sk-shadow: 0 1px 2px rgba(16, 32, 64, .04), 0 8px 24px rgba(16, 32, 64, .06);
-  --sk-shadow-lg: 0 22px 60px rgba(12, 25, 55, .2);
+  /* DESIGN.md §8.1 — warm-tinted shadow in light (never pure black); this
+     replaces the old cool navy tint (16,32,64 / 12,25,55). */
+  --sk-shadow: 0 1px 2px rgba(40, 30, 20, .05), 0 8px 24px rgba(40, 30, 20, .07);
+  --sk-shadow-lg: 0 22px 60px rgba(40, 30, 20, .22);
   --sk-font: "Segoe UI", Inter, system-ui, -apple-system, "Noto Kufi Arabic", Cairo, sans-serif;
   font-family: var(--sk-font);
   color: var(--sk-text);
@@ -36,20 +57,41 @@
 }
 
 [data-theme="dark"] {
-  --sk-bg: #0b1220;
-  --sk-surface: #111b2d;
-  --sk-surface-soft: #162238;
-  --sk-surface-hover: #1b2a42;
-  --sk-border: #27364d;
-  --sk-border-strong: #384a65;
-  --sk-text: #e8eef8;
-  --sk-text-soft: #c4d0e2;
-  --sk-muted: #93a4bd;
+  /* WS-J-1 — warm-neutral dark palette (new work; DESIGN.md v2 does not
+     define it prescriptively). Anchored on the light theme's text colour
+     (#1c1917, a warm near-black) as the sidebar tier, building lighter warm
+     greys/stones upward — never blue-greys. See the WS-J-1 report's
+     "Contrast — measured ratios" table for every pair below. */
+  --sk-bg: #2e2721;
+  --sk-surface: #3a3128;
+  --sk-surface-soft: #332c24;
+  --sk-surface-hover: #3f362c;
+  --sk-surface-sunken: #241e19;
+  --sk-border: #433a2f;
+  --sk-border-strong: #5c5041;
+  --sk-text: #f5f1ec;
+  --sk-text-soft: #c7bdb2;
+  --sk-muted: #a89f94;
+  --sk-disabled: #726a60;
+  /* #2457d6 (the light-theme blue) measures 2.1:1 on this surface and fails
+     AA as either text or a button fill. #6f98ff is the same hue lightened
+     until it clears 4.5:1 as text AND, paired with a near-black contrast
+     token (--sk-primary-contrast below) rather than white, as a button
+     fill — no light blue clears 4.5:1 with white text on top of it. */
   --sk-primary: #6f98ff;
   --sk-primary-hover: #88aaff;
   --sk-primary-soft: #172c57;
-  --sk-nav: #070d18;
-  --sk-nav-soft: #14223a;
+  --sk-primary-contrast: #1c1917;
+  /* Same problem as the accent: white text on the lightened dark-mode ok/
+     danger fills fails AA (1.89:1 / 2.50:1 measured); near-black passes
+     (9.26:1 / 7.00:1 measured). */
+  --sk-ok-contrast: #1c1917;
+  --sk-danger-contrast: #1c1917;
+  --sk-nav: #1c1917;
+  --sk-nav-soft: #2a2119;
+  --sk-nav-text: #c9c1b7;
+  --sk-nav-text-muted: #948a7f;
+  --sk-nav-border: #2a2119;
   --sk-danger: #ff7b82;
   --sk-danger-soft: #391d25;
   --sk-ok: #54d2a3;
@@ -57,6 +99,13 @@
   --sk-warn: #f2ba62;
   --sk-warn-soft: #3b2b14;
   --sk-info-soft: #172c57;
+  /* The light-tuned chart hues above measure well under 3:1 on this dark
+     surface (verified: #16815d 2.6:1, #0e7490 ~2.9:1, #a2630b ~3.4:1,
+     #7c5ce5 2.7:1) — lightened per-theme so the chart stays legible. */
+  --sk-chart-sales: #54d2a3;
+  --sk-chart-purchases: #22b8cf;
+  --sk-chart-expenses: #f2ba62;
+  --sk-chart-benefit: #a78bfa;
   --sk-shadow: 0 1px 2px rgba(0, 0, 0, .18), 0 10px 26px rgba(0, 0, 0, .2);
   --sk-shadow-lg: 0 24px 70px rgba(0, 0, 0, .46);
 }
@@ -218,11 +267,11 @@ p {
   width: 38px;
   height: 38px;
   border-radius: 11px;
-  background: linear-gradient(145deg, #3470f4, #1d49be);
-  color: #fff;
+  background: var(--sk-primary);
+  color: var(--sk-primary-contrast);
   font-size: 1.1rem;
   font-weight: 800;
-  box-shadow: 0 7px 18px rgba(36, 87, 214, .25);
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--sk-primary) 25%, transparent);
 }
 
 .sk-shell__header-right {
@@ -253,9 +302,10 @@ p {
   overflow-y: auto;
   padding: 18px 12px 28px;
   background: var(--sk-nav);
-  color: #fff;
+  color: var(--sk-nav-text);
   border: 0;
-  scrollbar-color: #354568 transparent;
+  border-inline-end: 1px solid var(--sk-nav-border);
+  scrollbar-color: var(--sk-nav-border) transparent;
 }
 
 .sk-nav__group+.sk-nav__group {
@@ -264,7 +314,7 @@ p {
 
 .sk-nav__group-label {
   padding: 0 12px 7px;
-  color: #8492ae;
+  color: var(--sk-nav-text-muted);
   font-size: .68rem;
   font-weight: 750;
   letter-spacing: .09em;
@@ -277,12 +327,12 @@ p {
   grid-template-columns: 30px 1fr;
   align-items: center;
   width: 100%;
-  min-height: 43px;
+  min-height: var(--sk-touch);
   padding: 7px 11px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--sk-radius-sm);
   background: transparent;
-  color: #cbd4e7;
+  color: var(--sk-nav-text);
   cursor: pointer;
   text-align: start;
   transition: background-color .15s, color .15s;
@@ -290,14 +340,13 @@ p {
 
 .sk-nav__item:hover {
   background: var(--sk-nav-soft);
-  color: #fff;
+  color: var(--sk-nav-text);
 }
 
 .sk-nav__item--active {
-  background: #2c5bd3;
-  color: #fff;
+  background: var(--sk-primary-soft);
+  color: var(--sk-text);
   font-weight: 700;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, .18);
 }
 
 .sk-nav__item--active::before {
@@ -307,7 +356,7 @@ p {
   width: 3px;
   height: 24px;
   border-radius: 0 4px 4px 0;
-  background: #7ea5ff;
+  background: var(--sk-primary);
 }
 
 .sk-nav__icon {
@@ -315,13 +364,13 @@ p {
   place-items: center;
   width: 22px;
   height: 22px;
-  color: #9fb1d1;
+  color: var(--sk-nav-text-muted);
   font-size: 1.05rem;
   font-weight: 700;
 }
 
 .sk-nav__item--active .sk-nav__icon {
-  color: #fff;
+  color: var(--sk-text);
 }
 
 .sk-nav-backdrop {
@@ -854,8 +903,8 @@ fieldset.sk-form {
 .sk-btn--primary,
 .sk-button--primary {
   background: var(--sk-primary);
-  color: #fff;
-  box-shadow: 0 4px 10px rgba(36, 87, 214, .2);
+  color: var(--sk-primary-contrast);
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--sk-primary) 20%, transparent);
 }
 
 .sk-btn--primary:hover:not(:disabled),
@@ -873,25 +922,25 @@ fieldset.sk-form {
 
 .sk-btn--secondary:hover:not(:disabled),
 .sk-button--secondary:hover:not(:disabled) {
-  border-color: #aebacc;
+  border-color: var(--sk-border-strong);
   background: var(--sk-surface-soft);
 }
 
 .sk-btn--danger,
 .sk-button--danger {
   background: var(--sk-danger);
-  color: #fff;
+  color: var(--sk-danger-contrast);
 }
 
 .sk-button--success {
   background: var(--sk-ok);
-  color: #fff;
+  color: var(--sk-ok-contrast);
 }
 
 .sk-button--warning {
-  border-color: #e4bf78;
+  border-color: color-mix(in srgb, var(--sk-warn) 45%, transparent);
   background: var(--sk-warn-soft);
-  color: #8b560b;
+  color: var(--sk-warn);
 }
 
 .sk-button--small {
@@ -1494,11 +1543,6 @@ fieldset.sk-form {
 [data-theme="dark"] .sk-banner--info {
   border-color: #2d4b85;
   color: #a9c4ff;
-}
-
-[data-theme="dark"] .sk-button--warning {
-  border-color: #765522;
-  color: #f4ca87;
 }
 
 @media (max-width: 1050px) {
@@ -2327,7 +2371,7 @@ fieldset.sk-form {
 .sk-attr__chip--selected {
   background: var(--sk-primary);
   border-color: var(--sk-primary);
-  color: #ffffff;
+  color: var(--sk-primary-contrast);
 }
 
 .sk-attr__chip--selected:hover {
@@ -2364,8 +2408,8 @@ fieldset.sk-form {
 }
 
 .sk-attr__chip--selected .sk-attr__retired {
-  background: rgba(255, 255, 255, .22);
-  color: #ffffff;
+  background: color-mix(in srgb, var(--sk-primary-contrast) 22%, transparent);
+  color: var(--sk-primary-contrast);
 }
 
 .sk-attr__add-value {
@@ -2423,7 +2467,7 @@ fieldset.sk-form {
 }
 
 .sk-attr__chip--none.sk-attr__chip--selected {
-  color: #ffffff;
+  color: var(--sk-primary-contrast);
   border-style: solid;
 }
 

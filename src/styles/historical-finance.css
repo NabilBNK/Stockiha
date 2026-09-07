@@ -1,6 +1,9 @@
 /* Historical finance analytics. Uses only Stockiha semantic tokens so the
    same markup remains readable in light, dark, LTR and RTL modes. */
-.sk-historical-page { --sk-chart-sales: #16815d; --sk-chart-purchases: #3470f4; --sk-chart-expenses: #d48817; --sk-chart-benefit: #7c5ce5; max-width: 1500px; }
+/* WS-J-1 — the --sk-chart-* series colours moved to src/styles/global.css
+   (:root and [data-theme="dark"]) so both themes can define legible values;
+   this page just consumes them. */
+.sk-historical-page { max-width: 1500px; }
 .sk-space-y { display: flex; flex-direction: column; gap: var(--sk-gap); }
 .sk-stack { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .sk-section-block { margin-block-start: 18px; }
@@ -24,7 +27,7 @@
 .sk-import-stepper__indicator { display: grid; flex: 0 0 auto; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--sk-border); color: var(--sk-text-soft); font-size: .75rem; font-weight: 800; }
 .sk-import-stepper__label { overflow: hidden; font-size: .78rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .sk-import-stepper__step--active { border-color: var(--sk-primary); background: var(--sk-primary-soft); color: var(--sk-primary); }
-.sk-import-stepper__step--active .sk-import-stepper__indicator, .sk-import-stepper__step--completed .sk-import-stepper__indicator { background: var(--sk-primary); color: #fff; }
+.sk-import-stepper__step--active .sk-import-stepper__indicator, .sk-import-stepper__step--completed .sk-import-stepper__indicator { background: var(--sk-primary); color: var(--sk-primary-contrast); }
 .sk-import-stepper__step--completed { color: var(--sk-text-soft); }
 .sk-import-stepper__step--error { border-color: var(--sk-danger); background: var(--sk-danger-soft); color: var(--sk-danger); }
 
@@ -56,7 +59,7 @@
 .sk-tab-btn { min-height: 38px; padding: 7px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--sk-muted); cursor: pointer; font-size: .78rem; font-weight: 750; white-space: nowrap; }
 .sk-tab-btn:hover { background: var(--sk-surface-hover); color: var(--sk-text); }
 .sk-tab-btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--sk-primary) 25%, transparent); }
-.sk-tab-btn--active { background: var(--sk-surface); color: var(--sk-primary); box-shadow: 0 1px 4px rgba(20, 34, 62, .12); }
+.sk-tab-btn--active { background: var(--sk-surface); color: var(--sk-primary); box-shadow: 0 1px 4px rgba(40, 30, 20, .12); }
 .sk-tab-btn__count { display: inline-grid; place-items: center; min-width: 21px; min-height: 21px; margin-inline-start: 4px; padding-inline: 5px; border-radius: 999px; background: var(--sk-primary-soft); color: var(--sk-primary); font-size: .68rem; }
 .sk-analytics-content { display: flex; flex-direction: column; gap: 18px; }
 .sk-analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
@@ -134,10 +137,10 @@
 .text-xs { font-size: .72rem; }
 .text-muted { color: var(--sk-muted); }
 .font-medium { font-weight: 650; }
-.bg-emerald-500 { background: #16815d; fill: #16815d; }
-.bg-blue-500 { background: #3470f4; fill: #3470f4; }
-.bg-purple-500 { background: #7c5ce5; fill: #7c5ce5; }
-.bg-amber-500 { background: #d48817; fill: #d48817; }
+.bg-emerald-500 { background: var(--sk-chart-sales); fill: var(--sk-chart-sales); }
+.bg-blue-500 { background: var(--sk-chart-purchases); fill: var(--sk-chart-purchases); }
+.bg-purple-500 { background: var(--sk-chart-benefit); fill: var(--sk-chart-benefit); }
+.bg-amber-500 { background: var(--sk-chart-expenses); fill: var(--sk-chart-expenses); }
 .text-emerald-600 { color: var(--sk-ok); }
 
 @media (max-width: 1180px) {
@@ -169,7 +172,7 @@
 .sk-combobox__input { width: 100%; padding: 7px 10px; border: 1px solid var(--sk-border); border-radius: 8px; background: var(--sk-surface); color: var(--sk-text); font: inherit; }
 .sk-combobox__input:focus-visible { border-color: var(--sk-primary); outline: 2px solid var(--sk-primary); outline-offset: 1px; }
 .sk-combobox__input:disabled { background: var(--sk-surface-soft); color: var(--sk-muted); }
-.sk-combobox__list { position: absolute; z-index: 30; inset-inline: 0; inset-block-start: calc(100% + 3px); max-height: 260px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; border: 1px solid var(--sk-border-strong); border-radius: 8px; background: var(--sk-surface); box-shadow: 0 8px 22px rgba(0, 0, 0, .16); }
+.sk-combobox__list { position: absolute; z-index: 30; inset-inline: 0; inset-block-start: calc(100% + 3px); max-height: 260px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; border: 1px solid var(--sk-border-strong); border-radius: 8px; background: var(--sk-surface); box-shadow: var(--sk-shadow-lg); }
 .sk-combobox__option { padding: 7px 9px; border-radius: 6px; cursor: pointer; font-size: .82rem; }
 .sk-combobox__option--active { background: var(--sk-primary-soft); color: var(--sk-primary); }
 .sk-combobox__option[aria-selected="true"] { font-weight: 650; }

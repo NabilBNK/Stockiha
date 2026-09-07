@@ -229,7 +229,7 @@ export function ItemSearchModal({
             flexDirection: "column",
             gap: 8,
             minHeight: 180,
-            paddingRight: 4,
+            paddingInlineEnd: 4,
           }}
           data-testid="item-search-results"
         >
@@ -249,7 +249,7 @@ export function ItemSearchModal({
               style={{
                 padding: "36px 16px",
                 textAlign: "center",
-                color: "var(--sk-muted, #888)",
+                color: "var(--sk-muted)",
               }}
               data-testid="item-search-empty"
             >
@@ -285,11 +285,11 @@ export function ItemSearchModal({
                     flexDirection: "column",
                     gap: 6,
                     padding: "12px 16px",
-                    border: `1px solid ${isSelected ? "var(--sk-accent, #3b82f6)" : "var(--sk-border, #e5e7eb)"}`,
-                    borderRadius: "var(--sk-radius-sm, 6px)",
+                    border: `1px solid ${isSelected ? "var(--sk-primary)" : "var(--sk-border)"}`,
+                    borderRadius: "var(--sk-radius-sm)",
                     background: isSelected
-                      ? "var(--sk-accent-soft, rgba(59, 130, 246, 0.08))"
-                      : "var(--sk-surface-soft, rgba(255, 255, 255, 0.04))",
+                      ? "var(--sk-primary-soft)"
+                      : "var(--sk-surface-soft)",
                     cursor: "pointer",
                     textAlign: "inherit",
                     transition: "border-color 0.15s, background-color 0.15s",
@@ -329,7 +329,7 @@ export function ItemSearchModal({
                       alignItems: "center",
                       gap: 8,
                       fontSize: "0.82rem",
-                      color: "var(--sk-muted, #888)",
+                      color: "var(--sk-muted)",
                     }}
                   >
                     {hasDistinctProduct && (

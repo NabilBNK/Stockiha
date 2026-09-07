@@ -36,6 +36,11 @@ colors:
 
   # ── Accent / Primary — USER-CONFIGURABLE (see §4) ────────────
   # Single stored value. All variants below are DERIVED, never hand-set.
+  # OWNER OVERRIDE (2026-09-07, WS-J-1): the Owner ruled BLUE, not this
+  # document's orange default. src/styles/global.css uses #2457d6 (light) /
+  # #6f98ff (dark) as --sk-primary instead of #c25012. This YAML value and
+  # §3.1's "Default: #c25012" below remain the documented system default for
+  # any future accent picker (§4.5's preset list); they are not what ships.
   accent: "#c25012"
   accent-hover: "derived"
   accent-active: "derived"
@@ -469,6 +474,8 @@ Stockiha is a **single-company, single-store Windows desktop ERP** built with Ta
 The accent replaces v1's fixed cobalt. It is a **single stored value** from which every variant is derived. Full specification in §4.
 
 Default: `#c25012`. Configurable from **Paramètres → Apparence** and from the topbar swatch shortcut, both writing the same stored setting.
+
+> **Owner override, recorded 2026-09-07 (WS-J-1).** The Owner ruled BLUE for the shipped accent, not this section's orange default: `#2457d6` in light mode, `#6f98ff` in dark mode (the light value fails AA on the WS-J-1 dark surface; `#6f98ff` is the same hue lightened until it clears 4.5:1 — see the WS-J-1 report's contrast table). `src/styles/global.css` ships the override; this document's `#c25012` stays as the system default for the eventual Settings → Apparence picker (§4.5), not as what currently renders.
 
 > **On the default value.** The approved mockup used `#ea6a25`. That value reaches only **3.19:1** against white and fails AA as a button fill and as text. `#c25012` is the same hue family darkened to **4.72:1**, which passes AA in both roles. Do not restore the lighter orange as the default — it would ship a WCAG failure on the most frequently rendered surface in the application. If the lighter orange is wanted visually, it must be paired with near-black text rather than white, which changes the button's character.
 

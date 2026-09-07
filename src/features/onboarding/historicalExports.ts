@@ -172,10 +172,14 @@ export async function buildHistoricalAnalyticsPdf(
   const pageWidth = 595.28;
   const pageHeight = 841.89;
   const margin = 42;
-  const blue = rgb(36 / 255, 87 / 255, 214 / 255);
-  const textColor = rgb(23 / 255, 32 / 255, 51 / 255);
-  const muted = rgb(99 / 255, 112 / 255, 131 / 255);
-  const surface = rgb(244 / 255, 247 / 255, 251 / 255);
+  // PDF generation runs outside the DOM (pdf-lib draws to a page buffer, not
+  // CSS), so these can't read the --sk-* custom properties — they are kept
+  // in sync with the WS-J-1 warm light palette by hand instead. The export
+  // has no dark variant; printed/exported documents stay light always.
+  const blue = rgb(36 / 255, 87 / 255, 214 / 255); // --sk-primary (light)
+  const textColor = rgb(28 / 255, 25 / 255, 23 / 255); // --sk-text (light)
+  const muted = rgb(111 / 255, 103 / 255, 94 / 255); // --sk-muted (light)
+  const surface = rgb(245 / 255, 242 / 255, 238 / 255); // --sk-surface-soft (light)
   const pages = [doc.addPage([pageWidth, pageHeight])];
   let page = pages[0];
   const draw = (value: string, x: number, y: number, size: number, color = textColor, rightAligned = locale === 'ar') => {

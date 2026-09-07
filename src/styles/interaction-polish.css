@@ -121,7 +121,7 @@ input[type="radio"] {
 .sk-btn--success {
   border-color: color-mix(in srgb, var(--sk-ok) 82%, #000 6%);
   background: var(--sk-ok);
-  color: #fff;
+  color: var(--sk-ok-contrast);
   box-shadow: 0 4px 10px color-mix(in srgb, var(--sk-ok) 20%, transparent);
 }
 

@@ -124,7 +124,7 @@ export function HistoricalTrendChart({ timeline, locale }: Props) {
                     y={0}
                     width={4 * barWidth + 3 * barGap + 8}
                     height={chartHeight}
-                    fill="rgba(99, 102, 241, 0.06)"
+                    fill="color-mix(in srgb, var(--sk-primary) 8%, transparent)"
                     rx="4"
                   />
                 )}
