@@ -255,12 +255,11 @@ pub(crate) async fn add_attribute_value(
 pub(crate) async fn create_unit(
     state: State<'_, DatabaseState>,
     session_token: String,
-    code: String,
     name: String,
     allows_fractions: bool,
 ) -> Result<i64, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::create_unit(pool, &session_token, &code, &name, allows_fractions)
+    catalog::create_unit(pool, &session_token, &name, allows_fractions)
         .await
         .map_err(IpcError::from)
 }
@@ -758,21 +757,13 @@ pub(crate) async fn rename_unit(
     state: State<'_, DatabaseState>,
     session_token: String,
     unit_id: i64,
-    code: String,
     name: String,
     allows_fractions: bool,
 ) -> Result<(), IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::rename_unit(
-        pool,
-        &session_token,
-        unit_id,
-        &code,
-        &name,
-        allows_fractions,
-    )
-    .await
-    .map_err(IpcError::from)
+    catalog::rename_unit(pool, &session_token, unit_id, &name, allows_fractions)
+        .await
+        .map_err(IpcError::from)
 }
 
 #[tauri::command]

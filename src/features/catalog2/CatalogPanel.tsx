@@ -958,20 +958,20 @@ export function CatalogCreatePanel({
   }, [token, loadRefData]);
 
   /**
-   * `catalog.create_unit` needs a code as well as a name; the inline shortcut
-   * collects one value, so the typed text is used for both and the operator
-   * can refine the pair later on Catalogue Setup. Same behaviour as the
-   * existing product form.
+   * WS-D-14 Part 3: `catalog.create_unit` no longer takes a code at all — it
+   * is generated server-side from the name, so this shortcut just forwards
+   * the typed name, and the operator sees the generated code afterwards on
+   * Catalogue Setup.
    *
-   * WS-D-13 Phase A: this shortcut has no room to ask whether the new unit
-   * takes decimals, so it passes `true` — the same permissive value as the
-   * column default. Tightening it to whole-number-only is a deliberate choice
-   * made on Catalogue Setup, where the toggle and its explanation live. The
+   * This shortcut has no room to ask whether the new unit takes decimals, so
+   * it passes `true` — the same permissive value as the column default.
+   * Tightening it to whole-number-only is a deliberate choice made on
+   * Catalogue Setup, where the toggle and its explanation live. The
    * permissive direction is the safe one to default to: it blocks nothing the
    * operator has not explicitly asked to have blocked.
    */
   const createUnit = useCallback(async (label: string) => {
-    const id = await ipc.createUnit(token, label, label, true);
+    const id = await ipc.createUnit(token, label, true);
     await loadRefData();
     return id;
   }, [token, loadRefData]);

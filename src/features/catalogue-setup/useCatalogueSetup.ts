@@ -102,18 +102,19 @@ export function useCatalogueSetup(token: string) {
   // Units. WS-D-13 Phase A: both writers carry allows_fractions, and
   // rename assigns it unconditionally — the row editor seeds it from the
   // current row, so a rename that does not touch the toggle preserves it.
-  const createUnit = useCallback(async (code: string, name: string, allowsFractions: boolean) => {
-    await ipc.createUnit(token, code, name, allowsFractions);
+  // WS-D-14 Part 3: the code is no longer a caller-supplied argument at all
+  // — it is generated server-side from the name, and stays fixed afterwards.
+  const createUnit = useCallback(async (name: string, allowsFractions: boolean) => {
+    await ipc.createUnit(token, name, allowsFractions);
     await loadUnits();
   }, [token, loadUnits]);
 
   const renameUnit = useCallback(async (
     id: number,
-    code: string,
     name: string,
     allowsFractions: boolean,
   ) => {
-    await ipc.renameUnit(token, id, code, name, allowsFractions);
+    await ipc.renameUnit(token, id, name, allowsFractions);
     await loadUnits();
   }, [token, loadUnits]);
 

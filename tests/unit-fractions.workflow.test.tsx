@@ -157,12 +157,16 @@ describe('unit create/rename carry allows_fractions (WS-D-13 A1-A4)', () => {
     fireEvent.click(await screen.findByTestId('catalogue-setup-tab-units'));
   }
 
-  it('persists allows_fractions when a unit is created', async () => {
+  it('persists allows_fractions when a unit is created, with no code input at all (WS-D-14 Part 3)', async () => {
     const createCalls: Record<string, unknown>[] = [];
     wireInvoke(baseHandlers({
       create_unit: (args) => { createCalls.push(args); return 3; },
     }));
     await openUnitsTab();
+
+    // The code is generated server-side now: there is no field to type one
+    // into, and no predicted code is shown before submitting.
+    expect(screen.queryByLabelText('Unit code')).not.toBeInTheDocument();
 
     const flag = await screen.findByTestId('coded-ref-create-flag');
     // The create form defaults to permissive, matching the column default.
@@ -170,14 +174,13 @@ describe('unit create/rename carry allows_fractions (WS-D-13 A1-A4)', () => {
     fireEvent.click(flag);
     expect(flag).not.toBeChecked();
 
-    fireEvent.change(screen.getByLabelText('Unit code'), { target: { value: 'BOX' } });
     fireEvent.change(screen.getByLabelText('Unit name'), { target: { value: 'Box' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create unit' }));
 
     await waitFor(() => expect(createCalls).toHaveLength(1));
-    expect(createCalls[0].code).toBe('BOX');
     expect(createCalls[0].name).toBe('Box');
     expect(createCalls[0].allowsFractions).toBe(false);
+    expect(createCalls[0]).not.toHaveProperty('code');
   });
 
   // THE OVERWRITE TRAP. rename_unit assigns allows_fractions unconditionally,
@@ -196,7 +199,12 @@ describe('unit create/rename carry allows_fractions (WS-D-13 A1-A4)', () => {
 
     const rows = screen.getAllByRole('row');
     const pcRow = rows.find((r) => r.textContent?.includes('Piece'))!;
+    // WS-D-14 Part 3: the code column shows plain text, never an input, even
+    // while the row is being edited.
+    expect(within(pcRow).getByTestId('coded-ref-code-1')).toHaveTextContent('PC');
     fireEvent.click(within(pcRow).getByRole('button', { name: 'Rename' }));
+    expect(within(pcRow).getByTestId('coded-ref-code-1')).toHaveTextContent('PC');
+    expect(within(pcRow).queryByLabelText('Unit code')).not.toBeInTheDocument();
 
     const editFlag = await screen.findByTestId('coded-ref-edit-flag-1');
     // Seeded from the row, not from the create form's default.
@@ -206,6 +214,9 @@ describe('unit create/rename carry allows_fractions (WS-D-13 A1-A4)', () => {
     await waitFor(() => expect(renameCalls).toHaveLength(1));
     expect(renameCalls[0].unitId).toBe(1);
     expect(renameCalls[0].allowsFractions).toBe(false);
+    // The code is non-editable: rename_unit's signature has nowhere to put
+    // one, and this call must not invent one either.
+    expect(renameCalls[0]).not.toHaveProperty('code');
   });
 
   it('applies a deliberate change of the flag through rename', async () => {

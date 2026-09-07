@@ -50,11 +50,12 @@ BEGIN
     v_b := catalog.add_attribute_value('admintok', v_color, 'Black');
 
     -- Units
-    -- WS-D-13 Phase A: create_unit carries allows_fractions. A Carton is
-    -- whole-number-only; Kilogram and Gram are weights and take decimals.
-    v_carton := catalog.create_unit('admintok', 'CARTON', 'Carton', false);
-    v_kg := catalog.create_unit('admintok', 'KG', 'Kilogram', true);
-    v_gram := catalog.create_unit('admintok', 'G', 'Gram', true);
+    -- WS-D-14 Part 3: create_unit no longer takes a code -- it is derived
+    -- from the name server-side. A Carton is whole-number-only; Kilogram and
+    -- Gram are weights and take decimals.
+    v_carton := catalog.create_unit('admintok', 'Carton', false);
+    v_kg := catalog.create_unit('admintok', 'Kilogram', true);
+    v_gram := catalog.create_unit('admintok', 'Gram', true);
 
     -- Create a product with TWO variants, attributes and barcodes.
     v_res := catalog.create_product_with_variants('admintok', 'T-Shirt', v_kg, true, jsonb_build_array(
@@ -76,10 +77,12 @@ BEGIN
     SELECT count(*) INTO v_cnt FROM catalog.product_variants WHERE product_id = v_pid;
     IF v_cnt <> 2 THEN RAISE EXCEPTION 'ASSERT FAIL: expected 2 variants, got %', v_cnt; END IF;
 
-    -- product-owned unit is copied to each variant
-    SELECT u.normalized_code INTO v_txt FROM catalog.product_variants pv
-        JOIN catalog.units u ON u.id = pv.base_unit_id WHERE pv.id = v_v1;
-    IF v_txt <> 'KG' THEN RAISE EXCEPTION 'ASSERT FAIL: base unit not KG (%)', v_txt; END IF;
+    -- product-owned unit is copied to each variant. WS-D-14 Part 3: unit
+    -- codes are now server-generated, so this compares by id, not by a
+    -- hardcoded code string.
+    IF (SELECT pv.base_unit_id FROM catalog.product_variants pv WHERE pv.id = v_v1) <> v_kg THEN
+        RAISE EXCEPTION 'ASSERT FAIL: base unit not the Kilogram unit created above';
+    END IF;
 
     -- attribute ownership is persisted, not merely the selected value id
     SELECT count(*) INTO v_cnt

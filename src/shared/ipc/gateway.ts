@@ -327,17 +327,22 @@ export function listAttributes(sessionToken: string): Promise<AttributeDefinitio
  * function rejects NULL, and a silent default here is exactly how a
  * whole-number unit would end up permissive without anyone choosing that.
  *
- * Get-or-create: when a unit with this normalized code already exists, its id
- * is returned and its existing flag is left ALONE. Changing an existing unit's
- * flag is renameUnit's job.
+ * WS-D-14 Part 3 removed `code` entirely. The code is generated server-side,
+ * deterministically from `name`, with collisions resolved atomically inside
+ * the SQL function. Generating it in React was rejected deliberately:
+ * `catalog.units.normalized_code` is UNIQUE, and if a client-derived code
+ * collided with an existing unit, the operator would silently be handed that
+ * OTHER unit — a different unit than they meant, with someone else's
+ * allows_fractions flag. Every call now creates a genuinely NEW row; there is
+ * no code left to retype to mean "the same unit", so a collision is resolved
+ * by suffixing the generated code, never by returning an existing one.
  */
 export function createUnit(
   sessionToken: string,
-  code: string,
   name: string,
   allowsFractions: boolean,
 ): Promise<number> {
-  return call<number>(COMMANDS.CREATE_UNIT, { sessionToken, code, name, allowsFractions });
+  return call<number>(COMMANDS.CREATE_UNIT, { sessionToken, name, allowsFractions });
 }
 
 export function listUnits(sessionToken: string): Promise<Unit[]> {
@@ -455,18 +460,20 @@ export function listUnitsV2(sessionToken: string): Promise<UnitLifecycleItem[]> 
 }
 
 /**
- * THE OVERWRITE TRAP. `catalog.rename_unit` assigns code, name AND
- * allows_fractions unconditionally, so `allowsFractions` must carry the unit's
- * CURRENT value unless the operator deliberately changed it.
+ * THE OVERWRITE TRAP. `catalog.rename_unit` assigns name AND allows_fractions
+ * unconditionally, so `allowsFractions` must carry the unit's CURRENT value
+ * unless the operator deliberately changed it.
+ *
+ * WS-D-14 Part 3 removed `code`: the Owner ruled it non-editable, so renaming
+ * a unit's name never touches its code — there is nothing left to pass.
  */
 export function renameUnit(
   sessionToken: string,
   unitId: number,
-  code: string,
   name: string,
   allowsFractions: boolean,
 ): Promise<void> {
-  return call<void>(COMMANDS.RENAME_UNIT, { sessionToken, unitId, code, name, allowsFractions });
+  return call<void>(COMMANDS.RENAME_UNIT, { sessionToken, unitId, name, allowsFractions });
 }
 
 export function setUnitActive(sessionToken: string, unitId: number, isActive: boolean): Promise<void> {

@@ -388,34 +388,36 @@ pub(crate) async fn list_attributes(
         .collect())
 }
 
-/// `catalog.create_unit` — get-or-create, returns unit_id.
+/// `catalog.create_unit` — returns unit_id.
 ///
-/// WS-D-13 Phase A widened this to carry `allows_fractions`. Every argument is
-/// cast explicitly (ws-d-skill.md section 2.2): the migration drops the old
-/// 3-arg signature so only one is live, but an untyped literal here would
-/// still be `unknown` to the planner, which is how this repository has already
+/// WS-D-14 Part 3 removed the `code` parameter entirely: the code is now
+/// generated server-side (deterministically from the name, with a
+/// collision-suffix loop resolved atomically inside the SQL function), so
+/// that uniqueness against `normalized_code` can never be gamed by a client
+/// guessing a code React derived independently. Every argument is cast
+/// explicitly (ws-d-skill.md section 2.2): the migration drops the old 4-arg
+/// signature so only one is live, but an untyped literal here would still be
+/// `unknown` to the planner, which is how this repository has already
 /// produced a runtime "function is not unique" once.
 ///
-/// On a `normalized_code` conflict the SQL function returns the EXISTING unit
-/// without touching its flag — see the migration's note. A caller must not
-/// assume `allows_fractions` was applied when the unit already existed.
+/// Unlike the old get-or-create-by-code behaviour, every call now creates a
+/// genuinely NEW row — there is no code left for a caller to retype to mean
+/// "the same unit", so a name collision is resolved by suffixing the
+/// generated code, not by returning an existing unit.
 pub(crate) async fn create_unit(
     pool: &PgPool,
     session_token: &str,
-    code: &str,
     name: &str,
     allows_fractions: bool,
 ) -> Result<i64, AppError> {
-    let (id,) = sqlx::query_as::<_, (i64,)>(
-        "SELECT catalog.create_unit($1::text, $2::text, $3::text, $4::boolean)",
-    )
-    .bind(session_token)
-    .bind(code)
-    .bind(name)
-    .bind(allows_fractions)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let (id,) =
+        sqlx::query_as::<_, (i64,)>("SELECT catalog.create_unit($1::text, $2::text, $3::boolean)")
+            .bind(session_token)
+            .bind(name)
+            .bind(allows_fractions)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
     Ok(id)
 }
 
@@ -1066,32 +1068,34 @@ pub(crate) async fn list_units_v2(
         .collect())
 }
 
-/// `catalog.rename_unit` — THE OVERWRITE TRAP.
+/// `catalog.rename_unit` — THE OVERWRITE TRAP, and code stability.
 ///
-/// The SQL function assigns code, normalized_code, name and (since WS-D-13
-/// Phase A) allows_fractions UNCONDITIONALLY. `allows_fractions` is therefore
-/// a required argument, and the caller must pass the unit's CURRENT value
-/// unless the operator deliberately changed it. Defaulting it here would
-/// silently re-open a whole-number unit to fractions on every rename.
+/// The SQL function assigns name and (since WS-D-13 Phase A) allows_fractions
+/// UNCONDITIONALLY. `allows_fractions` is therefore a required argument, and
+/// the caller must pass the unit's CURRENT value unless the operator
+/// deliberately changed it. Defaulting it here would silently re-open a
+/// whole-number unit to fractions on every rename.
+///
+/// WS-D-14 Part 3 REMOVED the `code` parameter entirely: the Owner ruled the
+/// code non-editable, so there is nothing left to overwrite it with. Renaming
+/// a unit's NAME never touches its code, deliberately — a code may already be
+/// printed on a document, and changing it silently on a name edit would break
+/// recognition of what that document refers to.
 pub(crate) async fn rename_unit(
     pool: &PgPool,
     session_token: &str,
     unit_id: i64,
-    code: &str,
     name: &str,
     allows_fractions: bool,
 ) -> Result<(), AppError> {
-    sqlx::query(
-        "SELECT catalog.rename_unit($1::text, $2::bigint, $3::text, $4::text, $5::boolean)",
-    )
-    .bind(session_token)
-    .bind(unit_id)
-    .bind(code)
-    .bind(name)
-    .bind(allows_fractions)
-    .execute(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    sqlx::query("SELECT catalog.rename_unit($1::text, $2::bigint, $3::text, $4::boolean)")
+        .bind(session_token)
+        .bind(unit_id)
+        .bind(name)
+        .bind(allows_fractions)
+        .execute(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
     Ok(())
 }
 
@@ -1290,15 +1294,10 @@ mod tests {
     }
 
     async fn seed_unit(pool: &PgPool, token: &str, suffix: u128) -> i64 {
-        create_unit(
-            pool,
-            token,
-            &format!("U{suffix}"),
-            &format!("Unit {suffix}"),
-            true,
-        )
-        .await
-        .expect("creating a fixture unit must succeed")
+        // WS-D-14 Part 3: create_unit no longer takes a code.
+        create_unit(pool, token, &format!("Unit {suffix}"), true)
+            .await
+            .expect("creating a fixture unit must succeed")
     }
 
     /// A fixed-format pseudo-UUID string, unique per test run, for the one

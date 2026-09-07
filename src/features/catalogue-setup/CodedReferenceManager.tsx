@@ -3,6 +3,13 @@
  * reference table that carries both a code and a name (e.g. Units).
  * Same behaviour as SimpleReferenceManager; see that file for the
  * client-disable-plus-server-authority delete note.
+ *
+ * WS-D-14 Part 3 — the code column is DISPLAY ONLY. The Owner ruled unit
+ * codes non-editable and generated server-side, so this widget's only
+ * consumer (Units) never sends a code: `onCreate`/`onRename` carry name and
+ * the optional flag only, and the code column has no input in either the
+ * create form or the rename row — it shows the value the server assigned,
+ * before and after a rename.
  */
 import { useState, type FormEvent } from 'react';
 
@@ -29,7 +36,10 @@ export interface CodedReferenceManagerProps {
   items: CodedReferenceItem[];
   loading: boolean;
   error: string | null;
+  /** Column header only — the code itself is never entered here. */
   codeLabel: string;
+  /** One line under the create form explaining that the code is generated. */
+  codeHint?: string;
   nameLabel: string;
   createLabel: string;
   emptyText: string;
@@ -37,21 +47,20 @@ export interface CodedReferenceManagerProps {
   flagLabel?: string;
   /** One line under the create checkbox explaining what the flag means. */
   flagHint?: string;
-  onCreate: (code: string, name: string, flag: boolean) => Promise<void>;
-  onRename: (id: number, code: string, name: string, flag: boolean) => Promise<void>;
+  onCreate: (name: string, flag: boolean) => Promise<void>;
+  onRename: (id: number, name: string, flag: boolean) => Promise<void>;
   onToggleActive: (id: number, isActive: boolean) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
 }
 
 export function CodedReferenceManager({
-  items, loading, error, codeLabel, nameLabel, createLabel, emptyText,
+  items, loading, error, codeLabel, codeHint, nameLabel, createLabel, emptyText,
   flagLabel, flagHint,
   onCreate, onRename, onToggleActive, onDelete,
 }: CodedReferenceManagerProps) {
   const { t } = useI18n();
   const errorText = useErrorText();
 
-  const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   // Matches the column default: a new unit is permissive until said otherwise.
   const [newFlag, setNewFlag] = useState(true);
@@ -59,7 +68,6 @@ export function CodedReferenceManager({
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingCode, setEditingCode] = useState('');
   const [editingName, setEditingName] = useState('');
   const [editingFlag, setEditingFlag] = useState(true);
 
@@ -70,14 +78,12 @@ export function CodedReferenceManager({
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
-    const code = newCode.trim();
     const name = newName.trim();
-    if (!code || !name || creating) return;
+    if (!name || creating) return;
     setCreating(true);
     setCreateError(null);
     try {
-      await onCreate(code, name, newFlag);
-      setNewCode('');
+      await onCreate(name, newFlag);
       setNewName('');
       setNewFlag(true);
     } catch (err) {
@@ -89,7 +95,6 @@ export function CodedReferenceManager({
 
   function startEdit(item: CodedReferenceItem) {
     setEditingId(item.id);
-    setEditingCode(item.code);
     setEditingName(item.name);
     // THE OVERWRITE TRAP: rename assigns the flag unconditionally, so the
     // editor must be seeded from the row. Leaving this at its previous value
@@ -99,13 +104,12 @@ export function CodedReferenceManager({
   }
 
   async function commitEdit(id: number) {
-    const code = editingCode.trim();
     const name = editingName.trim();
-    if (!code || !name || busyId != null) return;
+    if (!name || busyId != null) return;
     setBusyId(id);
     setRowError(null);
     try {
-      await onRename(id, code, name, editingFlag);
+      await onRename(id, name, editingFlag);
       setEditingId(null);
     } catch (err) {
       setRowError(errorText(err));
@@ -153,18 +157,16 @@ export function CodedReferenceManager({
         {createError ? <Banner tone="error">{createError}</Banner> : null}
         <div className="sk-form__grid">
           <TextField
-            label={codeLabel}
-            value={newCode}
-            onChange={(e) => setNewCode(e.target.value)}
-            disabled={creating}
-          />
-          <TextField
             label={nameLabel}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             disabled={creating}
           />
         </div>
+        {/* WS-D-14 Part 3: no code field, and no predicted code shown before
+            submitting — a preview that disagreed with the server's own
+            derivation would be worse than none. */}
+        {codeHint ? <p className="sk-muted">{codeHint}</p> : null}
         {flagLabel ? (
           <div>
             <label className="sk-checkbox-row">
@@ -180,7 +182,7 @@ export function CodedReferenceManager({
             {flagHint ? <p className="sk-muted">{flagHint}</p> : null}
           </div>
         ) : null}
-        <Button type="submit" loading={creating} disabled={!newCode.trim() || !newName.trim()}>
+        <Button type="submit" loading={creating} disabled={!newName.trim()}>
           {createLabel}
         </Button>
       </form>
@@ -207,18 +209,10 @@ export function CodedReferenceManager({
                 const canDelete = item.usage_count === 0;
                 return (
                   <tr key={item.id} className={item.is_active ? '' : 'sk-row--inactive'}>
-                    <td>
-                      {isEditing ? (
-                        <TextField
-                          label={codeLabel}
-                          value={editingCode}
-                          onChange={(e) => setEditingCode(e.target.value)}
-                          disabled={isBusy}
-                        />
-                      ) : (
-                        item.code
-                      )}
-                    </td>
+                    {/* WS-D-14 Part 3: the code is never an input, editing or
+                        not — it is generated once, at creation, and stays
+                        fixed. */}
+                    <td data-testid={`coded-ref-code-${item.id}`}>{item.code}</td>
                     <td>
                       {isEditing ? (
                         <TextField
@@ -272,7 +266,7 @@ export function CodedReferenceManager({
                           <Button
                             onClick={() => void commitEdit(item.id)}
                             loading={isBusy}
-                            disabled={!editingCode.trim() || !editingName.trim()}
+                            disabled={!editingName.trim()}
                           >
                             {t('common.save')}
                           </Button>

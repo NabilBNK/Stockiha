@@ -98,28 +98,75 @@ END $$;
 DO $$
 DECLARE v_unit_new bigint; v_unit_alt bigint; v_pid bigint; v_vid bigint;
 BEGIN
-    -- WS-D-13 Phase A: create_unit/rename_unit now carry allows_fractions.
-    -- A Crate holds whole items, so it is created whole-number-only.
-    v_unit_new := catalog.create_unit('wsdadmintok', 'CRATE', 'Crate', false);
-    IF catalog.create_unit('wsdadmintok', ' crate ', 'Crate Dup', true) <> v_unit_new THEN
-        RAISE EXCEPTION 'ASSERT FAIL: unit create not normalized/idempotent';
-    END IF;
-    -- ...and the get-or-create must NOT have redefined the existing unit's
-    -- fractional semantics as a side effect of the second call passing true.
-    IF (SELECT allows_fractions FROM catalog.units WHERE id = v_unit_new) IS DISTINCT FROM false THEN
-        RAISE EXCEPTION 'ASSERT FAIL: create_unit conflict path overwrote allows_fractions';
+    -- WS-D-14 Part 3: create_unit no longer takes a code at all -- it is
+    -- generated server-side from the name. A Crate holds whole items, so it
+    -- is created whole-number-only.
+    v_unit_new := catalog.create_unit('wsdadmintok', 'Wooden Crate WSD14', false);
+    IF (SELECT code FROM catalog.units WHERE id = v_unit_new) <> 'WOODENCRATEWSD14' THEN
+        RAISE EXCEPTION 'ASSERT FAIL: unit code not derived from name as expected: %',
+            (SELECT code FROM catalog.units WHERE id = v_unit_new);
     END IF;
 
-    -- Rename carrying the CURRENT flag: the name changes, the flag survives.
-    PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'CRATE', 'Wooden Crate', false);
-    IF (SELECT name FROM catalog.units WHERE id = v_unit_new) <> 'Wooden Crate' THEN
-        RAISE EXCEPTION 'ASSERT FAIL: unit rename did not persist';
-    END IF;
-    IF (SELECT allows_fractions FROM catalog.units WHERE id = v_unit_new) IS DISTINCT FROM false THEN
-        RAISE EXCEPTION 'ASSERT FAIL: unit rename did not preserve allows_fractions';
-    END IF;
+    -- COLLISION: a second unit with the SAME derived candidate gets a
+    -- distinct, suffixed code -- it is a genuinely new row, never a
+    -- get-or-create return of the first one (there is no typed code left to
+    -- retype, so a collision here means two unrelated units, not a retry).
+    DECLARE v_unit_dup bigint;
+    BEGIN
+        v_unit_dup := catalog.create_unit('wsdadmintok', 'Wooden Crate WSD14', true);
+        IF v_unit_dup = v_unit_new THEN
+            RAISE EXCEPTION 'ASSERT FAIL: colliding create_unit call must not return the existing row';
+        END IF;
+        IF (SELECT code FROM catalog.units WHERE id = v_unit_dup) <> 'WOODENCRATEWSD142' THEN
+            RAISE EXCEPTION 'ASSERT FAIL: collision suffix not applied: %',
+                (SELECT code FROM catalog.units WHERE id = v_unit_dup);
+        END IF;
+        -- Each row keeps its OWN flag -- the collision path must not have
+        -- copied the first unit's allows_fractions onto the second.
+        IF (SELECT allows_fractions FROM catalog.units WHERE id = v_unit_dup) IS DISTINCT FROM true THEN
+            RAISE EXCEPTION 'ASSERT FAIL: colliding unit did not get its own allows_fractions';
+        END IF;
+    END;
+
+    -- NON-LATIN NAME: a name with no Latin letters or digits at all (Arabic
+    -- for "piece") must still produce a usable, non-empty, unique code --
+    -- the 'UNIT' fallback, suffixed like any other collision.
+    DECLARE v_unit_ar bigint; v_code_ar text;
+    BEGIN
+        v_unit_ar := catalog.create_unit('wsdadmintok', 'قطعة', false);
+        SELECT code INTO v_code_ar FROM catalog.units WHERE id = v_unit_ar;
+        IF v_code_ar IS NULL OR btrim(v_code_ar) = '' THEN
+            RAISE EXCEPTION 'ASSERT FAIL: non-Latin name produced an empty code';
+        END IF;
+        IF v_code_ar !~ '^UNIT[0-9]*$' THEN
+            RAISE EXCEPTION 'ASSERT FAIL: non-Latin name did not fall back to the UNIT candidate: %', v_code_ar;
+        END IF;
+    END;
+
+    -- blank name rejected (name is now the only required text argument)
+    PERFORM pg_temp.expect_error(
+        format('SELECT catalog.create_unit(%L,%L,%L)', 'wsdadmintok', '   ', false), '22023');
+
+    -- Rename carrying the CURRENT flag: the name changes, the flag survives,
+    -- and the CODE NEVER CHANGES -- the Owner ruled it non-editable, and
+    -- rename_unit's parameter list no longer even accepts one.
+    DECLARE v_code_before text;
+    BEGIN
+        SELECT code INTO v_code_before FROM catalog.units WHERE id = v_unit_new;
+        PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'Wooden Crate (renamed)', false);
+        IF (SELECT name FROM catalog.units WHERE id = v_unit_new) <> 'Wooden Crate (renamed)' THEN
+            RAISE EXCEPTION 'ASSERT FAIL: unit rename did not persist';
+        END IF;
+        IF (SELECT code FROM catalog.units WHERE id = v_unit_new) <> v_code_before THEN
+            RAISE EXCEPTION 'ASSERT FAIL: rename changed the code from % to %',
+                v_code_before, (SELECT code FROM catalog.units WHERE id = v_unit_new);
+        END IF;
+        IF (SELECT allows_fractions FROM catalog.units WHERE id = v_unit_new) IS DISTINCT FROM false THEN
+            RAISE EXCEPTION 'ASSERT FAIL: unit rename did not preserve allows_fractions';
+        END IF;
+    END;
     -- A deliberate change of the flag through rename does take effect...
-    PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'CRATE', 'Wooden Crate', true);
+    PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'Wooden Crate (renamed)', true);
     IF (SELECT allows_fractions FROM catalog.units WHERE id = v_unit_new) IS DISTINCT FROM true THEN
         RAISE EXCEPTION 'ASSERT FAIL: unit rename did not apply allows_fractions';
     END IF;
@@ -128,13 +175,13 @@ BEGIN
        IS DISTINCT FROM true THEN
         RAISE EXCEPTION 'ASSERT FAIL: list_units_v2 did not expose allows_fractions';
     END IF;
-    PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'CRATE', 'Wooden Crate', false);
+    PERFORM catalog.rename_unit('wsdadmintok', v_unit_new, 'Wooden Crate (renamed)', false);
     PERFORM pg_temp.expect_error(
-        format('SELECT catalog.rename_unit(%L,%s,%L,%L,%L)', 'wsdadmintok', v_unit_new, 'UNIT', 'x', false), '22023');
+        format('SELECT catalog.rename_unit(%L,%s,%L,%L)', 'wsdadmintok', v_unit_new, '   ', false), '22023');
 
     DECLARE v_disposable bigint;
     BEGIN
-        v_disposable := catalog.create_unit('wsdadmintok', 'TEMPU', 'Temp Unit', true);
+        v_disposable := catalog.create_unit('wsdadmintok', 'Temp Unit WSD14', true);
         PERFORM catalog.delete_unit('wsdadmintok', v_disposable);
         IF EXISTS (SELECT 1 FROM catalog.units WHERE id = v_disposable) THEN
             RAISE EXCEPTION 'ASSERT FAIL: unused unit not deleted';
@@ -146,7 +193,7 @@ BEGIN
         format('SELECT catalog.delete_unit(%L,%s)', 'wsdadmintok', (SELECT v FROM t WHERE k='unit')), '55000');
 
     -- in-use-by-alternate-unit conversion row blocks delete
-    v_unit_alt := catalog.create_unit('wsdadmintok', 'DOZEN2', 'Dozen (WS-D test)', false);
+    v_unit_alt := catalog.create_unit('wsdadmintok', 'Dozen WSD14 test', false);
     SELECT v INTO v_vid FROM t WHERE k = 'v_cola';
     -- WS-D-14 Part 2: add_variant_alt_unit now takes a direction and a
     -- quantity instead of a bare factor. ALT_TO_BASE with quantity 12 means
@@ -182,7 +229,8 @@ BEGIN
             RAISE EXCEPTION 'ASSERT FAIL: conversion_factor must cross as text, got %',
                 jsonb_typeof(v_alt -> 'conversion_factor');
         END IF;
-        IF (v_alt ->> 'unit_code') <> 'DOZEN2' OR (v_alt ->> 'unit_id')::bigint <> v_unit_alt THEN
+        IF (v_alt ->> 'unit_code') <> (SELECT code FROM catalog.units WHERE id = v_unit_alt)
+           OR (v_alt ->> 'unit_id')::bigint <> v_unit_alt THEN
             RAISE EXCEPTION 'ASSERT FAIL: alt_units row does not describe the configured unit: %', v_alt;
         END IF;
         -- WS-D-14 Part 2: ALT_TO_BASE is a direct copy, no division --
@@ -218,8 +266,10 @@ DECLARE
     v_base bigint; v_alt bigint; v_pid bigint; v_vid bigint;
     v_detail jsonb; v_variant jsonb; v_altrow jsonb;
 BEGIN
-    v_base := catalog.create_unit('wsdadmintok', 'WSD14BOX', 'Box', false);
-    v_alt  := catalog.create_unit('wsdadmintok', 'WSD14PC', 'Piece', false);
+    -- WS-D-14 Part 3: create_unit no longer takes a code; it is derived from
+    -- the name.
+    v_base := catalog.create_unit('wsdadmintok', 'WSD14 Box', false);
+    v_alt  := catalog.create_unit('wsdadmintok', 'WSD14 Piece', false);
     SELECT product_id, variant_id INTO v_pid, v_vid
         FROM catalog.quick_create_product('wsdadmintok', 'WS-D-14 Pillow', v_base, 100, NULL, NULL, 0, true);
 

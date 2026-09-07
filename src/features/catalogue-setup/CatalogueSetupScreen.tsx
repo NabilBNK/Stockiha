@@ -123,6 +123,7 @@ export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string })
               loading={unitsLoading}
               error={unitsError}
               codeLabel={t('catalogueSetup.units.code')}
+              codeHint={t('catalogueSetup.units.codeGeneratedHint')}
               nameLabel={t('catalogueSetup.units.name')}
               createLabel={t('catalogueSetup.units.create')}
               emptyText={t('catalogueSetup.units.empty')}
