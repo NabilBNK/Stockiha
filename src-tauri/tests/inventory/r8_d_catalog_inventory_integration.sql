@@ -114,10 +114,13 @@ BEGIN
     );
     v_variant_id := ((v_product -> 'variant_ids') ->> 0)::bigint;
     v_other_variant_id := ((v_product -> 'variant_ids') ->> 1)::bigint;
+    -- WS-D-14 Part 2: add_variant_alt_unit takes a direction + quantity.
+    -- ALT_TO_BASE, quantity 12 means what the old bare-factor call meant.
     PERFORM catalog.add_variant_alt_unit(
         v_token,
         v_variant_id,
         v_carton_unit_id,
+        'ALT_TO_BASE',
         12.000000
     );
 

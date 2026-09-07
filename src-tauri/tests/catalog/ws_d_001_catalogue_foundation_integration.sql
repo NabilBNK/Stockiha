@@ -148,7 +148,10 @@ BEGIN
     -- in-use-by-alternate-unit conversion row blocks delete
     v_unit_alt := catalog.create_unit('wsdadmintok', 'DOZEN2', 'Dozen (WS-D test)', false);
     SELECT v INTO v_vid FROM t WHERE k = 'v_cola';
-    PERFORM catalog.add_variant_alt_unit('wsdadmintok', v_vid, v_unit_alt, 12);
+    -- WS-D-14 Part 2: add_variant_alt_unit now takes a direction and a
+    -- quantity instead of a bare factor. ALT_TO_BASE with quantity 12 means
+    -- exactly what the old 4-arg call meant: "1 DOZEN2 = 12 base units".
+    PERFORM catalog.add_variant_alt_unit('wsdadmintok', v_vid, v_unit_alt, 'ALT_TO_BASE', 12);
     PERFORM pg_temp.expect_error(format('SELECT catalog.delete_unit(%L,%s)', 'wsdadmintok', v_unit_alt), '55000');
 
     IF (SELECT usage_count FROM catalog.list_units_v2('wsdadmintok') WHERE id = v_unit_alt) <> 1 THEN
@@ -182,6 +185,18 @@ BEGIN
         IF (v_alt ->> 'unit_code') <> 'DOZEN2' OR (v_alt ->> 'unit_id')::bigint <> v_unit_alt THEN
             RAISE EXCEPTION 'ASSERT FAIL: alt_units row does not describe the configured unit: %', v_alt;
         END IF;
+        -- WS-D-14 Part 2: ALT_TO_BASE is a direct copy, no division --
+        -- conversion_quantity and conversion_factor must be identical.
+        IF (v_alt ->> 'conversion_direction') <> 'ALT_TO_BASE' THEN
+            RAISE EXCEPTION 'ASSERT FAIL: conversion_direction wrong: %', v_alt ->> 'conversion_direction';
+        END IF;
+        IF (v_alt ->> 'conversion_quantity') <> '12.000000' OR (v_alt ->> 'conversion_factor') <> '12.000000' THEN
+            RAISE EXCEPTION 'ASSERT FAIL: ALT_TO_BASE quantity/factor mismatch: %', v_alt;
+        END IF;
+        IF jsonb_typeof(v_alt -> 'conversion_quantity') <> 'string' THEN
+            RAISE EXCEPTION 'ASSERT FAIL: conversion_quantity must cross as text, got %',
+                jsonb_typeof(v_alt -> 'conversion_quantity');
+        END IF;
         -- ADD ONLY: the keys WS-D-5B and earlier established must all survive.
         IF NOT (v_variant ? 'variant_id' AND v_variant ? 'sku' AND v_variant ? 'name_override'
             AND v_variant ? 'effective_variant_name' AND v_variant ? 'primary_barcode'
@@ -195,6 +210,59 @@ BEGIN
     END;
 
     RAISE NOTICE 'unit CRUD (incl. alt-unit-in-use, alt_units in detail) OK';
+END $$;
+
+-- ---- 2b. WS-D-14 Part 2 -- conversion direction, the "1 BOX = 3 PIECE" trap ---
+DO $$
+DECLARE
+    v_base bigint; v_alt bigint; v_pid bigint; v_vid bigint;
+    v_detail jsonb; v_variant jsonb; v_altrow jsonb;
+BEGIN
+    v_base := catalog.create_unit('wsdadmintok', 'WSD14BOX', 'Box', false);
+    v_alt  := catalog.create_unit('wsdadmintok', 'WSD14PC', 'Piece', false);
+    SELECT product_id, variant_id INTO v_pid, v_vid
+        FROM catalog.quick_create_product('wsdadmintok', 'WS-D-14 Pillow', v_base, 100, NULL, NULL, 0, true);
+
+    -- THE TRAP: "1 BOX(base) = 3 PIECE(alt)" must store exactly "3", never
+    -- the lossy reciprocal 0.333333 a division-in-React approach would
+    -- produce and would then have to display back.
+    PERFORM catalog.add_variant_alt_unit('wsdadmintok', v_vid, v_alt, 'BASE_TO_ALT', 3);
+
+    v_detail := catalog.get_product_detail('wsdadmintok', v_pid);
+    SELECT vv INTO v_variant FROM jsonb_array_elements(v_detail -> 'variants') vv
+        WHERE (vv ->> 'variant_id')::bigint = v_vid;
+    v_altrow := v_variant -> 'alt_units' -> 0;
+
+    IF (v_altrow ->> 'conversion_direction') <> 'BASE_TO_ALT' THEN
+        RAISE EXCEPTION 'ASSERT FAIL: BASE_TO_ALT direction not stored: %', v_altrow;
+    END IF;
+    IF (v_altrow ->> 'conversion_quantity') <> '3.000000' THEN
+        RAISE EXCEPTION 'ASSERT FAIL: conversion_quantity not exact for the trap case: %',
+            v_altrow ->> 'conversion_quantity';
+    END IF;
+    -- The legacy column is STILL populated, for the three out-of-scope
+    -- transaction-time functions that already read it -- and IS the lossy
+    -- reciprocal. That is expected and unchanged; nothing user-facing reads
+    -- this column for display (the UI reads conversion_direction and
+    -- conversion_quantity instead).
+    IF (v_altrow ->> 'conversion_factor') <> '0.333333' THEN
+        RAISE EXCEPTION 'ASSERT FAIL: conversion_factor unexpected: %', v_altrow ->> 'conversion_factor';
+    END IF;
+
+    -- base-unit-must-differ rule survives the signature change unchanged.
+    PERFORM pg_temp.expect_error(
+        format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,%L,%s)',
+            'wsdadmintok', v_vid, v_base, 'ALT_TO_BASE', 5), '22023');
+    -- zero and blank quantity still rejected.
+    PERFORM pg_temp.expect_error(
+        format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,%L,%s)',
+            'wsdadmintok', v_vid, v_alt, 'ALT_TO_BASE', 0), '22023');
+    -- an invalid direction string is rejected, not silently coerced.
+    PERFORM pg_temp.expect_error(
+        format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,%L,%s)',
+            'wsdadmintok', v_vid, v_alt, 'SIDEWAYS', 5), '22023');
+
+    RAISE NOTICE 'WS-D-14 Part 2 conversion-direction assertions PASSED';
 END $$;
 
 -- ---- 3. Attribute + attribute value CRUD -------------------------------------

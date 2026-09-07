@@ -100,7 +100,10 @@ BEGIN
     END IF;
 
     -- exact conversion factor stored exactly
-    PERFORM catalog.add_variant_alt_unit('admintok', v_v1, v_carton, 12);
+    -- WS-D-14 Part 2: add_variant_alt_unit takes a direction + quantity.
+    -- ALT_TO_BASE with quantity 12 means exactly what the old bare-factor
+    -- call meant: "1 CARTON = 12 base units".
+    PERFORM catalog.add_variant_alt_unit('admintok', v_v1, v_carton, 'ALT_TO_BASE', 12);
     SELECT conversion_factor::text INTO v_txt FROM catalog.variant_units WHERE variant_id=v_v1 AND unit_id=v_carton;
     IF v_txt <> '12.000000' THEN RAISE EXCEPTION 'ASSERT FAIL: carton factor %', v_txt; END IF;
 
@@ -138,26 +141,31 @@ BEGIN
     PERFORM pg_temp.expect_error(
         format('SELECT catalog.add_variant_barcode(%L,%s,%L)','admintok',v_v1,'6002'), '22023');
 
-    -- zero / negative conversion factor rejected (DB CHECK + function guard)
+    -- zero / negative conversion quantity rejected (DB CHECK + function guard)
     PERFORM pg_temp.expect_error(
-        format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,0)','admintok',v_v1,v_carton), '22023');
+        format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,%L,%s)','admintok',v_v1,v_carton,'ALT_TO_BASE',0), '22023');
     PERFORM pg_temp.expect_error(
-        format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,-1)','admintok',v_v1,v_carton), '22023');
-    -- direct table insert of non-positive factor blocked by CHECK constraint
+        format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,%L,%s)','admintok',v_v1,v_carton,'ALT_TO_BASE',-1), '22023');
+    -- an invalid direction string is rejected outright (WS-D-14 Part 2).
     PERFORM pg_temp.expect_error(
-        format('INSERT INTO catalog.variant_units(variant_id,unit_id,conversion_factor) VALUES (%s,%s,0)', v_v1, v_gram), '23514');
+        format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,%L,%s)','admintok',v_v1,v_carton,'SIDEWAYS',5), '22023');
+    -- direct table insert of non-positive factor blocked by CHECK constraint.
+    -- conversion_direction/conversion_quantity are given valid values so the
+    -- constraint actually exercised here is still conversion_factor's own.
+    PERFORM pg_temp.expect_error(
+        format('INSERT INTO catalog.variant_units(variant_id,unit_id,conversion_factor,conversion_direction,conversion_quantity) VALUES (%s,%s,0,%L,12)', v_v1, v_gram, 'ALT_TO_BASE'), '23514');
 
     -- blank barcode rejected
     PERFORM pg_temp.expect_error(format('SELECT catalog.add_variant_barcode(%L,%s,%L)','admintok',v_v1,'   '), '22023');
 
     -- exact fractional factor (gram per kg = 0.001) preserved
     PERFORM catalog.set_variant_base_unit('admintok', v_v1, v_kg);
-    PERFORM catalog.add_variant_alt_unit('admintok', v_v1, v_gram, 0.001);
+    PERFORM catalog.add_variant_alt_unit('admintok', v_v1, v_gram, 'ALT_TO_BASE', 0.001);
     IF (SELECT conversion_factor::text FROM catalog.variant_units WHERE variant_id=v_v1 AND unit_id=v_gram) <> '0.001000' THEN
         RAISE EXCEPTION 'ASSERT FAIL: gram factor not exact';
     END IF;
     -- base unit cannot equal an alternate unit and vice versa
-    PERFORM pg_temp.expect_error(format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,2)','admintok',v_v1,v_kg), '22023');
+    PERFORM pg_temp.expect_error(format('SELECT catalog.add_variant_alt_unit(%L,%s,%s,%L,%s)','admintok',v_v1,v_kg,'ALT_TO_BASE',2), '22023');
 
     RAISE NOTICE 'negative/constraint assertions OK';
 END $$;

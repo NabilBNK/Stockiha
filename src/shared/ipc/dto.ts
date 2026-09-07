@@ -202,10 +202,31 @@ export interface VariantDetail { variant_id: number; sku: string; name_override:
 export interface ProductDetail { product_id: number; name: string; unit_id: number; unit_code: string; unit_name: string; is_active: boolean; category_id: number | null; variants: VariantDetail[]; }
 export interface CreatedProductWithVariants { product_id: number; variant_ids: number[]; }
 
-export interface VariantAltUnit { id: number; variant_id: number; unit_id: number; conversion_factor: string; unit_code: string; unit_name: string; }
+/**
+ * WS-D-14 Part 2 added `conversion_direction`/`conversion_quantity`, ADD
+ * ONLY: `conversion_factor` keeps its exact prior meaning ("1 alternate unit
+ * = conversion_factor base units") because three transaction-time SQL
+ * functions outside WS-D's scope already read it that way. UI code should
+ * read `conversion_direction`/`conversion_quantity` for DISPLAY — the exact
+ * value the operator typed, in the direction they typed it — and leave
+ * `conversion_factor` alone; it can be the LOSSY reciprocal for a
+ * `BASE_TO_ALT` entry (e.g. "1 BOX = 3 PIECE" stores conversion_quantity
+ * "3" exactly, while conversion_factor is a rounded "0.333333").
+ */
+export type AltUnitConversionDirection = 'ALT_TO_BASE' | 'BASE_TO_ALT';
+export interface VariantAltUnit {
+  id: number;
+  variant_id: number;
+  unit_id: number;
+  conversion_factor: string;
+  unit_code: string;
+  unit_name: string;
+  conversion_direction: AltUnitConversionDirection;
+  conversion_quantity: string;
+}
 
 // Input payloads (sent as JSON; snake_case; string decimals):
-export interface AltUnitInput { unit_id: number; conversion_factor: string; }
+export interface AltUnitInput { unit_id: number; conversion_direction: AltUnitConversionDirection; conversion_quantity: string; }
 export interface VariantInput { name_override?: string; sale_price: string; is_active: boolean; attribute_value_ids?: number[]; barcodes?: string[]; }
 
 // S2-002 — stock adjustment DTOs. Every decimal remains a string.

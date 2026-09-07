@@ -126,10 +126,12 @@ BEGIN
     v_variant := ((v_product -> 'variant_ids') ->> 0)::bigint;
     v_zero_variant := ((v_product -> 'variant_ids') ->> 1)::bigint;
     v_inactive_variant := ((v_product -> 'variant_ids') ->> 2)::bigint;
+    -- WS-D-14 Part 2: add_variant_alt_unit takes a direction + quantity.
     PERFORM catalog.add_variant_alt_unit(
         's2adj-admin-token',
         v_variant,
         v_pack,
+        'ALT_TO_BASE',
         4.000000
     );
 

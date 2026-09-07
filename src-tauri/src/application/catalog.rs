@@ -488,21 +488,34 @@ pub(crate) async fn remove_variant_barcode(
 }
 
 /// `catalog.add_variant_alt_unit` — returns variant_unit_id.
+///
+/// WS-D-14 Part 2 widened this to carry the DIRECTION the relationship was
+/// entered in, alongside the exact quantity typed, rather than a single
+/// pre-divided factor: `conversion_direction` is either `"ALT_TO_BASE"`
+/// (legacy meaning: "1 alternate unit = conversion_quantity base units") or
+/// `"BASE_TO_ALT"` ("1 base unit = conversion_quantity alternate units" —
+/// e.g. the Owner's "1 BOX = 10 PIECE"). Every argument is cast explicitly
+/// (ws-d-skill.md section 2.2); the migration drops the old 4-arg signature
+/// so only one is live.
 pub(crate) async fn add_variant_alt_unit(
     pool: &PgPool,
     session_token: &str,
     variant_id: i64,
     unit_id: i64,
-    conversion_factor: Decimal,
+    conversion_direction: &str,
+    conversion_quantity: Decimal,
 ) -> Result<i64, AppError> {
-    let (id,) = sqlx::query_as::<_, (i64,)>("SELECT catalog.add_variant_alt_unit($1, $2, $3, $4)")
-        .bind(session_token)
-        .bind(variant_id)
-        .bind(unit_id)
-        .bind(conversion_factor)
-        .fetch_one(pool)
-        .await
-        .map_err(AppError::from_posting_error)?;
+    let (id,) = sqlx::query_as::<_, (i64,)>(
+        "SELECT catalog.add_variant_alt_unit($1::text, $2::bigint, $3::bigint, $4::text, $5::numeric)",
+    )
+    .bind(session_token)
+    .bind(variant_id)
+    .bind(unit_id)
+    .bind(conversion_direction)
+    .bind(conversion_quantity)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
     Ok(id)
 }
 

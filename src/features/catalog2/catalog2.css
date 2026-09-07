@@ -660,6 +660,22 @@
   margin-block-start: 12px;
 }
 
+/* WS-D-14 Part 2 — "1 BOX = [ 10 ] PIECE", read as one line. The quantity
+   input sits inline with the unit codes on either side; the swap button
+   flips which unit reads as "1" without ever dividing the typed value. */
+.sk-catalog2__alt-unit-sentence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.sk-catalog2__alt-unit-sentence .sk-catalog2__input {
+  width: 8ch;
+  flex: 0 0 auto;
+}
+
 .sk-catalog2__panel-variant-body {
   margin-block-start: 12px;
   padding-block-start: 12px;

@@ -309,12 +309,20 @@ pub(crate) async fn add_variant_alt_unit(
     session_token: String,
     variant_id: i64,
     unit_id: i64,
-    conversion_factor: Decimal,
+    conversion_direction: String,
+    conversion_quantity: Decimal,
 ) -> Result<i64, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::add_variant_alt_unit(pool, &session_token, variant_id, unit_id, conversion_factor)
-        .await
-        .map_err(IpcError::from)
+    catalog::add_variant_alt_unit(
+        pool,
+        &session_token,
+        variant_id,
+        unit_id,
+        &conversion_direction,
+        conversion_quantity,
+    )
+    .await
+    .map_err(IpcError::from)
 }
 
 #[tauri::command]

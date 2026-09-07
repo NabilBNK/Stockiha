@@ -8,6 +8,7 @@ import type { AppErrorCode } from '../types/errors';
 import { COMMANDS, type CommandName } from './commands';
 import type {
   ActiveCashSession,
+  AltUnitConversionDirection,
   AttributeDefinition,
   AttributeValueLifecycleItem,
   CashSaleLineInput,
@@ -355,8 +356,23 @@ export function removeVariantBarcode(sessionToken: string, barcodeId: number): P
   return call<void>(COMMANDS.REMOVE_VARIANT_BARCODE, { sessionToken, barcodeId });
 }
 
-export function addVariantAltUnit(sessionToken: string, variantId: number, unitId: number, conversionFactor: string): Promise<number> {
-  return call<number>(COMMANDS.ADD_VARIANT_ALT_UNIT, { sessionToken, variantId, unitId, conversionFactor });
+/**
+ * WS-D-14 Part 2. `conversionDirection` says which side of the relationship
+ * the operator fixed at 1 ('ALT_TO_BASE': "1 alt = conversionQuantity base";
+ * 'BASE_TO_ALT': "1 base = conversionQuantity alt"). `conversionQuantity` is
+ * the exact string the operator typed for the other side — never divided in
+ * React.
+ */
+export function addVariantAltUnit(
+  sessionToken: string,
+  variantId: number,
+  unitId: number,
+  conversionDirection: AltUnitConversionDirection,
+  conversionQuantity: string,
+): Promise<number> {
+  return call<number>(COMMANDS.ADD_VARIANT_ALT_UNIT, {
+    sessionToken, variantId, unitId, conversionDirection, conversionQuantity,
+  });
 }
 
 export function removeVariantAltUnit(sessionToken: string, variantUnitId: number): Promise<void> {

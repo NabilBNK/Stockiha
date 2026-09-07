@@ -2351,7 +2351,7 @@ describe('bulk variant generation (WS-D-8b Part 2)', () => {
  * unreachable from every screen. These cover the read path
  * (get_product_detail now returns alt_units) and both writes.
  */
-describe('alternate units (WS-D-13 Phase B)', () => {
+describe('alternate units (WS-D-13 Phase B / WS-D-14 Part 2)', () => {
   function detailWithAltUnits(altUnits: Record<string, unknown>[] = []) {
     return detailFixture({
       unit_code: 'UNIT',
@@ -2385,26 +2385,47 @@ describe('alternate units (WS-D-13 Phase B)', () => {
     return screen.findByTestId('catalog2-alt-unit-select-10');
   }
 
-  it('lists an existing conversion as "BOX = 6 UNIT"', async () => {
+  it('lists an ALT_TO_BASE conversion as "1 BOX = 6 UNIT"', async () => {
     wireInvoke(handlers({
-      get_product_detail: () => detailWithAltUnits([
-        { id: 55, variant_id: 10, unit_id: 2, conversion_factor: '6', unit_code: 'BOX', unit_name: 'Box' },
-      ]),
+      get_product_detail: () => detailWithAltUnits([{
+        id: 55, variant_id: 10, unit_id: 2, unit_code: 'BOX', unit_name: 'Box',
+        conversion_factor: '6', conversion_direction: 'ALT_TO_BASE', conversion_quantity: '6',
+      }]),
     }));
     render(<App />);
     await loginAndOpenCatalog();
     await openAltUnits();
 
     const altRow = screen.getByTestId('catalog2-alt-unit-55');
-    expect(altRow).toHaveTextContent('BOX');
-    expect(altRow).toHaveTextContent('6');
-    // The base unit is the product's own unit, so the line reads as a sentence.
-    expect(altRow).toHaveTextContent('UNIT');
+    expect(altRow).toHaveTextContent('1 BOX = 6 UNIT');
+    expect(altRow).toHaveAttribute('data-direction', 'ALT_TO_BASE');
     // The count rides on the collapsed header.
     expect(screen.getByText('Alternate units (1)')).toBeInTheDocument();
   });
 
-  it('sends the exact conversion factor string, never a parsed number', async () => {
+  // THE TRAP. "1 BOX = 3 PIECE" (BASE_TO_ALT) must render using the exact
+  // typed quantity_conversion "3", never a value derived from
+  // conversion_factor (which the fixture deliberately sets to the lossy
+  // reciprocal "0.333333", exactly as the SQL layer would store it, to prove
+  // the UI never reads that column for display).
+  it('lists a BASE_TO_ALT conversion as "1 BOX = 3 PIECE", never the lossy reciprocal', async () => {
+    wireInvoke(handlers({
+      get_product_detail: () => detailWithAltUnits([{
+        id: 56, variant_id: 10, unit_id: 2, unit_code: 'BOX', unit_name: 'Box',
+        conversion_factor: '0.333333', conversion_direction: 'BASE_TO_ALT', conversion_quantity: '3',
+      }]),
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openAltUnits();
+
+    const altRow = screen.getByTestId('catalog2-alt-unit-56');
+    expect(altRow).toHaveTextContent('1 UNIT = 3 BOX');
+    expect(altRow).toHaveAttribute('data-direction', 'BASE_TO_ALT');
+    expect(altRow).not.toHaveTextContent('0.333333');
+  });
+
+  it('sends the exact quantity string and chosen direction, never a parsed or divided number', async () => {
     let addCall: Record<string, unknown> | null = null;
     wireInvoke(handlers({
       get_product_detail: () => detailWithAltUnits(),
@@ -2417,18 +2438,53 @@ describe('alternate units (WS-D-13 Phase B)', () => {
     expect(await screen.findByTestId('catalog2-alt-units-empty-10')).toBeInTheDocument();
 
     fireEvent.change(select, { target: { value: '2' } });
-    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '6.250' } });
+    const quantityInput = await screen.findByTestId('catalog2-alt-unit-quantity-10');
+    fireEvent.change(quantityInput, { target: { value: '6.250' } });
     fireEvent.click(screen.getByTestId('catalog2-add-alt-unit-10'));
 
     await waitFor(() => expect(addCall).not.toBeNull());
     expect(addCall!.variantId).toBe(10);
     expect(addCall!.unitId).toBe(2);
+    // Default direction, matching the column default: "1 alt = quantity base".
+    expect(addCall!.conversionDirection).toBe('ALT_TO_BASE');
     // Byte-for-byte as typed: trailing zeroes survive, nothing is rounded.
-    expect(addCall!.conversionFactor).toBe('6.250');
-    expect(typeof addCall!.conversionFactor).toBe('string');
+    expect(addCall!.conversionQuantity).toBe('6.250');
+    expect(typeof addCall!.conversionQuantity).toBe('string');
   });
 
-  it('refuses a blank or zero factor before anything is sent', async () => {
+  // THE TRAP, from the input side: picking "1 BOX = [3] PIECE" must send
+  // BASE_TO_ALT with quantity "3" -- never a division performed in React.
+  it('sends BASE_TO_ALT with the exact typed quantity when the direction is swapped', async () => {
+    let addCall: Record<string, unknown> | null = null;
+    wireInvoke(handlers({
+      get_product_detail: () => detailWithAltUnits(),
+      add_variant_alt_unit: (args) => { addCall = args; return 78; },
+    }));
+    render(<App />);
+    await loginAndOpenCatalog();
+    const select = await openAltUnits();
+
+    fireEvent.change(select, { target: { value: '2' } });
+    const sentence = await screen.findByTestId('catalog2-alt-unit-sentence-10');
+    expect(sentence).toHaveAttribute('data-direction', 'ALT_TO_BASE');
+    expect(sentence).toHaveTextContent('1 BOX =');
+
+    fireEvent.click(screen.getByTestId('catalog2-alt-unit-direction-toggle-10'));
+    expect(sentence).toHaveAttribute('data-direction', 'BASE_TO_ALT');
+    expect(sentence).toHaveTextContent('1 UNIT =');
+
+    fireEvent.change(screen.getByTestId('catalog2-alt-unit-quantity-10'), { target: { value: '3' } });
+    fireEvent.click(screen.getByTestId('catalog2-add-alt-unit-10'));
+
+    await waitFor(() => expect(addCall).not.toBeNull());
+    expect(addCall!.conversionDirection).toBe('BASE_TO_ALT');
+    expect(addCall!.conversionQuantity).toBe('3');
+    // No arithmetic anywhere in the chain -- exactly "3", not "0.333..." or
+    // any other computed value.
+    expect(addCall!.conversionQuantity).not.toContain('.');
+  });
+
+  it('refuses a blank or zero quantity before anything is sent', async () => {
     wireInvoke(handlers({
       get_product_detail: () => detailWithAltUnits(),
       add_variant_alt_unit: () => 77,
@@ -2439,35 +2495,37 @@ describe('alternate units (WS-D-13 Phase B)', () => {
 
     fireEvent.change(select, { target: { value: '2' } });
     const add = screen.getByTestId('catalog2-add-alt-unit-10');
+    const quantityInput = await screen.findByTestId('catalog2-alt-unit-quantity-10');
 
     // Blank: nothing to send, so the control stays shut.
     expect(add).toBeDisabled();
 
     // Zero is a real number and a meaningless conversion; it is refused here
     // rather than sent for the backend to reject.
-    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '0' } });
-    expect(screen.getByTestId('catalog2-alt-unit-factor-error-10')).toBeInTheDocument();
+    fireEvent.change(quantityInput, { target: { value: '0' } });
+    expect(screen.getByTestId('catalog2-alt-unit-quantity-error-10')).toBeInTheDocument();
     expect(add).toBeDisabled();
 
-    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '0.000' } });
+    fireEvent.change(quantityInput, { target: { value: '0.000' } });
     expect(add).toBeDisabled();
 
     invokeMock.mockClear();
     fireEvent.click(add);
     expect(invokeMock).not.toHaveBeenCalled();
 
-    // A positive factor unlocks it.
-    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '6' } });
-    expect(screen.queryByTestId('catalog2-alt-unit-factor-error-10')).not.toBeInTheDocument();
+    // A positive quantity unlocks it.
+    fireEvent.change(quantityInput, { target: { value: '6' } });
+    expect(screen.queryByTestId('catalog2-alt-unit-quantity-error-10')).not.toBeInTheDocument();
     expect(add).not.toBeDisabled();
   });
 
   it('confirms before removing a conversion, then calls removeVariantAltUnit', async () => {
     let removeCall: Record<string, unknown> | null = null;
     wireInvoke(handlers({
-      get_product_detail: () => detailWithAltUnits([
-        { id: 55, variant_id: 10, unit_id: 2, conversion_factor: '6', unit_code: 'BOX', unit_name: 'Box' },
-      ]),
+      get_product_detail: () => detailWithAltUnits([{
+        id: 55, variant_id: 10, unit_id: 2, unit_code: 'BOX', unit_name: 'Box',
+        conversion_factor: '6', conversion_direction: 'ALT_TO_BASE', conversion_quantity: '6',
+      }]),
       remove_variant_alt_unit: (args) => { removeCall = args; return null; },
     }));
     render(<App />);
@@ -2479,6 +2537,7 @@ describe('alternate units (WS-D-13 Phase B)', () => {
     expect(removeCall).toBeNull();
 
     const dialog = await screen.findByRole('dialog', { name: 'Remove this alternate unit?' });
+    expect(dialog).toHaveTextContent('1 BOX = 6 UNIT');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
 
     await waitFor(() => expect(removeCall).not.toBeNull());
@@ -2498,7 +2557,7 @@ describe('alternate units (WS-D-13 Phase B)', () => {
     const select = await openAltUnits();
 
     fireEvent.change(select, { target: { value: '2' } });
-    fireEvent.change(screen.getByTestId('catalog2-alt-unit-factor-10'), { target: { value: '6' } });
+    fireEvent.change(await screen.findByTestId('catalog2-alt-unit-quantity-10'), { target: { value: '6' } });
     fireEvent.click(screen.getByTestId('catalog2-add-alt-unit-10'));
 
     expect(await screen.findByTestId('catalog2-alt-unit-error')).toHaveTextContent(
@@ -2508,9 +2567,10 @@ describe('alternate units (WS-D-13 Phase B)', () => {
 
   it('offers only active units, and not one already configured', async () => {
     wireInvoke(handlers({
-      get_product_detail: () => detailWithAltUnits([
-        { id: 55, variant_id: 10, unit_id: 2, conversion_factor: '6', unit_code: 'BOX', unit_name: 'Box' },
-      ]),
+      get_product_detail: () => detailWithAltUnits([{
+        id: 55, variant_id: 10, unit_id: 2, unit_code: 'BOX', unit_name: 'Box',
+        conversion_factor: '6', conversion_direction: 'ALT_TO_BASE', conversion_quantity: '6',
+      }]),
     }));
     render(<App />);
     await loginAndOpenCatalog();
