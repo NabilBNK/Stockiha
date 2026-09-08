@@ -19,6 +19,7 @@ import { AppDataProvider, useAppData } from './AppDataContext';
 import { AppShell, type AppView } from './AppShell';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
+import { BackendUnavailableScreen } from '../features/startup/BackendUnavailableScreen';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { CatalogScreen } from '../features/catalog2/CatalogScreen';
 import { CatalogueSetupScreen } from '../features/catalogue-setup/CatalogueSetupScreen';
@@ -84,7 +85,6 @@ const OPENING_SETUP_COPY: Record<Locale, OpeningSetupCopy> = {
 };
 
 export function AppRouter() {
-  const { t } = useI18n();
   const { user } = useSession();
   const [route, setRoute] = useState<RouteState>('loading');
   // Credential-free reason for the unavailable state, so the screen can name
@@ -122,20 +122,7 @@ export function AppRouter() {
   }
 
   if (route === 'unavailable') {
-    return (
-      <div className="sk-centered">
-        <div className="sk-card" role="alert" data-testid="backend-unavailable">
-          <h1>{t('backend.unavailable.title')}</h1>
-          <p>{t('backend.unavailable.body')}</p>
-          {reason ? (
-            <p className="sk-muted" data-testid="backend-unavailable-reason">
-              <code>{reason.code}</code> — {reason.detail}
-            </p>
-          ) : null}
-          <Button onClick={() => void refresh()}>{t('common.retry')}</Button>
-        </div>
-      </div>
-    );
+    return <BackendUnavailableScreen diagnostic={reason} onRetry={() => void refresh()} />;
   }
 
   if (route === 'setup') {
@@ -154,7 +141,7 @@ export function AppRouter() {
 }
 
 function AuthenticatedApp() {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const text = OPENING_SETUP_COPY[locale];
   const { user, refreshActiveCashSession, clearSession } = useSession();
   const { error, openFiscalPeriod } = useAppData();
@@ -179,6 +166,30 @@ function AuthenticatedApp() {
     useState<ProcurementCapabilities | null>(null);
   const [customerCapabilities, setCustomerCapabilities] =
     useState<CustomerCapabilities | null>(null);
+  /**
+   * WS-K-1 (correction 1) — a persistent, non-dismissible notice that
+   * `database.json`'s on-disk permissions look broader than the current
+   * user. Deliberately non-blocking: the app has already started and
+   * connected successfully by the time this state exists, so this only ever
+   * adds a banner, never gates routing. Fetched once, best-effort — a
+   * failure here must never affect the authenticated app in any way.
+   */
+  const [configWarning, setConfigWarning] = useState<ipc.ConfigWarning | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void ipc
+      .getDbDiagnostic()
+      .then((diagnostic) => {
+        if (active) setConfigWarning(diagnostic.config_warning);
+      })
+      .catch(() => {
+        // Best-effort only: never surface this failure to the user.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const refreshOpeningStateStatus = useCallback(async () => {
     const token = user?.token;
@@ -372,6 +383,11 @@ function AuthenticatedApp() {
       procurementCapabilities={procurementCapabilities}
       customerCapabilities={customerCapabilities}
     >
+      {configWarning === 'INSECURE_PERMISSIONS' ? (
+        <Banner tone="warning" testId="db-config-permission-warning">
+          {t('backend.configWarning.insecurePermissions')}
+        </Banner>
+      ) : null}
       {view === 'dashboard' && <DashboardScreen />}
       {view === 'historical_finance' && (
         <HistoricalFinanceScreen sessionToken={user?.token ?? ''} />

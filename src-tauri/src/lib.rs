@@ -32,30 +32,45 @@ pub fn run() {
         .manage(state::AppState {
             stage: "Slice 4".to_string(),
         })
-        // The single, application-wide pool. `tauri::async_runtime::block_on`
-        // runs this on Tauri's own process-global runtime — a `static
-        // OnceLock<GlobalRuntime>` (tauri 2.11.5 `async_runtime.rs:29`) that is
-        // never dropped and is the same runtime every `#[tauri::command]` is
-        // spawned onto. No temporary `Runtime::new()` is involved, so the pool
-        // can never outlive the reactor its sockets are bound to.
-        .manage(tauri::async_runtime::block_on(async {
-            let state = infrastructure::db::database_state_from_env();
-            // Eager readiness proof: one real connection and `SELECT 1`, so a
-            // broken configuration announces its true cause at startup instead
-            // of degrading silently into "Service unavailable" fifteen seconds
-            // later with an evidence-free pool timeout.
-            infrastructure::db::startup_diagnostic(&state).await;
-            // WS-H-2: the recovery environment is supplied only by run.bat.
-            // Report it missing here, by name, rather than letting it surface
-            // later as a message that reads like a broken feature.
-            application::recovery::startup_environment_diagnostic();
-            // WS-H-2: remove restore-drill databases stranded by a previous
-            // run (e.g. a PostgreSQL backend crash that killed the drill's
-            // connection before it could clean up). Safe here: no drill of
-            // this process can be in flight yet.
-            application::recovery::sweep_orphaned_restore_databases().await;
-            state
-        }))
+        // WS-K-1: `DatabaseState` construction moved from a pre-`.build()`
+        // `.manage(block_on(...))` call (as it was before WS-K-1) into
+        // `.setup()`. This is a forced, mechanical move, not a reorganization
+        // of startup: the WS-K-1 precedence's second tier reads
+        // `database.json` from Tauri's own `app_data_dir()`, and that API is
+        // only reachable from an `AppHandle`/`&mut App` — i.e. only from
+        // inside `.setup()` or a live `#[tauri::command]`, never before
+        // `Builder::build()` has run. Nothing else about startup ordering
+        // changed: this closure runs everything the old `.manage(block_on)`
+        // call ran, in the same order, still on Tauri's own process-global
+        // async runtime via the same `tauri::async_runtime::block_on` idiom.
+        .setup(|app| {
+            use tauri::Manager;
+
+            let app_data_dir = app.path().app_data_dir().ok();
+
+            tauri::async_runtime::block_on(async {
+                let state = infrastructure::db::database_state_from_precedence(app_data_dir);
+                // Eager readiness proof: one real connection and `SELECT 1`,
+                // so a broken configuration announces its true cause at
+                // startup instead of degrading silently into "Service
+                // unavailable" fifteen seconds later with an evidence-free
+                // pool timeout.
+                infrastructure::db::startup_diagnostic(&state).await;
+                // WS-H-2: the recovery environment is supplied only by
+                // run.bat. Report it missing here, by name, rather than
+                // letting it surface later as a message that reads like a
+                // broken feature.
+                application::recovery::startup_environment_diagnostic();
+                // WS-H-2: remove restore-drill databases stranded by a
+                // previous run (e.g. a PostgreSQL backend crash that killed
+                // the drill's connection before it could clean up). Safe
+                // here: no drill of this process can be in flight yet.
+                application::recovery::sweep_orphaned_restore_databases().await;
+                app.manage(state);
+            });
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::app_info::get_app_info,
             commands::db_health::check_db_health,

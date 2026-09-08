@@ -167,12 +167,20 @@ serde_json = "=1.0.150"
 # GDI/DEVMODE value is ever constructed or used, only the type must resolve.
 # Same existing crate, no new dependency — only the feature list grows,
 # scoped to Windows targets.
+# WS-K-1: `Win32_Security` + `Win32_Security_Authorization` for
+# `GetNamedSecurityInfoW`/`GetAclInformation`/`GetAce`/`EqualSid`/
+# `CreateWellKnownSid` (the advisory, fail-open ACL check on `database.json` —
+# see `infrastructure::local_config`). `Win32_Storage_FileSystem` is required
+# for `SE_FILE_OBJECT`'s home feature gate. No new crate.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security_Credentials",
     "Win32_Graphics_Printing",
     "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
 ] }
 
 [dev-dependencies]

@@ -93,10 +93,31 @@ export type DbReasonCode =
   | 'DATABASE_MISSING'
   | 'POOL_SATURATED';
 
+/**
+ * WS-K-1 (K1-5). Mirrors `infrastructure::schema_version::SchemaCompatibility`.
+ * Only meaningful once `code === 'OK'` — it describes a server that was
+ * actually reached, not connectivity itself.
+ */
+export type SchemaCompatibility =
+  | { status: 'UP_TO_DATE' }
+  | { status: 'OLDER_THAN_BINARY'; applied: number; latest: number }
+  | { status: 'NEWER_THAN_BINARY'; applied: number; latest: number };
+
+/**
+ * WS-K-1 (correction 1). Mirrors `infrastructure::local_config::ConfigWarning`.
+ * A non-blocking fact about `database.json`'s on-disk permissions — never
+ * gates anything, only ever shown as a persistent, non-dismissible notice.
+ */
+export type ConfigWarning = 'INSECURE_PERMISSIONS';
+
 export interface DbDiagnostic {
   code: DbReasonCode;
   /** Credential-free explanation naming the host:port/database actually dialled. */
   detail: string;
+  /** Populated only when `code === 'OK'`. */
+  schema: SchemaCompatibility | null;
+  /** Known independent of `code` — see `ConfigWarning`. */
+  config_warning: ConfigWarning | null;
 }
 
 /**

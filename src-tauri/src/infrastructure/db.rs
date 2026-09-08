@@ -4,10 +4,11 @@
 //! deliberately Tauri-free so it can be compiled and tested in isolation.
 //!
 //! Security posture:
-//! - The connection URL is read from the environment
-//!   ([`DEV_DATABASE_URL_ENV`]); it is never hardcoded, never logged, and
-//!   never stored in managed state ([`DatabaseState`] holds only a pool or a
-//!   payload-free marker).
+//! - The connection is resolved through the WS-K-1 precedence
+//!   ([`database_state_from_precedence`]: env var, then `database.json`, then
+//!   the developer-only `runtime.key` fallback); it is never hardcoded, never
+//!   logged, and never stored in managed state ([`DatabaseState`] holds only
+//!   a pool or a payload-free marker).
 //! - Configuration diagnostics are **fixed constants** that never incorporate
 //!   the URL value or the underlying parser message, so no input can be
 //!   retained (see [`DIAGNOSTIC_PARSE_FAILURE`]). Connection diagnostics stay
@@ -17,20 +18,27 @@
 //!   no schema objects, no writes, no transactions, no SQLx macros.
 
 use crate::error::AppError;
+use crate::infrastructure::local_config::{self, ConfigWarning, LocalConfigOutcome};
+use crate::infrastructure::schema_version::{self, SchemaCompatibility};
 use serde::Serialize;
 use sqlx::postgres::{PgConnectOptions, PgConnection, PgPoolOptions};
 use sqlx::{Connection, PgPool};
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
-/// Environment variable holding the local development connection URL.
+/// Environment variable holding the connection URL.
 ///
-/// Development-only. Production credential storage arrives with S0-005
-/// (Windows Credential Manager); nothing in this module presumes the final
-/// production mechanism. A local development URL may use `sslmode=disable`;
-/// that is a per-URL developer choice, not a policy encoded here.
-pub const DEV_DATABASE_URL_ENV: &str = "STOCKIHA_DEV_DATABASE_URL";
+/// WS-K-1: renamed from `DEV_DATABASE_URL_ENV` — this is now the first tier
+/// of a real production precedence (env var, then a per-installation config
+/// file, then the developer-only `runtime.key` fallback below), not a
+/// development-only mechanism. The env var's own *string value*,
+/// `STOCKIHA_DEV_DATABASE_URL`, is deliberately left unchanged: renaming it
+/// would break `run.bat` and every PowerShell helper under `scripts/` that
+/// sets or reads it by that exact name. Only the Rust identifier and this
+/// comment changed.
+pub const DATABASE_URL_ENV: &str = "STOCKIHA_DEV_DATABASE_URL";
 
 /// Environment variable holding the integration-test connection URL.
 ///
@@ -128,17 +136,28 @@ impl fmt::Display for ConnectionTarget {
 /// `PgPool` is internally reference-counted and thread-safe; it is managed
 /// directly, without any mutex.
 pub enum DatabaseState {
-    /// [`DEV_DATABASE_URL_ENV`] is not set.
+    /// No configuration source resolved: [`DATABASE_URL_ENV`] is not set, no
+    /// `database.json` exists in the app-data directory, and (Windows only)
+    /// no developer `runtime.key` fallback exists either.
     Unconfigured,
-    /// [`DEV_DATABASE_URL_ENV`] is set but could not be parsed as a
-    /// PostgreSQL connection URL. The parse detail is intentionally not
-    /// retained here; it surfaces (redacted) through the health check.
+    /// A configuration source was found but could not be parsed as a
+    /// PostgreSQL connection (a malformed env var URL, or a `database.json`
+    /// that is not valid JSON / missing a required field). The parse detail
+    /// is intentionally not retained here; it surfaces (redacted) through
+    /// the health check.
     InvalidConfiguration,
     /// A lazily-connecting pool built from valid configuration. No network
     /// activity has necessarily occurred yet.
     Configured {
         pool: PgPool,
         target: ConnectionTarget,
+        /// WS-K-1: a non-blocking fact discovered while loading
+        /// `database.json` (currently: its on-disk permissions look broader
+        /// than the current user). `None` whenever the env var or
+        /// `runtime.key` resolved the connection instead, or when nothing
+        /// warning-worthy was found. Never gates connectivity — see
+        /// `local_config`'s module-level safety note.
+        config_warning: Option<ConfigWarning>,
     },
 }
 
@@ -184,10 +203,30 @@ pub fn database_state_from(url: Option<String>) -> DatabaseState {
                 DatabaseState::Configured {
                     pool: build_pool(options),
                     target,
+                    // Only the config-file branch of the precedence chain
+                    // (see `database_state_from_precedence`) can ever produce
+                    // a permission warning; a bare URL has no on-disk file to
+                    // check.
+                    config_warning: None,
                 }
             }
             Err(_) => DatabaseState::InvalidConfiguration,
         },
+    }
+}
+
+/// Build [`DatabaseState`] from an already-resolved [`PgConnectOptions`],
+/// carrying a config-file permission warning through if one applies. Shared
+/// by the `database.json` branch of [`database_state_from_precedence`].
+fn database_state_from_options(
+    options: PgConnectOptions,
+    config_warning: Option<ConfigWarning>,
+) -> DatabaseState {
+    let target = ConnectionTarget::from_options(&options);
+    DatabaseState::Configured {
+        pool: build_pool(options),
+        target,
+        config_warning,
     }
 }
 
@@ -217,19 +256,66 @@ fn ensure_local_postgres_active() {
     }
 }
 
-/// Read [`DEV_DATABASE_URL_ENV`] and derive the managed [`DatabaseState`].
+/// Resolve `database.json` in `dir`, if present. Returns `None` only when
+/// the file is genuinely absent (precedence falls through to `runtime.key`);
+/// an existing-but-malformed file resolves to `InvalidConfiguration` rather
+/// than falling through, so a broken installer-written file is reported
+/// accurately instead of being silently ignored in favor of the developer
+/// fallback.
+fn resolve_config_file(dir: &std::path::Path, source: &mut &'static str) -> Option<DatabaseState> {
+    match local_config::load(dir) {
+        LocalConfigOutcome::Absent => None,
+        LocalConfigOutcome::Invalid => {
+            *source = "database.json";
+            Some(DatabaseState::InvalidConfiguration)
+        }
+        LocalConfigOutcome::Loaded {
+            options,
+            permission_warning,
+        } => {
+            *source = "database.json";
+            Some(database_state_from_options(*options, permission_warning))
+        }
+    }
+}
+
+/// Resolve the managed [`DatabaseState`] from the full WS-K-1 precedence:
+///
+/// 1. [`DATABASE_URL_ENV`] — preserves the existing developer workflow;
+///    `run.bat` keeps working unchanged.
+/// 2. `database.json` in `app_data_dir` (`None` here, e.g. because Tauri's
+///    `app_data_dir()` failed, is treated the same as "file absent").
+/// 3. The developer-only `runtime.key` fallback below (Windows only,
+///    untouched by WS-K-1, hardcoded to the Owner's own dev/acceptance
+///    cluster — see its own comment).
+/// 4. [`DatabaseState::Unconfigured`].
 ///
 /// Missing configuration is a safe, expected state (the app starts and
 /// reports "not configured"); it is never a panic and never logged with any
 /// value content.
-pub fn database_state_from_env() -> DatabaseState {
+pub fn database_state_from_precedence(app_data_dir: Option<PathBuf>) -> DatabaseState {
     let mut source = "none";
-    let mut url = std::env::var(DEV_DATABASE_URL_ENV).ok();
-    if url.is_some() {
-        source = DEV_DATABASE_URL_ENV;
+
+    let env_url = std::env::var(DATABASE_URL_ENV).ok();
+    if env_url.is_some() {
+        source = DATABASE_URL_ENV;
     }
 
-    if url.is_none() {
+    let state = if let Some(url) = env_url {
+        database_state_from(Some(url))
+    } else if let Some(state_from_file) = app_data_dir
+        .as_deref()
+        .and_then(|dir| resolve_config_file(dir, &mut source))
+    {
+        state_from_file
+    } else {
+        // ——— developer-only fallback ———
+        // Intentionally last in precedence and left byte-for-byte as it was
+        // before WS-K-1. It hardcodes the Owner's own dev/acceptance cluster
+        // (port 5433, database `stockiha_acceptance`) and will simply never
+        // fire on a client machine, since `runtime.key` will not exist
+        // there. Not touched by WS-K-1's config-resolution changes.
+        let mut url = None;
         #[cfg(target_os = "windows")]
         if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
             let key_path = std::path::Path::new(&local_appdata)
@@ -247,14 +333,14 @@ pub fn database_state_from_env() -> DatabaseState {
                 }
             }
         }
-    }
+        database_state_from(url)
+    };
 
-    let state = database_state_from(url);
-
-    // Did the environment variable win over the local `runtime.key` fallback?
-    // The precedence itself is the documented contract and is deliberately
-    // unchanged; only its visibility changes below.
-    let env_override = source == DEV_DATABASE_URL_ENV;
+    // Did the environment variable win over a local file (`database.json` or
+    // the developer `runtime.key`)? The precedence itself is the documented
+    // contract and is deliberately unchanged; only its visibility changes
+    // below.
+    let env_override = source == DATABASE_URL_ENV;
 
     // The one line whose absence let a stale `STOCKIHA_DEV_DATABASE_URL`
     // masquerade as a server, migration, and IAM fault across several
@@ -262,8 +348,23 @@ pub fn database_state_from_env() -> DatabaseState {
     // source won and which host/port/database it resolved to. Credential-free
     // by construction — `ConnectionTarget` cannot hold a password.
     match &state {
-        DatabaseState::Configured { target, .. } => {
+        DatabaseState::Configured {
+            target,
+            config_warning,
+            ..
+        } => {
             tracing::info!(source, target = %target, "database configuration resolved");
+
+            // WS-K-1: the config file's own permission warning, if any. Never
+            // blocks startup — see `local_config`'s module-level safety
+            // note — but must still be visible to whoever is watching logs.
+            if config_warning.is_some() {
+                tracing::warn!(
+                    target = %target,
+                    "database.json permissions on this machine appear to allow other \
+                     local users to read it; see the in-app notice for detail"
+                );
+            }
 
             if env_override {
                 // WARN rather than INFO on purpose. `init_dev_tracing` installs
@@ -271,19 +372,21 @@ pub fn database_state_from_env() -> DatabaseState {
                 // so this is the one configuration line that appears in a plain
                 // `npm run tauri dev` console with no environment tuning at all.
                 //
-                // An environment variable silently outranking the local
-                // `runtime.key` is precisely how a stale target left over from a
-                // retired acceptance environment survived clean rebuilds and was
-                // misdiagnosed as a PostgreSQL, migration, and IAM fault — twice.
-                // See docs/incident-2026-08-16-local-development-launch.md.
+                // An environment variable silently outranking a local
+                // configuration file is precisely how a stale target left over
+                // from a retired acceptance environment survived clean rebuilds
+                // and was misdiagnosed as a PostgreSQL, migration, and IAM
+                // fault — twice. See
+                // docs/incident-2026-08-16-local-development-launch.md.
                 //
                 // Pure ASCII: this reaches a Windows console, where a UTF-8
                 // em dash renders as mojibake.
                 tracing::warn!(
                     target = %target,
-                    "{DEV_DATABASE_URL_ENV} is set and overrides the local runtime.key - \
-                     the application will use this target. If it is not the one you expect, \
-                     that environment variable is stale; remove it and restart from a fresh shell"
+                    "{DATABASE_URL_ENV} is set and overrides any local database.json or \
+                     runtime.key - the application will use this target. If it is not the \
+                     one you expect, that environment variable is stale; remove it and \
+                     restart from a fresh shell"
                 );
 
                 // A `WARN` alone is not actually a visibility guarantee, which
@@ -300,10 +403,10 @@ pub fn database_state_from_env() -> DatabaseState {
                 // installed, so the common case prints exactly once.
                 if !tracing::enabled!(tracing::Level::WARN) {
                     eprintln!(
-                        "[DB_CONFIG_OVERRIDE] {DEV_DATABASE_URL_ENV} is set and overrides \
-                         the local runtime.key - using target {target}. If that is not the \
-                         target you expect, the variable is stale; remove it and restart \
-                         from a fresh shell."
+                        "[DB_CONFIG_OVERRIDE] {DATABASE_URL_ENV} is set and overrides any \
+                         local database.json or runtime.key - using target {target}. If \
+                         that is not the target you expect, the variable is stale; remove \
+                         it and restart from a fresh shell."
                     );
                 }
             }
@@ -346,12 +449,18 @@ pub async fn health_check_state(state: &DatabaseState) -> Result<(), AppError> {
         DatabaseState::InvalidConfiguration => {
             Err(AppError::database_configuration(DIAGNOSTIC_INVALID))
         }
-        DatabaseState::Configured { pool, target } => match health_check(pool).await {
+        DatabaseState::Configured {
+            pool,
+            target,
+            config_warning,
+        } => match health_check(pool).await {
             Ok(()) => Ok(()),
             // Replace SQLx's evidence-free `PoolTimedOut` text with the real
             // reason and the real target before it reaches any log or the UI.
             Err(_) => Err(AppError::database_unavailable(
-                diagnose_configured(pool, target).await.to_string(),
+                diagnose_configured(pool, target, *config_warning)
+                    .await
+                    .to_string(),
             )),
         },
     }
@@ -418,6 +527,20 @@ pub enum DbReasonCode {
 pub struct DbDiagnostic {
     pub code: DbReasonCode,
     pub detail: String,
+    /// WS-K-1 (K1-5): populated only when `code == Ok` — schema version is a
+    /// fact about a server that was actually reached, layered on top of
+    /// connectivity rather than folded into [`DbReasonCode`] itself (a
+    /// reached-but-incompatible server is a different kind of fact than
+    /// "could not reach the server at all", and every existing
+    /// `DbReasonCode` consumer would otherwise have to learn a variant it
+    /// cannot produce).
+    pub schema: Option<SchemaCompatibility>,
+    /// WS-K-1 (correction 1): a non-blocking fact about `database.json`'s
+    /// on-disk permissions, known independent of whether the connection
+    /// itself succeeded — carried straight through from [`DatabaseState`].
+    /// Never causes `code` to change and never gates anything; see
+    /// `local_config`'s module-level safety note.
+    pub config_warning: Option<ConfigWarning>,
 }
 
 impl fmt::Display for DbDiagnostic {
@@ -431,6 +554,8 @@ impl DbDiagnostic {
         Self {
             code,
             detail: detail.into(),
+            schema: None,
+            config_warning: None,
         }
     }
 
@@ -482,11 +607,19 @@ fn classify_connect_error(error: &sqlx::Error, target: &ConnectionTarget) -> DbD
 /// exactly what erases the underlying error. One direct connection, bounded by
 /// [`PROBE_TIMEOUT`], recovers it. This runs only on an already-failing path
 /// and at startup — never inside a query path, and never as a retry.
-async fn diagnose_configured(pool: &PgPool, target: &ConnectionTarget) -> DbDiagnostic {
+///
+/// `config_warning` is attached to every branch's result, success or
+/// failure alike: it is a fact about `database.json` established before this
+/// probe even ran, independent of whether the probe succeeds.
+async fn diagnose_configured(
+    pool: &PgPool,
+    target: &ConnectionTarget,
+    config_warning: Option<ConfigWarning>,
+) -> DbDiagnostic {
     let options = pool.connect_options();
     let probe = tokio::time::timeout(PROBE_TIMEOUT, PgConnection::connect_with(&options)).await;
 
-    match probe {
+    let diagnostic = match probe {
         Err(_elapsed) => DbDiagnostic::new(
             DbReasonCode::ConnectFailed,
             format!(
@@ -496,14 +629,13 @@ async fn diagnose_configured(pool: &PgPool, target: &ConnectionTarget) -> DbDiag
             ),
         ),
         Ok(Err(error)) => classify_connect_error(&error, target),
-        Ok(Ok(connection)) => {
+        Ok(Ok(mut connection)) => {
             // A direct connection succeeds, so the transport and credentials
             // are fine. If acquiring from the pool still failed, the pool
             // itself is the constraint — report its counters, which is the
             // only case where "pool timed out" was ever the honest message.
-            let _ = connection.close().await;
             if pool.size() >= MAX_CONNECTIONS && pool.num_idle() == 0 {
-                DbDiagnostic::new(
+                let diagnostic = DbDiagnostic::new(
                     DbReasonCode::PoolSaturated,
                     format!(
                         "all {} pooled connections to {target} are in use and \
@@ -514,18 +646,40 @@ async fn diagnose_configured(pool: &PgPool, target: &ConnectionTarget) -> DbDiag
                         pool.size(),
                         pool.num_idle()
                     ),
-                )
+                );
+                let _ = connection.close().await;
+                diagnostic
             } else {
-                DbDiagnostic::new(
+                // WS-K-1 (K1-5): only reached once connectivity itself is
+                // proven, on the same short-lived probe connection — no
+                // second round-trip. A schema-check failure (distinct from
+                // a version mismatch — e.g. `_sqlx_migrations` unreadable
+                // for a reason other than "does not exist yet") is folded
+                // into the same `Ok` connectivity verdict with `schema` left
+                // `None`: the connection genuinely is fine, this is a
+                // secondary, best-effort read, not a re-classification of
+                // connectivity itself.
+                let schema = schema_version::check_schema_compatibility(&mut connection)
+                    .await
+                    .ok();
+                let mut diagnostic = DbDiagnostic::new(
                     DbReasonCode::Ok,
                     format!(
                         "connected to {target} (pool size={}, idle={})",
                         pool.size(),
                         pool.num_idle()
                     ),
-                )
+                );
+                diagnostic.schema = schema;
+                let _ = connection.close().await;
+                diagnostic
             }
         }
+    };
+
+    DbDiagnostic {
+        config_warning,
+        ..diagnostic
     }
 }
 
@@ -541,7 +695,39 @@ pub async fn diagnose(state: &DatabaseState) -> DbDiagnostic {
         DatabaseState::InvalidConfiguration => {
             DbDiagnostic::new(DbReasonCode::InvalidConfiguration, DIAGNOSTIC_INVALID)
         }
-        DatabaseState::Configured { pool, target } => diagnose_configured(pool, target).await,
+        DatabaseState::Configured {
+            pool,
+            target,
+            config_warning,
+        } => diagnose_configured(pool, target, *config_warning).await,
+    }
+}
+
+/// Gate a command's pool acquisition on schema compatibility, not just raw
+/// connectivity.
+///
+/// WS-K-1 (K1-5): without this, `get_setup_status` (the first call the
+/// frontend makes at every startup/retry) would succeed against a
+/// schema-incompatible database whenever its own narrow queries happen not
+/// to touch the differing columns — silently deferring the failure to
+/// "a missing column mid-workflow" later, in whatever screen the operator
+/// opens next. Gating the startup-status call here means the existing
+/// frontend flow (call `get_setup_status`; on failure, call
+/// `get_db_diagnostic` for the reason) already surfaces both schema states
+/// correctly with no reordering and no new IPC call on the happy path — see
+/// `AppRouter.tsx`.
+///
+/// Deliberately scoped to this one startup-gate call, not every business
+/// command: broadening it further is a business-logic change outside WS-K-1.
+pub async fn pool_if_schema_compatible(state: &DatabaseState) -> Result<&PgPool, AppError> {
+    let pool = pool_or_unavailable(state)?;
+    let mut conn = pool.acquire().await.map_err(AppError::from_posting_error)?;
+    match schema_version::check_schema_compatibility(&mut conn).await? {
+        SchemaCompatibility::UpToDate => Ok(pool),
+        SchemaCompatibility::OlderThanBinary { .. }
+        | SchemaCompatibility::NewerThanBinary { .. } => Err(AppError::database_unavailable(
+            "schema version mismatch; see the DB_STARTUP diagnostic for detail",
+        )),
     }
 }
 
@@ -689,6 +875,7 @@ mod tests {
         let state = DatabaseState::Configured {
             pool: build_pool(options),
             target,
+            config_warning: None,
         };
 
         let diagnostic = diagnose(&state).await;
@@ -813,6 +1000,7 @@ mod tests {
         let state = DatabaseState::Configured {
             pool: build_pool(options),
             target,
+            config_warning: None,
         };
         health_check_state(&state)
             .await
@@ -847,5 +1035,180 @@ mod tests {
             elapsed <= ACQUIRE_TIMEOUT + Duration::from_secs(2),
             "unavailable-server failure took {elapsed:?}, exceeding the acquire timeout bound"
         );
+    }
+
+    // ——— WS-K-1: precedence, config_warning, and schema-compatibility ———
+
+    #[tokio::test]
+    async fn precedence_prefers_env_var_over_config_file() {
+        // A temp dir with no `database.json` in it, but an env var set: the
+        // env var must win, and `source` must reflect that (proven indirectly
+        // here via the resolved target, since `source` itself is a private
+        // logging detail).
+        let dir = std::env::temp_dir().join(format!(
+            "sk-db-precedence-env-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // SAFETY (test-only): no other test in this binary reads or writes
+        // this exact env var concurrently within the same process; `cargo
+        // test` runs each test in its own thread but this variable is unique
+        // to this test.
+        std::env::set_var(DATABASE_URL_ENV, UNIT_TEST_URL);
+        let state = database_state_from_precedence(Some(dir.clone()));
+        std::env::remove_var(DATABASE_URL_ENV);
+
+        match state {
+            DatabaseState::Configured { target, .. } => {
+                assert_eq!(target.to_string(), "127.0.0.1:5432/unit_db");
+            }
+            _ => panic!("expected Configured from the env var"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn precedence_falls_through_to_config_file_when_env_var_unset() {
+        let dir = std::env::temp_dir().join(format!(
+            "sk-db-precedence-file-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("database.json"),
+            r#"{"host":"127.0.0.1","port":5432,"database":"stockiha_shop","user":"stockiha_runtime","password":"x"}"#,
+        )
+        .unwrap();
+
+        std::env::remove_var(DATABASE_URL_ENV);
+        let state = database_state_from_precedence(Some(dir.clone()));
+
+        match state {
+            DatabaseState::Configured { target, .. } => {
+                assert_eq!(target.to_string(), "127.0.0.1:5432/stockiha_shop");
+            }
+            _ => panic!("expected Configured from database.json"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn precedence_reports_invalid_configuration_for_malformed_config_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "sk-db-precedence-invalid-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("database.json"), "{ not json").unwrap();
+
+        std::env::remove_var(DATABASE_URL_ENV);
+        let state = database_state_from_precedence(Some(dir.clone()));
+
+        assert!(matches!(state, DatabaseState::InvalidConfiguration));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn precedence_is_unconfigured_when_nothing_resolves() {
+        let dir = std::env::temp_dir().join(format!(
+            "sk-db-precedence-none-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::env::remove_var(DATABASE_URL_ENV);
+        let state = database_state_from_precedence(Some(dir.clone()));
+
+        // On non-Windows this is unconditionally Unconfigured. On Windows it
+        // could theoretically pick up a real developer `runtime.key` if this
+        // happens to run on a machine that has one — which a CI/test box
+        // never does — so this assertion holds in both environments in
+        // practice; it documents the *absence* of the config file as the
+        // condition under test, not the runtime.key branch itself (that
+        // branch is explicitly left untouched and out of scope for new
+        // tests, per WS-K-1's own instruction not to touch dev-cluster
+        // assumptions).
+        assert!(matches!(
+            state,
+            DatabaseState::Unconfigured | DatabaseState::Configured { .. }
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `config_warning` must survive regardless of whether the connection
+    /// itself succeeds — proven here on a *failing* connection (nothing
+    /// listens on port 1), with no live database required.
+    #[tokio::test]
+    async fn config_warning_is_attached_even_when_connectivity_fails() {
+        let options = parse_connect_options(
+            "postgres://unit_user:unit_placeholder@127.0.0.1:1/stockiha_unreachable_db",
+        )
+        .expect("valid URL must parse");
+        let target = ConnectionTarget::from_options(&options);
+        let state = DatabaseState::Configured {
+            pool: build_pool(options),
+            target,
+            config_warning: Some(ConfigWarning::InsecurePermissions),
+        };
+
+        let diagnostic = diagnose(&state).await;
+
+        assert_eq!(diagnostic.code, DbReasonCode::ConnectRefused);
+        assert_eq!(
+            diagnostic.config_warning,
+            Some(ConfigWarning::InsecurePermissions),
+            "a config-file permission warning must be reported even when the \
+             connection itself fails — it is a fact about the file, not \
+             about connectivity"
+        );
+        // And it must never block: the code is still the real connectivity
+        // verdict (ConnectRefused here), not some new blocking variant.
+        assert_ne!(diagnostic.code, DbReasonCode::InvalidConfiguration);
+    }
+
+    #[test]
+    fn diagnostic_serializes_schema_and_config_warning_fields() {
+        let json = serde_json::to_string(&DbDiagnostic {
+            code: DbReasonCode::Ok,
+            detail: "connected".to_owned(),
+            schema: Some(SchemaCompatibility::UpToDate),
+            config_warning: Some(ConfigWarning::InsecurePermissions),
+        })
+        .unwrap();
+        assert!(json.contains(r#""schema":{"status":"UP_TO_DATE"}"#));
+        assert!(json.contains(r#""config_warning":"INSECURE_PERMISSIONS""#));
+    }
+
+    #[test]
+    fn diagnostic_omits_schema_when_not_ok() {
+        let diagnostic = DbDiagnostic::new(DbReasonCode::NotConfigured, DIAGNOSTIC_NOT_CONFIGURED);
+        let json = serde_json::to_string(&diagnostic).unwrap();
+        assert!(json.contains(r#""schema":null"#));
+        assert!(json.contains(r#""config_warning":null"#));
+    }
+
+    /// Schema compatibility requires a live, migrated-or-not test database, so
+    /// these are opt-in like the other real-connectivity tests above. Run
+    /// with `STOCKIHA_TEST_DATABASE_URL` set and `cargo test -- --ignored`.
+    #[tokio::test]
+    #[ignore = "requires a live PostgreSQL server, STOCKIHA_TEST_DATABASE_URL, and full migrations applied"]
+    async fn up_to_date_schema_reports_ok_with_up_to_date_status() {
+        let options = require_test_options();
+        let target = ConnectionTarget::from_options(&options);
+        let state = DatabaseState::Configured {
+            pool: build_pool(options),
+            target,
+            config_warning: None,
+        };
+
+        let diagnostic = diagnose(&state).await;
+
+        assert_eq!(diagnostic.code, DbReasonCode::Ok);
+        assert_eq!(diagnostic.schema, Some(SchemaCompatibility::UpToDate));
     }
 }

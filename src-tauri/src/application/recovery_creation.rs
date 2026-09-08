@@ -416,7 +416,7 @@ fn validate_real_directory(
 }
 
 fn resolve_pg_dump_target() -> Result<(String, u16, String), AppError> {
-    let url = std::env::var(db::DEV_DATABASE_URL_ENV).map_err(|_| {
+    let url = std::env::var(db::DATABASE_URL_ENV).map_err(|_| {
         AppError::database_configuration("database target configuration is not set")
     })?;
     let options = db::parse_connect_options(&url)?;

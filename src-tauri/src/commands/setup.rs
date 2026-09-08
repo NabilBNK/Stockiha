@@ -17,11 +17,19 @@ pub(crate) struct SetupStatusResponse {
 }
 
 /// Unauthenticated setup-status read for first-run routing.
+///
+/// WS-K-1: gated on schema compatibility, not just raw connectivity — see
+/// `db::pool_if_schema_compatible`. This is the first call the frontend makes
+/// at every startup/retry, so schema mismatches (both "database is behind"
+/// and "database is ahead of this build") are caught here rather than
+/// surfacing later as a confusing missing-column error mid-workflow.
 #[tauri::command]
 pub(crate) async fn get_setup_status(
     state: State<'_, DatabaseState>,
 ) -> Result<SetupStatusResponse, IpcError> {
-    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let pool = db::pool_if_schema_compatible(state.inner())
+        .await
+        .map_err(IpcError::from)?;
     setup::get_setup_status(pool)
         .await
         .map(|s| SetupStatusResponse {

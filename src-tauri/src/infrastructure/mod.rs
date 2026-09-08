@@ -18,6 +18,13 @@ pub(crate) mod bootstrap;
 mod credentials;
 pub(crate) mod customer_pdf;
 pub mod db;
+// WS-K-1: per-installation `database.json` config-file resolution, the
+// second tier of the connection precedence (env var, then this, then the
+// developer-only `runtime.key` fallback in `db`).
+pub(crate) mod local_config;
+// WS-K-1: read-only comparison of the migrations embedded in this binary
+// against the migrations actually applied to the connected database.
+pub(crate) mod schema_version;
 // S0-008: ESC/POS Windows RAW spooler proof. Crate-private and consumer-free
 // (no Tauri command, no IPC); dead code in non-test builds until a later
 // slice sends real receipts. The exemption is removed then. The module is
