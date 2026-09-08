@@ -31,6 +31,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "resources/postgres/win64/**/*": "postgres/win64/",
+      "resources/postgres/sqlx-cli/**/*": "postgres/sqlx-cli/",
+      "../scripts/provisioning/Provision-StockihaPostgres.ps1": "postgres/Provision-StockihaPostgres.ps1",
+      "../scripts/provisioning/Uninstall-StockihaPostgres.ps1": "postgres/Uninstall-StockihaPostgres.ps1",
+      "migrations/**/*": "postgres/migrations/"
+    }
   }
 }
