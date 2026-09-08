@@ -24,7 +24,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,10 +34,14 @@
     ],
     "resources": {
       "resources/postgres/win64/**/*": "postgres/win64/",
-      "resources/postgres/sqlx-cli/**/*": "postgres/sqlx-cli/",
       "../scripts/provisioning/Provision-StockihaPostgres.ps1": "postgres/Provision-StockihaPostgres.ps1",
-      "../scripts/provisioning/Uninstall-StockihaPostgres.ps1": "postgres/Uninstall-StockihaPostgres.ps1",
-      "migrations/**/*": "postgres/migrations/"
+      "../scripts/provisioning/Uninstall-StockihaPostgres.ps1": "postgres/Uninstall-StockihaPostgres.ps1"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "nsis/hooks.nsh"
+      }
     }
   }
 }

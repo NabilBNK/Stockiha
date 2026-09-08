@@ -14,11 +14,21 @@
     PostgreSQL binds to 127.0.0.1 only. No multi-machine support is built
     here, and none should be added without a fresh decision.
 
+    WS-K-3 design change: migrations run via the app's own binary
+    (`stockiha.exe --provision-migrate`), not a separately bundled
+    sqlx.exe — see Resolve-StockihaAppExe / Invoke-StockihaMigrations
+    below and infrastructure::provision_cli in the Rust source. This
+    eliminates the sqlx-cli provenance problem
+    resources/postgres/sqlx-cli/README.md (now deleted) described, rather
+    than solving it: the migrator that provisions a client is
+    byte-identical to the one already compiled into the app it
+    provisions for.
+
     WHAT THIS SCRIPT DOES NOT DO:
       - It does not download or extract the PostgreSQL binaries themselves.
         Those are expected to already be present, bundled as a Tauri
         resource, at $PostgresBinDir (see the -PostgresBinDir parameter and
-        resources/postgres/README.md). K2-1's binary provenance is a
+        resources/postgres/win64/README.md). K3-1's binary provenance is a
         separate, explicit decision — this script only ever *runs* what it
         is given.
       - It does not touch %LOCALAPPDATA%\Stockiha\r8-acceptance. That path
@@ -527,43 +537,38 @@ ALTER ROLE stockiha_migrator IN DATABASE "$DbName" SET role = 'stockiha_owner';
 "@
 }
 
-function Resolve-StockihaMigrationsPath {
-    # Installed layout (see tauri.conf.json's bundle.resources): this script
-    # ships at postgres\Provision-StockihaPostgres.ps1 with a sibling
-    # postgres\migrations\ directory. Checked first, since that is the real
-    # production path.
-    $installed = Join-Path $PSScriptRoot 'migrations'
-    if (Test-Path -LiteralPath $installed) {
-        return $installed
+function Resolve-StockihaAppExe {
+    # WS-K-3 design change: migrations run via the app's OWN
+    # `--provision-migrate` flag (infrastructure::provision_cli), reusing
+    # the same embedded sqlx Migrator the app's schema-version check already
+    # uses — never a separately bundled sqlx.exe. No migrations directory or
+    # sqlx-cli resource needs resolving here any more; the migrations are
+    # compiled into the app binary itself.
+    #
+    # Installed layout: this script ships at postgres\Provision-StockihaPostgres.ps1
+    # (see tauri.conf.json's bundle.resources), one level below the app's
+    # own install root, where the main executable lives.
+    $installRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+    foreach ($candidate in @('stockiha-backend.exe', 'Stockiha.exe', 'stockiha.exe')) {
+        $path = Join-Path $installRoot $candidate
+        if (Test-Path -LiteralPath $path) {
+            return $path
+        }
     }
-    # Dev/repo layout fallback, so this script is also directly runnable
-    # from a checkout for local testing without needing a built bundle.
+    # Dev/repo layout fallback: a local `cargo build` output, so this script
+    # is also directly runnable against a checkout for local testing.
     $repoRoot = Join-Path $PSScriptRoot '..\..'
-    $devPath = Join-Path $repoRoot 'src-tauri\migrations'
-    if (Test-Path -LiteralPath $devPath) {
-        return Resolve-Path $devPath
+    foreach ($profile in @('release', 'debug')) {
+        $devPath = Join-Path $repoRoot "src-tauri\target\$profile\stockiha-backend.exe"
+        if (Test-Path -LiteralPath $devPath) {
+            return Resolve-Path $devPath
+        }
     }
-    Fail "Could not find a migrations directory (looked for '$installed' and '$devPath')."
-}
-
-function Resolve-StockihaSqlxCli {
-    # Installed layout: bundled next to this script (see tauri.conf.json's
-    # bundle.resources and resources/postgres/README.md — sqlx-cli's static
-    # Windows binary, not the whole Rust toolchain).
-    $bundled = Join-Path $PSScriptRoot 'sqlx-cli\sqlx.exe'
-    if (Test-Path -LiteralPath $bundled) {
-        return $bundled
-    }
-    $onPath = Get-Command sqlx.exe -ErrorAction SilentlyContinue
-    if ($onPath) {
-        return $onPath.Source
-    }
-    Fail "sqlx-cli (sqlx.exe) was not found bundled at '$bundled' or on PATH. The installer must bundle it (see resources/postgres/README.md) or install it before calling this script."
+    Fail "Could not find the Stockiha application executable next to this script (looked in '$installRoot') or in a local dev build. Migrations cannot run without it."
 }
 
 function Invoke-StockihaMigrations([int]$Port, [string]$DbName, [string]$MigratorPassword) {
-    $migrationsPath = Resolve-StockihaMigrationsPath
-    $sqlxExe = Resolve-StockihaSqlxCli
+    $stockihaExe = Resolve-StockihaAppExe
 
     $escapedPw = [System.Uri]::EscapeDataString($MigratorPassword)
     $migrationUrl = "postgres://stockiha_migrator:$escapedPw@127.0.0.1:$Port/$DbName`?sslmode=disable"
@@ -571,21 +576,22 @@ function Invoke-StockihaMigrations([int]$Port, [string]$DbName, [string]$Migrato
     $env:DATABASE_URL = $migrationUrl
     try {
         # Literal tool output captured and logged verbatim — K2-4 requires
-        # this, not a summary. sqlx migrate run reports each applied file
-        # by name; a failure partway through stops here with a non-zero
-        # exit and prints exactly which file failed.
-        $output = & $sqlxExe migrate run --source $migrationsPath 2>&1 | Out-String
-        Write-Log "sqlx migrate run output:`n$output"
-        if ($LASTEXITCODE -ne 0) {
-            # K2-6: migrations failed partway. The database is left at a
-            # valid-but-behind schema version — see the report's Failure
-            # Handling section for why this is safe and why the installer
-            # must NOT retry or roll back here: WS-K-1's schema check
-            # (infallible after the WS-K-1.2 hotfix) will detect
-            # OlderThanBinary on the app's first launch and show "Database
-            # needs an update" rather than crash on a missing column, which
-            # is the correct, already-built outcome for exactly this case.
-            Fail "Migrations failed partway (see sqlx output above). database.json will NOT be written; the app's own startup diagnostic will report the incomplete schema on first launch."
+        # this, not a summary. `--provision-migrate` prints exactly which
+        # step (connect / migrate) failed if it does.
+        $output = & $stockihaExe --provision-migrate 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+        Write-Log "--provision-migrate output (exit $exitCode):`n$output"
+        if ($exitCode -ne 0) {
+            # K2-6: migrations failed partway (or never connected). The
+            # database is left at a valid-but-behind schema version — see
+            # the report's Failure Handling section for why this is safe
+            # and why the installer must NOT retry or roll back here:
+            # WS-K-1's schema check (infallible after the WS-K-1.2 hotfix)
+            # will detect OlderThanBinary on the app's first launch and show
+            # "Database needs an update" rather than crash on a missing
+            # column, which is the correct, already-built outcome for
+            # exactly this case.
+            Fail "Migrations failed (see --provision-migrate output above, exit code $exitCode). database.json will NOT be written; the app's own startup diagnostic will report the incomplete schema on first launch."
         }
     } finally {
         Remove-Item Env:\DATABASE_URL -ErrorAction SilentlyContinue
@@ -748,4 +754,6 @@ if (-not (Test-DatabaseJsonWorks -Path $jsonPath)) {
 Write-StockihaInstanceMarker -Port $script:StockihaPort
 Write-Log "Provisioning complete. Port=$script:StockihaPort Database=$DatabaseName database.json=$jsonPath"
 exit 0
+
+
 

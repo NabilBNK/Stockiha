@@ -1,11 +1,19 @@
 //! WS-K-1 — Read-only schema-version comparison.
 //!
 //! Compares the newest migration *embedded in this binary* against the newest
-//! migration *actually applied* to the connected database. Never runs a
-//! migration: [`MIGRATOR`] is used only for its own metadata (the list of
-//! migrations compiled in via `sqlx::migrate!()`), never for `.run()`. That
-//! keeps this module strictly read-only, matching K1-4's ruling that WS-K-1
-//! does not implement automatic migration.
+//! migration *actually applied* to the connected database. [`MIGRATOR`] is
+//! used for its own metadata (the list of migrations compiled in via
+//! `sqlx::migrate!()`) here — [`check_schema_compatibility`] never calls
+//! `.run()`, matching K1-4's ruling that automatic migration-on-every-startup
+//! is not implemented.
+//!
+//! WS-K-3 adds the one, narrow exception: [`run_all_migrations`], reachable
+//! only via the installer's own `--provision-migrate` CLI entry point
+//! (`infrastructure::provision_cli`), a one-time first-install action, never
+//! a normal app-launch behavior. It reuses this exact same `MIGRATOR`
+//! instance rather than a second, separately-versioned copy — the migrator
+//! that provisions a client's database is therefore byte-identical to the
+//! one already compiled into the app it is provisioning for.
 //!
 //! `_sqlx_migrations` is SQLx's own bookkeeping table — the same one
 //! `scripts/run-sqlx-migrations.ps1` and every `sqlx migrate run` invocation
@@ -35,9 +43,24 @@
 use serde::Serialize;
 use sqlx::{migrate::Migrator, PgConnection, Row};
 
-/// The migrations compiled into this binary at build time. Read-only use
-/// only: this module never calls [`Migrator::run`].
+/// The migrations compiled into this binary at build time.
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+
+/// Run every pending migration against `conn`, using the exact same
+/// embedded [`MIGRATOR`] [`check_schema_compatibility`] reads metadata from.
+///
+/// WS-K-3: the only caller is `infrastructure::provision_cli::run`, itself
+/// reachable only via the installer-only `--provision-migrate` CLI flag —
+/// never part of normal app startup. Delegates entirely to SQLx's own
+/// `Migrator::run`, which already provides per-file transactions,
+/// checksum verification of already-applied migrations, and
+/// `_sqlx_migrations` bookkeeping; this function adds no logic of its own
+/// beyond exposing that call to the one legitimate caller.
+pub async fn run_all_migrations(
+    conn: &mut PgConnection,
+) -> Result<(), sqlx::migrate::MigrateError> {
+    MIGRATOR.run(conn).await
+}
 
 /// Outcome of comparing embedded vs. applied migration versions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]

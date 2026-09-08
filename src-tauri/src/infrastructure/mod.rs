@@ -18,6 +18,11 @@ pub(crate) mod bootstrap;
 mod credentials;
 pub(crate) mod customer_pdf;
 pub mod db;
+// WS-K-3: the `--provision-migrate` CLI entry point, reachable only via
+// that literal argument (checked in `lib.rs` before Tauri's normal `run()`
+// is ever called). Not `dead_code`-exempted: `lib.rs::maybe_run_provision_migrate`
+// is a real, always-present consumer.
+pub(crate) mod provision_cli;
 // WS-K-1: per-installation `database.json` config-file resolution, the
 // second tier of the connection precedence (env var, then this, then the
 // developer-only `runtime.key` fallback in `db`).

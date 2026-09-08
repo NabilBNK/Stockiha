@@ -22,6 +22,22 @@ fn init_dev_tracing() {
     let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
 }
 
+/// WS-K-3: if this process was launched with the literal `--provision-migrate`
+/// argument, run the installer-only migration path and exit immediately —
+/// never falling through to [`run`] (no Tauri, no window). Any other launch,
+/// including a normal double-click with zero arguments, returns immediately
+/// without doing anything, so ordinary app startup is byte-for-byte
+/// unchanged. Deliberately checked in `main.rs` *before* `run()` is called,
+/// not inside it: `run()` builds a `tauri::Builder`, which this path must
+/// never touch.
+pub fn maybe_run_provision_migrate() {
+    if !infrastructure::provision_cli::provision_migrate_requested(std::env::args()) {
+        return;
+    }
+    let exit_code = infrastructure::provision_cli::run();
+    std::process::exit(exit_code);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(debug_assertions)]
