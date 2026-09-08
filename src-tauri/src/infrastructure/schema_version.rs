@@ -10,12 +10,30 @@
 //! `_sqlx_migrations` is SQLx's own bookkeeping table — the same one
 //! `scripts/run-sqlx-migrations.ps1` and every `sqlx migrate run` invocation
 //! already write to. Reading it introduces no new schema and no new
-//! ownership/grant surface.
+//! ownership/grant surface (`stockiha_runtime` is granted read-only `SELECT`
+//! on it by
+//! `migrations/20260910090000_ws_k_001_grant_sqlx_migrations_select_runtime.sql`).
+//!
+//! WS-K-1.2 hotfix — **this check must fail open.** A first production run
+//! surfaced exactly the failure mode this note now exists to prevent: the
+//! runtime role had never been granted `SELECT` on `_sqlx_migrations`
+//! (fixed by the grant migration above), and the query failure that
+//! produced was — before this hotfix — reported as an internal error that
+//! blocked startup on a database that was otherwise completely healthy and
+//! connected. The advisory-check philosophy already applied to
+//! `local_config`'s Windows ACL check applies identically here: an inability
+//! to *determine* the schema version is not evidence that the version is
+//! wrong, and must never be treated as one of the two conditions
+//! ([`SchemaCompatibility::OlderThanBinary`] /
+//! [`SchemaCompatibility::NewerThanBinary`]) that are allowed to change
+//! startup behavior. [`check_schema_compatibility`] is therefore infallible:
+//! every query failure except one (see [`latest_applied_version`]'s own doc
+//! comment for the one deliberate exception) resolves to
+//! [`SchemaCompatibility::Unknown`], logged once at `WARN`, never surfaced
+//! as a blocking state.
 
 use serde::Serialize;
 use sqlx::{migrate::Migrator, PgConnection, Row};
-
-use crate::error::AppError;
 
 /// The migrations compiled into this binary at build time. Read-only use
 /// only: this module never calls [`Migrator::run`].
@@ -37,6 +55,12 @@ pub enum SchemaCompatibility {
     /// database — refuse to proceed rather than operate on schema it cannot
     /// understand.
     NewerThanBinary { applied: i64, latest: i64 },
+    /// The version could not be determined — a permission error, an
+    /// unexpected query failure, a timeout, or any other reason. Deliberately
+    /// *not* a claim about the schema either way: callers treat this
+    /// identically to [`Self::UpToDate`] (proceed), never as a block. See
+    /// the module-level fail-open note.
+    Unknown,
 }
 
 /// Pure comparison, unit-testable without any database connection.
@@ -71,6 +95,21 @@ fn embedded_latest_version() -> i64 {
         .version
 }
 
+/// Outcome of the raw `_sqlx_migrations` read, before comparison.
+enum AppliedVersionQuery {
+    /// The query succeeded; `_sqlx_migrations` may still have zero rows.
+    Applied(Option<i64>),
+    /// The table does not exist yet (SQLSTATE `42P01`, undefined_table) —
+    /// see [`latest_applied_version`]'s doc comment. Deliberately distinct
+    /// from [`Self::Unreadable`]: this is real, positive evidence ("nothing
+    /// has ever been applied"), not an inability to find out.
+    NeverMigrated,
+    /// The query failed for any other reason (permission denied, connection
+    /// drop, timeout, an unexpected row shape, ...). The one and only
+    /// producer of [`SchemaCompatibility::Unknown`].
+    Unreadable(sqlx::Error),
+}
+
 /// Query the newest *successfully applied* migration version.
 ///
 /// `success = true` matters: a row with `success = false` records a migration
@@ -79,44 +118,70 @@ fn embedded_latest_version() -> i64 {
 /// through a broken migration.
 ///
 /// `_sqlx_migrations` itself not existing (SQLSTATE `42P01`, undefined_table)
-/// is treated as "zero migrations applied" rather than a query failure: a
-/// reachable PostgreSQL database with no migration history at all is exactly
-/// the K1-3 "connected, but the database or schema is missing" case, and it
-/// is reported through the same [`SchemaCompatibility::OlderThanBinary`]
-/// path (with `applied: 0`) rather than a separate mechanism — the caller
-/// distinguishes "never set up" from "behind" by checking `applied == 0`.
-async fn latest_applied_version(conn: &mut PgConnection) -> Result<Option<i64>, sqlx::Error> {
+/// is treated as "zero migrations applied" rather than an unreadable result:
+/// a reachable PostgreSQL database with no migration history at all is
+/// exactly the K1-3 "connected, but the database or schema is missing" case
+/// — real, positive information, not an inability to determine an answer —
+/// and it is reported through the same [`SchemaCompatibility::OlderThanBinary`]
+/// path (with `applied: 0`) rather than folded into
+/// [`SchemaCompatibility::Unknown`]. Every *other* query failure (most
+/// notably `permission denied`, WS-K-1.2's own trigger — see the module-level
+/// note) genuinely cannot distinguish "up to date" from "badly out of date",
+/// and becomes [`AppliedVersionQuery::Unreadable`].
+async fn latest_applied_version(conn: &mut PgConnection) -> AppliedVersionQuery {
     let result =
         sqlx::query("SELECT MAX(version) AS version FROM _sqlx_migrations WHERE success = true")
             .fetch_one(conn)
             .await;
 
     match result {
-        Ok(row) => Ok(row.try_get::<Option<i64>, _>("version")?),
+        Ok(row) => match row.try_get::<Option<i64>, _>("version") {
+            Ok(version) => AppliedVersionQuery::Applied(version),
+            Err(err) => AppliedVersionQuery::Unreadable(err),
+        },
         Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("42P01") => {
-            Ok(None)
+            AppliedVersionQuery::NeverMigrated
         }
-        Err(other) => Err(other),
+        Err(other) => AppliedVersionQuery::Unreadable(other),
     }
 }
 
 /// Full schema-compatibility check against a live connection.
 ///
 /// Read-only: one `SELECT MAX(...)` against SQLx's own bookkeeping table.
-/// Never writes, never runs a migration. A query failure for any reason
-/// *other* than the bookkeeping table simply not existing yet (see
-/// [`latest_applied_version`]) is reported as a
-/// [`AppError::database_unavailable`] diagnostic — deliberately not
-/// panicking and not silently treated as "up to date".
-pub async fn check_schema_compatibility(
-    conn: &mut PgConnection,
-) -> Result<SchemaCompatibility, AppError> {
-    let applied = latest_applied_version(conn).await.map_err(|_sqlx_error| {
-        AppError::database_unavailable(
-            "could not read the applied migration history (_sqlx_migrations)",
-        )
-    })?;
-    Ok(compare(embedded_latest_version(), applied))
+/// Never writes, never runs a migration. **Infallible by design** (WS-K-1.2
+/// hotfix): any query failure other than the deliberate
+/// "table does not exist yet" case resolves to
+/// [`SchemaCompatibility::Unknown`] rather than propagating an error that
+/// could block startup — see the module-level note. Logged once at `WARN`
+/// with the redacted SQLx error class so an unexpected failure is still
+/// diagnosable without ever surfacing as a blocking UI state.
+pub async fn check_schema_compatibility(conn: &mut PgConnection) -> SchemaCompatibility {
+    resolve(latest_applied_version(conn).await)
+}
+
+/// Pure dispatch from a raw query outcome to a verdict — separated from
+/// [`check_schema_compatibility`] purely so it is unit-testable against
+/// synthetic [`sqlx::Error`] values without a live connection.
+fn resolve(query: AppliedVersionQuery) -> SchemaCompatibility {
+    match query {
+        AppliedVersionQuery::Applied(version) => compare(embedded_latest_version(), version),
+        AppliedVersionQuery::NeverMigrated => compare(embedded_latest_version(), None),
+        AppliedVersionQuery::Unreadable(err) => {
+            // The error's `Display` may include a database-server-provided
+            // message (e.g. "permission denied for table _sqlx_migrations")
+            // but never a credential, URL, or connection string — SQLx
+            // itself never places those in a query-execution error. Logged
+            // once here, at the single point this condition is detected;
+            // callers must not log it again on every read of the cached
+            // result.
+            tracing::warn!(
+                error = %err,
+                "schema version could not be determined; proceeding without a version verdict"
+            );
+            SchemaCompatibility::Unknown
+        }
+    }
 }
 
 #[cfg(test)]
@@ -159,6 +224,84 @@ mod tests {
                 latest: 42
             }
         );
+    }
+
+    // ——— WS-K-1.2 hotfix: fail-open dispatch ———
+
+    #[test]
+    fn applied_query_success_compares_normally() {
+        assert_eq!(
+            resolve(AppliedVersionQuery::Applied(
+                Some(embedded_latest_version())
+            )),
+            SchemaCompatibility::UpToDate
+        );
+    }
+
+    #[test]
+    fn never_migrated_is_older_than_binary_from_zero_not_unknown() {
+        // "The table doesn't exist" is real, positive information (K1-3's
+        // "database is empty" state) — it must never collapse into Unknown
+        // alongside genuine failures.
+        assert_eq!(
+            resolve(AppliedVersionQuery::NeverMigrated),
+            SchemaCompatibility::OlderThanBinary {
+                applied: 0,
+                latest: embedded_latest_version()
+            }
+        );
+    }
+
+    /// Represents "query timeout": `PoolTimedOut` is a real, easily
+    /// constructed `sqlx::Error` variant that carries no database-error
+    /// detail, matching what a genuine timeout looks like from this layer's
+    /// perspective.
+    #[test]
+    fn unreadable_timeout_resolves_to_unknown_not_a_block() {
+        assert_eq!(
+            resolve(AppliedVersionQuery::Unreadable(sqlx::Error::PoolTimedOut)),
+            SchemaCompatibility::Unknown
+        );
+    }
+
+    /// Represents "malformed result": the query succeeded but the expected
+    /// column could not be read as expected.
+    #[test]
+    fn unreadable_malformed_result_resolves_to_unknown_not_a_block() {
+        assert_eq!(
+            resolve(AppliedVersionQuery::Unreadable(
+                sqlx::Error::ColumnNotFound("version".to_owned())
+            )),
+            SchemaCompatibility::Unknown
+        );
+    }
+
+    /// The regression this hotfix exists to prevent: a `permission denied`
+    /// failure (the WS-K-1.2 trigger — `stockiha_runtime` lacked `SELECT` on
+    /// `_sqlx_migrations`) must resolve to `Unknown`, never to a blocking
+    /// state, regardless of which specific `sqlx::Error` shape carries it.
+    /// `RowNotFound` stands in for "some other unreadable-shaped failure";
+    /// the dispatch in `resolve` treats every non-`NeverMigrated` error
+    /// identically, so this and the two tests above jointly prove the
+    /// uniform fail-open path a real `permission denied` `Database` error
+    /// would also take.
+    #[test]
+    fn unreadable_error_never_produces_a_blocking_verdict() {
+        for err in [sqlx::Error::PoolTimedOut, sqlx::Error::RowNotFound] {
+            let verdict = resolve(AppliedVersionQuery::Unreadable(err));
+            assert_eq!(verdict, SchemaCompatibility::Unknown);
+            assert!(!matches!(
+                verdict,
+                SchemaCompatibility::OlderThanBinary { .. }
+                    | SchemaCompatibility::NewerThanBinary { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn unknown_serializes_to_tagged_screaming_snake_case() {
+        let json = serde_json::to_string(&SchemaCompatibility::Unknown).unwrap();
+        assert_eq!(json, r#"{"status":"UNKNOWN"}"#);
     }
 
     #[test]

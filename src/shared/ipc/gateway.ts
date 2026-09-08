@@ -101,7 +101,14 @@ export type DbReasonCode =
 export type SchemaCompatibility =
   | { status: 'UP_TO_DATE' }
   | { status: 'OLDER_THAN_BINARY'; applied: number; latest: number }
-  | { status: 'NEWER_THAN_BINARY'; applied: number; latest: number };
+  | { status: 'NEWER_THAN_BINARY'; applied: number; latest: number }
+  /**
+   * WS-K-1.2 hotfix: the version could not be determined (permission
+   * denied, an unexpected query failure, a timeout, ...). Deliberately not
+   * a claim either way — never gates anything on the Rust side, and must
+   * never be displayed as a schema problem here either.
+   */
+  | { status: 'UNKNOWN' };
 
 /**
  * WS-K-1 (correction 1). Mirrors `infrastructure::local_config::ConfigWarning`.

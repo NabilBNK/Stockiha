@@ -109,6 +109,34 @@ const CASES: Array<{ name: string; diagnostic: DbDiagnostic; expectedTitle: stri
     },
     expectedTitle: 'This version of Stockiha is out of date',
   },
+  {
+    // WS-K-1.2 hotfix regression: this exact shape (code OK, connected, but
+    // still routed to this screen because get_setup_status failed for some
+    // other reason) is what produced the contradictory "Service unavailable
+    // / OK — connected..." screen in production. It must never show the
+    // unreachable-sounding generic copy.
+    name: 'OK but still unavailable for an unrelated reason (must not claim unreachable)',
+    diagnostic: {
+      code: 'OK',
+      detail: 'connected to 127.0.0.1:5433/stockiha_acceptance (pool size=2, idle=2)',
+      schema: { status: 'UP_TO_DATE' },
+      config_warning: null,
+    },
+    expectedTitle: 'Something went wrong',
+  },
+  {
+    // Schema version genuinely could not be determined (e.g. permission
+    // denied reading _sqlx_migrations) — must read the same as the above,
+    // never as a schema-specific claim.
+    name: 'schema unknown (must not claim unreachable or a specific schema problem)',
+    diagnostic: {
+      code: 'OK',
+      detail: 'connected to 127.0.0.1:5433/stockiha_acceptance (pool size=2, idle=2)',
+      schema: { status: 'UNKNOWN' },
+      config_warning: null,
+    },
+    expectedTitle: 'Something went wrong',
+  },
 ];
 
 describe('backend-unavailable states', () => {

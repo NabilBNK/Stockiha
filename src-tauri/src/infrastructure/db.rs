@@ -158,6 +158,20 @@ pub enum DatabaseState {
         /// warning-worthy was found. Never gates connectivity — see
         /// `local_config`'s module-level safety note.
         config_warning: Option<ConfigWarning>,
+        /// WS-K-1.2 hotfix: the schema-compatibility verdict, computed at
+        /// most once for the lifetime of this `DatabaseState` (i.e. once per
+        /// app process) and shared by every caller — [`pool_if_schema_compatible`]
+        /// and [`diagnose_configured`] alike. A schema version cannot change
+        /// while this process is running (nothing in the app applies
+        /// migrations), so caching for the process lifetime is exact, not an
+        /// approximation, and eliminates the repeated `_sqlx_migrations`
+        /// query a naive "check on every poll" design produced — the query
+        /// that flooded PostgreSQL's log before this hotfix. A benign,
+        /// bounded race is possible if two callers both observe an empty
+        /// cache at startup and both query once concurrently; `OnceLock` picks
+        /// one winner and both readers converge on its result, so this can
+        /// never regress into repeated querying.
+        schema_cache: std::sync::OnceLock<SchemaCompatibility>,
     },
 }
 
@@ -208,6 +222,7 @@ pub fn database_state_from(url: Option<String>) -> DatabaseState {
                     // a permission warning; a bare URL has no on-disk file to
                     // check.
                     config_warning: None,
+                    schema_cache: std::sync::OnceLock::new(),
                 }
             }
             Err(_) => DatabaseState::InvalidConfiguration,
@@ -227,6 +242,7 @@ fn database_state_from_options(
         pool: build_pool(options),
         target,
         config_warning,
+        schema_cache: std::sync::OnceLock::new(),
     }
 }
 
@@ -453,12 +469,13 @@ pub async fn health_check_state(state: &DatabaseState) -> Result<(), AppError> {
             pool,
             target,
             config_warning,
+            schema_cache,
         } => match health_check(pool).await {
             Ok(()) => Ok(()),
             // Replace SQLx's evidence-free `PoolTimedOut` text with the real
             // reason and the real target before it reaches any log or the UI.
             Err(_) => Err(AppError::database_unavailable(
-                diagnose_configured(pool, target, *config_warning)
+                diagnose_configured(pool, target, *config_warning, schema_cache)
                     .await
                     .to_string(),
             )),
@@ -615,6 +632,7 @@ async fn diagnose_configured(
     pool: &PgPool,
     target: &ConnectionTarget,
     config_warning: Option<ConfigWarning>,
+    schema_cache: &std::sync::OnceLock<SchemaCompatibility>,
 ) -> DbDiagnostic {
     let options = pool.connect_options();
     let probe = tokio::time::timeout(PROBE_TIMEOUT, PgConnection::connect_with(&options)).await;
@@ -652,16 +670,14 @@ async fn diagnose_configured(
             } else {
                 // WS-K-1 (K1-5): only reached once connectivity itself is
                 // proven, on the same short-lived probe connection — no
-                // second round-trip. A schema-check failure (distinct from
-                // a version mismatch — e.g. `_sqlx_migrations` unreadable
-                // for a reason other than "does not exist yet") is folded
-                // into the same `Ok` connectivity verdict with `schema` left
-                // `None`: the connection genuinely is fine, this is a
-                // secondary, best-effort read, not a re-classification of
-                // connectivity itself.
-                let schema = schema_version::check_schema_compatibility(&mut connection)
-                    .await
-                    .ok();
+                // second round-trip beyond what `schema_compatibility_cached`
+                // itself needs (none, if another caller already populated
+                // the cache this process). The connection genuinely is fine
+                // regardless of what the schema check finds — a schema
+                // mismatch or an unreadable schema query is a fact layered
+                // on top of a proven-good connection, never a
+                // re-classification of connectivity itself.
+                let schema = schema_compatibility_cached(schema_cache, &mut connection).await;
                 let mut diagnostic = DbDiagnostic::new(
                     DbReasonCode::Ok,
                     format!(
@@ -670,7 +686,7 @@ async fn diagnose_configured(
                         pool.num_idle()
                     ),
                 );
-                diagnostic.schema = schema;
+                diagnostic.schema = Some(schema);
                 let _ = connection.close().await;
                 diagnostic
             }
@@ -699,8 +715,38 @@ pub async fn diagnose(state: &DatabaseState) -> DbDiagnostic {
             pool,
             target,
             config_warning,
-        } => diagnose_configured(pool, target, *config_warning).await,
+            schema_cache,
+        } => diagnose_configured(pool, target, *config_warning, schema_cache).await,
     }
+}
+
+/// Read the cached schema-compatibility verdict, computing and caching it
+/// (at most once for the lifetime of `cache`, i.e. once per app process) if
+/// no caller has already done so.
+///
+/// WS-K-1.2 hotfix: before this cache existed, `pool_if_schema_compatible`
+/// (invoked by `get_setup_status`, called at every startup and every
+/// explicit Retry) and `diagnose_configured` (invoked by `get_db_diagnostic`,
+/// called on every failure to fetch a reason) each ran their own independent
+/// `_sqlx_migrations` query — meaning a single failed page load already
+/// queried it twice, and every Retry click queried it twice more. A schema
+/// version cannot change while this process is running (nothing in the app
+/// applies migrations), so this is exact caching, not a heuristic: the first
+/// answer computed for this process is the only answer that could ever be
+/// computed. A benign, bounded race is possible if two callers both observe
+/// an empty cache and both query concurrently — `OnceLock::set` picks one
+/// winner and both readers converge on it, so this can never regress into
+/// unbounded repeated querying.
+async fn schema_compatibility_cached(
+    cache: &std::sync::OnceLock<SchemaCompatibility>,
+    conn: &mut PgConnection,
+) -> SchemaCompatibility {
+    if let Some(cached) = cache.get() {
+        return *cached;
+    }
+    let computed = schema_version::check_schema_compatibility(conn).await;
+    let _ = cache.set(computed);
+    *cache.get().unwrap_or(&computed)
 }
 
 /// Gate a command's pool acquisition on schema compatibility, not just raw
@@ -717,13 +763,33 @@ pub async fn diagnose(state: &DatabaseState) -> DbDiagnostic {
 /// correctly with no reordering and no new IPC call on the happy path — see
 /// `AppRouter.tsx`.
 ///
+/// WS-K-1.2 hotfix: [`SchemaCompatibility::Unknown`] is treated identically
+/// to [`SchemaCompatibility::UpToDate`] — an inability to *determine* the
+/// schema version must never block startup on an otherwise healthy
+/// connection (see `schema_version`'s module-level fail-open note; this was
+/// the actual production incident this hotfix fixes). Only a *positive*
+/// finding of `OlderThanBinary`/`NewerThanBinary` blocks.
+///
 /// Deliberately scoped to this one startup-gate call, not every business
 /// command: broadening it further is a business-logic change outside WS-K-1.
 pub async fn pool_if_schema_compatible(state: &DatabaseState) -> Result<&PgPool, AppError> {
     let pool = pool_or_unavailable(state)?;
-    let mut conn = pool.acquire().await.map_err(AppError::from_posting_error)?;
-    match schema_version::check_schema_compatibility(&mut conn).await? {
-        SchemaCompatibility::UpToDate => Ok(pool),
+    let DatabaseState::Configured { schema_cache, .. } = state else {
+        // `pool_or_unavailable` already rejected every non-`Configured`
+        // state above; this is unreachable in practice, but a safe fallback
+        // rather than a panic if that ever stops being true.
+        return Ok(pool);
+    };
+
+    let compat = if let Some(cached) = schema_cache.get() {
+        *cached
+    } else {
+        let mut conn = pool.acquire().await.map_err(AppError::from_posting_error)?;
+        schema_compatibility_cached(schema_cache, &mut conn).await
+    };
+
+    match compat {
+        SchemaCompatibility::UpToDate | SchemaCompatibility::Unknown => Ok(pool),
         SchemaCompatibility::OlderThanBinary { .. }
         | SchemaCompatibility::NewerThanBinary { .. } => Err(AppError::database_unavailable(
             "schema version mismatch; see the DB_STARTUP diagnostic for detail",
@@ -876,6 +942,7 @@ mod tests {
             pool: build_pool(options),
             target,
             config_warning: None,
+            schema_cache: std::sync::OnceLock::new(),
         };
 
         let diagnostic = diagnose(&state).await;
@@ -1001,6 +1068,7 @@ mod tests {
             pool: build_pool(options),
             target,
             config_warning: None,
+            schema_cache: std::sync::OnceLock::new(),
         };
         health_check_state(&state)
             .await
@@ -1154,6 +1222,7 @@ mod tests {
             pool: build_pool(options),
             target,
             config_warning: Some(ConfigWarning::InsecurePermissions),
+            schema_cache: std::sync::OnceLock::new(),
         };
 
         let diagnostic = diagnose(&state).await;
@@ -1204,11 +1273,166 @@ mod tests {
             pool: build_pool(options),
             target,
             config_warning: None,
+            schema_cache: std::sync::OnceLock::new(),
         };
 
         let diagnostic = diagnose(&state).await;
 
         assert_eq!(diagnostic.code, DbReasonCode::Ok);
         assert_eq!(diagnostic.schema, Some(SchemaCompatibility::UpToDate));
+    }
+
+    /// A pre-cached `UpToDate` verdict must never touch the network at all:
+    /// the pool here points at an unreachable port, so if
+    /// `pool_if_schema_compatible` tried to acquire a connection despite the
+    /// cache already being populated, this would fail or hang rather than
+    /// resolve immediately. No live server required.
+    #[tokio::test]
+    async fn pool_if_schema_compatible_skips_the_query_entirely_when_cache_is_prepopulated() {
+        let options = parse_connect_options(
+            "postgres://unit_user:unit_placeholder@127.0.0.1:1/stockiha_unreachable_db",
+        )
+        .expect("valid URL must parse");
+        let target = ConnectionTarget::from_options(&options);
+        let schema_cache = std::sync::OnceLock::new();
+        schema_cache
+            .set(SchemaCompatibility::UpToDate)
+            .expect("fresh OnceLock");
+        let state = DatabaseState::Configured {
+            pool: build_pool(options),
+            target,
+            config_warning: None,
+            schema_cache,
+        };
+
+        let result = pool_if_schema_compatible(&state).await;
+        assert!(
+            result.is_ok(),
+            "a pre-cached UpToDate verdict must let the pool through without a network round-trip"
+        );
+    }
+
+    /// WS-K-1.2 hotfix (Defect 2): `SchemaCompatibility::Unknown` must never
+    /// block — proceeds exactly like `UpToDate`. No live server required:
+    /// the cache is pre-populated so the unreachable pool is never touched.
+    #[tokio::test]
+    async fn pool_if_schema_compatible_lets_unknown_schema_through() {
+        let options = parse_connect_options(
+            "postgres://unit_user:unit_placeholder@127.0.0.1:1/stockiha_unreachable_db",
+        )
+        .expect("valid URL must parse");
+        let target = ConnectionTarget::from_options(&options);
+        let schema_cache = std::sync::OnceLock::new();
+        schema_cache
+            .set(SchemaCompatibility::Unknown)
+            .expect("fresh OnceLock");
+        let state = DatabaseState::Configured {
+            pool: build_pool(options),
+            target,
+            config_warning: None,
+            schema_cache,
+        };
+
+        assert!(
+            pool_if_schema_compatible(&state).await.is_ok(),
+            "an undetermined schema version must never block startup on an otherwise reachable pool"
+        );
+    }
+
+    /// `NewerThanBinary` must still block — the one ruling this hotfix
+    /// explicitly keeps unchanged. No live server required (cache
+    /// pre-populated).
+    #[tokio::test]
+    async fn pool_if_schema_compatible_still_blocks_on_newer_than_binary() {
+        let options = parse_connect_options(
+            "postgres://unit_user:unit_placeholder@127.0.0.1:1/stockiha_unreachable_db",
+        )
+        .expect("valid URL must parse");
+        let target = ConnectionTarget::from_options(&options);
+        let schema_cache = std::sync::OnceLock::new();
+        schema_cache
+            .set(SchemaCompatibility::NewerThanBinary {
+                applied: 99,
+                latest: 1,
+            })
+            .expect("fresh OnceLock");
+        let state = DatabaseState::Configured {
+            pool: build_pool(options),
+            target,
+            config_warning: None,
+            schema_cache,
+        };
+
+        assert!(
+            pool_if_schema_compatible(&state).await.is_err(),
+            "an older build against a newer schema must still refuse to proceed"
+        );
+    }
+
+    /// `OlderThanBinary` keeps being reported (shown as its own screen) —
+    /// unchanged by this hotfix. No live server required.
+    #[tokio::test]
+    async fn pool_if_schema_compatible_still_blocks_on_older_than_binary() {
+        let options = parse_connect_options(
+            "postgres://unit_user:unit_placeholder@127.0.0.1:1/stockiha_unreachable_db",
+        )
+        .expect("valid URL must parse");
+        let target = ConnectionTarget::from_options(&options);
+        let schema_cache = std::sync::OnceLock::new();
+        schema_cache
+            .set(SchemaCompatibility::OlderThanBinary {
+                applied: 1,
+                latest: 99,
+            })
+            .expect("fresh OnceLock");
+        let state = DatabaseState::Configured {
+            pool: build_pool(options),
+            target,
+            config_warning: None,
+            schema_cache,
+        };
+
+        assert!(pool_if_schema_compatible(&state).await.is_err());
+    }
+
+    /// WS-K-1.2 hotfix (Defect 3): the schema query must run at most once
+    /// per `DatabaseState`, shared between `pool_if_schema_compatible` (the
+    /// `get_setup_status` gate) and `diagnose`/`diagnose_configured` (the
+    /// `get_db_diagnostic` path) — the two call sites that, before this
+    /// hotfix, each ran their own independent query. Calling both against
+    /// the same state and then inspecting `schema_cache` directly proves the
+    /// second call reused the first's result rather than querying again.
+    #[tokio::test]
+    #[ignore = "requires a live PostgreSQL server, STOCKIHA_TEST_DATABASE_URL, and full migrations applied"]
+    async fn schema_query_runs_once_and_is_shared_across_call_sites() {
+        let options = require_test_options();
+        let target = ConnectionTarget::from_options(&options);
+        let state = DatabaseState::Configured {
+            pool: build_pool(options),
+            target,
+            config_warning: None,
+            schema_cache: std::sync::OnceLock::new(),
+        };
+
+        // First call: populates the cache via the pool-acquire path.
+        pool_if_schema_compatible(&state)
+            .await
+            .expect("up-to-date schema must not block");
+        let DatabaseState::Configured { schema_cache, .. } = &state else {
+            unreachable!()
+        };
+        let cached_after_first_call = *schema_cache
+            .get()
+            .expect("first call must have populated the cache");
+
+        // Second call, through the independent `diagnose` path: must read
+        // the same cached value rather than issuing a second query. There is
+        // no direct way to assert "zero additional queries ran" without
+        // instrumenting SQLx itself, so this asserts the behavioral
+        // consequence: the cache is untouched (still `Some`, same value) and
+        // `diagnose`'s own reported schema matches it exactly.
+        let diagnostic = diagnose(&state).await;
+        assert_eq!(diagnostic.schema, Some(cached_after_first_call));
+        assert_eq!(*schema_cache.get().unwrap(), cached_after_first_call);
     }
 }
