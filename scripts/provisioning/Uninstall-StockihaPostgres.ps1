@@ -50,7 +50,21 @@
 
 [CmdletBinding()]
 param(
-    [string]$StockihaDataRoot = (Join-Path $env:ProgramData 'Stockiha\postgres')
+    [string]$StockihaDataRoot = (Join-Path $env:ProgramData 'Stockiha\postgres'),
+
+    # Where the bundled PostgreSQL binaries live (win64\bin\pg_ctl.exe under
+    # this). WS-K-3.3 hotfix: this used to be found by recursively searching
+    # under $StockihaDataRoot's parent (C:\ProgramData) for pg_ctl.exe — which
+    # could never actually succeed, since the binaries live under $INSTDIR
+    # (Program Files), an entirely different tree from ProgramData. That bug
+    # never crashed; it silently fell through to the sc.exe fallback on
+    # every real run instead of the cleaner pg_ctl unregister path. Fixed the
+    # same way as Provision-StockihaPostgres.ps1's equivalent bug: hooks.nsh
+    # passes $INSTDIR\postgres\win64 directly rather than this script
+    # guessing. Optional (not Mandatory): unlike provisioning, uninstall
+    # must still do its best — stop the service, remove the account — even
+    # if this is somehow missing, falling back to sc.exe as before.
+    [string]$PostgresBinDir
 )
 
 Set-StrictMode -Version Latest
@@ -78,10 +92,10 @@ if (-not $service) {
         Stop-Service -Name $ServiceName -Force
     }
 
-    $pgCtl = Get-ChildItem -Path (Join-Path $StockihaDataRoot '..') -Filter 'pg_ctl.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $pgCtlPath = if ($PostgresBinDir) { Join-Path $PostgresBinDir 'bin\pg_ctl.exe' } else { $null }
     $dataDir = Join-Path $StockihaDataRoot 'data'
-    if ($pgCtl) {
-        & $pgCtl.FullName unregister -N $ServiceName 2>&1 | ForEach-Object { Write-Log "pg_ctl unregister: $_" }
+    if ($pgCtlPath -and (Test-Path -LiteralPath $pgCtlPath)) {
+        & $pgCtlPath unregister -N $ServiceName 2>&1 | ForEach-Object { Write-Log "pg_ctl unregister: $_" }
     } else {
         # Fall back to sc.exe if the bundled binaries were already removed
         # by the time uninstall runs (e.g. the app's own install directory
@@ -103,4 +117,5 @@ if ($account) {
 
 Write-Log "Uninstall step complete. Data directory and database.json were NOT removed - see this script's header for why."
 exit 0
+
 

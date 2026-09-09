@@ -16,13 +16,20 @@
 
     WS-K-3 design change: migrations run via the app's own binary
     (`stockiha.exe --provision-migrate`), not a separately bundled
-    sqlx.exe — see Resolve-StockihaAppExe / Invoke-StockihaMigrations
-    below and infrastructure::provision_cli in the Rust source. This
-    eliminates the sqlx-cli provenance problem
-    resources/postgres/sqlx-cli/README.md (now deleted) described, rather
-    than solving it: the migrator that provisions a client is
-    byte-identical to the one already compiled into the app it
-    provisions for.
+    sqlx.exe — see Invoke-StockihaMigrations below and
+    infrastructure::provision_cli in the Rust source. This eliminates the
+    sqlx-cli provenance problem resources/postgres/sqlx-cli/README.md
+    (now deleted) described, rather than solving it: the migrator that
+    provisions a client is byte-identical to the one already compiled
+    into the app it provisions for.
+
+    WS-K-3.3 hotfix: every path this script needs ($PostgresBinDir,
+    $StockihaExePath) is now a REQUIRED parameter with no default-value
+    expression. This script no longer tries to locate itself, its
+    bundled PostgreSQL binaries, or the Stockiha application executable
+    relative to its own location under any circumstance — see the
+    -PostgresBinDir parameter's own comment for the two real bugs that
+    approach caused on the Owner's real machine.
 
     WHAT THIS SCRIPT DOES NOT DO:
       - It does not download or extract the PostgreSQL binaries themselves.
@@ -51,8 +58,27 @@
 [CmdletBinding()]
 param(
     # Where the bundled PostgreSQL binaries already are (extracted from the
-    # Tauri NSIS resource before this script runs — see K2-1 in the report).
-    [string]$PostgresBinDir = (Join-Path $PSScriptRoot '..\..\resources\postgres\win64'),
+    # Tauri NSIS resource before this script runs — see K3-1 in the report).
+    # WS-K-3.3 hotfix: REQUIRED, no default-value expression. Two real bugs
+    # were found here, independently:
+    #   1. $PSScriptRoot resolved to an empty string when this script was
+    #      launched the way hooks.nsh actually launches it (through
+    #      powershell.exe ... -File in the hidden-window/nsExec path),
+    #      crashing Join-Path on the very first line of the param block —
+    #      confirmed against the Owner's real installer log.
+    #   2. Even had $PSScriptRoot been non-empty, '..\..\resources\postgres\win64'
+    #      was the wrong math against tauri.conf.json's actual resource
+    #      mapping: both this script and win64/ land under $INSTDIR\postgres\,
+    #      making win64 a SIBLING of this script, not two directories above
+    #      $INSTDIR.
+    # The fix for both is the same: never derive this path from the script's
+    # own location. hooks.nsh already knows $INSTDIR with total precision at
+    # the moment it invokes this script and passes it explicitly. A required
+    # parameter with no default also means a future missing-argument mistake
+    # fails immediately with a clear "missing mandatory parameter" message,
+    # not a cryptic Join-Path crash three lines into execution.
+    [Parameter(Mandatory = $true)]
+    [string]$PostgresBinDir,
 
     # Root of everything this script creates: the data directory, logs, and
     # the instance marker. Deliberately NOT %LOCALAPPDATA% (see module
@@ -62,6 +88,15 @@ param(
     # entry). ProgramData is the correct Windows location for state owned by
     # a Windows SERVICE rather than by a specific logged-in user.
     [string]$StockihaDataRoot = (Join-Path $env:ProgramData 'Stockiha\postgres'),
+
+    # Path to the Stockiha application executable itself, needed to run
+    # `--provision-migrate` (see Invoke-StockihaMigrations). WS-K-3.3
+    # hotfix: required, no default — this used to be guessed relative to
+    # $PSScriptRoot (Resolve-StockihaAppExe), which had the same class of
+    # bug that crashed -PostgresBinDir above. hooks.nsh passes
+    # "$INSTDIR\stockiha-backend.exe" directly.
+    [Parameter(Mandatory = $true)]
+    [string]$StockihaExePath,
 
     # Preferred port. Deliberately not 5432 (the universal PostgreSQL
     # default, most likely to collide with unrelated software) and
@@ -537,38 +572,22 @@ ALTER ROLE stockiha_migrator IN DATABASE "$DbName" SET role = 'stockiha_owner';
 "@
 }
 
-function Resolve-StockihaAppExe {
+function Invoke-StockihaMigrations([int]$Port, [string]$DbName, [string]$MigratorPassword, [string]$StockihaExePath) {
     # WS-K-3 design change: migrations run via the app's OWN
     # `--provision-migrate` flag (infrastructure::provision_cli), reusing
     # the same embedded sqlx Migrator the app's schema-version check already
-    # uses — never a separately bundled sqlx.exe. No migrations directory or
-    # sqlx-cli resource needs resolving here any more; the migrations are
-    # compiled into the app binary itself.
+    # uses — never a separately bundled sqlx.exe.
     #
-    # Installed layout: this script ships at postgres\Provision-StockihaPostgres.ps1
-    # (see tauri.conf.json's bundle.resources), one level below the app's
-    # own install root, where the main executable lives.
-    $installRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-    foreach ($candidate in @('stockiha-backend.exe', 'Stockiha.exe', 'stockiha.exe')) {
-        $path = Join-Path $installRoot $candidate
-        if (Test-Path -LiteralPath $path) {
-            return $path
-        }
+    # WS-K-3.3 hotfix: this used to self-locate the app exe relative to
+    # $PSScriptRoot (Resolve-StockihaAppExe, now removed). That function had
+    # the exact same class of bug as the -PostgresBinDir default that
+    # actually crashed on the Owner's machine — see this script's param()
+    # block comment. Removed entirely rather than patched: $StockihaExePath
+    # is now a required parameter, resolved once by hooks.nsh from the
+    # $INSTDIR it already knows precisely, never guessed here.
+    if (-not (Test-Path -LiteralPath $StockihaExePath)) {
+        Fail "Stockiha application executable not found at '$StockihaExePath'. Migrations cannot run without it."
     }
-    # Dev/repo layout fallback: a local `cargo build` output, so this script
-    # is also directly runnable against a checkout for local testing.
-    $repoRoot = Join-Path $PSScriptRoot '..\..'
-    foreach ($profile in @('release', 'debug')) {
-        $devPath = Join-Path $repoRoot "src-tauri\target\$profile\stockiha-backend.exe"
-        if (Test-Path -LiteralPath $devPath) {
-            return Resolve-Path $devPath
-        }
-    }
-    Fail "Could not find the Stockiha application executable next to this script (looked in '$installRoot') or in a local dev build. Migrations cannot run without it."
-}
-
-function Invoke-StockihaMigrations([int]$Port, [string]$DbName, [string]$MigratorPassword) {
-    $stockihaExe = Resolve-StockihaAppExe
 
     $escapedPw = [System.Uri]::EscapeDataString($MigratorPassword)
     $migrationUrl = "postgres://stockiha_migrator:$escapedPw@127.0.0.1:$Port/$DbName`?sslmode=disable"
@@ -578,7 +597,7 @@ function Invoke-StockihaMigrations([int]$Port, [string]$DbName, [string]$Migrato
         # Literal tool output captured and logged verbatim — K2-4 requires
         # this, not a summary. `--provision-migrate` prints exactly which
         # step (connect / migrate) failed if it does.
-        $output = & $stockihaExe --provision-migrate 2>&1 | Out-String
+        $output = & $StockihaExePath --provision-migrate 2>&1 | Out-String
         $exitCode = $LASTEXITCODE
         Write-Log "--provision-migrate output (exit $exitCode):`n$output"
         if ($exitCode -ne 0) {
@@ -739,7 +758,7 @@ try {
     Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 }
 
-Invoke-StockihaMigrations -Port $script:StockihaPort -DbName $DatabaseName -MigratorPassword $passwords['stockiha_migrator']
+Invoke-StockihaMigrations -Port $script:StockihaPort -DbName $DatabaseName -MigratorPassword $passwords['stockiha_migrator'] -StockihaExePath $StockihaExePath
 
 # K2-6: database.json is written ONLY here, after the migrations above have
 # already returned success — never before every prior step is verified.
@@ -754,6 +773,8 @@ if (-not (Test-DatabaseJsonWorks -Path $jsonPath)) {
 Write-StockihaInstanceMarker -Port $script:StockihaPort
 Write-Log "Provisioning complete. Port=$script:StockihaPort Database=$DatabaseName database.json=$jsonPath"
 exit 0
+
+
 
 
 
