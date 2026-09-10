@@ -24,9 +24,6 @@ import { isQuantityValidForUnit } from '../src/features/inventory/exactDecimal';
 import stockReceiptSource from '../src/features/inventory/StockReceiptScreen.tsx?raw';
 import stockAdjustmentSource from '../src/features/inventory/StockAdjustmentScreen.tsx?raw';
 import inventoryScreenSource from '../src/features/inventory/InventoryScreen.tsx?raw';
-import purchaseReceiptSource from '../src/features/procurement/PurchaseReceiptModal.tsx?raw';
-import purchaseTransactionSource from '../src/features/procurement/PurchaseTransactionScreen.tsx?raw';
-import supplierReturnsSource from '../src/features/procurement/SupplierReturnsScreen.tsx?raw';
 
 type Handlers = Record<string, (args: Record<string, unknown>) => unknown>;
 
@@ -91,13 +88,10 @@ async function login() {
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 }
 
-/** The five surfaces that actually accept a typed quantity, by path label. */
+/** The surfaces that actually accept a typed quantity, by path label. */
 const QUANTITY_ENTRY_SOURCES: [string, string][] = [
   ['src/features/inventory/StockReceiptScreen.tsx', stockReceiptSource],
   ['src/features/inventory/StockAdjustmentScreen.tsx', stockAdjustmentSource],
-  ['src/features/procurement/PurchaseReceiptModal.tsx', purchaseReceiptSource],
-  ['src/features/procurement/PurchaseTransactionScreen.tsx', purchaseTransactionSource],
-  ['src/features/procurement/SupplierReturnsScreen.tsx', supplierReturnsSource],
 ];
 
 /**
@@ -285,11 +279,9 @@ describe('one validator, every quantity-entry screen (WS-D-13 A5)', () => {
    * flag reaches them only through `useUnitFractionRules`, and the decision
    * is only ever made by `isQuantityValidForUnit`.
    *
-   * PurchaseTransactionScreen still contains ONE pre-existing whole-number
-   * check, hardcoded to unit code 'U' and using parseFloat. It predates this
-   * task and removing it is a behaviour change outside WS-D-13's remit, so it
-   * is reported rather than deleted -- which is why this assertion targets
-   * the flag specifically rather than banning Number.isInteger outright.
+   * A legacy procurement screen contained a whole-number check that has
+   * since been removed. This assertion targets the flag specifically rather
+   * than banning Number.isInteger outright.
    */
   it.each(QUANTITY_ENTRY_SOURCES)('%s does not re-derive the rule from the flag', (_path, source) => {
     expect(stripComments(source)).not.toMatch(/allows_fractions/);

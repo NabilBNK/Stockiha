@@ -40,10 +40,7 @@ import { InventoryCorrectionsSettingsScreen } from '../features/settings/Invento
 import { UserManagementSettingsScreen } from '../features/settings/UserManagementSettingsScreen';
 import { getInventoryCorrectionsSetting } from '../shared/ipc/inventoryCorrectionsGateway';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
-import PurchaseOrdersScreen from '../features/procurement/PurchaseOrdersScreen';
-import { SupplierInvoicesScreen } from '../features/procurement/SupplierInvoicesScreen';
-import { SupplierLiabilitiesScreen } from '../features/procurement/SupplierLiabilitiesScreen';
-import { SupplierReturnsScreen } from '../features/procurement/SupplierReturnsScreen';
+import PurchasesScreen from '../features/procurement/PurchasesScreen';
 import type { InventoryCapabilities, ProcurementCapabilities } from '../shared/ipc/dto';
 
 type RouteState = 'loading' | 'unavailable' | 'setup' | 'ready';
@@ -341,13 +338,7 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     if (!procurementCapabilities) return;
-    const procurementView = [
-      'suppliers',
-      'purchases',
-      'supplier_invoices',
-      'supplier_liabilities',
-      'supplier_returns',
-    ].includes(view);
+    const procurementView = ['suppliers', 'purchases'].includes(view);
     if (procurementView && !procurementCapabilities.can_manage_procurement) {
       setView('dashboard');
     }
@@ -450,31 +441,10 @@ function AuthenticatedApp() {
       {view === 'customers' && <CustomersScreen sessionToken={user?.token ?? ''} />}
       {view === 'suppliers' && <SuppliersScreen sessionToken={user?.token ?? ''} />}
       {view === 'purchases' && procurementCapabilities && (
-        <PurchaseOrdersScreen
+        <PurchasesScreen
           sessionToken={user?.token ?? ''}
           capabilities={procurementCapabilities}
           openFiscalPeriodId={openFiscalPeriod?.id ?? null}
-        />
-      )}
-      {view === 'supplier_invoices' && (
-        <SupplierInvoicesScreen
-          sessionToken={user?.token ?? ''}
-          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
-          capabilities={procurementCapabilities}
-        />
-      )}
-      {view === 'supplier_liabilities' && (
-        <SupplierLiabilitiesScreen
-          sessionToken={user?.token ?? ''}
-          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
-          capabilities={procurementCapabilities}
-        />
-      )}
-      {view === 'supplier_returns' && (
-        <SupplierReturnsScreen
-          sessionToken={user?.token ?? ''}
-          openFiscalPeriodId={openFiscalPeriod?.id ?? null}
-          capabilities={procurementCapabilities}
         />
       )}
     </AppShell>

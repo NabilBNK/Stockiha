@@ -178,21 +178,6 @@ const GATED_NAV_ENTRIES: Array<{
     deny: { get_procurement_capabilities: () => NO_PROCUREMENT_CAPS },
   },
   {
-    label: 'Supplier Invoices',
-    grant: { get_procurement_capabilities: () => ALL_PROCUREMENT_CAPS },
-    deny: { get_procurement_capabilities: () => NO_PROCUREMENT_CAPS },
-  },
-  {
-    label: 'Supplier Payables',
-    grant: { get_procurement_capabilities: () => ALL_PROCUREMENT_CAPS },
-    deny: { get_procurement_capabilities: () => NO_PROCUREMENT_CAPS },
-  },
-  {
-    label: 'Supplier Returns',
-    grant: { get_procurement_capabilities: () => ALL_PROCUREMENT_CAPS },
-    deny: { get_procurement_capabilities: () => NO_PROCUREMENT_CAPS },
-  },
-  {
     label: 'Customers',
     grant: { get_customer_capabilities: () => ALL_CUSTOMER_CAPS },
     deny: { get_customer_capabilities: () => NO_CUSTOMER_CAPS },

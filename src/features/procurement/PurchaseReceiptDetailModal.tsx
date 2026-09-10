@@ -299,15 +299,25 @@ export function PurchaseReceiptDetailModal({
         {/* FOOTER */}
         <footer className="sk-detail-dialog__footer">
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-            <button
-              type="button"
-              className="sk-button sk-button--secondary"
-              onClick={handleExportXlsx}
-              disabled={lines.length === 0}
-              data-testid="export-receipt-xlsx-btn"
-            >
-              {text.exportXlsx}
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                className="sk-button sk-button--primary"
+                onClick={() => window.print()}
+                data-testid="print-receipt-btn"
+              >
+                {text.printReceipt}
+              </button>
+              <button
+                type="button"
+                className="sk-button sk-button--secondary"
+                onClick={handleExportXlsx}
+                disabled={lines.length === 0}
+                data-testid="export-receipt-xlsx-btn"
+              >
+                {text.exportXlsx}
+              </button>
+            </div>
             <button
               type="button"
               className="sk-button sk-button--secondary"

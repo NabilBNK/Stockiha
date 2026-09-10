@@ -86,6 +86,19 @@ function baseHandlers(extra: Handlers = {}): Handlers {
         attributes: [],
         is_active: true,
       },
+      {
+        product_id: 2,
+        variant_id: 8,
+        sku: 'SKU-8',
+        product_name: 'Procurement Item B',
+        variant_name: null,
+        default_unit_id: 1,
+        default_unit_code: 'UNIT',
+        default_unit_name: 'Unit',
+        alternate_units: [],
+        attributes: [],
+        is_active: true,
+      },
     ],
     list_catalog_products: () => [
       {
@@ -205,6 +218,16 @@ describe('Direct Purchasing Workflow (Part 1)', () => {
     fireEvent.change(screen.getByTestId('po-warehouse-select'), { target: { value: '1' } });
     fireEvent.change(screen.getByTestId('direct-purchase-date-input'), { target: { value: '2026-08-16' } });
 
+    // Add item via picker
+    fireEvent.click(screen.getByTestId('add-purchase-line-btn'));
+    fireEvent.click(await screen.findByTestId('purchase-item-option-7'));
+
+    // Set quantity and unit cost
+    const quantityInput = screen.getByDisplayValue('1');
+    fireEvent.change(quantityInput, { target: { value: '10.000' } });
+    const costInput = screen.getByDisplayValue('0');
+    fireEvent.change(costInput, { target: { value: '100.00' } });
+
     // Confirm Direct Purchase
     fireEvent.click(screen.getByTestId('confirm-direct-purchase-btn'));
 
@@ -243,10 +266,19 @@ describe('Direct Purchasing Workflow (Part 1)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
     fireEvent.click(screen.getByTestId('create-po-btn'));
     await screen.findByText('Global Supplier SARL (SUP-001)');
-    fireEvent.click(screen.getByTestId('add-po-line-btn'));
-    await waitFor(() => expect(screen.getAllByRole('textbox')).toHaveLength(3));
-    fireEvent.click(screen.getByTestId('add-po-line-btn'));
-    await waitFor(() => expect(screen.getAllByRole('textbox')).toHaveLength(5));
+
+    // Add line 0 with variant 7
+    fireEvent.click(screen.getByTestId('add-purchase-line-btn'));
+    fireEvent.click(await screen.findByTestId('purchase-item-option-7'));
+
+    // Add line 1 with variant 8
+    fireEvent.click(screen.getByTestId('add-purchase-line-btn'));
+    fireEvent.click(await screen.findByTestId('purchase-item-option-8'));
+
+    // Reopen picker on line 1 and select variant 7 to create duplicate
+    fireEvent.click(screen.getByTestId('purchase-line-product-1'));
+    fireEvent.click(await screen.findByTestId('purchase-item-option-7'));
+
     fireEvent.click(screen.getByTestId('confirm-direct-purchase-btn'));
 
     expect(screen.getByTestId('po-error')).toHaveTextContent(
@@ -267,19 +299,22 @@ describe('Direct Purchasing Workflow (Part 1)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
     fireEvent.click(screen.getByTestId('create-po-btn'));
     await screen.findByText('Global Supplier SARL (SUP-001)');
-    fireEvent.click(screen.getByTestId('add-po-line-btn'));
-    await waitFor(() => expect(screen.getAllByRole('textbox')).toHaveLength(3));
 
-    const lineInputs = screen.getAllByRole('textbox');
-    fireEvent.change(lineInputs[1], { target: { value: '0' } });
-    fireEvent.change(lineInputs[2], { target: { value: 'not-a-cost' } });
+    fireEvent.click(screen.getByTestId('add-purchase-line-btn'));
+    fireEvent.click(await screen.findByTestId('purchase-item-option-7'));
+
+    const quantityInput = screen.getByDisplayValue('1');
+    const costInput = screen.getByDisplayValue('0');
+
+    fireEvent.change(quantityInput, { target: { value: '0' } });
+    fireEvent.change(costInput, { target: { value: 'not-a-cost' } });
     fireEvent.click(screen.getByTestId('confirm-direct-purchase-btn'));
 
     expect(screen.getByTestId('po-error')).toHaveTextContent(
       'Correct the highlighted values, then confirm the purchase.',
     );
-    expect(lineInputs[1]).toHaveAttribute('aria-invalid', 'true');
-    expect(lineInputs[2]).toHaveAttribute('aria-invalid', 'true');
+    expect(quantityInput).toHaveAttribute('aria-invalid', 'true');
+    expect(costInput).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByText('Enter a quantity greater than 0, for example 1 or 1.500.')).toBeInTheDocument();
     expect(screen.getByText('Enter a unit cost of 0 or more, for example 1000 or 1000.00.')).toBeInTheDocument();
     expect(invokeMock).not.toHaveBeenCalledWith('confirm_direct_purchase', expect.anything());

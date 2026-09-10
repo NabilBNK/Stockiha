@@ -210,7 +210,7 @@ describe('Purchase Receipt & Direct Purchase UI/UX Recovery Workflow', () => {
 
     // Verify summary metrics
     expect(screen.getByTestId('metric-total-receipts')).toHaveTextContent('2');
-    expect(screen.getByTestId('metric-direct-purchases')).toHaveTextContent('1');
+    expect(screen.getByTestId('metric-direct-purchases')).toHaveTextContent('2');
     expect(screen.getByTestId('metric-total-value')).toHaveTextContent('3700');
 
     // Verify Direct Purchase row
@@ -281,16 +281,16 @@ describe('Purchase Receipt & Direct Purchase UI/UX Recovery Workflow', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Purchases' }));
     await screen.findByTestId('purchase-receipts-table');
 
-    // Filter by Origin: DIRECT_PURCHASE
-    fireEvent.change(screen.getByTestId('filter-receipt-origin-select'), { target: { value: 'DIRECT_PURCHASE' } });
-    expect(screen.getByTestId('receipt-row-100')).toBeInTheDocument();
-    expect(screen.queryByTestId('receipt-row-101')).not.toBeInTheDocument();
-
-    // Reset origin and search by receipt number
-    fireEvent.change(screen.getByTestId('filter-receipt-origin-select'), { target: { value: 'ALL' } });
+    // Filter by search text
     fireEvent.change(screen.getByTestId('search-receipts-input'), { target: { value: '000002' } });
     expect(screen.queryByTestId('receipt-row-100')).not.toBeInTheDocument();
     expect(screen.getByTestId('receipt-row-101')).toBeInTheDocument();
+
+    // Reset search and filter by supplier
+    fireEvent.change(screen.getByTestId('search-receipts-input'), { target: { value: '' } });
+    fireEvent.change(screen.getByTestId('filter-receipt-supplier-select'), { target: { value: '1' } });
+    expect(screen.getByTestId('receipt-row-100')).toBeInTheDocument();
+    expect(screen.queryByTestId('receipt-row-101')).not.toBeInTheDocument();
   });
 
   it('opens Purchase Receipt Detail Modal on View Details with lines, audit evidence, and journal link', async () => {

@@ -45,10 +45,7 @@ export type AppView =
   | 'journals'
   | 'customers'
   | 'suppliers'
-  | 'purchases'
-  | 'supplier_invoices'
-  | 'supplier_liabilities'
-  | 'supplier_returns';
+  | 'purchases';
 
 type NavGroup = 'main' | 'stock' | 'buy' | 'sales';
 type NavItem = {
@@ -73,9 +70,6 @@ const NAV: NavItem[] = [
   { view: 'adjustment', labelKey: 'nav.stockAdjustment', group: 'stock', icon: '±' },
   { view: 'suppliers', labelKey: 'nav.suppliers', group: 'buy', icon: '◎' },
   { view: 'purchases', labels: { en: 'Purchases', fr: 'Achats', ar: 'المشتريات' }, group: 'buy', icon: '≡' },
-  { view: 'supplier_invoices', labelKey: 'nav.supplierInvoices', group: 'buy', icon: '▤' },
-  { view: 'supplier_liabilities', labelKey: 'nav.supplierLiabilities', group: 'buy', icon: '₫' },
-  { view: 'supplier_returns', labelKey: 'nav.supplierReturns', group: 'buy', icon: '↩' },
   { view: 'customers', labels: { fr: 'Clients', ar: 'العملاء', en: 'Customers' }, group: 'sales', icon: '♙' },
   { view: 'pos', labelKey: 'nav.pos', group: 'sales', icon: '▦' },
   { view: 'session', labelKey: 'nav.cashSession', group: 'sales', icon: '◉' },
@@ -267,8 +261,7 @@ export function AppShell({
   }, [closeSearch, onNavigateToVariant]);
 
   // A1 — Ctrl+K / Cmd+K opens the search from anywhere. Checked against this
-  // codebase (no existing global ctrl/meta shortcut anywhere; PurchaseTransactionScreen's
-  // F2/F4/F12 are scoped to that one screen and use different keys entirely)
+  // codebase (no existing global ctrl/meta shortcut anywhere)
   // and against common browser/WebView2 bindings: Ctrl+F is native
   // find-in-page, Ctrl+P/S/N are print/save/new — none of those is K.
   // Ctrl/Cmd+K is also the established cross-app convention for "open quick
@@ -343,9 +336,6 @@ export function AppShell({
         return (inventoryCapabilities?.can_manage_inventory ?? false) && inventoryCorrectionsEnabled === true;
       case 'suppliers':
       case 'purchases':
-      case 'supplier_invoices':
-      case 'supplier_liabilities':
-      case 'supplier_returns':
         return procurementCapabilities?.can_manage_procurement ?? false;
       case 'customers':
         return customerCapabilities?.can_view_customers ?? false;

@@ -142,6 +142,24 @@ export type ProcurementCopy = {
   exportXlsx: string;
   noReceiptsSubtitle: string;
   retry: string;
+  chooseItem: string;
+  searchItemsPlaceholder: string;
+  scanBarcodePlaceholder: string;
+  barcodeNotFound: string;
+  itemAlreadyAdded: string;
+  noItemsFound: string;
+  dateFrom: string;
+  dateTo: string;
+  printReceipt: string;
+  filters: string;
+  clearFilters: string;
+  costRange: string;
+  minCost: string;
+  maxCost: string;
+  allUnits: string;
+  attributes: string;
+  brand: string;
+  allBrands: string;
 };
 
 export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
@@ -161,7 +179,7 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     refresh: 'Refresh', cancel: 'Cancel', close: 'Close', loading: 'Loading…', actions: 'Actions',
     status: 'Status', supplier: 'Supplier', warehouse: 'Warehouse', purchaseOrder: 'Purchase order',
     receipt: 'Receipt', document: 'Document', journal: 'Journal', amount: 'Amount', date: 'Date',
-    note: 'Note / reference', product: 'Product / variant', quantity: 'Quantity', unitCost: 'Unit cost', total: 'Total',
+    note: 'Supplier reference / note (optional)', product: 'Product / variant', quantity: 'Quantity', unitCost: 'Unit cost', total: 'Total',
     createInvoice: 'New supplier invoice', invoiceTitle: 'Supplier invoices', invoiceEmpty: 'No supplier invoices found.',
     invoiceDraftCreated: 'Supplier invoice draft created.', invoiceConfirmed: 'Supplier invoice posted.',
     confirmInvoice: 'Confirm invoice', receiptLine: 'Matched receipt line', availableToInvoice: 'Available to invoice',
@@ -191,6 +209,24 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     view: 'View', confirmOrder: 'Confirm order', receiveGoods: 'Receive goods', cancelOrder: 'Cancel order', orderDetail: 'Purchase order detail',
     ordered: 'Ordered', received: 'Received', remaining: 'Remaining', confirmGoodsReceipt: 'Confirm goods receipt', receiptDate: 'Receipt date',
     receiveNow: 'Receive now', previouslyReceived: 'Previously received', confirming: 'Confirming…', optionalNote: 'Optional purchase-order note',
+    chooseItem: 'Choose item',
+    searchItemsPlaceholder: 'Search by name, SKU or barcode',
+    scanBarcodePlaceholder: 'Scan barcode, then Enter',
+    barcodeNotFound: 'No product matches this barcode',
+    itemAlreadyAdded: 'Already added to this purchase',
+    noItemsFound: 'No matching products',
+    dateFrom: 'From',
+    dateTo: 'To',
+    printReceipt: 'Print',
+    filters: 'Filters',
+    clearFilters: 'Clear all',
+    costRange: 'Cost range (DZD)',
+    minCost: 'Min',
+    maxCost: 'Max',
+    allUnits: 'All units',
+    attributes: 'Attributes',
+    brand: 'Brand',
+    allBrands: 'All brands',
   },
   fr: {
     newPurchase: 'Nouvel achat', confirmPurchase: 'Confirmer l’achat', purchaseConfirmed: 'Achat direct enregistré avec succès.',
@@ -208,7 +244,7 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     refresh: 'Actualiser', cancel: 'Annuler', close: 'Fermer', loading: 'Chargement…', actions: 'Actions',
     status: 'Statut', supplier: 'Fournisseur', warehouse: 'Dépôt', purchaseOrder: "Commande d’achat",
     receipt: 'Réception', document: 'Document', journal: 'Journal', amount: 'Montant', date: 'Date',
-    note: 'Note / référence', product: 'Produit / variante', quantity: 'Quantité', unitCost: 'Coût unitaire', total: 'Total',
+    note: 'Référence fournisseur / note (facultatif)', product: 'Produit / variante', quantity: 'Quantité', unitCost: 'Coût unitaire', total: 'Total',
     createInvoice: 'Nouvelle facture fournisseur', invoiceTitle: 'Factures fournisseurs', invoiceEmpty: 'Aucune facture fournisseur.',
     invoiceDraftCreated: 'Brouillon de facture créé.', invoiceConfirmed: 'Facture fournisseur comptabilisée.',
     confirmInvoice: 'Confirmer la facture', receiptLine: 'Ligne de réception rapprochée', availableToInvoice: 'Disponible à facturer',
@@ -238,6 +274,24 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     view: 'Voir', confirmOrder: 'Confirmer la commande', receiveGoods: 'Réceptionner', cancelOrder: 'Annuler la commande', orderDetail: 'Détail de la commande',
     ordered: 'Commandé', received: 'Reçu', remaining: 'Restant', confirmGoodsReceipt: 'Confirmer la réception', receiptDate: 'Date de réception',
     receiveNow: 'Réception actuelle', previouslyReceived: 'Déjà reçu', confirming: 'Confirmation…', optionalNote: 'Note facultative de commande',
+    chooseItem: 'Choisir un article',
+    searchItemsPlaceholder: 'Rechercher par nom, SKU ou code-barres',
+    scanBarcodePlaceholder: 'Scanner le code-barres, puis Entrée',
+    barcodeNotFound: 'Aucun produit ne correspond à ce code-barres',
+    itemAlreadyAdded: 'Déjà ajouté à cet achat',
+    noItemsFound: 'Aucun produit correspondant',
+    dateFrom: 'Du',
+    dateTo: 'Au',
+    printReceipt: 'Imprimer',
+    filters: 'Filtres',
+    clearFilters: 'Effacer tout',
+    costRange: 'Fourchette de coût (DZD)',
+    minCost: 'Min',
+    maxCost: 'Max',
+    allUnits: 'Toutes les unités',
+    attributes: 'Attributs',
+    brand: 'Marque',
+    allBrands: 'Toutes les marques',
   },
   ar: {
     newPurchase: 'شراء جديد', confirmPurchase: 'تأكيد الشراء', purchaseConfirmed: 'تم تسجيل الشراء المباشر بنجاح.',
@@ -255,7 +309,7 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     refresh: 'تحديث', cancel: 'إلغاء', close: 'إغلاق', loading: 'جارٍ التحميل…', actions: 'الإجراءات',
     status: 'الحالة', supplier: 'المورد', warehouse: 'المخزن', purchaseOrder: 'أمر الشراء',
     receipt: 'الاستلام', document: 'المستند', journal: 'القيد', amount: 'المبلغ', date: 'التاريخ',
-    note: 'ملاحظة / مرجع', product: 'المنتج / الصنف', quantity: 'الكمية', unitCost: 'تكلفة الوحدة', total: 'المجموع',
+    note: 'مرجع المورد / ملاحظة (اختياري)', product: 'المنتج / الصنف', quantity: 'الكمية', unitCost: 'تكلفة الوحدة', total: 'المجموع',
     createInvoice: 'فاتورة مورد جديدة', invoiceTitle: 'فواتير الموردين', invoiceEmpty: 'لا توجد فواتير موردين.',
     invoiceDraftCreated: 'تم إنشاء مسودة فاتورة المورد.', invoiceConfirmed: 'تم ترحيل فاتورة المورد.',
     confirmInvoice: 'تأكيد الفاتورة', receiptLine: 'سطر الاستلام المطابق', availableToInvoice: 'المتاح للفوترة',
@@ -285,5 +339,23 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     view: 'عرض', confirmOrder: 'تأكيد الأمر', receiveGoods: 'استلام البضاعة', cancelOrder: 'إلغاء الأمر', orderDetail: 'تفاصيل أمر الشراء',
     ordered: 'المطلوب', received: 'المستلم', remaining: 'المتبقي', confirmGoodsReceipt: 'تأكيد استلام البضاعة', receiptDate: 'تاريخ الاستلام',
     receiveNow: 'الكمية المستلمة الآن', previouslyReceived: 'المستلم سابقاً', confirming: 'جارٍ التأكيد…', optionalNote: 'ملاحظة اختيارية لأمر الشراء',
+    chooseItem: 'اختيار صنف',
+    searchItemsPlaceholder: 'البحث بالاسم أو الرمز أو الباركود',
+    scanBarcodePlaceholder: 'امسح الباركود ثم اضغط Enter',
+    barcodeNotFound: 'لا يوجد منتج مطابق لهذا الباركود',
+    itemAlreadyAdded: 'مضاف مسبقاً إلى هذا الشراء',
+    noItemsFound: 'لا توجد منتجات مطابقة',
+    dateFrom: 'من',
+    dateTo: 'إلى',
+    printReceipt: 'طباعة',
+    filters: 'عوامل التصفية',
+    clearFilters: 'إعادة ضبط',
+    costRange: 'نطاق التكلفة (دج)',
+    minCost: 'الحد الأدنى',
+    maxCost: 'الحد الأقصى',
+    allUnits: 'جميع الوحدات',
+    attributes: 'السمات',
+    brand: 'العلامة التجارية',
+    allBrands: 'جميع العلامات',
   },
 };
