@@ -97,6 +97,7 @@ export const COMMANDS = {
   ENQUEUE_CUSTOMER_REPRINT: 'enqueue_customer_reprint',
   LIST_JOURNALS: 'list_journals',
   GET_JOURNAL_DETAIL: 'get_journal_detail',
+  SAVE_BINARY_FILE: 'save_binary_file',
   // Slice 2 — variant catalog
   ADD_VARIANT: 'add_variant',
   SET_VARIANT_ACTIVE: 'set_variant_active',
@@ -150,6 +151,10 @@ export const COMMANDS = {
   GET_PURCHASE_ORDER_DETAIL: 'get_purchase_order_detail',
   CONFIRM_PURCHASE_RECEIPT: 'confirm_purchase_receipt',
   CONFIRM_DIRECT_PURCHASE: 'confirm_direct_purchase',
+  POST_PURCHASE_PAYMENT: 'post_purchase_payment',
+  LIST_PURCHASE_PAYMENT_STATUS: 'list_purchase_payment_status',
+  LIST_PURCHASE_PAYMENTS: 'list_purchase_payments',
+  LIST_SUPPLIER_BALANCES: 'list_supplier_balances',
   LIST_PURCHASE_RECEIPTS: 'list_purchase_receipts',
   LIST_PURCHASE_RECEIPT_LINES: 'list_purchase_receipt_lines',
   GET_PROCUREMENT_CAPABILITIES: 'get_procurement_capabilities',

@@ -11,6 +11,13 @@ import {
   humanDocumentType,
   humanStatus,
 } from '../../shared/utils/formatters';
+import {
+  printDocumentA4,
+  saveDocumentFileWithDialog,
+  buildOfficialDocumentHtml,
+  escapeHtml,
+} from '../../shared/documents/documentPrintService';
+import { generateGenericDocumentPdf } from '../../shared/documents/genericDocumentPdf';
 
 interface DocumentDetailLineItem {
   line_number?: number;
@@ -60,6 +67,7 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedJournalDocId, setSelectedJournalDocId] = useState<number | null>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState<boolean>(false);
 
   // Close on Escape key press
   useEffect(() => {
@@ -134,6 +142,10 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
       close: 'Close',
       itemSingle: 'item',
       itemPlural: 'items',
+      printA4: 'Print A4',
+      downloadPdf: 'Download PDF',
+      downloading: 'Downloading...',
+      exportXlsx: 'Export Excel (.xlsx)',
     },
     fr: {
       overview: 'Aperçu',
@@ -156,6 +168,10 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
       close: 'Fermer',
       itemSingle: 'article',
       itemPlural: 'articles',
+      printA4: 'Imprimer A4',
+      downloadPdf: 'Télécharger PDF',
+      downloading: 'Téléchargement...',
+      exportXlsx: 'Exporter Excel (.xlsx)',
     },
     ar: {
       overview: 'نظرة عامة',
@@ -178,8 +194,196 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
       close: 'إغلاق',
       itemSingle: 'عنصر',
       itemPlural: 'عناصر',
+      printA4: 'طباعة A4',
+      downloadPdf: 'تحميل PDF',
+      downloading: 'جارٍ التحميل...',
+      exportXlsx: 'تصدير إكسل (.xlsx)',
     },
   }[locale];
+
+  const extDocNum = getSubtypeString(sub, 'external_supplier_document_number') || '';
+  const payStatus = getSubtypeString(sub, 'payment_status') || 'POSTED';
+  const payMethod = getSubtypeString(sub, 'payment_method') || 'N/A';
+  const subtotalVal = getSubtypeString(sub, 'gross_subtotal') || totalMonetaryVal || '0';
+  const addCostVal = getSubtypeString(sub, 'additional_cost_amount') || '0';
+  const grandTotalVal = getSubtypeString(sub, 'total_amount') || totalMonetaryVal || '0';
+  const paidVal = getSubtypeString(sub, 'paid_amount') || '0';
+  const remainingVal = getSubtypeString(sub, 'outstanding_amount') || '0';
+
+  const partyNameDisplay = supplierName || customerName || getSubtypeString(sub, 'party_name') || '';
+  const partyLabelDisplay = supplierName ? copy.supplier : customerName ? copy.customer : 'Tiers / Partenaire';
+
+  const handlePrintA4 = () => {
+    if (!detail) return;
+
+    const infoCardsHtml = `
+      <div class="info-card">
+        <div class="info-card-title">${escapeHtml(partyLabelDisplay)}</div>
+        <div class="info-row"><span>${escapeHtml(partyLabelDisplay)}:</span><strong>${escapeHtml(partyNameDisplay || '—')}</strong></div>
+        ${supplierCode ? `<div class="info-row"><span>Code:</span><strong>${escapeHtml(supplierCode)}</strong></div>` : ''}
+        ${extDocNum ? `<div class="info-row"><span>Réf:</span><strong>${escapeHtml(extDocNum)}</strong></div>` : ''}
+      </div>
+      <div class="info-card">
+        <div class="info-card-title">${escapeHtml(copy.warehouse)} & Infos</div>
+        <div class="info-row"><span>${escapeHtml(copy.warehouse)}:</span><strong>${escapeHtml(warehouseName || '—')}</strong></div>
+        <div class="info-row"><span>${escapeHtml(copy.fiscalYear)}:</span><strong>${escapeHtml(String(docFiscalYear || '—'))}</strong></div>
+        <div class="info-row"><span>Règlement:</span><strong>${escapeHtml(payStatus)} (${escapeHtml(payMethod)})</strong></div>
+      </div>
+    `;
+
+    const tableHeaders = lines.length > 0 && lines.some(l => l.unit_price || l.unit_cost)
+      ? ['#', 'Désignation', 'Code / SKU', 'Unité', 'Qté', 'P.U (DZD)', 'Total (DZD)']
+      : ['#', 'Désignation', 'Code / SKU', 'Unité', 'Quantité'];
+
+    const tableRowsHtml = lines.length > 0
+      ? lines.map((l, idx) => `
+        <tr>
+          <td style="color: #64748b;">${l.line_number || idx + 1}</td>
+          <td><strong>${escapeHtml(l.product_name || l.product_name_snapshot || 'Article')}</strong>${l.variant_name ? ` <small style="color: #64748b;">(${escapeHtml(l.variant_name)})</small>` : ''}</td>
+          <td><code>${escapeHtml(l.sku || l.sku_snapshot || '—')}</code></td>
+          <td>${escapeHtml(l.unit_code || l.unit_code_snapshot || 'U')}</td>
+          <td class="num"><strong>${l.quantity || l.received_quantity || 0}</strong></td>
+          ${tableHeaders.length > 5 ? `<td class="num">${formatDisplayAmount(String(l.unit_price || l.unit_cost || 0))}</td>` : ''}
+          ${tableHeaders.length > 5 ? `<td class="num"><strong>${formatDisplayAmount(String(l.line_total || 0))}</strong></td>` : ''}
+        </tr>
+      `).join('')
+      : `<tr><td colspan="${tableHeaders.length}" style="text-align: center; color: #64748b; padding: 16px;">${escapeHtml(copy.lineItems)} — ${escapeHtml(docNum || '')}</td></tr>`;
+
+    const totalsRowsHtml = totalMonetaryVal ? `
+      <tr>
+        <td>Sous-total:</td>
+        <td>${formatDisplayAmount(subtotalVal)}</td>
+      </tr>
+      ${Number(addCostVal) > 0 ? `
+      <tr>
+        <td>Frais additionnels:</td>
+        <td>+${formatDisplayAmount(addCostVal)}</td>
+      </tr>` : ''}
+      <tr class="grand-total">
+        <td>TOTAL GENERAL:</td>
+        <td>${formatDisplayAmount(grandTotalVal)}</td>
+      </tr>
+      ${Number(paidVal) > 0 ? `
+      <tr>
+        <td style="color: #166534;">Payé:</td>
+        <td style="color: #166534;">${formatDisplayAmount(paidVal)}</td>
+      </tr>` : ''}
+      ${Number(remainingVal) > 0 ? `
+      <tr>
+        <td style="color: #b91c1c;">Solde dû:</td>
+        <td style="color: #b91c1c;">${formatDisplayAmount(remainingVal)}</td>
+      </tr>` : ''}
+    ` : '';
+
+    const accountingBoxHtml = journal ? `
+      <h4>${escapeHtml(copy.linkedJournal)}: ${escapeHtml(journal.document_number ?? `#${journal.document_id}`)}</h4>
+      <div class="accounting-box-grid">
+        <span>Statut: <strong>${journal.is_balanced ? 'Équilibré ✓' : 'Non équilibré ⚠'}</strong></span>
+        <span>Débit: <strong>${formatDisplayAmount(journal.total_debit)}</strong></span>
+        <span>Crédit: <strong>${formatDisplayAmount(journal.total_credit)}</strong></span>
+      </div>
+    ` : undefined;
+
+    const html = buildOfficialDocumentHtml({
+      title: humanDocumentType(docType, locale),
+      documentNumber: docNum || `DOC-${documentId}`,
+      documentDate: formatDisplayDate(docDate, locale),
+      statusLabel: humanStatus(docStatus, locale),
+      isPosted: docStatus === 'POSTED',
+      locale,
+      infoCardsHtml,
+      tableHeaders,
+      tableRowsHtml,
+      totalsRowsHtml,
+      accountingBoxHtml,
+      footerNote: `Stockiha ERP · ${docNum || `DOC-${documentId}`}`,
+    });
+
+    printDocumentA4(html);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!detail || downloadingPdf) return;
+    try {
+      setDownloadingPdf(true);
+      const tableHeaders = lines.length > 0 && lines.some(l => l.unit_price || l.unit_cost)
+        ? ['#', 'Article', 'SKU', 'Unité', 'Qté', 'Total']
+        : ['#', 'Article', 'SKU', 'Unité', 'Qté'];
+
+      const pdfBytes = await generateGenericDocumentPdf({
+        title: humanDocumentType(docType, locale),
+        documentNumber: docNum || `DOC-${documentId}`,
+        documentDate: formatDisplayDate(docDate, locale),
+        statusText: humanStatus(docStatus, locale),
+        locale,
+        partyLabel: partyLabelDisplay,
+        partyName: partyNameDisplay,
+        referenceLabel: extDocNum ? 'Réf' : undefined,
+        referenceValue: extDocNum || undefined,
+        warehouseLabel: warehouseName ? copy.warehouse : undefined,
+        warehouseValue: warehouseName || undefined,
+        tableHeaders,
+        lines: lines.map((l, idx) => ({
+          col1: String(l.line_number || idx + 1),
+          col2: String(l.product_name || l.product_name_snapshot || 'Article'),
+          col3: String(l.sku || l.sku_snapshot || '—'),
+          col4: String(l.unit_code || l.unit_code_snapshot || 'U'),
+          col5: String(l.quantity || l.received_quantity || 0),
+          col6: l.line_total ? formatDisplayAmount(String(l.line_total)) : undefined,
+        })),
+        totals: totalMonetaryVal ? [
+          { label: 'Sous-total', value: formatDisplayAmount(subtotalVal) },
+          ...(Number(addCostVal) > 0 ? [{ label: 'Frais', value: `+${formatDisplayAmount(addCostVal)}` }] : []),
+          { label: 'TOTAL GENERAL', value: formatDisplayAmount(grandTotalVal), isGrandTotal: true },
+          ...(Number(remainingVal) > 0 ? [{ label: 'Solde restant', value: formatDisplayAmount(remainingVal) }] : []),
+        ] : [],
+        accountingNote: journal
+          ? `Journal: ${journal.document_number ?? `#${journal.document_id}`} — Débit: ${formatDisplayAmount(journal.total_debit)} | Crédit: ${formatDisplayAmount(journal.total_credit)}`
+          : undefined,
+      });
+
+      const safeDocType = (docType || 'Document').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeNum = (docNum || String(documentId)).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+      await saveDocumentFileWithDialog({
+        defaultFileName: `${safeDocType}_${safeNum}.pdf`,
+        bytes: pdfBytes,
+        filterName: 'PDF Document',
+        extension: 'pdf',
+      });
+    } catch (err) {
+      console.error('Download PDF failed:', err);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const handleExportXlsx = () => {
+    downloadPurchaseReceiptXlsx({
+      documentNumber: docNum || `DOC-${documentId}`,
+      documentDate: formatDisplayDate(docDate, locale),
+      supplierName: partyNameDisplay || 'Tiers',
+      supplierDocRef: extDocNum,
+      paymentStatus: payStatus,
+      paymentMethod: payMethod,
+      subtotal: subtotalVal,
+      additionalCosts: addCostVal,
+      grandTotal: grandTotalVal,
+      paidAmount: paidVal,
+      remainingAmount: remainingVal,
+      lines: lines.map((l: DocumentDetailLineItem, idx: number) => ({
+        lineNumber: l.line_number || idx + 1,
+        sku: l.sku || l.sku_snapshot || 'SKU-000',
+        productName: l.product_name || l.product_name_snapshot || 'Product',
+        variantName: l.variant_name || undefined,
+        barcode: l.barcode || undefined,
+        unitCode: l.unit_code || l.unit_code_snapshot || 'U',
+        quantity: parseFloat(String(l.quantity || l.received_quantity || 0)),
+        unitCost: parseFloat(String(l.unit_cost || l.unit_price || 0)),
+        lineTotal: parseFloat(String(l.line_total || 0)),
+      })),
+    });
+  };
 
   return (
     <div
@@ -251,17 +455,19 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
                   {supplierName && (
                     <div className="sk-detail-dialog__field">
                       <span className="sk-detail-dialog__field-label">{copy.supplier}</span>
-                      <span className="sk-detail-dialog__field-val">{supplierName}</span>
-                      {supplierCode && (
-                        <span className="sk-detail-dialog__field-sub">Code: {supplierCode}</span>
-                      )}
+                      <span className="sk-detail-dialog__field-val">
+                        <strong>{supplierName}</strong>
+                        {supplierCode && ` (${supplierCode})`}
+                      </span>
                     </div>
                   )}
 
                   {customerName && (
                     <div className="sk-detail-dialog__field">
                       <span className="sk-detail-dialog__field-label">{copy.customer}</span>
-                      <span className="sk-detail-dialog__field-val">{customerName}</span>
+                      <span className="sk-detail-dialog__field-val">
+                        <strong>{customerName}</strong>
+                      </span>
                     </div>
                   )}
 
@@ -285,9 +491,9 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
                   </div>
 
                   {totalMonetaryVal && (
-                    <div className="sk-detail-dialog__field sk-detail-dialog__field--highlight">
+                    <div className="sk-detail-dialog__field">
                       <span className="sk-detail-dialog__field-label">{copy.totalAmount}</span>
-                      <span className="sk-detail-dialog__field-val--money">
+                      <span className="sk-detail-dialog__field-val sk-detail-dialog__field-val--money">
                         {formatDisplayAmount(totalMonetaryVal)}
                       </span>
                     </div>
@@ -299,82 +505,95 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
               {lines.length > 0 && (
                 <section className="sk-detail-dialog__section">
                   <h3 className="sk-detail-dialog__section-title">
-                    {copy.lineItems} ({lines.length} {lines.length === 1 ? copy.itemSingle : copy.itemPlural})
+                    {copy.lineItems} ({lines.length}{' '}
+                    {lines.length === 1 ? copy.itemSingle : copy.itemPlural})
                   </h3>
                   <div className="sk-table-wrap">
-                    <table className="sk-table" data-testid="doc-detail-lines-table">
+                    <table className="sk-table">
                       <thead>
                         <tr>
                           <th>#</th>
-                          <th>SKU</th>
-                          <th>Product</th>
-                          <th className="sk-num">Quantity</th>
-                          <th className="sk-num">Unit Cost / Price</th>
-                          <th className="sk-num">Line Total</th>
+                          <th>Article</th>
+                          <th>Code / SKU</th>
+                          <th>Unité</th>
+                          <th className="sk-num">Quantité</th>
+                          {lines.some(l => l.unit_price || l.unit_cost) && <th className="sk-num">P.U</th>}
+                          {lines.some(l => l.line_total) && <th className="sk-num">Total</th>}
                         </tr>
                       </thead>
                       <tbody>
-                        {lines.map((line, idx) => {
-                          const qty =
-                            line.ordered_quantity ||
-                            line.received_quantity ||
-                            line.invoiced_quantity ||
-                            line.returned_quantity ||
-                            line.quantity;
-                          const price = line.unit_cost || line.unit_price || line.supplier_unit_cost;
-                          return (
-                            <tr key={idx}>
-                              <td className="sk-muted">{line.line_number || idx + 1}</td>
-                              <td>
-                                <code>{line.sku}</code>
-                              </td>
-                              <td>
-                                <strong>{line.product_name}</strong>
-                              </td>
-                              <td className="sk-num">{qty}</td>
-                              <td className="sk-num">{formatDisplayAmount(price)}</td>
+                        {lines.map((item, idx) => (
+                          <tr key={idx}>
+                            <td className="sk-muted">{item.line_number || idx + 1}</td>
+                            <td>
+                              <strong>
+                                {item.product_name || item.product_name_snapshot || 'Article'}
+                              </strong>
+                              {item.variant_name && (
+                                <span className="sk-muted" style={{ marginInlineStart: '6px', fontSize: '0.8rem' }}>
+                                  ({item.variant_name})
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              <code>{item.sku || item.sku_snapshot || '—'}</code>
+                            </td>
+                            <td>{item.unit_code || item.unit_code_snapshot || 'U'}</td>
+                            <td className="sk-num">
+                              <strong>
+                                {item.quantity ?? item.received_quantity ?? item.ordered_quantity ?? 0}
+                              </strong>
+                            </td>
+                            {lines.some(l => l.unit_price || l.unit_cost) && (
                               <td className="sk-num">
-                                <strong>{formatDisplayAmount(line.line_total)}</strong>
+                                {formatDisplayAmount(String(item.unit_price || item.unit_cost || 0))}
                               </td>
-                            </tr>
-                          );
-                        })}
+                            )}
+                            {lines.some(l => l.line_total) && (
+                              <td className="sk-num">
+                                <strong>{formatDisplayAmount(String(item.line_total || 0))}</strong>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
                 </section>
               )}
 
-              {/* SECTION 3: ACCOUNTING */}
+              {/* SECTION 3: ACCOUNTING JOURNAL LINK */}
               <section className="sk-detail-dialog__section">
                 <h3 className="sk-detail-dialog__section-title">{copy.accounting}</h3>
                 {journal ? (
-                  <div className="sk-detail-dialog__field sk-detail-dialog__field--highlight">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <span className="sk-detail-dialog__field-label">{copy.linkedJournal}</span>
-                        <div className="sk-detail-dialog__field-val" style={{ fontFamily: 'monospace' }}>
-                          {journal.document_number}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="sk-btn sk-btn--secondary"
-                        onClick={() => setSelectedJournalDocId(journal.document_id)}
-                      >
-                        {copy.viewJournal}
-                      </button>
+                  <div className="sk-detail-dialog__journal-card">
+                    <div className="sk-detail-dialog__journal-info">
+                      <span className="sk-detail-dialog__journal-badge">
+                        {journal.is_balanced ? 'Équilibré' : 'Non équilibré'}
+                      </span>
+                      <span className="sk-detail-dialog__journal-num">
+                        {journal.document_number ?? `#${journal.document_id}`}
+                      </span>
+                      <span className="sk-detail-dialog__journal-totals">
+                        Débit: {formatDisplayAmount(journal.total_debit)} · Crédit:{' '}
+                        {formatDisplayAmount(journal.total_credit)}
+                      </span>
                     </div>
+                    <button
+                      type="button"
+                      className="sk-btn sk-btn--secondary sk-button--small"
+                      onClick={() => setSelectedJournalDocId(journal.document_id)}
+                    >
+                      {copy.viewJournal}
+                    </button>
                   </div>
                 ) : (
-                  <p className="sk-muted" style={{ margin: 0, fontStyle: 'italic' }}>
-                    {copy.noJournal}
-                  </p>
+                  <div className="sk-detail-dialog__no-journal">{copy.noJournal}</div>
                 )}
               </section>
 
-              {/* SECTION 4: DOCUMENT OUTPUT */}
-              {printJobs && (
+              {/* SECTION 4: PRINT / GENERATION JOBS */}
+              {printJobs && (printJobs.gen_status || printJobs.prt_status) && (
                 <section className="sk-detail-dialog__section">
                   <h3 className="sk-detail-dialog__section-title">{copy.documentOutput}</h3>
                   <div className="sk-detail-dialog__grid">
@@ -421,56 +640,32 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
 
         {/* FOOTER */}
         <footer className="sk-detail-dialog__footer">
-          {(docType === 'PURCHASE_TRANSACTION' || docType === 'PURCHASE_RECEIPT') && detail && (
+          {detail && (
             <>
               <button
                 type="button"
                 className="sk-btn sk-btn--primary"
-                onClick={() => window.print()}
+                onClick={handlePrintA4}
               >
-                Print / PDF
+                🖨️ {copy.printA4}
               </button>
               <button
                 type="button"
                 className="sk-btn sk-btn--secondary"
-                onClick={() => {
-                  const extDocNum = getSubtypeString(sub, 'external_supplier_document_number') || '';
-                  const payStatus = getSubtypeString(sub, 'payment_status') || 'PAID';
-                  const payMethod = getSubtypeString(sub, 'payment_method') || 'N/A';
-                  const subtotalVal = getSubtypeString(sub, 'gross_subtotal') || totalMonetaryVal || '0';
-                  const addCostVal = getSubtypeString(sub, 'additional_cost_amount') || '0';
-                  const grandTotalVal = getSubtypeString(sub, 'total_amount') || '0';
-                  const paidVal = getSubtypeString(sub, 'paid_amount') || '0';
-                  const remainingVal = getSubtypeString(sub, 'outstanding_amount') || '0';
-
-                  downloadPurchaseReceiptXlsx({
-                    documentNumber: docNum || `PUR-${documentId}`,
-                    documentDate: docDate || '',
-                    supplierName: supplierName || 'Supplier',
-                    supplierDocRef: extDocNum,
-                    paymentStatus: payStatus,
-                    paymentMethod: payMethod,
-                    subtotal: subtotalVal,
-                    additionalCosts: addCostVal,
-                    grandTotal: grandTotalVal,
-                    paidAmount: paidVal,
-                    remainingAmount: remainingVal,
-                    lines: lines.map((l: DocumentDetailLineItem, idx: number) => ({
-                      lineNumber: l.line_number || idx + 1,
-                      sku: l.sku || l.sku_snapshot || 'SKU-000',
-                      productName: l.product_name || l.product_name_snapshot || 'Product',
-                      variantName: l.variant_name || undefined,
-                      barcode: l.barcode || undefined,
-                      unitCode: l.unit_code || l.unit_code_snapshot || 'U',
-                      quantity: parseFloat(String(l.quantity || l.received_quantity || 0)),
-                      unitCost: parseFloat(String(l.unit_cost || 0)),
-                      lineTotal: parseFloat(String(l.line_total || 0)),
-                    })),
-                  });
-                }}
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
               >
-                Export Excel (.xlsx)
+                {downloadingPdf ? copy.downloading : `📄 ${copy.downloadPdf}`}
               </button>
+              {lines.length > 0 && (
+                <button
+                  type="button"
+                  className="sk-btn sk-btn--secondary"
+                  onClick={handleExportXlsx}
+                >
+                  📊 {copy.exportXlsx}
+                </button>
+              )}
             </>
           )}
           <button type="button" className="sk-btn sk-btn--secondary" onClick={onClose}>

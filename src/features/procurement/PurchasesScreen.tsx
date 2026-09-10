@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   confirmDirectPurchase,
+  listPurchasePaymentStatus,
   listPurchaseProductOptions,
   listPurchaseReceipts,
   listSuppliers,
@@ -10,9 +11,10 @@ import {
 import type {
   ConfirmDirectPurchasePayload,
   CreatePoLinePayload,
+  ProcurementCapabilities,
+  PurchasePaymentStatusDto,
   PurchaseProductOption,
   PurchaseReceiptSummary,
-  ProcurementCapabilities,
   Supplier,
   Warehouse,
 } from '../../shared/ipc/dto';
@@ -22,6 +24,7 @@ import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { PurchaseReceiptDetailModal } from './PurchaseReceiptDetailModal';
 import { PurchaseItemPicker } from './PurchaseItemPicker';
+import { PurchasePaymentModal } from './PurchasePaymentModal';
 import { JournalDetailModal } from '../accounting/JournalsScreen';
 import { addExactDecimals, isPositiveDecimal, multiplyExactDecimals } from './procurementDecimal';
 import { PROCUREMENT_COPY } from './procurementCopy';
@@ -33,7 +36,7 @@ interface Props {
   openFiscalPeriodId: number | null;
 }
 
-export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Props) {
+export default function PurchasesScreen({ sessionToken, capabilities, openFiscalPeriodId }: Props) {
   const { t, locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
   const errorText = useErrorText();
@@ -49,6 +52,8 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
   const [lineErrors, setLineErrors] = useState<Record<number, { unit?: string; quantity?: string; unitCost?: string }>>({});
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceiptSummary | null>(null);
   const [selectedJournalDocId, setSelectedJournalDocId] = useState<number | null>(null);
+  const [paymentStatuses, setPaymentStatuses] = useState<PurchasePaymentStatusDto[]>([]);
+  const [paymentTarget, setPaymentTarget] = useState<PurchaseReceiptSummary | null>(null);
 
   // Filtering state
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,6 +61,18 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
   const [warehouseFilter, setWarehouseFilter] = useState<number>(0);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() || dateFrom || dateTo || supplierFilter > 0 || warehouseFilter > 0
+  );
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setDateFrom('');
+    setDateTo('');
+    setSupplierFilter(0);
+    setWarehouseFilter(0);
+  };
 
   // Direct Purchase Form state
   const directRequestId = useRef<string | null>(null);
@@ -76,16 +93,18 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
     try {
       setLoading(true);
       setError(null);
-      const [receiptData, suppsData, whsData, prodsData] = await Promise.all([
+      const [receiptData, suppsData, whsData, prodsData, statusData] = await Promise.all([
         listPurchaseReceipts(sessionToken),
         listSuppliers(sessionToken),
         listWarehouses(sessionToken),
         listPurchaseProductOptions(sessionToken),
+        listPurchasePaymentStatus(sessionToken).catch(() => []),
       ]);
       setReceipts(receiptData);
       setSuppliers(suppsData);
       setWarehouses(whsData);
       setProducts(prodsData);
+      setPaymentStatuses(statusData);
 
       if (suppsData.length > 0 && supplierId === 0) {
         setSupplierId(suppsData[0].id);
@@ -99,6 +118,9 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
       setLoading(false);
     }
   };
+
+  const statusFor = (receiptDocumentId: number): PurchasePaymentStatusDto | null =>
+    paymentStatuses.find((item) => item.receipt_document_id === receiptDocumentId) ?? null;
 
   useEffect(() => {
     void loadData();
@@ -265,6 +287,28 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
       resetForm();
       setSuccessBanner(`${text.purchaseConfirmed} ${result.document_number} (${result.total_amount} DZD)`);
       await loadData();
+      if (capabilities.can_post_supplier_payment) {
+        setPaymentTarget({
+          document_id: result.document_id,
+          document_number: result.document_number,
+          receipt_origin: result.receipt_origin ?? 'DIRECT_PURCHASE',
+          purchase_order_id: null,
+          purchase_order_number: null,
+          supplier_id: result.supplier_id,
+          supplier_name:
+            suppliers.find((item) => item.id === result.supplier_id)?.name ?? '',
+          warehouse_id: result.warehouse_id,
+          warehouse_name:
+            warehouses.find((item) => item.id === result.warehouse_id)?.name ?? '',
+          total_amount: result.total_amount,
+          journal_document_id: result.journal_document_id ?? null,
+          journal_document_number: result.journal_document_number ?? null,
+          landed_cost_amount: null,
+          landed_cost_journal_id: null,
+          landed_cost_journal_number: null,
+          posted_at: result.posted_at,
+        } as PurchaseReceiptSummary);
+      }
     } catch (err: unknown) {
       setError(errorText(err));
     } finally {
@@ -657,8 +701,10 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
 
       {/* Purchase Receipts History Section */}
       <section className="sk-card" style={{ padding: 22 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px', marginBottom: '18px' }}>
-          <h2 style={{ margin: 0 }}>{text.receiptsTitle}</h2>
+        <div style={{ marginBottom: '18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h2 style={{ margin: 0 }}>{text.receiptsTitle}</h2>
+          </div>
           <div className="pr-history-toolbar">
             <input
               type="search"
@@ -666,7 +712,7 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pr-filter-input"
-              style={{ minWidth: '220px' }}
+              style={{ flex: '1 1 240px', minWidth: '200px' }}
               data-testid="search-receipts-input"
             />
             <div className="pr-filter-date-badge">
@@ -713,6 +759,19 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              className="pr-clear-filter-btn"
+              onClick={handleClearFilters}
+              title={text.clearFilters}
+              data-testid="clear-receipt-filters-btn"
+              style={{
+                visibility: hasActiveFilters ? 'visible' : 'hidden',
+                pointerEvents: hasActiveFilters ? 'auto' : 'none',
+              }}
+            >
+              ✕ {text.clearFilters}
+            </button>
           </div>
         </div>
 
@@ -749,8 +808,8 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
                   <th>{text.origin}</th>
                   <th className="sk-num">{text.total}</th>
                   <th>{text.receiptJournal}</th>
-                  <th className="sk-num">{text.landedCost}</th>
-                  <th>{text.actions}</th>
+                  <th>{text.payment}</th>
+                  <th style={{ width: '210px', whiteSpace: 'nowrap' }}>{text.actions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -772,30 +831,60 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
                           {isDirect ? text.directPurchase : `${text.purchaseOrderOrigin}: ${receipt.purchase_order_number ?? `#${receipt.purchase_order_id}`}`}
                         </span>
                       </td>
-                      <td className="sk-num">
-                        <strong>{receipt.total_amount} DZD</strong>
+                      <td className="sk-num" style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                        {receipt.total_amount} DZD
                       </td>
                       <td>
-                        {receipt.journal_document_number ? (
+                        {receipt.journal_document_id ? (
                           <button
                             type="button"
-                            className="sk-button sk-button--link"
-                            style={{ padding: 0, fontSize: 'inherit', textDecoration: 'underline' }}
-                            onClick={() => receipt.journal_document_id && setSelectedJournalDocId(receipt.journal_document_id)}
+                            className="sk-button sk-button--small sk-button--secondary"
+                            style={{ fontFamily: 'monospace' }}
+                            onClick={() => setSelectedJournalDocId(receipt.journal_document_id)}
+                            title={text.viewJournal}
                           >
-                            {receipt.journal_document_number}
+                            {receipt.journal_document_number ?? `#${receipt.journal_document_id}`}
                           </button>
-                        ) : receipt.journal_document_id ? (
-                          `#${receipt.journal_document_id}`
                         ) : (
                           '—'
                         )}
                       </td>
-                      <td className="sk-num">
-                        {receipt.landed_cost_amount ? `${receipt.landed_cost_amount} DZD` : '—'}
-                      </td>
                       <td>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {(() => {
+                          const status = statusFor(receipt.document_id);
+                          if (!status) return '—';
+                          const tone =
+                            status.payment_status === 'PAID'
+                              ? 'sk-badge--success'
+                              : status.payment_status === 'PARTIALLY_PAID'
+                                ? 'sk-badge--warning'
+                                : 'sk-badge--danger';
+                          const label =
+                            status.payment_status === 'PAID'
+                              ? text.statusPaid
+                              : status.payment_status === 'PARTIALLY_PAID'
+                                ? text.statusPartiallyPaid
+                                : text.statusUnpaid;
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <span
+                                className={`sk-badge ${tone}`}
+                                style={{ fontWeight: 600, width: 'fit-content' }}
+                                data-testid={`payment-status-${receipt.document_id}`}
+                              >
+                                {label}
+                              </span>
+                              {status.payment_status !== 'PAID' && (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--sk-muted)' }}>
+                                  {text.outstanding}: {status.outstanding_amount} DZD
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                        <div className="pr-row-actions">
                           <button
                             type="button"
                             className="sk-button sk-button--small sk-button--secondary"
@@ -804,6 +893,17 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
                           >
                             {text.viewDetails}
                           </button>
+                          {capabilities.can_post_supplier_payment &&
+                            statusFor(receipt.document_id)?.payment_status !== 'PAID' && (
+                              <button
+                                type="button"
+                                className="sk-button sk-button--small sk-button--primary"
+                                onClick={() => setPaymentTarget(receipt)}
+                                data-testid={`record-payment-${receipt.document_id}`}
+                              >
+                                {text.recordPayment}
+                              </button>
+                            )}
                         </div>
                       </td>
                     </tr>
@@ -814,6 +914,26 @@ export default function PurchasesScreen({ sessionToken, openFiscalPeriodId }: Pr
           </div>
         )}
       </section>
+
+      {/* Purchase Payment Modal */}
+      {paymentTarget && (
+        <PurchasePaymentModal
+          sessionToken={sessionToken}
+          receiptDocumentId={paymentTarget.document_id}
+          receiptDocumentNumber={paymentTarget.document_number}
+          supplierName={paymentTarget.supplier_name}
+          outstandingAmount={
+            statusFor(paymentTarget.document_id)?.outstanding_amount ?? paymentTarget.total_amount
+          }
+          fiscalPeriodId={openFiscalPeriodId}
+          onClose={() => setPaymentTarget(null)}
+          onPosted={async (result) => {
+            setPaymentTarget(null);
+            setSuccessBanner(`${text.paymentPosted} ${result.document_number} (${result.amount} DZD)`);
+            await loadData();
+          }}
+        />
+      )}
 
       {/* Purchase Receipt Detail Modal */}
       {selectedReceipt && (

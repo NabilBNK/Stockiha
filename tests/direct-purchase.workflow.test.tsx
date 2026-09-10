@@ -253,7 +253,7 @@ describe('Direct Purchasing Workflow (Part 1)', () => {
 
     // Table displays the purchase receipt with no PO link
     expect(screen.getByTestId('purchase-receipts-table')).toBeInTheDocument();
-    expect(screen.getByText('PR-2026-000001')).toBeInTheDocument();
+    expect(screen.getAllByText('PR-2026-000001')[0]).toBeInTheDocument();
     expect(screen.getByText('Direct Purchase')).toBeInTheDocument();
     expect(screen.getByText('JE-2026-000001')).toBeInTheDocument();
   });

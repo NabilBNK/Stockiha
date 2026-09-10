@@ -104,3 +104,10 @@ export function getBusinessDocumentReports(
     offset: filter.offset ?? 0,
   });
 }
+
+export function saveBinaryFile(path: string, bytes: Uint8Array | number[]): Promise<void> {
+  return call<void>(COMMANDS.SAVE_BINARY_FILE, {
+    path,
+    bytes: Array.from(bytes),
+  });
+}

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { listPurchaseReceiptLines } from '../../shared/ipc/gateway';
 import type { PurchaseReceiptLineDto, PurchaseReceiptSummary } from '../../shared/ipc/dto';
 import { PROCUREMENT_COPY } from './procurementCopy';
 import { downloadPurchaseReceiptXlsx } from './purchaseReceiptExport';
+import { printReceiptA4, downloadReceiptPdf } from './purchaseReceiptPrint';
 import { formatDisplayDate } from '../../shared/utils/formatters';
 import './procurement.css';
 
@@ -24,10 +25,12 @@ export function PurchaseReceiptDetailModal({
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
   const errorText = useErrorText();
+  const modalBodyRef = useRef<HTMLDivElement>(null);
 
   const [lines, setLines] = useState<PurchaseReceiptLineDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // Close on Escape key press
   useEffect(() => {
@@ -39,6 +42,13 @@ export function PurchaseReceiptDetailModal({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
+
+  // Reset scroll to top when receipt changes
+  useEffect(() => {
+    if (modalBodyRef.current) {
+      modalBodyRef.current.scrollTop = 0;
+    }
+  }, [receipt]);
 
   useEffect(() => {
     if (!receipt) return;
@@ -75,6 +85,21 @@ export function PurchaseReceiptDetailModal({
   const isDirectPurchase =
     receipt.receipt_origin === 'DIRECT_PURCHASE' || !receipt.purchase_order_id;
 
+  const handlePrintA4 = () => {
+    printReceiptA4({ receipt, lines, locale });
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloadingPdf(true);
+      await downloadReceiptPdf({ receipt, lines, locale });
+    } catch (err: unknown) {
+      setError(errorText(err));
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const handleExportXlsx = () => {
     downloadPurchaseReceiptXlsx({
       documentNumber: receipt.document_number,
@@ -105,14 +130,14 @@ export function PurchaseReceiptDetailModal({
 
   return (
     <div
-      className="sk-modal-overlay"
+      className="sk-modal-overlay pr-detail-modal-overlay"
       data-testid="purchase-receipt-detail-modal"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="sk-detail-dialog"
+        className="sk-detail-dialog pr-receipt-detail-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="receipt-detail-title"
@@ -158,7 +183,11 @@ export function PurchaseReceiptDetailModal({
         </header>
 
         {/* BODY */}
-        <div className="sk-detail-dialog__body">
+        <div
+          ref={modalBodyRef}
+          className="sk-detail-dialog__body"
+          style={{ minHeight: 0, flex: '1 1 auto', overflowY: 'auto' }}
+        >
           {error && (
             <div className="sk-banner sk-banner--error" data-testid="receipt-detail-error">
               {error}
@@ -221,16 +250,16 @@ export function PurchaseReceiptDetailModal({
               </div>
             ) : (
               <div className="sk-table-wrap">
-                <table className="sk-table" data-testid="receipt-detail-lines-table">
+                <table className="sk-table pr-receipt-table" data-testid="receipt-detail-lines-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '40px' }}>#</th>
+                      <th style={{ width: '36px' }}>#</th>
                       <th>{text.product}</th>
-                      <th style={{ width: '130px' }}>SKU</th>
-                      <th style={{ width: '90px' }}>{text.unit}</th>
-                      <th className="sk-num" style={{ width: '110px' }}>{text.quantity}</th>
-                      <th className="sk-num" style={{ width: '130px' }}>{text.unitCost} (DZD)</th>
-                      <th className="sk-num" style={{ width: '140px' }}>{text.total} (DZD)</th>
+                      <th style={{ width: '140px' }}>SKU</th>
+                      <th style={{ width: '75px' }}>{text.unit}</th>
+                      <th className="sk-num" style={{ width: '95px' }}>{text.quantity}</th>
+                      <th className="sk-num" style={{ width: '120px' }}>{text.unitCost} (DZD)</th>
+                      <th className="sk-num" style={{ width: '130px' }}>{text.total} (DZD)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -296,17 +325,26 @@ export function PurchaseReceiptDetailModal({
           </section>
         </div>
 
-        {/* FOOTER */}
+        {/* FOOTER ACTIONS */}
         <footer className="sk-detail-dialog__footer">
-          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="sk-button sk-button--primary"
-                onClick={() => window.print()}
+                onClick={handlePrintA4}
                 data-testid="print-receipt-btn"
               >
-                {text.printReceipt}
+                🖨️ {text.printA4}
+              </button>
+              <button
+                type="button"
+                className="sk-button sk-button--secondary"
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf || lines.length === 0}
+                data-testid="download-receipt-pdf-btn"
+              >
+                {downloadingPdf ? '...' : `📄 ${text.downloadPdf}`}
               </button>
               <button
                 type="button"
@@ -315,7 +353,7 @@ export function PurchaseReceiptDetailModal({
                 disabled={lines.length === 0}
                 data-testid="export-receipt-xlsx-btn"
               >
-                {text.exportXlsx}
+                📊 {text.exportXlsx}
               </button>
             </div>
             <button

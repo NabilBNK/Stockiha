@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { I18nProvider } from '../src/shared/i18n';
 import { matchesPurchaseOption, PurchaseItemPicker } from '../src/features/procurement/PurchaseItemPicker';
 import type { PurchaseProductOption } from '../src/shared/ipc/dto';
 
@@ -96,13 +97,15 @@ describe('PurchaseItemPicker - side filters', () => {
     const onClose = vi.fn();
 
     render(
-      <PurchaseItemPicker
-        isOpen={true}
-        items={sampleItems}
-        disabledVariantIds={[]}
-        onSelect={onSelect}
-        onClose={onClose}
-      />,
+      <I18nProvider>
+        <PurchaseItemPicker
+          isOpen={true}
+          items={sampleItems}
+          disabledVariantIds={[]}
+          onSelect={onSelect}
+          onClose={onClose}
+        />
+      </I18nProvider>,
     );
 
     expect(screen.getByTestId('purchase-item-picker-sidebar')).toBeInTheDocument();
@@ -130,13 +133,15 @@ describe('PurchaseItemPicker - side filters', () => {
 
   it('filters by cost range', () => {
     render(
-      <PurchaseItemPicker
-        isOpen={true}
-        items={sampleItems}
-        disabledVariantIds={[]}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-      />,
+      <I18nProvider>
+        <PurchaseItemPicker
+          isOpen={true}
+          items={sampleItems}
+          disabledVariantIds={[]}
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
     );
 
     // Filter min cost to 1000

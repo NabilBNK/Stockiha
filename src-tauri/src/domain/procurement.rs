@@ -714,6 +714,66 @@ impl PostPurchaseTransactionPayload {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostPurchasePaymentPayload {
+    pub request_id: String,
+    pub receipt_document_id: i64,
+    pub fiscal_period_id: i64,
+    pub document_date: String,
+    pub payment_method: String,
+    pub amount: String,
+    pub reference_number: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostPurchasePaymentResult {
+    pub document_id: i64,
+    pub document_number: String,
+    pub receipt_document_id: i64,
+    pub receipt_document_number: Option<String>,
+    pub supplier_id: i64,
+    pub supplier_name: String,
+    pub payment_method: String,
+    pub amount: String,
+    pub reference_number: Option<String>,
+    pub journal_document_id: i64,
+    pub journal_document_number: Option<String>,
+    pub posted_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchasePaymentStatusDto {
+    pub receipt_document_id: i64,
+    pub total_amount: String,
+    pub paid_amount: String,
+    pub outstanding_amount: String,
+    pub payment_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchasePaymentRecordDto {
+    pub document_id: i64,
+    pub document_number: Option<String>,
+    pub receipt_document_id: i64,
+    pub supplier_id: i64,
+    pub supplier_name: String,
+    pub payment_method: String,
+    pub amount: String,
+    pub reference_number: Option<String>,
+    pub journal_document_id: i64,
+    pub journal_document_number: Option<String>,
+    pub posted_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupplierBalanceDto {
+    pub supplier_id: i64,
+    pub supplier_name: String,
+    pub total_purchased: String,
+    pub total_paid: String,
+    pub balance_due: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

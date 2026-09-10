@@ -821,3 +821,41 @@ export function listBusinessDocuments(
 }
 
 export { getBusinessDocumentDetail, getBusinessDocumentReports } from './documentGateway';
+
+export function postPurchasePayment(
+  sessionToken: string,
+  payload: import('./dto').PostPurchasePaymentPayload
+): Promise<import('./dto').PostPurchasePaymentResult> {
+  return call<import('./dto').PostPurchasePaymentResult>(COMMANDS.POST_PURCHASE_PAYMENT, {
+    sessionToken,
+    payload,
+  });
+}
+
+export function listPurchasePaymentStatus(
+  sessionToken: string,
+  receiptDocumentId?: number | null
+): Promise<import('./dto').PurchasePaymentStatusDto[]> {
+  return call<import('./dto').PurchasePaymentStatusDto[]>(COMMANDS.LIST_PURCHASE_PAYMENT_STATUS, {
+    sessionToken,
+    receiptDocumentId: receiptDocumentId ?? null,
+  });
+}
+
+export function listPurchasePayments(
+  sessionToken: string,
+  receiptDocumentId?: number | null
+): Promise<import('./dto').PurchasePaymentRecordDto[]> {
+  return call<import('./dto').PurchasePaymentRecordDto[]>(COMMANDS.LIST_PURCHASE_PAYMENTS, {
+    sessionToken,
+    receiptDocumentId: receiptDocumentId ?? null,
+  });
+}
+
+export function listSupplierBalances(
+  sessionToken: string
+): Promise<import('./dto').SupplierBalanceDto[]> {
+  return call<import('./dto').SupplierBalanceDto[]>(COMMANDS.LIST_SUPPLIER_BALANCES, {
+    sessionToken,
+  });
+}

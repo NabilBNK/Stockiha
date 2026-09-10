@@ -3,9 +3,11 @@ use crate::domain::procurement::{
     AllocateLandedCostResult, ConfirmDirectPurchasePayload, ConfirmDirectPurchaseResult,
     ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult, ConfirmSupplierInvoiceResult,
     ConfirmSupplierReturnResult, CreatePurchaseOrderPayload, CreateSupplierInvoiceResult,
-    CreateSupplierReturnResult, PostSupplierPaymentResult, ProcurementCapabilities,
-    PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseProductOption, PurchaseReceiptLineDto,
-    PurchaseReceiptSummary, UpdatePurchaseOrderPayload,
+    CreateSupplierReturnResult, PostPurchasePaymentPayload, PostPurchasePaymentResult,
+    PostSupplierPaymentResult, ProcurementCapabilities, PurchaseOrderDetailDto,
+    PurchaseOrderSummary, PurchasePaymentRecordDto, PurchasePaymentStatusDto,
+    PurchaseProductOption, PurchaseReceiptLineDto, PurchaseReceiptSummary,
+    SupplierBalanceDto, UpdatePurchaseOrderPayload,
 };
 use crate::domain::supplier::{CreateSupplierPayload, Supplier, UpdateSupplierPayload};
 use crate::error::IpcError;
@@ -317,3 +319,51 @@ pub(crate) async fn list_supplier_payments(
         .await
         .map_err(IpcError::from)
 }
+
+#[tauri::command]
+pub(crate) async fn post_purchase_payment(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    payload: PostPurchasePaymentPayload,
+) -> Result<PostPurchasePaymentResult, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::post_purchase_payment(pool, &session_token, payload)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn list_purchase_payment_status(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    receipt_document_id: Option<i64>,
+) -> Result<Vec<PurchasePaymentStatusDto>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::list_purchase_payment_status(pool, &session_token, receipt_document_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn list_purchase_payments(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    receipt_document_id: Option<i64>,
+) -> Result<Vec<PurchasePaymentRecordDto>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::list_purchase_payments(pool, &session_token, receipt_document_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn list_supplier_balances(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<Vec<SupplierBalanceDto>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    procurement_service::list_supplier_balances(pool, &session_token)
+        .await
+        .map_err(IpcError::from)
+}
+

@@ -838,3 +838,60 @@ export interface BusinessDocumentDto {
   linked_journal_number: string | null;
   detail_summary: string | null;
 }
+
+export type PurchaseSettlementMethod = 'CASH' | 'BANK_TRANSFER';
+
+export interface PostPurchasePaymentPayload {
+  request_id: string;
+  receipt_document_id: number;
+  fiscal_period_id: number;
+  document_date: string;
+  payment_method: PurchaseSettlementMethod;
+  amount: string;
+  reference_number: string | null;
+}
+
+export interface PostPurchasePaymentResult {
+  document_id: number;
+  document_number: string;
+  receipt_document_id: number;
+  receipt_document_number: string | null;
+  supplier_id: number;
+  supplier_name: string;
+  payment_method: PurchaseSettlementMethod;
+  amount: string;
+  reference_number: string | null;
+  journal_document_id: number;
+  journal_document_number: string | null;
+  posted_at: string;
+}
+
+export interface PurchasePaymentStatusDto {
+  receipt_document_id: number;
+  total_amount: string;
+  paid_amount: string;
+  outstanding_amount: string;
+  payment_status: PurchasePaymentStatus;
+}
+
+export interface PurchasePaymentRecordDto {
+  document_id: number;
+  document_number: string | null;
+  receipt_document_id: number;
+  supplier_id: number;
+  supplier_name: string;
+  payment_method: PurchaseSettlementMethod;
+  amount: string;
+  reference_number: string | null;
+  journal_document_id: number;
+  journal_document_number: string | null;
+  posted_at: string;
+}
+
+export interface SupplierBalanceDto {
+  supplier_id: number;
+  supplier_name: string;
+  total_purchased: string;
+  total_paid: string;
+  balance_due: string;
+}

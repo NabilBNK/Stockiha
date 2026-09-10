@@ -164,29 +164,276 @@
   font-size: 0.9rem;
 }
 
-/* Print: only the open purchase detail dialog is printed */
+/* On screen: hide the dedicated A4 print sheet completely */
+.pr-a4-print-sheet {
+  display: none !important;
+}
+
+/* ==========================================================================
+   OFFICIAL A4 PRINT STYLESHEET (Bon de Réception / Purchase Receipt)
+   ========================================================================== */
 @media print {
-  body * {
-    visibility: hidden;
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm 12mm 12mm;
   }
 
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    font-size: 10pt !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* Reset all fixed or scrollable container parents so document flows naturally on paper */
+  #root,
+  .sk-app,
+  .sk-screen,
+  .sk-modal-overlay,
+  .modal-overlay,
+  .sk-modal__backdrop {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Hide all on-screen app UI, navigation, buttons, and the interactive modal dialog */
+  .sk-nav,
+  .sk-sidebar,
+  .sk-topbar,
+  .sk-header,
+  header.sk-screen__header,
+  nav,
+  aside,
+  .sk-cards,
+  .sk-card,
   .sk-detail-dialog,
-  .sk-detail-dialog * {
-    visibility: visible;
+  .sk-modal,
+  .sk-modal-close,
+  .sk-button,
+  .pr-history-toolbar,
+  .pr-composer-card {
+    display: none !important;
   }
 
-  .sk-detail-dialog {
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline-start: 0;
+  /* Display ONLY the dedicated A4 print sheet */
+  .pr-a4-print-sheet {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .pr-a4-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2.5px solid #1e293b;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+  }
+
+  .pr-a4-brand h1 {
+    font-size: 20pt;
+    font-weight: 800;
+    margin: 0 0 2px 0;
+    color: #0f172a;
+    letter-spacing: -0.5px;
+    text-transform: uppercase;
+  }
+
+  .pr-a4-brand p {
+    font-size: 8.5pt;
+    margin: 0;
+    color: #64748b;
+  }
+
+  .pr-a4-meta {
+    text-align: right;
+  }
+
+  .pr-a4-meta h2 {
+    font-size: 15pt;
+    font-weight: 800;
+    margin: 0 0 4px 0;
+    color: #0f172a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .pr-a4-meta-num {
+    font-size: 12pt;
+    font-weight: 700;
+    font-family: monospace;
+    color: #1e3a8a;
+    margin: 0 0 4px 0;
+  }
+
+  .pr-a4-meta-date {
+    font-size: 9pt;
+    color: #475569;
+    margin: 0;
+  }
+
+  .pr-a4-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .pr-a4-info-box {
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 10px 14px;
+    background: #f8fafc;
+  }
+
+  .pr-a4-info-title {
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    margin-bottom: 6px;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 4px;
+  }
+
+  .pr-a4-info-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9pt;
+    margin-bottom: 3px;
+  }
+
+  .pr-a4-info-row strong {
+    color: #0f172a;
+  }
+
+  .pr-a4-table {
     width: 100%;
-    max-height: none;
-    box-shadow: none;
-    border: none;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 9pt;
   }
 
-  .sk-detail-dialog__footer {
-    display: none;
+  .pr-a4-table th {
+    background: #f1f5f9 !important;
+    border: 1px solid #cbd5e1 !important;
+    padding: 8px 10px;
+    font-weight: 700;
+    color: #1e293b;
+    text-align: left;
+    text-transform: uppercase;
+    font-size: 8pt;
+  }
+
+  .pr-a4-table th.sk-num,
+  .pr-a4-table td.sk-num {
+    text-align: right;
+  }
+
+  .pr-a4-table td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 8px 10px;
+    color: #0f172a;
+    vertical-align: middle;
+  }
+
+  .pr-a4-table-total-row td {
+    background: #f8fafc !important;
+    border-top: 2px solid #0f172a !important;
+    font-weight: 800;
+    font-size: 10.5pt;
+  }
+
+  .pr-a4-accounting {
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 10px 14px;
+    background: #ffffff;
+    margin-bottom: 24px;
+    font-size: 8.5pt;
+  }
+
+  .pr-a4-accounting-title {
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #475569;
+    margin-bottom: 6px;
+  }
+
+  .pr-a4-accounting-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .pr-a4-accounting-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: #f8fafc;
+    border-radius: 3px;
+    border-left: 3px solid #0284c7;
+  }
+
+  .pr-a4-signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-top: 30px;
+    page-break-inside: avoid;
+  }
+
+  .pr-a4-sig-box {
+    border: 1px dashed #94a3b8;
+    border-radius: 4px;
+    height: 90px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    font-size: 8pt;
+    color: #64748b;
+  }
+
+  .pr-a4-sig-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #334155;
+  }
+
+  .pr-a4-footer {
+    margin-top: 25px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    font-size: 7.5pt;
+    color: #94a3b8;
   }
 }
 
@@ -816,4 +1063,171 @@ div.sk-modal.pr-picker-modal.pr-picker-modal--maximized {
   font-size: 0.84rem;
   outline: none;
   padding: 0 4px;
+}
+
+/* Purchase Receipt Detail Modal: wide comfortable dialog */
+.sk-detail-dialog.pr-receipt-detail-dialog {
+  width: min(1040px, calc(100vw - 36px)) !important;
+  max-height: calc(100vh - 48px) !important;
+}
+
+.sk-detail-dialog__body {
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+.pr-receipt-table {
+  width: 100%;
+}
+
+/* Purchases table action buttons - horizontal, compact single line */
+.pr-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.pr-row-actions .sk-button--small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Clear filter button */
+.pr-clear-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: var(--sk-radius-sm);
+  border: 1px solid var(--sk-border);
+  background: var(--sk-surface-soft);
+  color: var(--sk-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.pr-clear-filter-btn:hover {
+  background: var(--sk-surface);
+  color: var(--sk-text);
+  border-color: var(--sk-primary);
+}
+
+/* Redesigned Suppliers Page Styles */
+.pr-supplier-form-card {
+  margin-bottom: 24px;
+  padding: 24px;
+  border-radius: var(--sk-radius);
+  border: 1px solid var(--sk-border);
+  background: var(--sk-surface);
+  box-shadow: var(--sk-shadow);
+}
+
+.pr-supplier-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--sk-border);
+}
+
+.pr-supplier-form-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pr-supplier-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pr-supplier-section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sk-muted);
+  margin-bottom: 10px;
+}
+
+.pr-supplier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.pr-supplier-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pr-supplier-field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sk-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pr-supplier-field input,
+.pr-supplier-field textarea {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+  background: var(--sk-surface);
+  color: var(--sk-text);
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.pr-supplier-field input:focus,
+.pr-supplier-field textarea:focus {
+  outline: none;
+  border-color: var(--sk-primary);
+}
+
+.pr-supplier-field input[readonly] {
+  background: var(--sk-surface-soft);
+  color: var(--sk-muted);
+  font-family: monospace;
+  font-weight: 600;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
+.pr-supplier-badge-auto {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--sk-primary);
+}
+
+.pr-supplier-badge-locked {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(100, 116, 139, 0.15);
+  color: var(--sk-muted);
 }
