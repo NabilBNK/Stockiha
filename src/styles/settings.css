@@ -1,0 +1,445 @@
+/* =============================================================================
+   Stockiha — Settings Surface Refinements
+   Linear-style modern desktop layout, toggle cards, and proportional buttons.
+   ============================================================================= */
+
+.sk-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-block-end: 48px;
+}
+
+.sk-settings-page__header {
+  margin-block-end: 8px;
+}
+
+.sk-settings-page__title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--sk-text);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.sk-settings-page__subtitle {
+  font-size: 0.9375rem;
+  color: var(--sk-muted);
+  margin: 6px 0 0;
+  line-height: 1.45;
+}
+
+/* =============================================================================
+   Settings Card & Header Layout
+   ============================================================================= */
+
+.sk-settings-card {
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+  box-shadow: var(--sk-shadow);
+  padding: 24px;
+  overflow: hidden;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.sk-settings-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block-end: 18px;
+  border-block-end: 1px solid var(--sk-border);
+  margin-block-end: 20px;
+}
+
+.sk-settings-card__title-group {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sk-settings-card__title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--sk-text);
+  letter-spacing: -0.015em;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.sk-settings-card__desc {
+  font-size: 0.875rem;
+  color: var(--sk-muted);
+  margin: 6px 0 0;
+  line-height: 1.5;
+  max-width: 720px;
+}
+
+.sk-settings-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* =============================================================================
+   Toggle Cards Grid (Cash Drawer Policies & Inventory Corrections)
+   ============================================================================= */
+
+.sk-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 16px;
+}
+
+.sk-toggle-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+  padding: 16px 18px;
+  cursor: pointer;
+  user-select: none;
+  transition: all .16s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 116px;
+}
+
+.sk-toggle-card:hover:not([data-disabled="true"]) {
+  border-color: var(--sk-border-strong);
+  background: var(--sk-surface-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(40, 30, 20, 0.05);
+}
+
+.sk-toggle-card[data-checked="true"] {
+  background: var(--sk-primary-soft);
+  border-color: color-mix(in srgb, var(--sk-primary) 38%, var(--sk-border));
+}
+
+.sk-toggle-card[data-checked="true"]:hover:not([data-disabled="true"]) {
+  border-color: var(--sk-primary);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--sk-primary) 15%, transparent);
+}
+
+.sk-toggle-card[data-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sk-toggle-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sk-toggle-card__title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--sk-text);
+  line-height: 1.35;
+}
+
+.sk-toggle-card__desc {
+  font-size: 0.8125rem;
+  color: var(--sk-text-soft);
+  line-height: 1.45;
+  margin-top: 6px;
+  flex-grow: 1;
+}
+
+.sk-toggle-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--sk-border) 60%, transparent);
+}
+
+.sk-toggle-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  transition: all .15s ease;
+}
+
+.sk-toggle-card__badge--ok {
+  background: var(--sk-ok-soft);
+  color: var(--sk-ok);
+}
+
+.sk-toggle-card__badge--muted {
+  background: var(--sk-surface-soft);
+  color: var(--sk-muted);
+}
+
+.sk-toggle-card__badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.sk-toggle-card__meta {
+  font-size: 0.75rem;
+  color: var(--sk-muted);
+}
+
+/* Modern Switch Toggle */
+.sk-switch {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 22px;
+  background: var(--sk-border-strong);
+  border-radius: 9999px;
+  flex-shrink: 0;
+  transition: background-color .18s ease;
+}
+
+.sk-switch[data-checked="true"] {
+  background: var(--sk-primary);
+}
+
+.sk-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: transform .18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.sk-switch[data-checked="true"] .sk-switch__thumb {
+  transform: translateX(16px);
+}
+
+[dir="rtl"] .sk-switch__thumb {
+  left: auto;
+  right: 2px;
+}
+
+[dir="rtl"] .sk-switch[data-checked="true"] .sk-switch__thumb {
+  transform: translateX(-16px);
+}
+
+/* =============================================================================
+   Table & Compact Table Actions
+   ============================================================================= */
+
+.sk-settings-table-wrap {
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+  overflow: hidden;
+  background: var(--sk-surface);
+  margin-top: 4px;
+}
+
+.sk-settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.sk-settings-table th {
+  background: var(--sk-surface-soft);
+  color: var(--sk-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 18px;
+  text-align: start;
+  border-bottom: 1px solid var(--sk-border);
+  white-space: nowrap;
+}
+
+.sk-settings-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--sk-border);
+  vertical-align: middle;
+  color: var(--sk-text);
+}
+
+.sk-settings-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sk-settings-table tr:hover td {
+  background: color-mix(in srgb, var(--sk-surface-hover) 60%, transparent);
+}
+
+.sk-settings-table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Compact Button Overrides inside Table */
+.sk-settings-table .sk-btn,
+.sk-settings-table .sk-button {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.sk-settings-table .sk-btn--secondary,
+.sk-settings-table .sk-button--secondary {
+  border: 1px solid var(--sk-border-strong);
+  background: var(--sk-surface);
+  color: var(--sk-text);
+}
+
+.sk-settings-table .sk-btn--secondary:hover:not(:disabled),
+.sk-settings-table .sk-button--secondary:hover:not(:disabled) {
+  background: var(--sk-surface-soft);
+  border-color: var(--sk-primary);
+  color: var(--sk-primary);
+}
+
+.sk-settings-table .sk-btn--danger,
+.sk-settings-table .sk-button--danger {
+  background: var(--sk-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--sk-danger) 28%, transparent);
+  color: var(--sk-danger);
+}
+
+.sk-settings-table .sk-btn--danger:hover:not(:disabled),
+.sk-settings-table .sk-button--danger:hover:not(:disabled) {
+  background: var(--sk-danger);
+  color: var(--sk-danger-contrast);
+  border-color: var(--sk-danger);
+}
+
+/* =============================================================================
+   Primary Action Button in Card Header
+   ============================================================================= */
+
+.sk-settings-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  border-radius: 8px;
+  background: var(--sk-primary);
+  color: var(--sk-primary-contrast);
+  border: 1px solid transparent;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--sk-primary) 22%, transparent);
+  cursor: pointer;
+  transition: all .12s ease;
+  white-space: nowrap;
+}
+
+.sk-settings-header-btn:hover:not(:disabled) {
+  background: var(--sk-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--sk-primary) 32%, transparent);
+}
+
+.sk-settings-header-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.sk-settings-header-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* =============================================================================
+   Recovery Grid & Control Sections
+   ============================================================================= */
+
+.sk-recovery-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sk-recovery-box {
+  background: var(--sk-surface-soft);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sk-recovery-box__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sk-recovery-box__title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--sk-text);
+  margin: 0;
+}
+
+.sk-recovery-box__desc {
+  font-size: 0.8125rem;
+  color: var(--sk-muted);
+  margin: 4px 0 0;
+  line-height: 1.45;
+}
+
+.sk-recovery-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+.sk-recovery-input-row .sk-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.sk-recovery-input-row .sk-btn,
+.sk-recovery-input-row .sk-button {
+  flex-shrink: 0;
+  min-height: 40px;
+}
+
+/* Accessible Screen Reader Only Utility */
+.sk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

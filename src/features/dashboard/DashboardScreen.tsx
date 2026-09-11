@@ -50,7 +50,7 @@ export function DashboardScreen() {
         <div>
           <h1>{t('dashboard.title')}</h1>
           <div className="sk-muted" style={{ fontSize: '0.8rem', fontWeight: 500, marginBlock: '2px 4px' }}>
-            [ version = WS-E-3.3 ]
+            [ version = WS-E-3.4 ]
           </div>
           <p>{t('dashboard.subtitle')}</p>
         </div>

@@ -58,12 +58,16 @@ export function InventoryCorrectionsSettingsScreen({
   }
 
   return (
-    <section className="sk-page" data-testid="inventory-corrections-settings">
+    <section className="sk-page sk-settings-page" data-testid="inventory-corrections-settings">
       {error ? <Banner tone="error">{error}</Banner> : null}
       {feedback ? <Banner tone="success">{feedback}</Banner> : null}
-      <div className="sk-card">
-        <h2>{t("correctionsPolicy.title")}</h2>
-        <p>{t("correctionsPolicy.help")}</p>
+      <div className="sk-settings-card">
+        <div className="sk-settings-card__header">
+          <div className="sk-settings-card__title-group">
+            <h2 className="sk-settings-card__title">{t("correctionsPolicy.title")}</h2>
+            <p className="sk-settings-card__desc">{t("correctionsPolicy.help")}</p>
+          </div>
+        </div>
         {enabled == null ? (
           <Spinner />
         ) : (
@@ -71,21 +75,52 @@ export function InventoryCorrectionsSettingsScreen({
             {!canUpdate ? (
               <Banner tone="warning">{t("correctionsPolicy.readOnly")}</Banner>
             ) : null}
-            <label className="sk-checkbox-row">
-              <input
-                type="checkbox"
-                checked={enabled}
-                disabled={!canUpdate || busy}
-                onChange={() => void toggle()}
-              />
-              <span>
-                <strong>
-                  {enabled
-                    ? t("correctionsPolicy.enabled")
-                    : t("correctionsPolicy.disabled")}
-                </strong>
-              </span>
-            </label>
+            <div style={{ maxWidth: '420px' }}>
+              <label
+                className="sk-toggle-card"
+                data-checked={enabled ? 'true' : 'false'}
+                data-disabled={!canUpdate || busy ? 'true' : 'false'}
+              >
+                <input
+                  type="checkbox"
+                  className="sk-sr-only"
+                  checked={enabled}
+                  disabled={!canUpdate || busy}
+                  onChange={() => void toggle()}
+                />
+                <div>
+                  <div className="sk-toggle-card__top">
+                    <span className="sk-toggle-card__title">
+                      {enabled
+                        ? t("correctionsPolicy.enabled")
+                        : t("correctionsPolicy.disabled")}
+                    </span>
+                    <span
+                      className="sk-switch"
+                      data-checked={enabled ? 'true' : 'false'}
+                      aria-hidden="true"
+                    >
+                      <span className="sk-switch__thumb" />
+                    </span>
+                  </div>
+                  <div className="sk-toggle-card__desc">
+                    {t("correctionsPolicy.help")}
+                  </div>
+                </div>
+                <div className="sk-toggle-card__bottom">
+                  <span
+                    className={`sk-toggle-card__badge ${
+                      enabled
+                        ? 'sk-toggle-card__badge--ok'
+                        : 'sk-toggle-card__badge--muted'
+                    }`}
+                  >
+                    <span className="sk-toggle-card__badge-dot" />
+                    {enabled ? t("correctionsPolicy.enabled") : t("correctionsPolicy.disabled")}
+                  </span>
+                </div>
+              </label>
+            </div>
           </>
         )}
       </div>
