@@ -217,16 +217,13 @@ describe('Purchase Receipt & Direct Purchase UI/UX Recovery Workflow', () => {
     const pr1Row = screen.getByTestId('receipt-row-100');
     expect(pr1Row).toHaveTextContent('PR-2026-000001');
     expect(pr1Row).toHaveTextContent('Global Supplier SARL');
-    expect(pr1Row).toHaveTextContent('Main Warehouse');
     expect(pr1Row).toHaveTextContent('2500.00 DZD');
-    expect(pr1Row).toHaveTextContent('Direct Purchase');
     expect(pr1Row).not.toHaveTextContent('null');
     expect(pr1Row).not.toHaveTextContent('undefined');
 
     // Verify PO origin row
     const pr2Row = screen.getByTestId('receipt-row-101');
     expect(pr2Row).toHaveTextContent('PR-2026-000002');
-    expect(pr2Row).toHaveTextContent('Purchase Order: PO-2026-000088');
   });
 
   it('filters receipts by origin, search text, and supplier', async () => {

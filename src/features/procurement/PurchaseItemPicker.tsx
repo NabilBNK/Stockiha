@@ -1,16 +1,40 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PurchaseProductOption } from '../../shared/ipc/dto';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { AttributeDefinition, PurchaseProductOption } from '../../shared/ipc/dto';
+import * as ipc from '../../shared/ipc/gateway';
+import { SessionContext } from '../../shared/session/SessionContext';
 import { PROCUREMENT_COPY } from './procurementCopy';
 import { useI18n } from '../../shared/i18n';
 
-export function matchesPurchaseOption(item: PurchaseProductOption, rawQuery: string): boolean {
+export interface GenericPickerItem {
+  product_id: number;
+  variant_id: number;
+  sku: string;
+  product_name?: string;
+  variant_name?: string | null;
+  name?: string;
+  primary_barcode?: string | null;
+  brand?: { id: number; name: string } | null;
+  default_unit_id?: number;
+  default_unit_code?: string;
+  default_unit_name?: string | null;
+  alternate_units?: { unit_id: number; unit_code: string }[];
+  attributes?: { name?: string; value?: string }[];
+  is_active: boolean;
+  default_unit_cost?: string;
+  last_purchase_cost?: string;
+  quantity_on_hand?: string;
+  last_known_wac?: string;
+}
+
+export function matchesPurchaseOption(item: GenericPickerItem, rawQuery: string): boolean {
   const query = rawQuery.trim().toLocaleLowerCase();
   if (!query) return true;
 
+  const productName = item.product_name ?? item.name ?? '';
   const haystack = [
     item.sku,
     item.primary_barcode,
-    item.product_name,
+    productName,
     item.variant_name,
     item.brand?.name,
     ...(item.attributes?.map((a) => `${a.name ?? ''} ${a.value ?? ''}`) ?? []),
@@ -23,21 +47,23 @@ export function matchesPurchaseOption(item: PurchaseProductOption, rawQuery: str
   return tokens.every((token) => haystack.includes(token));
 }
 
-interface Props {
+interface Props<T extends GenericPickerItem = PurchaseProductOption> {
   isOpen: boolean;
-  items: PurchaseProductOption[];
-  disabledVariantIds: number[];
-  onSelect: (item: PurchaseProductOption) => void;
+  items: T[];
+  disabledVariantIds?: number[];
+  showStock?: boolean;
+  onSelect: (item: T) => void;
   onClose: () => void;
 }
 
-export function PurchaseItemPicker({
+export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProductOption>({
   isOpen,
   items,
-  disabledVariantIds,
+  disabledVariantIds = [],
+  showStock = false,
   onSelect,
   onClose,
-}: Props) {
+}: Props<T>) {
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -76,6 +102,26 @@ export function PurchaseItemPicker({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  const session = useContext(SessionContext);
+  const token = session?.user?.token;
+  const [catalogAttributes, setCatalogAttributes] = useState<AttributeDefinition[]>([]);
+
+  useEffect(() => {
+    if (!isOpen || !token) return;
+    let cancelled = false;
+    ipc
+      .listAttributes(token)
+      .then((defs) => {
+        if (!cancelled && Array.isArray(defs)) {
+          setCatalogAttributes(defs);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, token]);
+
   // Extract available filter choices
   const availableUnits = useMemo(() => {
     const units = new Set<string>();
@@ -97,6 +143,19 @@ export function PurchaseItemPicker({
 
   const availableAttributes = useMemo(() => {
     const map = new Map<string, Set<string>>();
+
+    // 1. From catalog attributes defined in system
+    for (const def of catalogAttributes) {
+      if (!def.name) continue;
+      if (!map.has(def.name)) map.set(def.name, new Set());
+      for (const val of def.attribute_values ?? []) {
+        if (val.value && val.is_active !== false) {
+          map.get(def.name)!.add(val.value);
+        }
+      }
+    }
+
+    // 2. Also merge attributes from currently loaded items
     for (const item of items) {
       for (const attr of item.attributes ?? []) {
         if (!attr.name || !attr.value) continue;
@@ -104,11 +163,15 @@ export function PurchaseItemPicker({
         map.get(attr.name)!.add(attr.value);
       }
     }
-    return Array.from(map.entries()).map(([name, valSet]) => ({
-      name,
-      values: Array.from(valSet).sort(),
-    }));
-  }, [items]);
+
+    return Array.from(map.entries())
+      .map(([name, valSet]) => ({
+        name,
+        values: Array.from(valSet).sort(),
+      }))
+      .filter((attr) => attr.values.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [catalogAttributes, items]);
 
   const hasActiveFilters =
     Boolean(selectedUnit) ||
@@ -140,7 +203,7 @@ export function PurchaseItemPicker({
         if (selectedAttrEntries.length > 0) {
           for (const [aName, aVal] of selectedAttrEntries) {
             const hasMatch = item.attributes?.some(
-              (a) => a.name.toLowerCase() === aName.toLowerCase() && a.value === aVal,
+              (a) => a.name?.toLowerCase() === aName.toLowerCase() && a.value === aVal,
             );
             if (!hasMatch) return false;
           }
@@ -384,8 +447,11 @@ export function PurchaseItemPicker({
                     >
                       <div className="pr-picker-option-info">
                         <div className="pr-picker-option-name">
-                          {item.product_name}
-                          {item.variant_name ? ` — ${item.variant_name}` : ''}
+                          {item.variant_name
+                            ? (item.product_name && !item.variant_name.toLowerCase().includes(item.product_name.toLowerCase())
+                                ? `${item.product_name} — ${item.variant_name}`
+                                : item.variant_name)
+                            : item.name ?? item.product_name ?? item.sku}
                         </div>
                         <div className="pr-picker-option-meta">
                           {item.primary_barcode && (
@@ -397,7 +463,17 @@ export function PurchaseItemPicker({
                           {item.default_unit_code && (
                             <span className="pr-picker-meta-tag">{item.default_unit_code}</span>
                           )}
-                          {cost && (
+                          {showStock && item.quantity_on_hand != null && (
+                            <span className="pr-picker-meta-tag" style={{ fontWeight: 600, color: 'var(--sk-text)' }}>
+                              Stock: {item.quantity_on_hand}
+                            </span>
+                          )}
+                          {showStock && item.last_known_wac != null && (
+                            <span className="pr-picker-meta-tag" style={{ color: 'var(--sk-muted)' }}>
+                              WAC: {item.last_known_wac} DZD
+                            </span>
+                          )}
+                          {!showStock && cost && (
                             <span className="pr-picker-meta-tag" style={{ color: 'var(--sk-primary)' }}>
                               {cost} DZD
                             </span>

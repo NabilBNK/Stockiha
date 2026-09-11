@@ -96,6 +96,7 @@ function toProductListItem(row: ProductListItemV2): ProductListItem {
     is_active: row.is_active,
     quantity_on_hand: row.quantity_on_hand,
     last_known_wac: row.last_known_wac,
+    category_name: row.category_name,
   };
 }
 
@@ -224,7 +225,7 @@ export function AppShell({
     if (!searchOpen) return;
     const query = pendingQuery.trim();
     if (!query) {
-      setSearchResults([]);
+      void runTextSearch('');
       setSearchNotice(null);
       return;
     }

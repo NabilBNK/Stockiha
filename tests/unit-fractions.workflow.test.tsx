@@ -241,6 +241,10 @@ describe('quantity entry rejects a fraction in a whole-number-only unit', () => 
     await login();
     fireEvent.click(await screen.findByRole('button', { name: 'Stock receipt' }));
 
+    const barcodeInput = await screen.findByTestId('stock-barcode-input');
+    fireEvent.change(barcodeInput, { target: { value: 'NB-S' } });
+    fireEvent.keyDown(barcodeInput, { key: 'Enter' });
+
     const quantity = await screen.findByTestId('stock-quantity');
     // Wait for the variant's base unit (PC) and the unit catalogue to load.
     await waitFor(() => expect(invokeMock.mock.calls.some(

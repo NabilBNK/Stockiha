@@ -1,11 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
 
-import { Banner, Button, ItemSearchModal, Spinner, TextField } from "../../shared/components";
+import { Banner, Button, Spinner, TextField } from "../../shared/components";
 import { useI18n, type MessageKey } from "../../shared/i18n";
 import { codeForError, useErrorText } from "../../shared/hooks/useErrorText";
 import { useSession } from "../../shared/session/SessionContext";
@@ -14,11 +15,13 @@ import * as ipc from "../../shared/ipc/gateway";
 import { getInventoryCorrectionsSetting } from "../../shared/ipc/inventoryCorrectionsGateway";
 import { ZeroQuantityWarning } from "./ZeroQuantityWarning";
 import type {
-  ProductListItem,
   StockAdjustmentReasonCode,
   StockAdjustmentResult,
   StockAdjustmentUnit,
 } from "../../shared/ipc/dto";
+import { PurchaseItemPicker, type GenericPickerItem } from "../procurement/PurchaseItemPicker";
+import { PROCUREMENT_COPY } from "../procurement/procurementCopy";
+import "../procurement/procurement.css";
 import {
   formatExactDecimal,
   isExactDecimalPositive,
@@ -90,17 +93,34 @@ function initialDate(startsOn: string, endsOn: string): string {
 }
 
 export function StockAdjustmentScreen() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const text = PROCUREMENT_COPY[locale];
   const { user } = useSession();
   const { warehouses, selectedWarehouseId, selectWarehouse, openFiscalPeriod } =
     useAppData();
   const errorText = useErrorText();
   const token = user?.token ?? "";
-  const [variants, setVariants] = useState<ProductListItem[]>([]);
+  const [variants, setVariants] = useState<GenericPickerItem[]>([]);
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [variantsError, setVariantsError] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<number | null>(null);
-  const [searchModalOpen, setSearchModalOpen] = useState(false);
+
+  // Fast item entry / picker state
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [barcodeError, setBarcodeError] = useState<string | null>(null);
+  const barcodeInputRef = useRef<HTMLInputElement | null>(null);
+  const quantityInputRef = useRef<HTMLInputElement | null>(null);
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current) {
+        clearTimeout(focusTimerRef.current);
+      }
+    };
+  }, []);
+
   const [units, setUnits] = useState<StockAdjustmentUnit[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [unitsError, setUnitsError] = useState<string | null>(null);
@@ -117,7 +137,7 @@ export function StockAdjustmentScreen() {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<StockAdjustmentResult | null>(null);
-  const [resultVariant, setResultVariant] = useState<ProductListItem | null>(
+  const [resultVariant, setResultVariant] = useState<GenericPickerItem | null>(
     null,
   );
   const [policyEnabled, setPolicyEnabled] = useState<boolean | null>(null);
@@ -150,8 +170,32 @@ export function StockAdjustmentScreen() {
     setVariantsLoading(true);
     setVariantsError(null);
     try {
-      const items = await ipc.listProducts(token, selectedWarehouseId);
-      setVariants(items.filter((item) => item.is_active));
+      const [productsRes, optionsRes] = await Promise.allSettled([
+        ipc.listProducts(token, selectedWarehouseId),
+        ipc.listPurchaseProductOptions(token),
+      ]);
+      const products = productsRes.status === "fulfilled" ? productsRes.value : [];
+      const options = optionsRes.status === "fulfilled" ? optionsRes.value : [];
+      const optionsMap = new Map(options.map((o) => [o.variant_id, o]));
+      const enriched: GenericPickerItem[] = products
+        .filter((item) => item.is_active)
+        .map((item) => {
+          const opt = optionsMap.get(item.variant_id);
+          return {
+            ...item,
+            product_name: opt?.product_name ?? item.product_name ?? item.name,
+            variant_name: opt?.variant_name ?? (item as { variant_name?: string | null }).variant_name ?? null,
+            brand: opt?.brand ?? null,
+            default_unit_id: opt?.default_unit_id,
+            default_unit_code: opt?.default_unit_code,
+            default_unit_name: opt?.default_unit_name,
+            alternate_units: opt?.alternate_units,
+            attributes: opt?.attributes ?? item.attributes,
+            default_unit_cost: opt?.default_unit_cost,
+            last_purchase_cost: opt?.last_purchase_cost,
+          };
+        });
+      setVariants(enriched);
     } catch (reason) {
       setVariants([]);
       setVariantsError(errorText(reason));
@@ -159,6 +203,38 @@ export function StockAdjustmentScreen() {
       setVariantsLoading(false);
     }
   }, [errorText, selectedWarehouseId, token]);
+
+  const handleSelectItem = useCallback((item: GenericPickerItem) => {
+    setVariantId(item.variant_id);
+    setUnitId(null);
+    invalidateRequest();
+    setPickerOpen(false);
+    setBarcodeError(null);
+    if (focusTimerRef.current) {
+      clearTimeout(focusTimerRef.current);
+    }
+    focusTimerRef.current = setTimeout(() => {
+      if (typeof document !== "undefined") {
+        quantityInputRef.current?.focus();
+        (document.querySelector('input[data-testid="adjustment-quantity"]') as HTMLInputElement | null)?.focus();
+      }
+    }, 50);
+  }, [invalidateRequest]);
+
+  const handleBarcodeSubmit = useCallback(() => {
+    const code = barcodeInput.trim();
+    if (!code) return;
+    const match = variants.find(
+      (item) => item.is_active && (item.primary_barcode === code || item.sku === code),
+    );
+    if (!match) {
+      setBarcodeError(text.barcodeNotFound);
+      return;
+    }
+    handleSelectItem(match);
+    setBarcodeError(null);
+    setBarcodeInput("");
+  }, [barcodeInput, variants, text.barcodeNotFound, handleSelectItem]);
   const loadUnits = useCallback(async () => {
     if (!token || variantId == null) return;
     setUnitsLoading(true);
@@ -209,10 +285,10 @@ export function StockAdjustmentScreen() {
     variants.find((item) => item.variant_id === variantId) ?? null;
   const isZeroQty =
     selectedVariant != null &&
-    isExactDecimalZero(selectedVariant.quantity_on_hand);
+    isExactDecimalZero(selectedVariant.quantity_on_hand ?? "0");
   const hasUsableWAC =
     selectedVariant != null &&
-    isExactDecimalPositive(selectedVariant.last_known_wac);
+    isExactDecimalPositive(selectedVariant.last_known_wac ?? "0");
   const quantityValid = isPositiveExactQuantity(quantity);
   /**
    * WS-D-13 Phase A. The quantity is entered in the SELECTED unit, which may
@@ -372,38 +448,75 @@ export function StockAdjustmentScreen() {
           <label className="sk-field__label" htmlFor="adjustment-variant">
             {t("adjustment.variant")}
           </label>
-          <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" }}>
+          <div className="pr-entry-toolbar">
+            <div className="pr-scanner-input-group">
+              <input
+                ref={barcodeInputRef}
+                id="adjustment-barcode-input"
+                type="text"
+                className="pr-scanner-input"
+                placeholder={text.scanBarcodePlaceholder}
+                aria-label={text.scanBarcodePlaceholder}
+                value={barcodeInput}
+                onChange={(e) => {
+                  setBarcodeInput(e.target.value);
+                  setBarcodeError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleBarcodeSubmit();
+                  }
+                }}
+                data-testid="adjustment-barcode-input"
+              />
+              {barcodeError && (
+                <div
+                  className="sk-field-error"
+                  data-testid="adjustment-barcode-error"
+                  style={{ marginTop: 4 }}
+                >
+                  {barcodeError}
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
-              className="sk-btn sk-btn--secondary"
-              onClick={() => setSearchModalOpen(true)}
-              data-testid="adjustment-open-search-modal"
-              style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
-            >
-              🔍 {t("adjustment.openSearchModal")}
-            </button>
-            <select
-              id="adjustment-variant"
-              className="sk-field__input"
-              style={{ flex: "1 1 240px" }}
-              value={variantId ?? ""}
-              onChange={(event) => {
-                setVariantId(
-                  event.target.value ? Number(event.target.value) : null,
-                );
-                setUnitId(null);
-                invalidateRequest();
+              className="sk-button sk-button--secondary pr-scanner-btn"
+              onClick={() => {
+                void loadVariants();
+                setPickerOpen(true);
               }}
-              data-testid="adjustment-variant-select"
+              data-testid="adjustment-open-picker-btn"
             >
-              <option value="">{t("adjustment.variantPlaceholder")}</option>
-              {variants.map((variant) => (
-                <option key={variant.variant_id} value={variant.variant_id}>
-                  {variant.sku} — {variant.name}
-                </option>
-              ))}
-            </select>
+              <span aria-hidden style={{ fontSize: "1.05rem", lineHeight: 1 }}>⌕</span>
+              + {text.chooseItem}
+            </button>
           </div>
+
+          <select
+            id="adjustment-variant"
+            value={variantId ?? ""}
+            onChange={(event) => {
+              setVariantId(
+                event.target.value ? Number(event.target.value) : null,
+              );
+              setUnitId(null);
+              invalidateRequest();
+            }}
+            data-testid="adjustment-variant-select"
+            style={{ display: "none" }}
+            tabIndex={-1}
+          >
+            <option value="">{t("adjustment.variantPlaceholder")}</option>
+            {variants.map((variant) => (
+              <option key={variant.variant_id} value={variant.variant_id}>
+                {variant.sku} — {variant.name}
+              </option>
+            ))}
+          </select>
+
           {variantsLoading ? (
             <Spinner />
           ) : variantsError ? (
@@ -422,24 +535,74 @@ export function StockAdjustmentScreen() {
           ) : null}
         </div>
         {selectedVariant ? (
-          <div className="sk-card sk-adjustment-context">
-            <strong>{t("adjustment.currentContext")}</strong>
+          <div className="pr-selected-item-card" data-testid="stock-selected-item-card">
+            <div className="pr-selected-item-info">
+              <div className="pr-selected-item-eyebrow">
+                {t("adjustment.currentContext")}
+              </div>
+              <div className="pr-selected-item-name">
+                {selectedVariant.product_name
+                  ? `${selectedVariant.product_name}${selectedVariant.variant_name ? ` — ${selectedVariant.variant_name}` : ""}`
+                  : selectedVariant.variant_name ?? selectedVariant.name}
+              </div>
+              <div className="pr-selected-item-meta">
+                {selectedVariant.sku && (
+                  <span className="pr-meta-pill">
+                    <span>SKU:</span> <strong>{selectedVariant.sku}</strong>
+                  </span>
+                )}
+                {selectedVariant.primary_barcode && (
+                  <span className="pr-meta-pill pr-meta-pill--barcode">
+                    <span>▦</span> <strong>{selectedVariant.primary_barcode}</strong>
+                  </span>
+                )}
+                {selectedVariant.quantity_on_hand != null && (
+                  <span
+                    className={`pr-meta-pill ${
+                      isExactDecimalZero(selectedVariant.quantity_on_hand)
+                        ? "pr-meta-pill--stock-zero"
+                        : "pr-meta-pill--stock"
+                    }`}
+                  >
+                    <span>{t("adjustment.currentQuantity")}:</span>{" "}
+                    <strong>{formatExactDecimal(selectedVariant.quantity_on_hand ?? "0")}</strong>
+                  </span>
+                )}
+                {selectedVariant.last_known_wac != null && (
+                  <span className="pr-meta-pill pr-meta-pill--wac">
+                    <span>{t("adjustment.currentWac")}:</span>{" "}
+                    <strong>{formatExactDecimal(selectedVariant.last_known_wac ?? "0")} DZD</strong>
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="sk-button sk-button--secondary sk-button--small pr-change-item-btn"
+              onClick={() => {
+                void loadVariants();
+                setPickerOpen(true);
+              }}
+              data-testid="adjustment-change-item-btn"
+            >
+              {locale === "ar" ? "تغيير الصنف" : locale === "fr" ? "Changer d'article" : "Change item"}
+            </button>
+          </div>
+        ) : (
+          <div className="pr-empty-selection-prompt" data-testid="adjustment-empty-selection">
+            <span className="pr-empty-selection-icon" aria-hidden>📦</span>
             <span>
-              {itemIdentifiers(selectedVariant)} — {selectedVariant.name}
-            </span>
-            <span>
-              {t("adjustment.currentQuantity")}:{" "}
-              {formatExactDecimal(selectedVariant.quantity_on_hand)}
-            </span>
-            <span>
-              {t("adjustment.currentWac")}:{" "}
-              {formatExactDecimal(selectedVariant.last_known_wac)} DZD
+              {locale === "ar"
+                ? 'لم يتم تحديد صنف بعد. امسح الرمز الشريطي أعلاه أو انقر على "+ اختيار صنف".'
+                : locale === "fr"
+                ? 'Aucun article sélectionné. Scannez un code-barres ci-dessus ou cliquez sur "+ Choisir un article".'
+                : 'No item selected yet. Scan a barcode above or click "+ Choose item".'}
             </span>
           </div>
-        ) : null}
+        )}
         {selectedVariant && direction === "increase" && isZeroQty ? (
           <ZeroQuantityWarning
-            variantName={selectedVariant.name}
+            variantName={selectedVariant.product_name ?? selectedVariant.name ?? ""}
             hasUsableWAC={hasUsableWAC}
           />
         ) : null}
@@ -620,18 +783,12 @@ export function StockAdjustmentScreen() {
           </div>
         </section>
       ) : null}
-      <ItemSearchModal
-        isOpen={searchModalOpen}
-        onClose={() => setSearchModalOpen(false)}
-        onSelect={(item) => {
-          setVariantId(item.variant_id);
-          setUnitId(null);
-          invalidateRequest();
-        }}
+      <PurchaseItemPicker
+        isOpen={pickerOpen}
         items={variants}
-        loading={variantsLoading}
-        error={variantsError}
-        selectedVariantId={variantId}
+        showStock={true}
+        onSelect={handleSelectItem}
+        onClose={() => setPickerOpen(false)}
       />
     </section>
   );

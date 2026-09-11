@@ -303,10 +303,10 @@ pub(crate) async fn get_business_document_reports(
 }
 
 #[tauri::command]
-pub(crate) async fn save_binary_file(
-    path: String,
-    bytes: Vec<u8>,
-) -> Result<(), IpcError> {
-    std::fs::write(&path, &bytes)
-        .map_err(|err| IpcError::from(AppError::internal(format!("Failed to write file to {path}: {err}"))))
+pub(crate) async fn save_binary_file(path: String, bytes: Vec<u8>) -> Result<(), IpcError> {
+    std::fs::write(&path, &bytes).map_err(|err| {
+        IpcError::from(AppError::internal(format!(
+            "Failed to write file to {path}: {err}"
+        )))
+    })
 }

@@ -25,6 +25,7 @@ import { useErrorText } from '../../shared/hooks/useErrorText';
 import { PurchaseReceiptDetailModal } from './PurchaseReceiptDetailModal';
 import { PurchaseItemPicker } from './PurchaseItemPicker';
 import { PurchasePaymentModal } from './PurchasePaymentModal';
+import { PurchaseReturnModal } from './PurchaseReturnModal';
 import { JournalDetailModal } from '../accounting/JournalsScreen';
 import { addExactDecimals, isPositiveDecimal, multiplyExactDecimals } from './procurementDecimal';
 import { PROCUREMENT_COPY } from './procurementCopy';
@@ -54,6 +55,7 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
   const [selectedJournalDocId, setSelectedJournalDocId] = useState<number | null>(null);
   const [paymentStatuses, setPaymentStatuses] = useState<PurchasePaymentStatusDto[]>([]);
   const [paymentTarget, setPaymentTarget] = useState<PurchaseReceiptSummary | null>(null);
+  const [returnTarget, setReturnTarget] = useState<PurchaseReceiptSummary | null>(null);
 
   // Filtering state
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,11 +143,21 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
   const openPickerForNewLine = () => {
     setPickerTargetIndex(null);
     setPickerOpen(true);
+    if (sessionToken) {
+      void listPurchaseProductOptions(sessionToken)
+        .then((opts) => setProducts(opts))
+        .catch(() => {});
+    }
   };
 
   const openPickerForLine = (index: number) => {
     setPickerTargetIndex(index);
     setPickerOpen(true);
+    if (sessionToken) {
+      void listPurchaseProductOptions(sessionToken)
+        .then((opts) => setProducts(opts))
+        .catch(() => {});
+    }
   };
 
   const handlePickerSelect = (option: PurchaseProductOption) => {
@@ -700,10 +712,10 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
       </div>
 
       {/* Purchase Receipts History Section */}
-      <section className="sk-card" style={{ padding: 22 }}>
-        <div style={{ marginBottom: '18px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h2 style={{ margin: 0 }}>{text.receiptsTitle}</h2>
+      <section className="sk-card" style={{ padding: '20px 24px', marginTop: '16px' }}>
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>{text.receiptsTitle}</h2>
           </div>
           <div className="pr-history-toolbar">
             <input
@@ -797,24 +809,21 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
             )}
           </div>
         ) : (
-          <div className="sk-table-wrap">
-            <table className="sk-table" data-testid="purchase-receipts-table">
+          <div className="sk-table-wrap" style={{ marginTop: '14px' }}>
+            <table className="sk-table pr-receipt-table" data-testid="purchase-receipts-table">
               <thead>
                 <tr>
                   <th>{text.receipt}</th>
                   <th>{text.date}</th>
                   <th>{text.supplier}</th>
-                  <th>{text.warehouse}</th>
-                  <th>{text.origin}</th>
                   <th className="sk-num">{text.total}</th>
                   <th>{text.receiptJournal}</th>
                   <th>{text.payment}</th>
-                  <th style={{ width: '210px', whiteSpace: 'nowrap' }}>{text.actions}</th>
+                  <th style={{ minWidth: '290px', whiteSpace: 'nowrap', textAlign: 'end' }}>{text.actions}</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredReceipts.map((receipt) => {
-                  const isDirect = receipt.receipt_origin === 'DIRECT_PURCHASE' || !receipt.purchase_order_id;
                   return (
                     <tr key={receipt.document_id} data-testid={`receipt-row-${receipt.document_id}`}>
                       <td>
@@ -822,15 +831,6 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
                       </td>
                       <td>{formatDisplayDate(receipt.posted_at)}</td>
                       <td>{receipt.supplier_name}</td>
-                      <td>{receipt.warehouse_name}</td>
-                      <td>
-                        <span
-                          className={`sk-badge ${isDirect ? 'sk-badge--success' : 'sk-badge--info'}`}
-                          data-testid={`origin-badge-${receipt.document_id}`}
-                        >
-                          {isDirect ? text.directPurchase : `${text.purchaseOrderOrigin}: ${receipt.purchase_order_number ?? `#${receipt.purchase_order_id}`}`}
-                        </span>
-                      </td>
                       <td className="sk-num" style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                         {receipt.total_amount} DZD
                       </td>
@@ -879,12 +879,22 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
                                   {text.outstanding}: {status.outstanding_amount} DZD
                                 </span>
                               )}
+                              {status.returned_amount !== '0.00' && (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--sk-muted)' }}>
+                                  {text.returned}: {status.returned_amount} DZD
+                                </span>
+                              )}
+                              {status.supplier_credit_amount !== '0.00' && (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--sk-warn, var(--sk-muted))' }}>
+                                  {text.supplierOwesYou}: {status.supplier_credit_amount} DZD
+                                </span>
+                              )}
                             </div>
                           );
                         })()}
                       </td>
-                      <td style={{ whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
-                        <div className="pr-row-actions">
+                      <td style={{ whiteSpace: 'nowrap', verticalAlign: 'middle', textAlign: 'end' }}>
+                        <div className="pr-row-actions" style={{ justifyContent: 'flex-end' }}>
                           <button
                             type="button"
                             className="sk-button sk-button--small sk-button--secondary"
@@ -904,6 +914,16 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
                                 {text.recordPayment}
                               </button>
                             )}
+                          {capabilities.can_post_supplier_return && (
+                            <button
+                              type="button"
+                              className="sk-button sk-button--small sk-button--secondary"
+                              onClick={() => setReturnTarget(receipt)}
+                              data-testid={`return-goods-${receipt.document_id}`}
+                            >
+                              {text.returnToSupplier}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -930,6 +950,23 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
           onPosted={async (result) => {
             setPaymentTarget(null);
             setSuccessBanner(`${text.paymentPosted} ${result.document_number} (${result.amount} DZD)`);
+            await loadData();
+          }}
+        />
+      )}
+
+      {/* Purchase Return Modal */}
+      {returnTarget && (
+        <PurchaseReturnModal
+          sessionToken={sessionToken}
+          receiptDocumentId={returnTarget.document_id}
+          receiptDocumentNumber={returnTarget.document_number}
+          supplierName={returnTarget.supplier_name}
+          fiscalPeriodId={openFiscalPeriodId}
+          onClose={() => setReturnTarget(null)}
+          onPosted={async (result) => {
+            setReturnTarget(null);
+            setSuccessBanner(`${text.returnPosted} ${result.document_number} (${result.refund_amount} DZD)`);
             await loadData();
           }}
         />

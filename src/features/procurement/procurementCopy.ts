@@ -179,6 +179,22 @@ export type ProcurementCopy = {
   suppliersTitle: string;
   printA4: string;
   downloadPdf: string;
+  returnToSupplier: string;
+  returnPosted: string;
+  returnReason: string;
+  reasonDefective: string;
+  reasonExcess: string;
+  reasonWrongItem: string;
+  reasonOther: string;
+  supplierRefNote: string;
+  noteRequiredForOther: string;
+  optional: string;
+  quantityReturnable: string;
+  quantityToReturn: string;
+  refundPreview: string;
+  returnNeedsLine: string;
+  returned: string;
+  supplierOwesYou: string;
 };
 
 export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
@@ -265,6 +281,22 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     suppliersTitle: 'Supplier directory & balances',
     printA4: 'Print A4',
     downloadPdf: 'Download PDF',
+    returnToSupplier: 'Return to supplier',
+    returnPosted: 'Return recorded',
+    returnReason: 'Reason',
+    reasonDefective: 'Damaged or defective',
+    reasonExcess: 'Delivered in excess',
+    reasonWrongItem: 'Wrong item',
+    reasonOther: 'Other',
+    supplierRefNote: 'Supplier reference / note',
+    noteRequiredForOther: 'Supplier reference / note is required when reason is Other.',
+    optional: 'optional',
+    quantityReturnable: 'Can return',
+    quantityToReturn: 'Return quantity',
+    refundPreview: 'Supplier credit',
+    returnNeedsLine: 'Enter a quantity on at least one line.',
+    returned: 'Returned',
+    supplierOwesYou: 'Supplier owes you',
   },
   fr: {
     newPurchase: 'Nouvel achat', confirmPurchase: 'Confirmer l’achat', purchaseConfirmed: 'Achat direct enregistré avec succès.',
@@ -349,6 +381,22 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     suppliersTitle: 'Répertoire et créances fournisseurs',
     printA4: 'Imprimer A4',
     downloadPdf: 'Télécharger PDF',
+    returnToSupplier: 'Retour fournisseur',
+    returnPosted: 'Retour enregistré',
+    returnReason: 'Motif',
+    reasonDefective: 'Endommagé ou défectueux',
+    reasonExcess: 'Livré en excès',
+    reasonWrongItem: 'Article incorrect',
+    reasonOther: 'Autre',
+    supplierRefNote: 'Référence fournisseur / note',
+    noteRequiredForOther: 'La référence fournisseur / note est requise lorsque le motif est Autre.',
+    optional: 'facultatif',
+    quantityReturnable: 'Retournable',
+    quantityToReturn: 'Quantité à retourner',
+    refundPreview: 'Avoir fournisseur',
+    returnNeedsLine: 'Saisissez une quantité sur au moins une ligne.',
+    returned: 'Retourné',
+    supplierOwesYou: 'Le fournisseur vous doit',
   },
   ar: {
     newPurchase: 'شراء جديد', confirmPurchase: 'تأكيد الشراء', purchaseConfirmed: 'تم تسجيل الشراء المباشر بنجاح.',
@@ -433,5 +481,21 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     suppliersTitle: 'دليل الموردين والديون',
     printA4: 'طباعة A4',
     downloadPdf: 'تحميل PDF',
+    returnToSupplier: 'إرجاع للمورد',
+    returnPosted: 'تم تسجيل الإرجاع',
+    returnReason: 'السبب',
+    reasonDefective: 'تالف أو معيب',
+    reasonExcess: 'كمية زائدة',
+    reasonWrongItem: 'صنف خاطئ',
+    reasonOther: 'أخرى',
+    supplierRefNote: 'مرجع المورد / ملاحظة',
+    noteRequiredForOther: 'مرجع المورد / الملاحظة مطلوبة عندما يكون السبب أخرى.',
+    optional: 'اختياري',
+    quantityReturnable: 'القابل للإرجاع',
+    quantityToReturn: 'الكمية المرجعة',
+    refundPreview: 'رصيد لدى المورد',
+    returnNeedsLine: 'أدخل كمية في سطر واحد على الأقل.',
+    returned: 'مُرجع',
+    supplierOwesYou: 'المورد مدين لك',
   },
 };

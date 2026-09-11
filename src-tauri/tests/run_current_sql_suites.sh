@@ -18,6 +18,7 @@ suites=(
   src-tauri/tests/procurement/r8_e_procurement_integration.sql
   src-tauri/tests/procurement/direct_purchase_acceptance_integration.sql
   src-tauri/tests/procurement/ws_e_002_purchase_payment_integration.sql
+  src-tauri/tests/procurement/ws_e_003_purchase_return_integration.sql
   src-tauri/tests/receivables/s4_001_credit_sale_integration.sql
   src-tauri/tests/receivables/s4_001_customer_payment_integration.sql
   src-tauri/tests/cash/s4_002_cash_session_lifecycle.sql

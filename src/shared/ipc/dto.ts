@@ -27,6 +27,8 @@ export interface ProductListItem {
   name: string;
   product_name?: string;
   primary_barcode?: string | null;
+  category_name?: string | null;
+  default_unit_code?: string | null;
   attributes?: { name: string; value: string }[];
   sale_price: string;
   is_active: boolean;
@@ -869,8 +871,11 @@ export interface PostPurchasePaymentResult {
 export interface PurchasePaymentStatusDto {
   receipt_document_id: number;
   total_amount: string;
+  returned_amount: string;
+  net_payable_amount: string;
   paid_amount: string;
   outstanding_amount: string;
+  supplier_credit_amount: string;
   payment_status: PurchasePaymentStatus;
 }
 
@@ -892,6 +897,74 @@ export interface SupplierBalanceDto {
   supplier_id: number;
   supplier_name: string;
   total_purchased: string;
+  total_returned: string;
   total_paid: string;
   balance_due: string;
+}
+
+export type PurchaseReturnReason = 'DEFECTIVE_GOODS' | 'EXCESS_DELIVERY' | 'WRONG_ITEM' | 'OTHER';
+
+export interface ConfirmPurchaseReturnLinePayload {
+  receipt_line_id: number;
+  quantity: string;
+}
+
+export interface ConfirmPurchaseReturnPayload {
+  request_id: string;
+  receipt_document_id: number;
+  fiscal_period_id: number;
+  document_date: string;
+  reason_code: PurchaseReturnReason;
+  note: string | null;
+  lines: ConfirmPurchaseReturnLinePayload[];
+}
+
+export interface ConfirmPurchaseReturnResult {
+  document_id: number;
+  document_number: string;
+  receipt_document_id: number;
+  receipt_document_number: string | null;
+  supplier_id: number;
+  supplier_name: string;
+  warehouse_id: number;
+  warehouse_name: string;
+  reason_code: PurchaseReturnReason;
+  note: string | null;
+  refund_amount: string;
+  inventory_value: string;
+  variance_amount: string;
+  journal_document_id: number;
+  journal_document_number: string | null;
+  posted_at: string;
+}
+
+export interface PurchaseReturnableLineDto {
+  receipt_line_id: number;
+  line_number: number;
+  variant_id: number;
+  sku: string | null;
+  product_name: string;
+  variant_name: string | null;
+  unit_id: number;
+  unit_code: string;
+  unit_cost: string;
+  quantity_received: string;
+  quantity_returned: string;
+  quantity_returnable: string;
+}
+
+export interface PurchaseReturnSummaryDto {
+  document_id: number;
+  document_number: string | null;
+  receipt_document_id: number;
+  supplier_id: number;
+  supplier_name: string;
+  reason_code: PurchaseReturnReason;
+  note: string | null;
+  refund_amount: string;
+  inventory_value: string;
+  variance_amount: string;
+  journal_document_id: number;
+  journal_document_number: string | null;
+  posted_at: string;
 }

@@ -460,6 +460,7 @@ export default function SuppliersScreen({ sessionToken }: Props) {
                   <th>{text.phone}</th>
                   <th>{text.taxId}</th>
                   <th style={{ width: '110px' }}>{text.status}</th>
+                  <th className="sk-num">{text.returned}</th>
                   <th className="sk-num" style={{ width: '150px' }}>{text.balanceDue}</th>
                   <th style={{ width: '190px', whiteSpace: 'nowrap' }}>{text.actions}</th>
                 </tr>
@@ -482,6 +483,9 @@ export default function SuppliersScreen({ sessionToken }: Props) {
                       <span className={`sk-badge ${s.is_active ? 'sk-badge--success' : 'sk-badge--secondary'}`}>
                         {s.is_active ? text.active : text.inactive}
                       </span>
+                    </td>
+                    <td className="sk-num" data-testid={`supplier-returned-${s.id}`}>
+                      {balances.find((item) => item.supplier_id === s.id)?.total_returned ?? '0.00'} DZD
                     </td>
                     <td className="sk-num" data-testid={`supplier-balance-${s.id}`}>
                       {(() => {

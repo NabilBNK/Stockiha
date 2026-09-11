@@ -1231,3 +1231,113 @@ div.sk-modal.pr-picker-modal.pr-picker-modal--maximized {
   background: rgba(100, 116, 139, 0.15);
   color: var(--sk-muted);
 }
+
+/* Selected Item Card for Stock Receipt & Inventory Adjustment */
+.pr-selected-item-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 20px;
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border-strong, #cbd5e1);
+  border-inline-start: 4px solid var(--sk-primary);
+  border-radius: var(--sk-radius);
+  margin-block: 12px 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.pr-selected-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pr-selected-item-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sk-primary);
+  margin-bottom: 2px;
+}
+
+.pr-selected-item-name {
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--sk-text);
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.pr-selected-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
+
+.pr-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--sk-surface-soft, #f8fafc);
+  border: 1px solid var(--sk-border);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: var(--sk-text-soft);
+  font-weight: 500;
+}
+
+.pr-meta-pill strong {
+  color: var(--sk-text);
+  font-weight: 700;
+}
+
+.pr-meta-pill--barcode {
+  font-family: monospace;
+  font-size: 0.84rem;
+  letter-spacing: 0.02em;
+}
+
+.pr-meta-pill--stock {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.28);
+  color: #047857;
+}
+
+.pr-meta-pill--stock-zero {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #b45309;
+}
+
+.pr-meta-pill--wac {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.22);
+  color: #1d4ed8;
+}
+
+.pr-empty-selection-prompt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--sk-surface-soft);
+  border: 1.5px dashed var(--sk-border-strong, #cbd5e1);
+  border-radius: var(--sk-radius);
+  color: var(--sk-muted);
+  font-size: 0.92rem;
+  font-weight: 500;
+  margin-block: 12px 18px;
+}
+
+.pr-empty-selection-icon {
+  font-size: 1.35rem;
+  opacity: 0.75;
+  flex-shrink: 0;
+}

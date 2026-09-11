@@ -859,3 +859,34 @@ export function listSupplierBalances(
     sessionToken,
   });
 }
+
+export function confirmPurchaseReturn(
+  sessionToken: string,
+  payload: import('./dto').ConfirmPurchaseReturnPayload
+): Promise<import('./dto').ConfirmPurchaseReturnResult> {
+  return call<import('./dto').ConfirmPurchaseReturnResult>(COMMANDS.CONFIRM_PURCHASE_RETURN, {
+    sessionToken,
+    payload,
+  });
+}
+
+export function listPurchaseReturnableLines(
+  sessionToken: string,
+  receiptDocumentId: number
+): Promise<import('./dto').PurchaseReturnableLineDto[]> {
+  return call<import('./dto').PurchaseReturnableLineDto[]>(
+    COMMANDS.LIST_PURCHASE_RETURNABLE_LINES,
+    { sessionToken, receiptDocumentId }
+  );
+}
+
+export function listPurchaseReturns(
+  sessionToken: string,
+  receiptDocumentId?: number | null
+): Promise<import('./dto').PurchaseReturnSummaryDto[]> {
+  return call<import('./dto').PurchaseReturnSummaryDto[]>(COMMANDS.LIST_PURCHASE_RETURNS, {
+    sessionToken,
+    receiptDocumentId: receiptDocumentId ?? null,
+  });
+}
+

@@ -745,8 +745,11 @@ pub struct PostPurchasePaymentResult {
 pub struct PurchasePaymentStatusDto {
     pub receipt_document_id: i64,
     pub total_amount: String,
+    pub returned_amount: String,
+    pub net_payable_amount: String,
     pub paid_amount: String,
     pub outstanding_amount: String,
+    pub supplier_credit_amount: String,
     pub payment_status: String,
 }
 
@@ -770,8 +773,79 @@ pub struct SupplierBalanceDto {
     pub supplier_id: i64,
     pub supplier_name: String,
     pub total_purchased: String,
+    pub total_returned: String,
     pub total_paid: String,
     pub balance_due: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmPurchaseReturnLinePayload {
+    pub receipt_line_id: i64,
+    pub quantity: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmPurchaseReturnPayload {
+    pub request_id: String,
+    pub receipt_document_id: i64,
+    pub fiscal_period_id: i64,
+    pub document_date: String,
+    pub reason_code: String,
+    pub note: Option<String>,
+    pub lines: Vec<ConfirmPurchaseReturnLinePayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmPurchaseReturnResult {
+    pub document_id: i64,
+    pub document_number: String,
+    pub receipt_document_id: i64,
+    pub receipt_document_number: Option<String>,
+    pub supplier_id: i64,
+    pub supplier_name: String,
+    pub warehouse_id: i64,
+    pub warehouse_name: String,
+    pub reason_code: String,
+    pub note: Option<String>,
+    pub refund_amount: String,
+    pub inventory_value: String,
+    pub variance_amount: String,
+    pub journal_document_id: i64,
+    pub journal_document_number: Option<String>,
+    pub posted_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseReturnableLineDto {
+    pub receipt_line_id: i64,
+    pub line_number: i32,
+    pub variant_id: i64,
+    pub sku: Option<String>,
+    pub product_name: String,
+    pub variant_name: Option<String>,
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub unit_cost: String,
+    pub quantity_received: String,
+    pub quantity_returned: String,
+    pub quantity_returnable: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurchaseReturnSummaryDto {
+    pub document_id: i64,
+    pub document_number: Option<String>,
+    pub receipt_document_id: i64,
+    pub supplier_id: i64,
+    pub supplier_name: String,
+    pub reason_code: String,
+    pub note: Option<String>,
+    pub refund_amount: String,
+    pub inventory_value: String,
+    pub variance_amount: String,
+    pub journal_document_id: i64,
+    pub journal_document_number: Option<String>,
+    pub posted_at: String,
 }
 
 #[cfg(test)]

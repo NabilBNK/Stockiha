@@ -526,21 +526,21 @@ describe('Search Item Modal and Multi-Identifier Item Search', () => {
     await openInventoryCorrectionsWithCatalog();
 
     // Open modal via dedicated trigger button
-    const openBtn = screen.getByTestId('adjustment-open-search-modal');
+    const openBtn = screen.getByTestId('adjustment-open-picker-btn');
     fireEvent.click(openBtn);
 
-    const modal = await screen.findByTestId('item-search-modal');
+    const modal = await screen.findByTestId('purchase-item-picker');
     expect(modal).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Search Item' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Choose item/i })).toBeInTheDocument();
 
     // Select Bed 90x200 Black
-    const resultItem = screen.getByTestId('item-search-result-101');
+    const resultItem = screen.getByTestId('purchase-item-option-101');
     expect(resultItem).toHaveTextContent('Bed 90x200 Black');
     expect(resultItem).toHaveTextContent('SKU-00000123');
     fireEvent.click(resultItem);
 
     // Modal closes
-    await waitFor(() => expect(screen.queryByTestId('item-search-modal')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId('purchase-item-picker')).not.toBeInTheDocument());
 
     // Selected item is populated into the form context
     const context = screen.getByText(/Current inventory context/i).closest('.sk-card');
@@ -552,126 +552,142 @@ describe('Search Item Modal and Multi-Identifier Item Search', () => {
 
   it('TEST 2 — searches by Product name (e.g. Bed)', async () => {
     await openInventoryCorrectionsWithCatalog();
-    fireEvent.click(screen.getByTestId('adjustment-open-search-modal'));
+    fireEvent.click(screen.getByTestId('adjustment-open-picker-btn'));
 
-    const searchInput = await screen.findByTestId('item-search-input');
+    const searchInput = await screen.findByTestId('purchase-item-picker-input');
     fireEvent.change(searchInput, { target: { value: 'Bed' } });
 
-    expect(screen.getByTestId('item-search-result-101')).toBeInTheDocument();
-    expect(screen.getByTestId('item-search-result-102')).toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-201')).not.toBeInTheDocument();
+    expect(screen.getByTestId('purchase-item-option-101')).toBeInTheDocument();
+    expect(screen.getByTestId('purchase-item-option-102')).toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-201')).not.toBeInTheDocument();
   });
 
   it('TEST 3 — searches by Variant name (e.g. Bed 90x200 Black)', async () => {
     await openInventoryCorrectionsWithCatalog();
-    fireEvent.click(screen.getByTestId('adjustment-open-search-modal'));
+    fireEvent.click(screen.getByTestId('adjustment-open-picker-btn'));
 
-    const searchInput = await screen.findByTestId('item-search-input');
+    const searchInput = await screen.findByTestId('purchase-item-picker-input');
     fireEvent.change(searchInput, { target: { value: 'Bed 90x200 Black' } });
 
-    expect(screen.getByTestId('item-search-result-101')).toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-102')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-201')).not.toBeInTheDocument();
+    expect(screen.getByTestId('purchase-item-option-101')).toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-102')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-201')).not.toBeInTheDocument();
   });
 
   it('TEST 4 — searches by Barcode (e.g. 1234567890123 and 613000000001)', async () => {
     await openInventoryCorrectionsWithCatalog();
-    fireEvent.click(screen.getByTestId('adjustment-open-search-modal'));
+    fireEvent.click(screen.getByTestId('adjustment-open-picker-btn'));
 
-    const searchInput = await screen.findByTestId('item-search-input');
+    const searchInput = await screen.findByTestId('purchase-item-picker-input');
     fireEvent.change(searchInput, { target: { value: '1234567890123' } });
 
-    expect(screen.getByTestId('item-search-result-101')).toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-102')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-201')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-301')).not.toBeInTheDocument();
+    expect(screen.getByTestId('purchase-item-option-101')).toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-102')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-201')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-301')).not.toBeInTheDocument();
 
     // Search by 613000000001
     fireEvent.change(searchInput, { target: { value: '613000000001' } });
-    expect(screen.getByTestId('item-search-result-301')).toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-101')).not.toBeInTheDocument();
+    expect(screen.getByTestId('purchase-item-option-301')).toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-101')).not.toBeInTheDocument();
   });
 
   it('TEST 5 — searches by SKU (e.g. SKU-00000123)', async () => {
     await openInventoryCorrectionsWithCatalog();
-    fireEvent.click(screen.getByTestId('adjustment-open-search-modal'));
+    fireEvent.click(screen.getByTestId('adjustment-open-picker-btn'));
 
-    const searchInput = await screen.findByTestId('item-search-input');
+    const searchInput = await screen.findByTestId('purchase-item-picker-input');
     fireEvent.change(searchInput, { target: { value: 'SKU-00000123' } });
 
-    expect(screen.getByTestId('item-search-result-101')).toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-102')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-201')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-301')).not.toBeInTheDocument();
+    expect(screen.getByTestId('purchase-item-option-101')).toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-102')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-201')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-301')).not.toBeInTheDocument();
   });
 
   it('TEST 6 — searches by Variant attribute value (e.g. Color = Black or Color = Red)', async () => {
     await openInventoryCorrectionsWithCatalog();
-    fireEvent.click(screen.getByTestId('adjustment-open-search-modal'));
+    fireEvent.click(screen.getByTestId('adjustment-open-picker-btn'));
 
-    const searchInput = await screen.findByTestId('item-search-input');
+    const searchInput = await screen.findByTestId('purchase-item-picker-input');
     fireEvent.change(searchInput, { target: { value: 'Black' } });
 
-    expect(screen.getByTestId('item-search-result-101')).toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-102')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-201')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-301')).not.toBeInTheDocument();
+    expect(screen.getByTestId('purchase-item-option-101')).toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-102')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-201')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-301')).not.toBeInTheDocument();
 
     // Search by "red"
     fireEvent.change(searchInput, { target: { value: 'red' } });
-    expect(screen.getByTestId('item-search-result-301')).toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-101')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-102')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('item-search-result-201')).not.toBeInTheDocument();
+    expect(screen.getByTestId('purchase-item-option-301')).toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-101')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-102')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-201')).not.toBeInTheDocument();
   });
 
   it('TEST 7 & 10 — distinguishes variants and displays Barcode/SKU identifiers', async () => {
     await openInventoryCorrectionsWithCatalog();
-    fireEvent.click(screen.getByTestId('adjustment-open-search-modal'));
+    fireEvent.click(screen.getByTestId('adjustment-open-picker-btn'));
 
-    const searchInput = await screen.findByTestId('item-search-input');
+    const searchInput = await screen.findByTestId('purchase-item-picker-input');
     fireEvent.change(searchInput, { target: { value: 'Bed' } });
 
-    const item1 = screen.getByTestId('item-search-result-101');
-    const item2 = screen.getByTestId('item-search-result-102');
+    const item1 = screen.getByTestId('purchase-item-option-101');
+    const item2 = screen.getByTestId('purchase-item-option-102');
 
     expect(item1).toHaveTextContent('Bed 90x200 Black');
     expect(item1).toHaveTextContent('1234567890123');
     expect(item1).toHaveTextContent('SKU-00000123');
-    expect(item1).toHaveTextContent('Black');
+    expect(item1).toHaveTextContent('Stock: 15.000');
+    expect(item1).toHaveTextContent('WAC: 9000.000000 DZD');
 
     expect(item2).toHaveTextContent('Bed 90x200 White');
     expect(item2).toHaveTextContent('1234567890124');
     expect(item2).toHaveTextContent('SKU-00000124');
-    expect(item2).toHaveTextContent('White');
+    expect(item2).toHaveTextContent('Stock: 8.000');
+    expect(item2).toHaveTextContent('WAC: 9200.000000 DZD');
   });
 
-  it('TEST 9 — displays "No matching items found." when query matches nothing', async () => {
+  it('TEST 9 — displays "No matching products" when query matches nothing', async () => {
     await openInventoryCorrectionsWithCatalog();
-    fireEvent.click(screen.getByTestId('adjustment-open-search-modal'));
+    fireEvent.click(screen.getByTestId('adjustment-open-picker-btn'));
 
-    const searchInput = await screen.findByTestId('item-search-input');
+    const searchInput = await screen.findByTestId('purchase-item-picker-input');
     fireEvent.change(searchInput, { target: { value: 'nonexistent-item-query-xyz' } });
 
-    expect(await screen.findByTestId('item-search-empty')).toHaveTextContent('No matching items found.');
-    expect(screen.queryByTestId('item-search-result-101')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('purchase-item-picker-empty')).toHaveTextContent('No matching products');
+    expect(screen.queryByTestId('purchase-item-option-101')).not.toBeInTheDocument();
   });
 
   it('closes modal when pressing Escape or clicking Cancel', async () => {
     await openInventoryCorrectionsWithCatalog();
-    fireEvent.click(screen.getByTestId('adjustment-open-search-modal'));
+    fireEvent.click(screen.getByTestId('adjustment-open-picker-btn'));
 
-    expect(await screen.findByTestId('item-search-modal')).toBeInTheDocument();
+    expect(await screen.findByTestId('purchase-item-picker')).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByTestId('item-search-modal')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId('purchase-item-picker')).not.toBeInTheDocument());
 
-    // Reopen and test Cancel button
-    fireEvent.click(screen.getByTestId('adjustment-open-search-modal'));
-    expect(await screen.findByTestId('item-search-modal')).toBeInTheDocument();
+    // Reopen and test Cancel/Close button
+    fireEvent.click(screen.getByTestId('adjustment-open-picker-btn'));
+    expect(await screen.findByTestId('purchase-item-picker')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('item-search-modal-cancel'));
-    await waitFor(() => expect(screen.queryByTestId('item-search-modal')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('purchase-item-picker-close'));
+    await waitFor(() => expect(screen.queryByTestId('purchase-item-picker')).not.toBeInTheDocument());
+  });
+
+  it('TEST 11 — scans barcode directly via input to select item', async () => {
+    await openInventoryCorrectionsWithCatalog();
+
+    const barcodeInput = screen.getByTestId('adjustment-barcode-input');
+    fireEvent.change(barcodeInput, { target: { value: '1234567890123' } });
+    fireEvent.keyDown(barcodeInput, { key: 'Enter' });
+
+    // Selected item is populated into the form context
+    const context = screen.getByText(/Current inventory context/i).closest('.sk-card');
+    expect(context).toHaveTextContent('Bed 90x200 Black');
+    expect(context).toHaveTextContent('SKU-00000123');
+    expect(context).toHaveTextContent('15');
   });
 });
 
