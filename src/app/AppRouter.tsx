@@ -20,6 +20,7 @@ import { AppShell, type AppView } from './AppShell';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
 import { BackendUnavailableScreen } from '../features/startup/BackendUnavailableScreen';
+import { EmbeddedSetupScreen } from '../features/startup/EmbeddedSetupScreen';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { CatalogScreen } from '../features/catalog2/CatalogScreen';
 import { CatalogueSetupScreen } from '../features/catalogue-setup/CatalogueSetupScreen';
@@ -122,6 +123,13 @@ export function AppRouter() {
   }
 
   if (route === 'unavailable') {
+    // WS-K-4: with the embedded architecture, NOT_CONFIGURED always means
+    // "first launch, setup has never run" — not a broken configuration.
+    // Route it to the interactive setup flow instead of the generic
+    // unavailable card; every other diagnostic reason is unchanged.
+    if (reason?.code === 'NOT_CONFIGURED') {
+      return <EmbeddedSetupScreen />;
+    }
     return <BackendUnavailableScreen diagnostic={reason} onRetry={() => void refresh()} />;
   }
 

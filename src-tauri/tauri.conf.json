@@ -33,14 +33,11 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/postgres/win64/**/*": "postgres/win64/",
-      "../scripts/provisioning/Provision-StockihaPostgres.ps1": "postgres/Provision-StockihaPostgres.ps1",
-      "../scripts/provisioning/Uninstall-StockihaPostgres.ps1": "postgres/Uninstall-StockihaPostgres.ps1"
+      "resources/postgres/win64/**/*": "postgres/win64/"
     },
     "windows": {
       "nsis": {
-        "installMode": "perMachine",
-        "installerHooks": "nsis/hooks.nsh"
+        "installMode": "currentUser"
       }
     }
   }

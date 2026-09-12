@@ -8,6 +8,7 @@ pub mod customer;
 pub mod db_health;
 pub mod documents;
 pub mod drawer;
+pub mod embedded_setup;
 pub mod finance;
 pub mod iam;
 pub mod inventory;

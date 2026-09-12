@@ -30,6 +30,15 @@ pub(crate) mod local_config;
 // WS-K-1: read-only comparison of the migrations embedded in this binary
 // against the migrations actually applied to the connected database.
 pub(crate) mod schema_version;
+// WS-K-4: first-run embedded-PostgreSQL setup (initdb, roles, database,
+// migrations, database.json) — ported from the retired
+// scripts/provisioning/Provision-StockihaPostgres.ps1 installer script.
+pub(crate) mod embedded_setup;
+// WS-K-4: embedded PostgreSQL process lifecycle — spawn, graceful/escalated
+// stop, and the stale-postmaster.pid liveness check that is the single most
+// safety-critical piece of this workstream (see the module's own doc
+// comment).
+pub(crate) mod pg_process;
 // S0-008: ESC/POS Windows RAW spooler proof. Crate-private and consumer-free
 // (no Tauri command, no IPC); dead code in non-test builds until a later
 // slice sends real receipts. The exemption is removed then. The module is

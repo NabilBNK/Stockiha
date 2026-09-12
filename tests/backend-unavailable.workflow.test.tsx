@@ -16,6 +16,13 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
+// WS-K-4: NOT_CONFIGURED now routes to EmbeddedSetupScreen, which
+// subscribes to a Tauri event on mount. jsdom has no
+// `window.__TAURI_INTERNALS__`, so `listen` must be mocked the same way
+// `invoke` already is above, or that screen's effect throws.
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
 
 import App from '../src/App';
 import type { DbDiagnostic } from '../src/shared/ipc/gateway';
@@ -44,11 +51,6 @@ beforeEach(() => {
 });
 
 const CASES: Array<{ name: string; diagnostic: DbDiagnostic; expectedTitle: string }> = [
-  {
-    name: 'not configured',
-    diagnostic: { code: 'NOT_CONFIGURED', detail: 'x', schema: null, config_warning: null },
-    expectedTitle: 'Not set up yet',
-  },
   {
     name: 'invalid configuration',
     diagnostic: { code: 'INVALID_CONFIGURATION', detail: 'x', schema: null, config_warning: null },
@@ -162,6 +164,24 @@ describe('backend-unavailable states', () => {
       expect(details.textContent?.toLowerCase()).not.toMatch(/password|pwd|secret/);
     });
   }
+
+  it('WS-K-4: routes NOT_CONFIGURED to the embedded-setup screen, not the generic unavailable card', async () => {
+    wireInvoke({
+      get_setup_status: () => {
+        throw { code: 'DATABASE_UNAVAILABLE' };
+      },
+      get_db_diagnostic: () => ({
+        code: 'NOT_CONFIGURED',
+        detail: 'x',
+        schema: null,
+        config_warning: null,
+      }),
+    });
+    render(<App />);
+
+    expect(await screen.findByTestId('embedded-setup-screen')).toBeInTheDocument();
+    expect(screen.queryByTestId('backend-unavailable')).not.toBeInTheDocument();
+  });
 
   it('falls back to the generic message when the diagnostic itself cannot be fetched', async () => {
     wireInvoke({

@@ -136,6 +136,63 @@ export function getDbDiagnostic(): Promise<DbDiagnostic> {
   return call<DbDiagnostic>(COMMANDS.GET_DB_DIAGNOSTIC);
 }
 
+/**
+ * WS-K-4 — the nine embedded-setup steps, in the fixed order the backend
+ * always reports them in. Mirrors `embedded_setup::SetupStep::ALL` on the
+ * Rust side exactly (`SCREAMING_SNAKE_CASE` is `serde`'s literal wire
+ * format, not a stylistic choice made here).
+ */
+export type EmbeddedSetupStep =
+  | 'CREATE_DATA_DIRECTORY'
+  | 'INITIALIZE_DATABASE'
+  | 'WRITE_CONFIGURATION'
+  | 'START_DATABASE'
+  | 'CREATE_ROLES'
+  | 'CREATE_DATABASE'
+  | 'RUN_MIGRATIONS'
+  | 'WRITE_CONFIG_FILE'
+  | 'VERIFY_CONNECTION';
+
+export const EMBEDDED_SETUP_STEPS: EmbeddedSetupStep[] = [
+  'CREATE_DATA_DIRECTORY',
+  'INITIALIZE_DATABASE',
+  'WRITE_CONFIGURATION',
+  'START_DATABASE',
+  'CREATE_ROLES',
+  'CREATE_DATABASE',
+  'RUN_MIGRATIONS',
+  'WRITE_CONFIG_FILE',
+  'VERIFY_CONNECTION',
+];
+
+export type EmbeddedSetupStepStatus = 'RUNNING' | 'DONE' | 'FAILED';
+
+/**
+ * One progress update, as emitted on the `embedded-setup-progress` Tauri
+ * event. `detail` is guaranteed credential-free by construction on the Rust
+ * side (`embedded_setup::SetupProgress`'s own doc comment) — never a
+ * password, never an assembled connection string.
+ */
+export interface EmbeddedSetupProgress {
+  step: EmbeddedSetupStep;
+  status: EmbeddedSetupStepStatus;
+  detail: string | null;
+}
+
+export const EMBEDDED_SETUP_PROGRESS_EVENT = 'embedded-setup-progress';
+
+/**
+ * Start the first-run embedded PostgreSQL setup. Resolves once the command
+ * has been accepted and the setup thread is running — it does **not** wait
+ * for setup to finish. Progress arrives exclusively via
+ * `EMBEDDED_SETUP_PROGRESS_EVENT`; on success the backend restarts the app
+ * process itself (`tauri::process::restart`), so a caller normally never
+ * observes a final "success" state here — the window reloads instead.
+ */
+export function runEmbeddedSetup(): Promise<void> {
+  return call<void>(COMMANDS.RUN_EMBEDDED_SETUP);
+}
+
 export interface BootstrapAdminInput {
   username: string;
   password: string;

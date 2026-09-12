@@ -29,7 +29,9 @@ fn init_dev_tracing() {
 /// without doing anything, so ordinary app startup is byte-for-byte
 /// unchanged. Deliberately checked in `main.rs` *before* `run()` is called,
 /// not inside it: `run()` builds a `tauri::Builder`, which this path must
-/// never touch.
+/// never touch. Kept even after WS-K-4 moved first-run setup into the app
+/// itself: still useful as a standalone diagnostic/support tool, and nothing
+/// about WS-K-4 requires removing it.
 pub fn maybe_run_provision_migrate() {
     if !infrastructure::provision_cli::provision_migrate_requested(std::env::args()) {
         return;
@@ -38,16 +40,108 @@ pub fn maybe_run_provision_migrate() {
     std::process::exit(exit_code);
 }
 
+/// WS-K-4: resolve whether the embedded PostgreSQL server needs to be
+/// started for this launch, and start it if so — honoring the stale-pid
+/// safety check. Only relevant when `database.json` is what will resolve
+/// the connection (never when the developer `STOCKIHA_DEV_DATABASE_URL` env
+/// var is set: that always points at the Owner's own, separately-managed
+/// dev cluster, which this app must never start, stop, or otherwise touch).
+///
+/// Best-effort by design: any failure here is not specially reported: the
+/// unmodified WS-K-1 precedence/diagnostic path immediately below reports
+/// the real connectivity failure through the exact same ten-state screen it
+/// already had, so this function does not need a second reporting path of
+/// its own — see the module-level note on why database_state_from_precedence
+/// is left completely untouched.
+async fn ensure_embedded_postgres_running(
+    app_data_dir: Option<&std::path::Path>,
+    resource_dir: Option<&std::path::Path>,
+    handle: &std::sync::Arc<std::sync::Mutex<infrastructure::pg_process::EmbeddedPostgresHandle>>,
+) {
+    if std::env::var(infrastructure::db::DATABASE_URL_ENV).is_ok() {
+        return;
+    }
+    let Some(app_data_dir) = app_data_dir else {
+        return;
+    };
+    let Some(resource_dir) = resource_dir else {
+        return;
+    };
+
+    let port = match infrastructure::local_config::load(app_data_dir) {
+        infrastructure::local_config::LocalConfigOutcome::Loaded { options, .. } => {
+            options.get_port()
+        }
+        _ => return, // no database.json yet — first-run setup screen handles this
+    };
+
+    let bin_dir = resource_dir.join("postgres").join("win64").join("bin");
+    // Must match `embedded_setup::run_setup`'s own resolution exactly — see
+    // `pg_process::resolve_pgdata_dir`'s doc comment for why this is not
+    // always `<app_data_dir>/pgdata`.
+    let pgdata = infrastructure::pg_process::resolve_pgdata_dir(app_data_dir);
+
+    match infrastructure::pg_process::ensure_running(bin_dir.clone(), pgdata.clone(), port).await {
+        Ok(child) => {
+            let mut guard = handle.lock().unwrap_or_else(|p| p.into_inner());
+            guard.bin_dir = bin_dir;
+            guard.pgdata = pgdata;
+            guard.port = port;
+            if child.is_some() {
+                guard.child = child;
+            }
+        }
+        Err(detail) => {
+            // Logged, not surfaced separately: the connection attempt
+            // startup_diagnostic makes immediately after this will fail for
+            // the same underlying reason and report it through the normal,
+            // already-built diagnostic screen.
+            tracing::error!("embedded PostgreSQL did not start: {detail}");
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(debug_assertions)]
     init_dev_tracing();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        // WS-K-4: two app instances would mean two postgres.exe processes
+        // writing the same data directory — the single most dangerous
+        // failure mode in this design. Must be the FIRST plugin registered
+        // (Tauri's own documented requirement): a second launch is
+        // redirected into this callback (which simply focuses the existing
+        // window) instead of ever reaching .setup() again. This is the
+        // first of two independent layers; the second is the stale
+        // postmaster.pid liveness check in ensure_embedded_postgres_running
+        // above, which still protects against non-Stockiha-launch races
+        // (e.g. a prior instance whose exit is still in flight).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            use tauri::Manager;
+            if let Some(window) = app.webview_windows().values().next() {
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState {
             stage: "Slice 4".to_string(),
         })
+        // WS-K-4: the embedded PostgreSQL child-process handle, managed for
+        // the whole app lifetime so both the first-run setup command and
+        // the shutdown hook below can reach the same `Child`. `Arc`-wrapped
+        // (not a bare `Mutex`): `run_embedded_setup` needs to hold this
+        // across `.await` points, and a bare `tauri::State<'_, Mutex<T>>`
+        // reference borrowed that way defeats the `Send`-for-any-lifetime
+        // proof `tauri::generate_handler!` needs to make — an owned,
+        // cheaply-cloned `Arc` sidesteps the whole problem.
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(
+            infrastructure::pg_process::EmbeddedPostgresHandle::new(
+                std::path::PathBuf::new(),
+                std::path::PathBuf::new(),
+                0,
+            ),
+        )))
         // WS-K-1: `DatabaseState` construction moved from a pre-`.build()`
         // `.manage(block_on(...))` call (as it was before WS-K-1) into
         // `.setup()`. This is a forced, mechanical move, not a reorganization
@@ -59,12 +153,26 @@ pub fn run() {
         // changed: this closure runs everything the old `.manage(block_on)`
         // call ran, in the same order, still on Tauri's own process-global
         // async runtime via the same `tauri::async_runtime::block_on` idiom.
+        // WS-K-4 adds exactly one new step, before the existing ones: make
+        // sure the embedded server is actually running before probing it —
+        // nothing else starts it any more (no Windows service).
         .setup(|app| {
             use tauri::Manager;
 
             let app_data_dir = app.path().app_data_dir().ok();
+            let resource_dir = app.path().resource_dir().ok();
+            let pg_handle = app.state::<std::sync::Arc<
+                std::sync::Mutex<infrastructure::pg_process::EmbeddedPostgresHandle>,
+            >>();
 
             tauri::async_runtime::block_on(async {
+                ensure_embedded_postgres_running(
+                    app_data_dir.as_deref(),
+                    resource_dir.as_deref(),
+                    pg_handle.inner(),
+                )
+                .await;
+
                 let state = infrastructure::db::database_state_from_precedence(app_data_dir);
                 // Eager readiness proof: one real connection and `SELECT 1`,
                 // so a broken configuration announces its true cause at
@@ -91,6 +199,7 @@ pub fn run() {
             commands::app_info::get_app_info,
             commands::db_health::check_db_health,
             commands::db_health::get_db_diagnostic,
+            commands::embedded_setup::run_embedded_setup,
             commands::auth::login,
             commands::auth::logout,
             commands::iam::create_user,
@@ -264,6 +373,42 @@ pub fn run() {
             commands::receivables::authorize_customer_payment_refund,
             commands::receivables::post_customer_refund,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // WS-K-4: PostgreSQL is a plain child process of this app now, not a
+    // Windows service — nothing else stops it. `RunEvent::Exit` (not
+    // `ExitRequested`, which is cancellable and can fire more than once) is
+    // the definitive "the event loop is actually exiting" signal, covering
+    // both a normal window close and a programmatic `AppHandle::exit`.
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            use tauri::Manager;
+            let handle = app_handle
+                .state::<std::sync::Arc<std::sync::Mutex<infrastructure::pg_process::EmbeddedPostgresHandle>>>();
+            let mut guard = handle.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(mut child) = guard.child.take() {
+                match infrastructure::pg_process::stop_postgres(
+                    &guard.bin_dir,
+                    &guard.pgdata,
+                    infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT,
+                ) {
+                    Ok(infrastructure::pg_process::StopOutcome::Immediate) => {
+                        tracing::warn!(
+                            "embedded PostgreSQL did not stop gracefully within {:?}; escalated to -m immediate",
+                            infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT
+                        );
+                    }
+                    Ok(infrastructure::pg_process::StopOutcome::Fast) => {}
+                    Err(err) => {
+                        tracing::error!("failed to stop embedded PostgreSQL cleanly: {err}");
+                    }
+                }
+                // pg_ctl stop -w already waited for the server to exit; this
+                // reaps our own Child handle so no zombie/handle leak
+                // remains on our side regardless.
+                let _ = child.wait();
+            }
+        }
+    });
 }

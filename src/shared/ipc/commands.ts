@@ -6,6 +6,8 @@ export const COMMANDS = {
   CHECK_DB_HEALTH: 'check_db_health',
   GET_DB_DIAGNOSTIC: 'get_db_diagnostic',
   GET_SETUP_STATUS: 'get_setup_status',
+  // WS-K-4 — embedded PostgreSQL first-run setup
+  RUN_EMBEDDED_SETUP: 'run_embedded_setup',
   BOOTSTRAP_FIRST_ADMIN: 'bootstrap_first_admin',
   LOGIN: 'login',
   LOGOUT: 'logout',

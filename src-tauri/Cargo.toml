@@ -22,6 +22,15 @@ tauri = { version = "2", features = [] }
 # WS-H-2: native folder-picker dialogs for the backup destination and backup
 # bundle selection UI (Defects 3 and 4) — replaces hand-typed Windows paths.
 tauri-plugin-dialog = "2"
+# WS-K-4: embedded PostgreSQL runs as a plain child process of this app (no
+# Windows service, no admin rights). Two app instances would mean two
+# postgres.exe processes writing the same data directory — the single most
+# dangerous failure mode in this whole design. This plugin is the FIRST of
+# two independent layers that prevent it (the second is the stale
+# postmaster.pid liveness check in infrastructure::pg_process); a second
+# launch is redirected into the already-running instance instead of ever
+# reaching .setup() again.
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 # S0-003: PostgreSQL connectivity proof. Minimal feature set by mandate:
 # - runtime-tokio: matches Tauri's Tokio runtime.
@@ -173,6 +182,9 @@ serde_json = "=1.0.150"
 # see `infrastructure::local_config`). `Win32_Storage_FileSystem` is required
 # for `SE_FILE_OBJECT`'s home feature gate. No new crate.
 [target.'cfg(windows)'.dependencies]
+# WS-K-4: `Win32_System_Threading` for `OpenProcess`/`GetExitCodeProcess`/
+# `QueryFullProcessImageNameW` — the stale `postmaster.pid` liveness check
+# (infrastructure::pg_process). No new crate.
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security_Credentials",
@@ -181,6 +193,7 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_Storage_FileSystem",
+    "Win32_System_Threading",
 ] }
 
 [dev-dependencies]

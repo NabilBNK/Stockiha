@@ -6,9 +6,13 @@
 //! installer (WS-K-3) is expected to populate on a client machine that has no
 //! environment variables and no `run.bat`.
 //!
-//! This module is consumption-only: nothing here ever creates, writes, or
-//! scaffolds the config file. A missing file is reported as "not configured"
-//! by the caller; provisioning it is out of scope for WS-K-1.
+//! WS-K-1 shipped this module consumption-only: nothing here ever created,
+//! wrote, or scaffolded the config file — WS-K-2/WS-K-3 wrote it from an
+//! external installer script instead. WS-K-4 replaces that installer-driven
+//! provisioning with first-run setup running inside the app itself (see
+//! `infrastructure::embedded_setup`), so this module now also owns [`write`]
+//! and [`remove`] — the app is the only writer there has ever been; nothing
+//! external writes this file anymore.
 //!
 //! Security posture:
 //! - Discrete fields (host/port/database/user/password), never a raw URL, so
@@ -69,13 +73,51 @@ pub enum LocalConfigOutcome {
 /// Deliberately not a raw connection URL: an installer or a human hand-editing
 /// this file cannot corrupt a URL through an unescaped `@`, `:`, or `%` in the
 /// password if there is no URL for them to assemble in the first place.
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 struct DatabaseConfigFile {
     host: String,
     port: u16,
     database: String,
     user: String,
     password: String,
+}
+
+/// Write `database.json`, creating `app_data_dir` if needed.
+///
+/// WS-K-4: called only once, at the end of first-run setup, after every
+/// prior step (roles, database, migrations) has already succeeded — see
+/// `embedded_setup::run_setup`'s own ordering. Relies on `app_data_dir`
+/// (a per-user profile folder) already carrying a reasonably tight NTFS ACL
+/// by inheritance; this function does not additionally tighten the written
+/// file's ACL itself. [`load`]'s existing advisory permission check still
+/// runs on every read after this and would surface a warning (never
+/// blocking — see its own module note) if that assumption ever fails to
+/// hold on a given machine.
+pub fn write(
+    app_data_dir: &Path,
+    host: &str,
+    port: u16,
+    database: &str,
+    user: &str,
+    password: &str,
+) -> std::io::Result<()> {
+    std::fs::create_dir_all(app_data_dir)?;
+    let payload = DatabaseConfigFile {
+        host: host.to_owned(),
+        port,
+        database: database.to_owned(),
+        user: user.to_owned(),
+        password: password.to_owned(),
+    };
+    let json = serde_json::to_string_pretty(&payload).map_err(std::io::Error::other)?;
+    std::fs::write(app_data_dir.join(CONFIG_FILE_NAME), json)
+}
+
+/// Delete `database.json`. WS-K-4's one caller: setup's final verification
+/// step, when a connection using exactly what was just written fails —
+/// never leave credentials behind that are known not to work.
+pub fn remove(app_data_dir: &Path) -> std::io::Result<()> {
+    std::fs::remove_file(app_data_dir.join(CONFIG_FILE_NAME))
 }
 
 /// Load and parse `database.json` from `app_data_dir`, using the real
