@@ -242,13 +242,7 @@ describe('WS-D-15 (D-7) POS shares the same resolver', () => {
     wireInvoke(baseHandlers({
       inspect_active_cash_session: activeCashSession,
       resolve_barcode: resolveBarcode,
-      list_products: () => [
-        {
-          product_id: 1, variant_id: 10, sku: 'PIL-1', name: 'Pillow',
-          sale_price: '1250.50', is_active: true,
-          quantity_on_hand: '12', last_known_wac: '900',
-        },
-      ],
+      list_products_v2: () => [productListRow()],
       list_customers: () => [],
     }));
     render(<App />);
