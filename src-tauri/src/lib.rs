@@ -399,7 +399,31 @@ pub fn run() {
             let handle = app_handle
                 .state::<std::sync::Arc<std::sync::Mutex<infrastructure::pg_process::EmbeddedPostgresHandle>>>();
             let mut guard = handle.lock().unwrap_or_else(|p| p.into_inner());
-            if let Some(mut child) = guard.child.take() {
+
+            // Stop the server if this process spawned it — OR if a live
+            // server is running against our data directory that this
+            // process did not spawn. The second case is real, not
+            // theoretical: `tauri::process::restart` after first-run setup
+            // exits without reaching this hook, and the Owner's fresh PC had
+            // "PostgreSQL Server" still running after closing Stockiha on the
+            // very first install. It is safe because the data directory is
+            // exclusively Stockiha's — single-instance is enforced, and the
+            // developer cluster lives elsewhere — so any server on it is ours
+            // to stop. `pg_ctl stop -D` targets the data directory, not a
+            // process handle, so it needs no `Child` to do so. This also
+            // self-heals an orphan left by an earlier build on the next
+            // normal close, with no reboot.
+            let owns_child = guard.child.is_some();
+            let live_server_on_our_data =
+                infrastructure::pg_process::live_server_on(&guard.pgdata);
+
+            if owns_child || live_server_on_our_data {
+                if !owns_child {
+                    tracing::warn!(
+                        "stopping an embedded PostgreSQL server this process did not start                          (left running by an earlier instance)"
+                    );
+                }
+                let child = guard.child.take();
                 match infrastructure::pg_process::stop_postgres(
                     &guard.bin_dir,
                     &guard.pgdata,
@@ -417,9 +441,11 @@ pub fn run() {
                     }
                 }
                 // pg_ctl stop -w already waited for the server to exit; this
-                // reaps our own Child handle so no zombie/handle leak
-                // remains on our side regardless.
-                let _ = child.wait();
+                // reaps our own Child handle (when we have one) so no
+                // zombie/handle leak remains on our side regardless.
+                if let Some(mut child) = child {
+                    let _ = child.wait();
+                }
             }
         }
     });

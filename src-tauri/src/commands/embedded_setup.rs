@@ -103,14 +103,52 @@ pub(crate) fn run_embedded_setup(
             app_data_dir,
             resource_dir,
             preferred_port,
-            handle,
+            handle.clone(),
             emit,
         ));
 
         if result.is_ok() {
+            // Stop the server THIS process spawned before relaunching.
+            //
+            // `tauri::process::restart` spawns the new process and then
+            // calls `std::process::exit(0)` — which terminates immediately,
+            // never reaching the event loop's `RunEvent::Exit`, where the
+            // only shutdown hook lives. Windows does not kill child
+            // processes when their parent exits. So without this, the
+            // postgres.exe started during setup outlives this process; the
+            // relaunched app then finds a live postmaster.pid and — by the
+            // stale-pid rule, correctly — refuses to manage a server it did
+            // not spawn, leaving nothing for its own shutdown hook to stop.
+            // Every later launch inherits the same orphan. This was found
+            // on the Owner's fresh PC: "PostgreSQL Server" still in Task
+            // Manager after closing Stockiha, on the very first install.
+            //
+            // The relaunched process starts its own server and owns it, so
+            // the one-time cost is a clean stop/start at the end of setup.
+            {
+                let mut guard = handle.lock().unwrap_or_else(|p| p.into_inner());
+                if let Some(mut child) = guard.child.take() {
+                    match pg_process::stop_postgres(
+                        &guard.bin_dir,
+                        &guard.pgdata,
+                        embedded_setup::STOP_GRACEFUL_TIMEOUT,
+                    ) {
+                        Ok(pg_process::StopOutcome::Immediate) => tracing::warn!(
+                            "post-setup stop escalated to -m immediate before relaunch"
+                        ),
+                        Ok(pg_process::StopOutcome::Fast) => {}
+                        Err(err) => tracing::error!(
+                            "could not stop the setup server before relaunch: {err}"
+                        ),
+                    }
+                    let _ = child.wait();
+                }
+            }
+
             // Relaunch: .setup() re-resolves DatabaseState from the
             // database.json this run just wrote, via the same WS-K-1
-            // precedence a fresh launch would use. Never returns.
+            // precedence a fresh launch would use, and starts (and owns)
+            // its own server. Never returns.
             let env = app.env();
             tauri::process::restart(&env);
         }

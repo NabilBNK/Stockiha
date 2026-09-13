@@ -45,11 +45,24 @@ for any of this** — that is one of the main things this redesign fixes.
 >   returns work) — the first build carrying both the new database setup
 >   and the latest shop features.
 >
-> Use the **`WS-K-4.6`** installer for everything below. **The version is
-> now printed on the setup screen itself**, directly under "Setting up
+> - `WS-K-4.6` completed setup on a fresh PC — the first build to do so —
+>   and closing/reopening worked. But "PostgreSQL Server" was still in Task
+>   Manager after closing Stockiha: the database started during setup was
+>   never stopped, because Stockiha restarts itself right after setup and
+>   that restart skipped the normal shutdown. `WS-K-4.7` stops it before
+>   restarting, and also stops any such leftover on the next normal close.
+>
+> Use the **`WS-K-4.7`** installer for everything below. **The version is
+> printed on the setup screen itself**, directly under "Setting up
 > Stockiha" — so you can confirm which build you are running before
 > pressing Start, without having to sign in first. If it does not say
-> `WS-K-4.6`, you are running an older installer.
+> `WS-K-4.7`, you are running an older installer.
+>
+> **If you install `WS-K-4.7` over `WS-K-4.6` on the same PC** (rather than
+> a fresh one), the leftover database from `WS-K-4.6` is still running when
+> you first open `WS-K-4.7`. That is expected. It will be stopped the first
+> time you close Stockiha normally — so do the Task Manager check in
+> Scenario 3 *after* that first close, not before.
 >
 > If setup fails again, please also send
 > `%APPDATA%\com.raqmenha.stockiha\setup.log`. It now records the exact
@@ -122,8 +135,10 @@ step says otherwise.
 
 1. Close Stockiha completely (close the window; do not force-quit it from
    Task Manager for this scenario).
-2. Open Task Manager (right-click the taskbar → Task Manager), go to the
-   "Details" tab, and look for any process named `postgres.exe`.
+2. Open Task Manager (right-click the taskbar → Task Manager). On the
+   "Processes" tab the database shows up as **"PostgreSQL Server"**; on the
+   "Details" tab it shows as **`postgres.exe`** — they are the same thing,
+   so check whichever tab you have open.
    **You should see: none at all.** If Stockiha has closed, its database
    should have closed with it — no leftover `postgres.exe` process should
    still be running. If you see one or more `postgres.exe` still there,
@@ -147,12 +162,13 @@ it is the single most important thing to get right: **a database process
 that keeps running invisibly after you close the app is a real, ongoing
 problem for a shop's computer**, not just an inconvenience.
 
-1. With Stockiha open and signed in, open Task Manager's Details tab and
-   confirm you can see at least one `postgres.exe`.
+1. With Stockiha open and signed in, open Task Manager and confirm you can
+   see at least one "PostgreSQL Server" (Processes tab) / `postgres.exe`
+   (Details tab).
 2. Close Stockiha normally (click its own close button, not Task Manager).
 3. Wait about 10 seconds, then refresh Task Manager (press F5 or reopen
    it).
-4. **You should see: zero `postgres.exe` processes.** If any remain, note
+4. **You should see: zero "PostgreSQL Server" / `postgres.exe` processes.** If any remain, note
    how many, and report it exactly as you saw it — do not end the test
    session by manually killing them first, since that would hide the
    problem from whoever reads this report.

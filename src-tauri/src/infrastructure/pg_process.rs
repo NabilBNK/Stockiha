@@ -80,6 +80,26 @@ pub fn check_postmaster_pid(pid: u32) -> PidStatus {
     check_pid_status(pid, "postgres.exe")
 }
 
+/// Is a `postgres.exe` confirmed alive against this data directory right
+/// now — whether or not this process started it?
+///
+/// The shutdown hook asks this so it can stop a server it did not spawn.
+/// That is safe because the data directory is exclusively Stockiha's
+/// (single-instance is enforced, and the developer cluster lives elsewhere)
+/// — and necessary because `tauri::process::restart` after first-run setup
+/// exits without ever reaching the shutdown hook, leaving the setup-time
+/// server running with no process that considers itself its owner.
+/// `Unknown` deliberately counts as "no": refusing to *start* a second
+/// server on an unknown pid is the conservative choice there, and refusing
+/// to *stop* one we cannot positively identify is the conservative choice
+/// here.
+pub fn live_server_on(pgdata: &Path) -> bool {
+    if pgdata.as_os_str().is_empty() {
+        return false;
+    }
+    read_postmaster_pid(pgdata).map(check_postmaster_pid) == Some(PidStatus::Alive)
+}
+
 #[cfg(windows)]
 mod windows_impl {
     use super::PidStatus;
@@ -1305,6 +1325,62 @@ mod tests {
 
         let _ = stop_postgres(&bin_dir, &pgdata, Duration::from_secs(10));
         let _ = first.wait();
+        let _ = std::fs::remove_dir_all(&pgdata);
+    }
+
+    /// Reproduces the orphan found on the Owner's fresh PC. First-run setup
+    /// spawns the server, then `tauri::process::restart` calls
+    /// `std::process::exit(0)` — the `Child` handle is simply gone, no
+    /// shutdown hook ever runs, and Windows does not kill children with
+    /// their parent. The relaunched app then has no `Child` for a server
+    /// that is very much alive on its data directory. The exit hook must
+    /// still stop it, using nothing but the data directory.
+    #[tokio::test]
+    #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
+    async fn a_server_left_behind_by_a_previous_process_is_still_stopped_on_exit() {
+        let bin_dir = staged_bin_dir();
+        let pgdata = temp_pgdata("orphan-from-restart");
+        init_temp_pgdata(&bin_dir, &pgdata);
+        let port = find_free_port(58580).expect("a free port for this test");
+        write_server_config_for_test(&pgdata, port);
+
+        // The "previous process": spawns, then loses the handle without
+        // stopping anything — exactly what exit(0) after restart does.
+        let pid = {
+            let child = spawn_postgres(&bin_dir, &pgdata).expect("start the server");
+            let pid = child.id();
+            assert!(wait_until_ready(port, Duration::from_secs(15))
+                .await
+                .is_ok());
+            std::mem::forget(child);
+            pid
+        };
+        assert_eq!(check_pid_status(pid, "postgres.exe"), PidStatus::Alive);
+
+        // The "relaunched process": no Child, but it can still tell a live
+        // server is on its data directory...
+        assert!(
+            live_server_on(&pgdata),
+            "a live server on our data directory must be detected without a Child handle"
+        );
+        // ...and stop it through the data directory alone.
+        let outcome = stop_postgres(&bin_dir, &pgdata, Duration::from_secs(10));
+        assert!(
+            outcome.is_ok(),
+            "stop_postgres must succeed with no Child: {outcome:?}"
+        );
+
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(
+            check_pid_status(pid, "postgres.exe"),
+            PidStatus::Dead,
+            "the orphaned postgres.exe must be gone after the exit-hook stop"
+        );
+        assert!(
+            !live_server_on(&pgdata),
+            "no live server may remain on the data directory"
+        );
+
         let _ = std::fs::remove_dir_all(&pgdata);
     }
 
