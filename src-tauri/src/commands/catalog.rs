@@ -668,9 +668,14 @@ pub(crate) async fn set_attribute_visible_on_receipt(
     visible_on_receipt: bool,
 ) -> Result<(), IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::set_attribute_visible_on_receipt(pool, &session_token, attribute_id, visible_on_receipt)
-        .await
-        .map_err(IpcError::from)
+    catalog::set_attribute_visible_on_receipt(
+        pool,
+        &session_token,
+        attribute_id,
+        visible_on_receipt,
+    )
+    .await
+    .map_err(IpcError::from)
 }
 
 #[tauri::command]

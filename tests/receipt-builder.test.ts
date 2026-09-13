@@ -197,6 +197,70 @@ describe('receiptBuilder', () => {
       expect(formatted).toBe('cuette - M');
     });
   });
+
+  describe('sale discount breakdown (WS-F-003)', () => {
+    it('buildThermalReceipt prints SOUS-TOTAL and REMISE lines when discount is present', () => {
+      const discountedReceipt: ReceiptInput = {
+        ...sampleReceipt,
+        subtotal: '250.00',
+        discount: '50.00',
+        total: '200.00',
+      };
+      const bytes = buildThermalReceipt(discountedReceipt, sampleSettings);
+      const text = String.fromCharCode(...bytes);
+      expect(text).toContain('SOUS-TOTAL :');
+      expect(text).toContain('250.00 DZD');
+      expect(text).toContain('REMISE :');
+      expect(text).toContain('-50.00 DZD');
+      expect(text).toContain('TOTAL A PAYER :');
+      expect(text).toContain('200.00 DZD');
+    });
+
+    it('buildThermalReceipt adapts to English locale', () => {
+      const discountedReceipt: ReceiptInput = {
+        ...sampleReceipt,
+        subtotal: '250.00',
+        discount: '50.00',
+        total: '200.00',
+        locale: 'en',
+      };
+      const bytes = buildThermalReceipt(discountedReceipt, sampleSettings);
+      const text = String.fromCharCode(...bytes);
+      expect(text).toContain('SUBTOTAL :');
+      expect(text).toContain('DISCOUNT :');
+      expect(text).toContain('TOTAL TO PAY :');
+    });
+
+    it('buildA4Receipt renders subtotal and discount rows in French by default', () => {
+      const discountedReceipt: ReceiptInput = {
+        ...sampleReceipt,
+        subtotal: '250.00',
+        discount: '50.00',
+        total: '200.00',
+      };
+      const html = buildA4Receipt(discountedReceipt, sampleSettings);
+      expect(html).toContain('Sous-total :');
+      expect(html).toContain('250.00 DZD');
+      expect(html).toContain('Remise accordée :');
+      expect(html).toContain('-50.00 DZD');
+      expect(html).toContain('Total Net à Payer');
+      expect(html).toContain('200.00 DZD');
+    });
+
+    it('buildA4Receipt renders subtotal and discount in Arabic when locale is ar', () => {
+      const discountedReceipt: ReceiptInput = {
+        ...sampleReceipt,
+        subtotal: '250.00',
+        discount: '50.00',
+        total: '200.00',
+        locale: 'ar',
+      };
+      const html = buildA4Receipt(discountedReceipt, sampleSettings);
+      expect(html).toContain('المجموع الفرعي :');
+      expect(html).toContain('التخفيض الممنوح :');
+      expect(html).toContain('الصافي للدفع');
+    });
+  });
 });
 
 

@@ -3136,4 +3136,144 @@ fieldset.sk-form {
   margin-block-start: 8px;
 }
 
+/* POS Discount Section (WS-F-003) */
+.sk-pos__discount-section {
+  margin-block-end: 10px;
+}
+
+.sk-pos__discount-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px dashed var(--sk-border-strong);
+  border-radius: var(--sk-radius-sm, 4px);
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--sk-primary);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sk-pos__discount-toggle:hover {
+  background: color-mix(in srgb, var(--sk-primary) 8%, transparent);
+  border-color: var(--sk-primary);
+}
+
+.sk-pos__discount-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--sk-surface-2, #f8fafc) 90%, transparent);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm, 6px);
+}
+
+.sk-pos__discount-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sk-pos__discount-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--sk-text-muted);
+  white-space: nowrap;
+}
+
+.sk-pos__discount-input-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm, 4px);
+  background: var(--sk-surface);
+  overflow: hidden;
+}
+
+.sk-pos__discount-input-wrapper:focus-within {
+  border-color: var(--sk-primary);
+  box-shadow: 0 0 0 1px var(--sk-primary);
+}
+
+.sk-pos__discount-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  padding: 6px 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  background: transparent;
+  color: var(--sk-text);
+}
+
+.sk-pos__discount-currency {
+  padding-inline: 8px;
+  font-size: 0.8rem;
+  color: var(--sk-text-muted);
+  font-weight: 500;
+  user-select: none;
+}
+
+.sk-pos__discount-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--sk-radius-sm, 4px);
+  background: transparent;
+  color: var(--sk-text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sk-pos__discount-clear:hover {
+  background: color-mix(in srgb, var(--sk-danger) 15%, transparent);
+  color: var(--sk-danger);
+}
+
+.sk-pos__discount-error {
+  font-size: 0.8rem;
+  color: var(--sk-danger, #dc2626);
+  font-weight: 500;
+}
+
+.sk-cart__summary-subtotal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  color: var(--sk-text-muted);
+  font-weight: 500;
+  padding-block: 4px;
+}
+
+.sk-cart__summary-subtotal strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.sk-cart__summary-discount {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.95rem;
+  color: var(--sk-danger, #dc2626);
+  font-weight: 600;
+  padding-block: 4px;
+}
+
+.sk-cart__summary-discount strong {
+  font-variant-numeric: tabular-nums;
+}
+
+
 

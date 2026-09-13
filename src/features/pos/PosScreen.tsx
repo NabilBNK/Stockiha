@@ -11,12 +11,12 @@ import { codeForError, useErrorText } from '../../shared/hooks/useErrorText';
 import { useSession } from '../../shared/session/SessionContext';
 import { useAppData } from '../../app/AppDataContext';
 import * as ipc from '../../shared/ipc/gateway';
-import { listCustomers } from '../../shared/ipc/customerGateway';
+import { getCustomerCapabilities, listCustomers } from '../../shared/ipc/customerGateway';
 import { authorizeCreditOverride, confirmCreditSale } from '../../shared/ipc/creditSaleGateway';
-import type { Customer } from '../../shared/ipc/customerDto';
+import type { Customer, CustomerCapabilities } from '../../shared/ipc/customerDto';
 import type { CreditSaleResult } from '../../shared/ipc/creditSaleDto';
 import type { ProductListItem, ProductListItemV2, ReferenceLifecycleItem, VariantAttributeDto } from '../../shared/ipc/dto';
-import { addExactMoney, multiplyMoneyByQuantity } from '../../shared/money/exactMoney';
+import { addExactMoney, compareExactMoney, isValidMoneyString, multiplyMoneyByQuantity } from '../../shared/money/exactMoney';
 import { formatExactDecimal, isExactDecimalZero } from '../inventory/exactDecimal';
 import { ReceiptView } from '../documents/ReceiptView';
 import { resolveBarcodeFirst } from '../../shared/search/barcodeFirstSearch';
@@ -139,6 +139,9 @@ export function PosScreen() {
   const [printingSettings, setPrintingSettings] = useState<PrintingSettingsDto | null>(null);
   const [printOutcome, setPrintOutcome] = useState<PrintOutcome | null>(null);
   const [lastReceiptInput, setLastReceiptInput] = useState<Parameters<typeof printSaleReceipt>[0] | null>(null);
+  const [capabilities, setCapabilities] = useState<CustomerCapabilities | null>(null);
+  const [discount, setDiscount] = useState<string>('');
+  const [discountOpen, setDiscountOpen] = useState<boolean>(false);
 
   const [overridePromptOpen, setOverridePromptOpen] = useState(false);
   const [overrideBusy, setOverrideBusy] = useState(false);
@@ -154,24 +157,28 @@ export function PosScreen() {
       listCustomers(token, false).catch(() => []),
       ipc.listCategories(token).catch(() => []),
       ipc.getPrintingSettings(token).catch(() => null),
+      getCustomerCapabilities(token).catch(() => null),
     ])
-      .then(([customerRows, categoryRows, printingRow]) => {
+      .then(([customerRows, categoryRows, printingRow, capRow]) => {
         setCustomers(customerRows);
         setCategories(categoryRows.filter((category) => category.is_active));
         setPrintingSettings(printingRow);
+        setCapabilities(capRow);
       })
       .finally(() => setLoading(false));
   }, [token]);
 
+  const posWarehouseId = activeCashSession?.warehouse_id ?? selectedWarehouseId;
+
   // Products are fetched from the database for the current category and search
   // text, 60 at a time. The catalogue is never loaded into the browser whole.
   useEffect(() => {
-    if (!token || selectedWarehouseId == null) return;
+    if (!token || posWarehouseId == null) return;
     let active = true;
     const timer = setTimeout(() => {
       setCatalogBusy(true);
       ipc
-        .listProductsV2(token, selectedWarehouseId, {
+        .listProductsV2(token, posWarehouseId, {
           search: search.trim() || null,
           categoryId,
           includeInactive: false,
@@ -196,13 +203,13 @@ export function PosScreen() {
       active = false;
       clearTimeout(timer);
     };
-  }, [token, selectedWarehouseId, search, categoryId]);
+  }, [token, posWarehouseId, search, categoryId]);
 
   const loadMoreProducts = useCallback(async () => {
-    if (!token || selectedWarehouseId == null || catalogBusy) return;
+    if (!token || posWarehouseId == null || catalogBusy) return;
     setCatalogBusy(true);
     try {
-      const rows = await ipc.listProductsV2(token, selectedWarehouseId, {
+      const rows = await ipc.listProductsV2(token, posWarehouseId, {
         search: search.trim() || null,
         categoryId,
         includeInactive: false,
@@ -216,7 +223,7 @@ export function PosScreen() {
     } finally {
       setCatalogBusy(false);
     }
-  }, [token, selectedWarehouseId, search, categoryId, products.length, catalogBusy]);
+  }, [token, posWarehouseId, search, categoryId, products.length, catalogBusy]);
 
   const invalidateSaleIntent = useCallback(() => {
     setRequestId(null);
@@ -272,7 +279,7 @@ export function PosScreen() {
    */
   async function handleSearchEnter() {
     const trimmed = search.trim();
-    if (!trimmed || !token || selectedWarehouseId == null) return;
+    if (!trimmed || !token || posWarehouseId == null) return;
 
     const result = await resolveBarcodeFirst(token, trimmed);
     if (result.type !== 'match') {
@@ -283,7 +290,7 @@ export function PosScreen() {
     // The scanned variant may not be on the current page, so fetch it by the
     // scanned value rather than searching the already-loaded rows.
     const matches = await ipc
-      .listProductsV2(token, selectedWarehouseId, {
+      .listProductsV2(token, posWarehouseId, {
         search: trimmed,
         categoryId: null,
         includeInactive: false,
@@ -363,10 +370,10 @@ export function PosScreen() {
 
   const loadAdvancedSearchResults = useCallback(
     async (query: string) => {
-      if (!token || selectedWarehouseId == null) return;
+      if (!token || posWarehouseId == null) return;
       setAdvancedSearchLoading(true);
       try {
-        const rows = await ipc.listProductsV2(token, selectedWarehouseId, {
+        const rows = await ipc.listProductsV2(token, posWarehouseId, {
           search: query.trim() || null,
           limit: 100,
           offset: 0,
@@ -378,7 +385,7 @@ export function PosScreen() {
         setAdvancedSearchLoading(false);
       }
     },
-    [token, selectedWarehouseId],
+    [token, posWarehouseId],
   );
 
   useEffect(() => {
@@ -410,6 +417,29 @@ export function PosScreen() {
     () => addExactMoney(cart.map((l) => multiplyMoneyByQuantity(l.unitPrice, l.qty))),
     [cart],
   );
+  const canApplyDiscount = useMemo(
+    () => (capabilities?.can_apply_sale_discount ?? false) && paymentMode === 'cash',
+    [capabilities, paymentMode],
+  );
+  const trimmedDiscount = discount.trim();
+  const discountValid = useMemo(() => {
+    if (!trimmedDiscount) return true;
+    if (!isValidMoneyString(trimmedDiscount)) return false;
+    return compareExactMoney(trimmedDiscount, provisionalTotal) <= 0;
+  }, [trimmedDiscount, provisionalTotal]);
+  const hasDiscount = useMemo(
+    () =>
+      canApplyDiscount &&
+      discountValid &&
+      trimmedDiscount !== '' &&
+      compareExactMoney(trimmedDiscount, '0.00') > 0,
+    [canApplyDiscount, discountValid, trimmedDiscount],
+  );
+  const netTotal = useMemo(() => {
+    if (!hasDiscount) return provisionalTotal;
+    return addExactMoney([provisionalTotal, `-${trimmedDiscount}`]);
+  }, [hasDiscount, provisionalTotal, trimmedDiscount]);
+
   const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart]);
   const creditCustomers = useMemo(
     () => customers.filter((customer) => customer.is_active && customer.credit_enabled),
@@ -448,13 +478,16 @@ export function PosScreen() {
           unitPrice: l.unitPrice,
           lineTotal: multiplyMoneyByQuantity(l.unitPrice, l.qty),
         })),
-        total: provisionalTotal,
+        subtotal: provisionalTotal,
+        discount: hasDiscount ? trimmedDiscount : null,
+        total: netTotal,
         currency: 'DZD',
+        locale,
       };
       setLastReceiptInput(input);
       setPrintOutcome(await printSaleReceipt(input, printingSettings));
     },
-    [cart, provisionalTotal, paymentMode, printingSettings, user, creditText],
+    [cart, provisionalTotal, hasDiscount, trimmedDiscount, netTotal, locale, paymentMode, printingSettings, user, creditText],
   );
 
   async function confirmSale() {
@@ -502,8 +535,11 @@ export function PosScreen() {
           fiscalPeriodId: openFiscalPeriod.id,
           documentDate,
           lines: saleLines,
+          discountAmount: hasDiscount ? trimmedDiscount : null,
         });
         setCart([]);
+        setDiscount('');
+        setDiscountOpen(false);
         setRequestId(null);
         setSaleIntentDate(null);
         setCreditOverrideToken(null);
@@ -517,7 +553,7 @@ export function PosScreen() {
         setCreditOverrideToken(null);
         setBanner({ tone: 'error', text: errorText(err) });
         setOverridePromptOpen(true);
-      } else if (code === 'PRECONDITION_FAILED') {
+      } else if (code === 'PRECONDITION_FAILED' || code === 'INSUFFICIENT_STOCK') {
         setBanner({ tone: 'error', text: t('pos.insufficientStock') });
       } else if (code === 'UNKNOWN_ERROR') {
         setBanner({ tone: 'warning', text: t('stock.retryPrompt') });
@@ -787,10 +823,94 @@ export function PosScreen() {
           </div>
 
           <div className="sk-pos__checkout" data-testid="pos-checkout-bar">
-            <div className="sk-cart__summary"><span>{t('pos.total')}</span><strong data-testid="pos-total">{provisionalTotal}</strong></div>
+            {canApplyDiscount ? (
+              <div className="sk-pos__discount-section" data-testid="pos-discount-section">
+                {!discountOpen ? (
+                  <button
+                    type="button"
+                    className="sk-pos__discount-toggle"
+                    onClick={() => setDiscountOpen(true)}
+                    data-testid="add-discount-btn"
+                  >
+                    {t('pos.addDiscount')}
+                  </button>
+                ) : (
+                  <div className="sk-pos__discount-box" data-testid="pos-discount-box">
+                    <div className="sk-pos__discount-row">
+                      <span className="sk-pos__discount-label">{t('pos.discount')} :</span>
+                      <div className="sk-pos__discount-input-wrapper">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          className="sk-pos__discount-input"
+                          placeholder="0.00"
+                          value={discount}
+                          onChange={(e) => setDiscount(e.target.value)}
+                          data-testid="pos-discount-input"
+                          autoFocus
+                        />
+                        <span className="sk-pos__discount-currency">DZD</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="sk-pos__discount-clear"
+                        title={t('pos.removeDiscount')}
+                        aria-label={t('pos.removeDiscount')}
+                        onClick={() => {
+                          setDiscount('');
+                          setDiscountOpen(false);
+                        }}
+                        data-testid="remove-discount-btn"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    {trimmedDiscount && !discountValid ? (
+                      <div className="sk-pos__discount-error" data-testid="pos-discount-error">
+                        {t('pos.discountInvalid')}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {hasDiscount ? (
+              <div className="sk-cart__summary-breakdown" data-testid="pos-summary-breakdown">
+                <div className="sk-cart__summary-subtotal">
+                  <span>{t('pos.subtotal')}</span>
+                  <strong data-testid="pos-subtotal">{provisionalTotal}</strong>
+                </div>
+                <div className="sk-cart__summary-discount">
+                  <span>{t('pos.discount')}</span>
+                  <strong data-testid="pos-discount-amount">-{trimmedDiscount}</strong>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="sk-cart__summary">
+              <span>{t('pos.total')}</span>
+              <strong data-testid="pos-total">{netTotal}</strong>
+            </div>
             <div className="sk-cart__actions">
-              <Button variant="secondary" disabled={cart.length === 0 || submitting} onClick={() => setClearing(true)}>{t('pos.clear')}</Button>
-              <Button disabled={cart.length === 0 || (paymentMode === 'credit' && !selectedCustomer)} loading={submitting} onClick={() => setConfirming(true)}>{t('pos.confirm')}</Button>
+              <Button
+                variant="secondary"
+                disabled={cart.length === 0 || submitting}
+                onClick={() => setClearing(true)}
+              >
+                {t('pos.clear')}
+              </Button>
+              <Button
+                disabled={
+                  cart.length === 0 ||
+                  !discountValid ||
+                  (paymentMode === 'credit' && !selectedCustomer)
+                }
+                loading={submitting}
+                onClick={() => setConfirming(true)}
+              >
+                {t('pos.confirm')}
+              </Button>
             </div>
           </div>
         </aside>
@@ -819,7 +939,19 @@ export function PosScreen() {
       ) : null}
 
       {clearing ? (
-        <ConfirmDialog title={t('pos.clear')} confirmLabel={t('common.confirm')} cancelLabel={t('common.cancel')} confirmVariant="danger" onConfirm={() => { mutateCart(() => []); setClearing(false); }} onCancel={() => setClearing(false)} />
+        <ConfirmDialog
+          title={t('pos.clear')}
+          confirmLabel={t('common.confirm')}
+          cancelLabel={t('common.cancel')}
+          confirmVariant="danger"
+          onConfirm={() => {
+            mutateCart(() => []);
+            setDiscount('');
+            setDiscountOpen(false);
+            setClearing(false);
+          }}
+          onCancel={() => setClearing(false)}
+        />
       ) : null}
 
       {lastSaleDocId != null ? (

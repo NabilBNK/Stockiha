@@ -32,9 +32,19 @@ pub(crate) async fn confirm_cash_sale(
     fiscal_period_id: i64,
     document_date: String,
     lines: Vec<CashSaleLineRequest>,
+    discount_amount: Option<String>,
 ) -> Result<i64, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     let document_date = application::parse_iso_date(&document_date).map_err(IpcError::from)?;
+
+    let discount_amount = match discount_amount {
+        Some(s) if !s.trim().is_empty() => Some(
+            s.trim()
+                .parse::<Decimal>()
+                .map_err(|_| IpcError::new(crate::error::ErrorCode::ValidationError))?,
+        ),
+        _ => None,
+    };
 
     let lines = lines
         .into_iter()
@@ -55,6 +65,7 @@ pub(crate) async fn confirm_cash_sale(
             fiscal_period_id,
             document_date,
             lines,
+            discount_amount,
         },
     )
     .await

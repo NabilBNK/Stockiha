@@ -143,6 +143,7 @@ export interface SaleDocument {
   document_date: string;
   posted_at: string | null;
   subtotal: string;
+  discount_amount?: string;
   total_amount: string;
 }
 

@@ -302,6 +302,7 @@ export interface CashSaleInput {
   fiscalPeriodId: number;
   documentDate: string;
   lines: CashSaleLineInput[];
+  discountAmount?: string | null;
 }
 
 export function confirmCashSale(sessionToken: string, input: CashSaleInput): Promise<number> {
@@ -313,6 +314,7 @@ export function confirmCashSale(sessionToken: string, input: CashSaleInput): Pro
     fiscalPeriodId: input.fiscalPeriodId,
     documentDate: input.documentDate,
     lines: input.lines,
+    discountAmount: input.discountAmount ?? null,
   });
 }
 

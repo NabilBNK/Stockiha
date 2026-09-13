@@ -26,8 +26,11 @@ export interface ReceiptInput {
   paymentLabel: string;
   customerName: string | null;
   lines: ReceiptLineInput[];
+  subtotal?: string;
+  discount?: string | null;
   total: string;
   currency: string;
+  locale?: string;
 }
 
 export interface ReceiptItemNameOptions {
@@ -240,6 +243,24 @@ export function buildThermalReceipt(
   line('-'.repeat(width));
   const totalItems = input.lines.reduce((sum, l) => sum + l.qty, 0);
   line(`Nombre d articles : ${totalItems}`);
+
+  const hasDiscount = Boolean(
+    input.discount && input.discount.trim() !== '' && input.discount !== '0' && input.discount !== '0.00',
+  );
+  if (hasDiscount) {
+    line('-'.repeat(width));
+    const isEn = input.locale === 'en';
+    const subLabel = isEn ? 'SUBTOTAL :' : 'SOUS-TOTAL :';
+    const subVal = `${input.subtotal ?? input.total} ${input.currency}`;
+    const subGap = Math.max(1, width - subLabel.length - subVal.length);
+    line(subLabel + ' '.repeat(subGap) + subVal);
+
+    const discLabel = isEn ? 'DISCOUNT :' : 'REMISE :';
+    const discVal = `-${input.discount} ${input.currency}`;
+    const discGap = Math.max(1, width - discLabel.length - discVal.length);
+    line(discLabel + ' '.repeat(discGap) + discVal);
+  }
+
   line('='.repeat(width));
 
   // Prominent Grand Total in BOLD + DOUBLE-HEIGHT
@@ -247,7 +268,7 @@ export function buildThermalReceipt(
   bytes.push(GS, 0x21, 0x01);  // Double-height ON
 
   const totalStr = `${input.total} ${input.currency}`;
-  const totalLabel = 'TOTAL A PAYER :';
+  const totalLabel = input.locale === 'en' ? 'TOTAL TO PAY :' : 'TOTAL A PAYER :';
   const totalGap = Math.max(1, width - totalLabel.length - totalStr.length);
   line(totalLabel + ' '.repeat(totalGap) + totalStr);
 
@@ -284,6 +305,9 @@ export function buildA4Receipt(input: ReceiptInput, settings: PrintingSettingsDt
     : input.documentDate;
 
   const totalItems = input.lines.reduce((sum, l) => sum + l.qty, 0);
+  const hasDiscount = Boolean(
+    input.discount && input.discount.trim() !== '' && input.discount !== '0' && input.discount !== '0.00',
+  );
 
   const rows = input.lines
     .map(
@@ -452,8 +476,21 @@ export function buildA4Receipt(input: ReceiptInput, settings: PrintingSettingsDt
         Nombre d'articles : <strong>${totalItems}</strong>
       </div>
 
+      ${hasDiscount ? `
+      <div style="margin-top: 8px; margin-bottom: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px;">
+        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 4px;">
+          <span>${input.locale === 'ar' ? 'المجموع الفرعي :' : input.locale === 'en' ? 'Subtotal :' : 'Sous-total :'}</span>
+          <span style="font-weight: 600;">${escapeHtml(input.subtotal ?? input.total)} ${escapeHtml(input.currency)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #dc2626; font-weight: 600;">
+          <span>${input.locale === 'ar' ? 'التخفيض الممنوح :' : input.locale === 'en' ? 'Discount :' : 'Remise accordée :'}</span>
+          <span>-${escapeHtml(input.discount || '')} ${escapeHtml(input.currency)}</span>
+        </div>
+      </div>
+      ` : ''}
+
       <div class="total-section">
-        <div class="total-label">Total Net à Payer</div>
+        <div class="total-label">${input.locale === 'ar' ? 'الصافي للدفع' : input.locale === 'en' ? 'Total Net to Pay' : 'Total Net à Payer'}</div>
         <div class="total-val">${escapeHtml(input.total)} ${escapeHtml(input.currency)}</div>
       </div>
 

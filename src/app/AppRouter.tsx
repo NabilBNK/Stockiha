@@ -261,6 +261,7 @@ function AuthenticatedApp() {
             can_post_customer_refund: false,
             can_manage_drawer_policy: false,
             can_override_credit_limit: false,
+            can_apply_sale_discount: false,
           });
         }
       });

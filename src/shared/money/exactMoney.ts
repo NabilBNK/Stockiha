@@ -48,3 +48,19 @@ export function multiplyMoneyByQuantity(amount: string, quantity: number): strin
   const scaled = toScaledBigInt(amount, 2) * BigInt(quantity);
   return fromScaledBigInt(scaled, 2);
 }
+
+/** Checks whether a string is a valid positive decimal money string with at most 2 decimal places. */
+export function isValidMoneyString(value: string): boolean {
+  const trimmed = value.trim();
+  return /^\d+(\.\d{1,2})?$/.test(trimmed);
+}
+
+/** Compares two decimal money strings. Returns -1 if a < b, 1 if a > b, 0 if equal. */
+export function compareExactMoney(a: string, b: string): number {
+  const bigA = toScaledBigInt(a, 2);
+  const bigB = toScaledBigInt(b, 2);
+  if (bigA < bigB) return -1;
+  if (bigA > bigB) return 1;
+  return 0;
+}
+

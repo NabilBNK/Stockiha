@@ -912,13 +912,15 @@ pub(crate) async fn list_attributes_v2(
     .map_err(AppError::from_posting_error)?;
     Ok(rows
         .into_iter()
-        .map(|(id, name, is_active, visible_on_receipt, usage_count)| AttributeItem {
-            id,
-            name,
-            is_active,
-            visible_on_receipt,
-            usage_count,
-        })
+        .map(
+            |(id, name, is_active, visible_on_receipt, usage_count)| AttributeItem {
+                id,
+                name,
+                is_active,
+                visible_on_receipt,
+                usage_count,
+            },
+        )
         .collect())
 }
 
@@ -960,13 +962,15 @@ pub(crate) async fn set_attribute_visible_on_receipt(
     attribute_id: i64,
     visible_on_receipt: bool,
 ) -> Result<(), AppError> {
-    sqlx::query("SELECT catalog.set_attribute_visible_on_receipt($1::text, $2::bigint, $3::boolean)")
-        .bind(session_token)
-        .bind(attribute_id)
-        .bind(visible_on_receipt)
-        .execute(pool)
-        .await
-        .map_err(AppError::from_posting_error)?;
+    sqlx::query(
+        "SELECT catalog.set_attribute_visible_on_receipt($1::text, $2::bigint, $3::boolean)",
+    )
+    .bind(session_token)
+    .bind(attribute_id)
+    .bind(visible_on_receipt)
+    .execute(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
     Ok(())
 }
 
