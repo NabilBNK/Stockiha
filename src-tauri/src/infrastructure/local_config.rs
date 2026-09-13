@@ -120,6 +120,72 @@ pub fn remove(app_data_dir: &Path) -> std::io::Result<()> {
     std::fs::remove_file(app_data_dir.join(CONFIG_FILE_NAME))
 }
 
+/// `stockiha_migrator`'s credentials, kept beside `database.json` so a
+/// **later build** can apply the migrations it ships that the database
+/// does not yet have.
+///
+/// WS-K-4.1 persisted only `stockiha_runtime` (least privilege for the
+/// running app, per WS-K-1) and dropped the migrator password after using
+/// it once. That left every install permanently unable to upgrade: a newer
+/// build connected, found the schema older than itself, and — through
+/// WS-K-1's gate, built for an externally managed database — told the
+/// Owner to "contact your supplier". With an embedded database there is no
+/// supplier; Stockiha *is* the database's owner and has to apply its own
+/// migrations. Seen on the Owner's fresh PC upgrading WS-K-4.7 -> 4.8.
+///
+/// Kept as a separate file, not a new field in `database.json`, so that
+/// file's format — read by the WS-K-1 precedence and its ten diagnostic
+/// states — stays exactly as it was. Same threat model as `database.json`
+/// itself (a per-user profile folder); the superuser password is still
+/// never persisted, which is the separation that matters most.
+const MIGRATOR_FILE_NAME: &str = "migrator.json";
+
+pub fn write_migrator(
+    app_data_dir: &Path,
+    host: &str,
+    port: u16,
+    database: &str,
+    password: &str,
+) -> std::io::Result<()> {
+    std::fs::create_dir_all(app_data_dir)?;
+    let payload = DatabaseConfigFile {
+        host: host.to_owned(),
+        port,
+        database: database.to_owned(),
+        user: "stockiha_migrator".to_owned(),
+        password: password.to_owned(),
+    };
+    let json = serde_json::to_string_pretty(&payload).map_err(std::io::Error::other)?;
+    std::fs::write(app_data_dir.join(MIGRATOR_FILE_NAME), json)
+}
+
+pub fn remove_migrator(app_data_dir: &Path) -> std::io::Result<()> {
+    std::fs::remove_file(app_data_dir.join(MIGRATOR_FILE_NAME))
+}
+
+/// `None` for absent *or* unreadable — a missing or broken migrator file is
+/// not a startup error, it just means this install cannot self-upgrade
+/// (which is exactly what the WS-K-1 diagnostic will then say, as before).
+pub fn load_migrator(app_data_dir: &Path) -> Option<PgConnectOptions> {
+    let contents = std::fs::read_to_string(app_data_dir.join(MIGRATOR_FILE_NAME)).ok()?;
+    let fields: DatabaseConfigFile = serde_json::from_str(&contents).ok()?;
+    let password = Zeroizing::new(fields.password);
+    Some(
+        PgConnectOptions::new()
+            .host(&fields.host)
+            .port(fields.port)
+            .database(&fields.database)
+            .username(&fields.user)
+            .password(password.as_str()),
+    )
+}
+
+/// Does this install carry a migrator credential — i.e. was it set up by
+/// the embedded flow at WS-K-4.9 or later?
+pub fn has_migrator(app_data_dir: &Path) -> bool {
+    app_data_dir.join(MIGRATOR_FILE_NAME).is_file()
+}
+
 /// Load and parse `database.json` from `app_data_dir`, using the real
 /// (Windows ACL) permission checker.
 pub fn load(app_data_dir: &Path) -> LocalConfigOutcome {
@@ -388,6 +454,30 @@ mod tests {
 
     fn write_fixture(dir: &Path, contents: &str) {
         std::fs::write(dir.join(CONFIG_FILE_NAME), contents).expect("write fixture");
+    }
+
+    #[test]
+    fn migrator_credential_round_trips_and_is_absent_until_written() {
+        let dir =
+            std::env::temp_dir().join(format!("sk-migrator-{}-{}", std::process::id(), line!()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        assert!(!has_migrator(&dir));
+        assert!(load_migrator(&dir).is_none());
+
+        write_migrator(&dir, "127.0.0.1", 55432, "stockiha_shop", "s3cret").unwrap();
+        assert!(has_migrator(&dir));
+        let options = load_migrator(&dir).expect("written file must load");
+        assert_eq!(options.get_username(), "stockiha_migrator");
+        assert_eq!(options.get_port(), 55432);
+        assert_eq!(options.get_database(), Some("stockiha_shop"));
+
+        // database.json is a separate file and must be unaffected.
+        assert!(matches!(load(&dir), LocalConfigOutcome::Absent));
+
+        remove_migrator(&dir).unwrap();
+        assert!(!has_migrator(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

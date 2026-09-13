@@ -57,11 +57,33 @@ for any of this** — that is one of the main things this redesign fixes.
 >   The earlier installer did not contain that work, so the discount was
 >   not there to find; this one has it.
 >
-> Use the **`WS-K-4.8`** installer for everything below. **The version is
+> - `WS-K-4.8` could not run on a PC set up by `WS-K-4.6`/`4.7`: the
+>   database was three migrations behind, and Stockiha showed "Database
+>   needs an update — contact your supplier". That message was written for
+>   a database someone else looks after; here the database is Stockiha's
+>   own, so from `WS-K-4.9` it brings the database up to date itself when a
+>   newer build starts. To make that possible it now keeps the upgrade
+>   credential on disk — which `4.6`–`4.8` did not, so those three builds
+>   can never self-upgrade (see the one-time reset just below).
+>
+> Use the **`WS-K-4.9`** installer for everything below. Installers are now
+> named after their version — **`Stockiha_WS-K-4.9-setup.exe`** — so you
+> can tell them apart on disk.
+>
+> **One-time reset if this PC already has `WS-K-4.6`, `4.7` or `4.8` on it:**
+> before opening `WS-K-4.9`, close Stockiha, confirm "PostgreSQL Server" is
+> gone from Task Manager, then delete the folder
+> `%APPDATA%\com.raqmenha.stockiha` (and `C:\ProgramData\Stockiha\pgdata`
+> if it exists). Setup will run again from scratch. This is only because
+> those three test builds did not keep the upgrade credential; nothing set
+> up by `4.9` or later will ever need this again. Never do this on a
+> machine with real shop data.
+>
+> **The version is
 > printed on the setup screen itself**, directly under "Setting up
 > Stockiha" — so you can confirm which build you are running before
 > pressing Start, without having to sign in first. If it does not say
-> `WS-K-4.8`, you are running an older installer.
+> `WS-K-4.9`, you are running an older installer.
 >
 > **If you install `WS-K-4.7` over `WS-K-4.6` on the same PC** (rather than
 > a fresh one), the leftover database from `WS-K-4.6` is still running when
@@ -81,7 +103,8 @@ step says otherwise.
 
 ## Step 0 — double-click the installer
 
-1. The installer file is named **`Stockiha_0.1.0_x64-setup.exe`**.
+1. The installer file is named **`Stockiha_WS-K-4.9-setup.exe`** (the
+   version is in the file name).
 2. Copy it onto the test machine (USB drive, shared folder, however you
    normally move files there). Do not run it on your own everyday machine
    first — always test on a clean machine.

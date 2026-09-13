@@ -361,8 +361,27 @@ pub async fn run_setup(
     // schema_version.rs already uses for the version check, not a spawned
     // --provision-migrate subprocess of itself (see the WS-K-4 report). ———
     report(SetupStep::RunMigrations, StepStatus::Running, None);
-    let migrator_password = role_passwords.migrator.clone().unwrap_or_default();
-    if let Err(detail) = run_migrations(port, migrator_password.clone()).await {
+    // A fresh install just generated this password in step 5. A repair of
+    // an existing installation (pgdata survives, database.json does not)
+    // generated nothing — but if that installation was set up at WS-K-4.9
+    // or later, its migrator credential is on disk and is exactly what
+    // this step needs. Before that, the repair path used an empty password
+    // here and could only ever fail.
+    let migrator_options = match role_passwords.migrator.as_deref() {
+        Some(password) => Some(migrator_connect_options(port, password)),
+        None => local_config::load_migrator(&app_data_dir),
+    };
+    let Some(migrator_options) = migrator_options else {
+        let detail = "this installation has a database but no migrator credential on file                       (it was set up by a build before WS-K-4.9), so its schema cannot be                       brought up to date automatically."
+            .to_string();
+        report(
+            SetupStep::RunMigrations,
+            StepStatus::Failed,
+            Some(detail.clone()),
+        );
+        return Err(SetupError::Migration(detail));
+    };
+    if let Err(detail) = run_migrations(migrator_options).await {
         report(
             SetupStep::RunMigrations,
             StepStatus::Failed,
@@ -392,6 +411,27 @@ pub async fn run_setup(
         );
         return Err(SetupError::Io(detail));
     }
+    // The migrator credential, so a later build can apply the migrations it
+    // ships. Only for a fresh install: a repair run never generated one and
+    // must not overwrite a working file with an empty password.
+    if let Some(migrator_password) = role_passwords.migrator.as_deref() {
+        if let Err(err) = local_config::write_migrator(
+            &app_data_dir,
+            "127.0.0.1",
+            port,
+            DATABASE_NAME,
+            migrator_password,
+        ) {
+            let _ = local_config::remove(&app_data_dir);
+            let detail = format!("could not write migrator.json ({err})");
+            report(
+                SetupStep::WriteConfigFile,
+                StepStatus::Failed,
+                Some(detail.clone()),
+            );
+            return Err(SetupError::Io(detail));
+        }
+    }
     report(SetupStep::WriteConfigFile, StepStatus::Done, None);
 
     // ——— Step 9: verify using exactly what was written; delete it again on
@@ -403,6 +443,7 @@ pub async fn run_setup(
         }
         Err(detail) => {
             let _ = local_config::remove(&app_data_dir);
+            let _ = local_config::remove_migrator(&app_data_dir);
             report(
                 SetupStep::VerifyConnection,
                 StepStatus::Failed,
@@ -635,13 +676,16 @@ async fn create_database(port: u16, admin_password: String) -> Result<(), String
     Ok(())
 }
 
-async fn run_migrations(port: u16, migrator_password: String) -> Result<(), String> {
-    let options = PgConnectOptions::new()
+fn migrator_connect_options(port: u16, migrator_password: &str) -> PgConnectOptions {
+    PgConnectOptions::new()
         .host("127.0.0.1")
         .port(port)
         .username("stockiha_migrator")
-        .password(&migrator_password)
-        .database(DATABASE_NAME);
+        .password(migrator_password)
+        .database(DATABASE_NAME)
+}
+
+async fn run_migrations(options: PgConnectOptions) -> Result<(), String> {
     let mut conn = PgConnection::connect_with(&options)
         .await
         .map_err(|e| format!("could not connect as stockiha_migrator ({e})"))?;
@@ -650,6 +694,39 @@ async fn run_migrations(port: u16, migrator_password: String) -> Result<(), Stri
         .map_err(|e| format!("migrations failed ({e})"));
     let _ = conn.close().await;
     result
+}
+
+/// Bring an embedded installation's schema up to what this binary ships,
+/// on ordinary startup. The one thing WS-K-1's "older than binary" gate
+/// could never do, because it was built for a database someone else
+/// administers — with an embedded database, that someone is this app.
+///
+/// `Ok(None)` when this is not an embedded install set up at WS-K-4.9 or
+/// later (no migrator credential on file): nothing is attempted and the
+/// WS-K-1 diagnostic reports whatever it would have reported. Otherwise
+/// returns the schema verdict *before* applying, so the caller can log
+/// what was actually done. SQLx applies only what is pending, in order,
+/// and refuses outright if the database is *newer* than this binary
+/// (`VersionMissing`), so the downgrade protection is unchanged.
+pub async fn apply_pending_migrations(
+    app_data_dir: &Path,
+) -> Result<Option<schema_version::SchemaCompatibility>, String> {
+    let Some(options) = local_config::load_migrator(app_data_dir) else {
+        return Ok(None);
+    };
+    let mut conn = PgConnection::connect_with(&options)
+        .await
+        .map_err(|e| format!("could not connect as stockiha_migrator ({e})"))?;
+    let before = schema_version::check_schema_compatibility(&mut conn).await;
+    let result = if before == schema_version::SchemaCompatibility::UpToDate {
+        Ok(())
+    } else {
+        schema_version::run_all_migrations(&mut conn)
+            .await
+            .map_err(|e| format!("migrations failed ({e})"))
+    };
+    let _ = conn.close().await;
+    result.map(|()| Some(before))
 }
 
 async fn verify_written_config(app_data_dir: PathBuf) -> Result<(), String> {
@@ -919,6 +996,28 @@ mod tests {
             None
         };
 
+        // The upgrade path: the migrator credential persisted at step 8
+        // must be able to connect and drive the migrator on a later launch.
+        // This is what a newer build relies on to bring the schema up to
+        // date instead of dead-ending on "Database needs an update".
+        if result.is_ok() {
+            assert!(
+                local_config::has_migrator(&app_data_dir),
+                "setup must persist migrator.json beside database.json"
+            );
+            let upgrade = apply_pending_migrations(&app_data_dir)
+                .await
+                .expect("the persisted migrator credential must connect and run the migrator");
+            assert_eq!(
+                upgrade,
+                Some(schema_version::SchemaCompatibility::UpToDate),
+                "immediately after setup there is nothing pending"
+            );
+            eprintln!(
+                "UPGRADE PATH: migrator.json present, apply_pending_migrations -> {upgrade:?}"
+            );
+        }
+
         // Always stop the spawned server before asserting/cleaning up, even
         // on failure, so no orphan is left running against a temp dir we
         // are about to delete out from under it.
@@ -1097,6 +1196,10 @@ mod tests {
         assert!(
             !app_data_dir.join("database.json").exists(),
             "database.json must not exist after a failure at the migrations step"
+        );
+        assert!(
+            !local_config::has_migrator(&app_data_dir),
+            "migrator.json must not exist after a failure at the migrations step"
         );
 
         // Best-effort cleanup: the server is already dead (that was the
