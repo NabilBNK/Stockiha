@@ -175,7 +175,7 @@ pub async fn run_setup(
     // Not always `<app_data_dir>/pgdata` — see `pg_process::resolve_pgdata_dir`
     // for the non-ASCII-path fallback this exists to handle.
     let pgdata = pg_process::resolve_pgdata_dir(&app_data_dir);
-    let bin_dir = resource_dir.join("postgres").join("win64").join("bin");
+    let bin_dir = pg_process::bundled_bin_dir(&resource_dir);
     let setup_log = app_data_dir.join("setup.log");
 
     {
@@ -670,10 +670,60 @@ mod tests {
     /// back to the manifest dir.
     fn bundled_resource_dir() -> PathBuf {
         let exe = std::env::current_exe().expect("current_exe() must resolve");
-        exe.parent()
+        let dir = exe
+            .parent()
             .and_then(|deps| deps.parent())
-            .expect("test binary must live at target/<profile>/deps/")
-            .to_path_buf()
+            .expect("test binary must live at target/<profile>/deps/");
+        // Canonicalized deliberately: Tauri's `resource_dir()` canonicalizes
+        // `current_exe()`, so on Windows the shipped app always passes
+        // `run_setup` a `\\?\`-prefixed path. Handing these tests the
+        // non-verbatim form instead made them strictly easier than reality,
+        // and a `\\?\` path that `initdb` could not use reached a real
+        // machine with every test here green. See
+        // `pg_process::bundled_bin_dir`.
+        dir.canonicalize()
+            .expect("the staged resource directory must exist")
+    }
+
+    /// The Owner's real machine installs Stockiha under
+    /// `C:\Users\pc marhaba\AppData\Local\Stockiha` — a path with a space
+    /// in it, which is entirely ordinary for a Windows account name and
+    /// therefore not an edge case at all. Every path in this repository's
+    /// own checkout happens to be space-free, so nothing here exercised it.
+    ///
+    /// Rather than copying the whole ~250 MB bundle, this points a
+    /// directory junction (no administrator rights required, unlike a
+    /// symlink) at the staged tree from a location whose name contains a
+    /// space. `initdb` then receives an `argv[0]` with a space in it and
+    /// has to quote it correctly when it shells out to locate
+    /// `postgres.exe`, which is the behaviour under test.
+    fn junction_with_a_space_in_its_path(target: &Path, label: &str) -> Option<PathBuf> {
+        let root = std::env::temp_dir().join(format!(
+            "sk resource {label} {}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).ok()?;
+        let link = root.join("postgres");
+        let status = std::process::Command::new("cmd.exe")
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&link)
+            .arg(target)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .ok()?;
+        if status.success() && link.is_dir() {
+            Some(root)
+        } else {
+            let _ = std::fs::remove_dir_all(&root);
+            None
+        }
     }
 
     fn temp_app_data_dir(label: &str) -> PathBuf {
@@ -847,6 +897,81 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&app_data_dir);
+    }
+
+    /// Both the install path and the data path contain spaces, exactly as
+    /// they do on the Owner's machine (`C:\Users\pc marhaba\...`). Proves
+    /// that `initdb` can still locate and quote its sibling `postgres.exe`,
+    /// and that every later step (`-D <pgdata>`, `pg_ctl stop -D <pgdata>`)
+    /// survives the space too.
+    #[tokio::test]
+    #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
+    async fn full_setup_succeeds_when_the_install_and_data_paths_contain_spaces() {
+        let staged = bundled_resource_dir();
+        let Some(spaced_resource_dir) =
+            junction_with_a_space_in_its_path(&staged.join("postgres"), "bundle")
+        else {
+            eprintln!("SKIPPED: could not create a directory junction on this machine");
+            return;
+        };
+
+        let app_data_dir = std::env::temp_dir().join(format!(
+            "sk app data with spaces {}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&app_data_dir).unwrap();
+        assert!(
+            app_data_dir.to_str().unwrap().contains(' ')
+                && spaced_resource_dir.to_str().unwrap().contains(' '),
+            "this test is meaningless unless both paths really do contain spaces"
+        );
+
+        let handle = std::sync::Arc::new(Mutex::new(EmbeddedPostgresHandle::new(
+            PathBuf::new(),
+            PathBuf::new(),
+            0,
+        )));
+
+        let mut failure = None;
+        let result = run_setup(
+            app_data_dir.clone(),
+            spaced_resource_dir.clone(),
+            58500,
+            handle.clone(),
+            |progress| {
+                if progress.status == StepStatus::Failed {
+                    failure = Some(format!("{:?} — {:?}", progress.step, progress.detail));
+                }
+            },
+        )
+        .await;
+
+        {
+            let mut guard = handle.lock().unwrap();
+            if let Some(mut child) = guard.child.take() {
+                let _ =
+                    pg_process::stop_postgres(&guard.bin_dir, &guard.pgdata, Duration::from_secs(10));
+                let _ = child.wait();
+            }
+        }
+
+        let outcome = result.is_ok();
+        let _ = std::fs::remove_dir_all(&app_data_dir);
+        // Remove the junction itself, never its target: `remove_dir_all` on
+        // a junction deletes the link, but be explicit about order anyway.
+        let _ = std::fs::remove_dir(spaced_resource_dir.join("postgres"));
+        let _ = std::fs::remove_dir_all(&spaced_resource_dir);
+
+        assert!(
+            outcome,
+            "setup must survive spaces in the install and data paths (the Owner's machine has \
+             one in both): {}",
+            failure.unwrap_or_else(|| "no failing step was reported".to_string())
+        );
     }
 
     #[test]

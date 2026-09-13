@@ -200,6 +200,44 @@ pub fn resolve_pgdata_dir(app_data_dir: &Path) -> PathBuf {
 /// `<resource_dir>/postgres/win64/bin`.
 const REQUIRED_BINARIES: [&str; 3] = ["initdb.exe", "postgres.exe", "pg_ctl.exe"];
 
+/// Build the bundled PostgreSQL `bin` directory from Tauri's
+/// `resource_dir()`, in the one form those programs can actually use.
+///
+/// **The `\\?\` problem.** Tauri's `resource_dir()` canonicalizes
+/// `current_exe()` — a deliberate security measure on its part, to resolve
+/// symlinks — and on Windows `Path::canonicalize` always returns the
+/// *verbatim* form: `\\?\C:\Users\…\Stockiha`. Windows itself accepts that
+/// everywhere, and `CreateProcess` launches `initdb.exe` from it happily.
+/// PostgreSQL's own path handling does not. `initdb` canonicalizes its
+/// `argv[0]` by converting backslashes to forward slashes, giving
+/// `//?/C:/…/bin/initdb.exe`, derives its own directory from that, and then
+/// shells out through `cmd.exe` to run `"//?/C:/…/bin/postgres.exe" -V` to
+/// locate its sibling binary. `cmd.exe` cannot resolve that path at all, so
+/// the real failure reported from the field was:
+///
+/// ```text
+/// initdb: error: program "postgres" is needed by initdb but was not found
+/// in the same directory as "//?/C:/…/bin/initdb.exe"
+/// ```
+///
+/// — with `bin/postgres.exe` sitting right there the whole time.
+///
+/// Stripping the prefix here, rather than at each call site, keeps this a
+/// property of "the path we hand to bundled programs" instead of something
+/// every future caller has to remember. It is also the single definition of
+/// the bundle's layout: the identical `postgres/win64/bin` expression
+/// previously appeared in two places, which is precisely how the WS-K-4.2
+/// packaging bug managed to be wrong in two places at once.
+///
+/// Only the prefix changes — the path still resolves to exactly the same
+/// directory, so the layout guarantees WS-K-4.2 established are untouched.
+pub fn bundled_bin_dir(resource_dir: &Path) -> PathBuf {
+    dunce::simplified(resource_dir)
+        .join("postgres")
+        .join("win64")
+        .join("bin")
+}
+
 /// The Microsoft Visual C++ runtime DLLs that PostgreSQL's own binaries are
 /// linked against, deployed **app-local** (next to the `.exe`s in `bin/`,
 /// which is first in Windows' DLL search order).
@@ -618,10 +656,18 @@ mod tests {
     /// so two levels up is that profile directory.
     fn staged_resource_dir() -> PathBuf {
         let exe = std::env::current_exe().expect("current_exe() must resolve");
-        exe.parent()
+        let dir = exe
+            .parent()
             .and_then(|deps| deps.parent())
-            .expect("test binary must live at target/<profile>/deps/")
-            .to_path_buf()
+            .expect("test binary must live at target/<profile>/deps/");
+        // Canonicalized on purpose, to reproduce production *exactly*.
+        // Tauri's `resource_dir()` canonicalizes `current_exe()`, and on
+        // Windows that always yields the `\\?\` verbatim form. A helper that
+        // skipped this step handed the tests a tidier path than the shipped
+        // app ever sees — which is how a `\\?\`-prefixed resource_dir made it
+        // to a real machine and broke `initdb` while every test here passed.
+        dir.canonicalize()
+            .expect("the staged resource directory must exist")
     }
 
     /// **The test this whole class of bug needed.** Asserts the layout of
@@ -789,7 +835,7 @@ mod tests {
     /// merely ran `initdb --version` here would have passed too.
     #[test]
     fn every_visual_cpp_runtime_dependency_ships_beside_the_binaries() {
-        let bin_dir = bundled_bin_dir();
+        let bin_dir = staged_bin_dir();
         let mut executables = 0usize;
         let mut runtime_imports = 0usize;
 
@@ -1031,12 +1077,11 @@ mod tests {
 
     /// The materialized (staged) bundle, not the source tree — see
     /// `embedded_setup`'s `bundled_resource_dir` for why that distinction
-    /// is load-bearing rather than incidental.
-    fn bundled_bin_dir() -> PathBuf {
-        staged_resource_dir()
-            .join("postgres")
-            .join("win64")
-            .join("bin")
+    /// is load-bearing rather than incidental. Goes through production's own
+    /// [`super::bundled_bin_dir`] rather than re-deriving the path, so the
+    /// tests cannot drift away from what the app actually does.
+    fn staged_bin_dir() -> PathBuf {
+        super::bundled_bin_dir(&staged_resource_dir())
     }
 
     fn temp_pgdata(label: &str) -> PathBuf {
@@ -1077,7 +1122,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
     async fn stale_pid_file_with_a_dead_process_is_cleaned_up_and_a_fresh_server_starts() {
-        let bin_dir = bundled_bin_dir();
+        let bin_dir = staged_bin_dir();
         let pgdata = temp_pgdata("dead-pid");
         init_temp_pgdata(&bin_dir, &pgdata);
         let port = find_free_port(58520).expect("a free port for this test");
@@ -1121,7 +1166,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
     async fn stale_pid_file_with_a_live_process_refuses_a_second_server_and_keeps_the_file() {
-        let bin_dir = bundled_bin_dir();
+        let bin_dir = staged_bin_dir();
         let pgdata = temp_pgdata("live-pid");
         init_temp_pgdata(&bin_dir, &pgdata);
         let port = find_free_port(58540).expect("a free port for this test");
@@ -1159,7 +1204,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
     async fn postgres_process_is_gone_after_stop_postgres() {
-        let bin_dir = bundled_bin_dir();
+        let bin_dir = staged_bin_dir();
         let pgdata = temp_pgdata("stop-then-gone");
         init_temp_pgdata(&bin_dir, &pgdata);
         let port = find_free_port(58560).expect("a free port for this test");

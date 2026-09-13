@@ -75,7 +75,7 @@ async fn ensure_embedded_postgres_running(
         _ => return, // no database.json yet — first-run setup screen handles this
     };
 
-    let bin_dir = resource_dir.join("postgres").join("win64").join("bin");
+    let bin_dir = infrastructure::pg_process::bundled_bin_dir(resource_dir);
     // Must match `embedded_setup::run_setup`'s own resolution exactly — see
     // `pg_process::resolve_pgdata_dir`'s doc comment for why this is not
     // always `<app_data_dir>/pgdata`.

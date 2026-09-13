@@ -31,6 +31,16 @@ tauri-plugin-dialog = "2"
 # launch is redirected into the already-running instance instead of ever
 # reaching .setup() again.
 tauri-plugin-single-instance = "2"
+# WS-K-4.4: strips Windows' `\\?\` verbatim prefix before a path is handed to
+# a bundled PostgreSQL program. Tauri's `resource_dir()` canonicalizes
+# `current_exe()` (a deliberate symlink-resolution security measure), and on
+# Windows `Path::canonicalize` always returns the verbatim form — which
+# PostgreSQL's own path handling cannot use. Already present in the lock file
+# as a transitive dependency of Tauri itself, so this compiles nothing new;
+# preferred over hand-rolling the strip because it correctly declines to
+# simplify the cases where the verbatim form is load-bearing (UNC paths,
+# paths over MAX_PATH, reserved device names).
+dunce = "1"
 serde = { version = "1", features = ["derive"] }
 # S0-003: PostgreSQL connectivity proof. Minimal feature set by mandate:
 # - runtime-tokio: matches Tauri's Tokio runtime.

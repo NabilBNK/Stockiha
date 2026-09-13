@@ -29,8 +29,14 @@ for any of this** — that is one of the main things this redesign fixes.
 >   Every development machine already had it, which is why this only
 >   appeared on a fresh PC. Fixed in `WS-K-4.3` by including that
 >   component with the app.
+> - `WS-K-4.3` got the database programs running, but they then could not
+>   find each other: Stockiha was giving them a special form of Windows
+>   folder path (one starting `\\?\`) that the database's own tools do not
+>   understand, so `initdb` reported that `postgres` "was not found in the
+>   same directory" while it was sitting right beside it. Fixed in
+>   `WS-K-4.4`.
 >
-> Use the **`WS-K-4.3`** installer for everything below. You can confirm
+> Use the **`WS-K-4.4`** installer for everything below. You can confirm
 > the version after signing in: it is printed under the dashboard title.
 
 Everything below assumes you are testing on a clean Windows machine (a
