@@ -45,7 +45,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::error::{ErrorCode, IpcError};
 use crate::infrastructure::embedded_setup::{self, SetupProgress};
-use crate::infrastructure::pg_process::EmbeddedPostgresHandle;
+use crate::infrastructure::pg_process::{self, EmbeddedPostgresHandle};
 
 /// Event name the frontend subscribes to for live setup progress. Payload
 /// is `SetupProgress`, serialized the same way every other IPC type in this
@@ -66,10 +66,13 @@ pub(crate) fn run_embedded_setup(
         .path()
         .app_data_dir()
         .map_err(|_| IpcError::new(ErrorCode::ConfigurationError))?;
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .map_err(|_| IpcError::new(ErrorCode::ConfigurationError))?;
+    // Not `app.path().resource_dir()`: that canonicalizes, which on Windows
+    // yields a `\\?\` path PostgreSQL's own tooling cannot use — see
+    // `pg_process::bundled_resource_dir`. Tauri's resolver is kept only as a
+    // fallback for the case where `current_exe()` itself fails.
+    let resource_dir = pg_process::bundled_resource_dir()
+        .or_else(|| app.path().resource_dir().ok())
+        .ok_or_else(|| IpcError::new(ErrorCode::ConfigurationError))?;
 
     // Existing installation repair (pgdata present, database.json missing):
     // reuse whatever port an earlier attempt in this same process run

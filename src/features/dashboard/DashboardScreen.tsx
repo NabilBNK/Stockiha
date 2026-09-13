@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { Banner, Button, Spinner } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
+import { APP_VERSION_MARKER } from '../../shared/version';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useSession } from '../../shared/session/SessionContext';
 import { useAppData } from '../../app/AppDataContext';
@@ -50,7 +51,7 @@ export function DashboardScreen() {
         <div>
           <h1>{t('dashboard.title')}</h1>
           <div className="sk-muted" style={{ fontSize: '0.8rem', fontWeight: 500, marginBlock: '2px 4px' }}>
-            [ version = WS-K-4.4 ]
+            [ version = {APP_VERSION_MARKER} ]
           </div>
           <p>{t('dashboard.subtitle')}</p>
         </div>

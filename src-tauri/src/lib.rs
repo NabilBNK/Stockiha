@@ -160,7 +160,11 @@ pub fn run() {
             use tauri::Manager;
 
             let app_data_dir = app.path().app_data_dir().ok();
-            let resource_dir = app.path().resource_dir().ok();
+            // Not `app.path().resource_dir()`: that canonicalizes, which on
+            // Windows yields a `\\?\` path PostgreSQL's tooling cannot use.
+            // See `pg_process::bundled_resource_dir`.
+            let resource_dir = infrastructure::pg_process::bundled_resource_dir()
+                .or_else(|| app.path().resource_dir().ok());
             let pg_handle = app.state::<std::sync::Arc<
                 std::sync::Mutex<infrastructure::pg_process::EmbeddedPostgresHandle>,
             >>();

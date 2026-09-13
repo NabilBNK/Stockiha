@@ -238,6 +238,47 @@ pub fn bundled_bin_dir(resource_dir: &Path) -> PathBuf {
         .join("bin")
 }
 
+/// Where the bundled resources actually live, resolved **without** going
+/// through Tauri's `resource_dir()`.
+///
+/// Tauri's own Windows implementation is `current_exe().parent()` — but it
+/// reaches `current_exe()` through a wrapper that canonicalizes, which is
+/// what introduces the `\\?\` verbatim prefix that PostgreSQL's tooling
+/// cannot use. `std::env::current_exe()` does not canonicalize, so the
+/// prefix never appears and there is nothing to strip. [`bundled_bin_dir`]
+/// still applies `dunce::simplified` on top, because a caller may hand us a
+/// canonicalized path anyway (the tests deliberately do).
+///
+/// Belt *and* braces on purpose: `dunce::simplified` only strips a
+/// `VerbatimDisk` prefix and deliberately declines every other verbatim
+/// form — notably `\\?\UNC\…`, which is what a canonicalized path on a
+/// mapped network drive looks like. Not creating the prefix at all is the
+/// only approach that does not depend on being able to remove it.
+pub fn bundled_resource_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    Some(dunce::simplified(dir).to_path_buf())
+}
+
+/// True if `path` still carries a Windows verbatim (`\\?\`) prefix.
+///
+/// Used to refuse *before* spawning, with an explanation, rather than
+/// letting PostgreSQL's tooling fail on it in its own confusing vocabulary
+/// ("invalid binary", "program \"postgres\" is needed by initdb but was not
+/// found in the same directory") three layers later.
+pub fn is_verbatim_path(path: &Path) -> bool {
+    matches!(
+        path.components().next(),
+        Some(std::path::Component::Prefix(prefix))
+            if matches!(
+                prefix.kind(),
+                std::path::Prefix::Verbatim(_)
+                    | std::path::Prefix::VerbatimDisk(_)
+                    | std::path::Prefix::VerbatimUNC(..)
+            )
+    )
+}
+
 /// The Microsoft Visual C++ runtime DLLs that PostgreSQL's own binaries are
 /// linked against, deployed **app-local** (next to the `.exe`s in `bin/`,
 /// which is first in Windows' DLL search order).
@@ -320,6 +361,19 @@ pub fn hide_console_window(command: &mut std::process::Command) -> &mut std::pro
 /// loses `share/` but keeps `bin/` would spawn successfully and then fail
 /// *inside* `initdb` with a far more confusing message.
 pub fn preflight_bundle_layout(bin_dir: &Path) -> Result<(), String> {
+    // Checked first, because every other message below would be misleading
+    // if this is the real problem: the files are all present and correct,
+    // and PostgreSQL still cannot use the path naming them.
+    if is_verbatim_path(bin_dir) {
+        return Err(format!(
+            "internal path problem: the database programs were located through a Windows \
+             extended-length path, which PostgreSQL's own tools cannot use.\nPath: {}\nThis is \
+             a bug in Stockiha, not a problem with this computer — please report it with this \
+             message.",
+            bin_dir.display()
+        ));
+    }
+
     for exe in REQUIRED_BINARIES {
         let candidate = bin_dir.join(exe);
         if !candidate.is_file() {
@@ -685,16 +739,15 @@ mod tests {
     /// the moment the packaging stops matching the code's expectations.
     #[test]
     fn the_materialized_resource_layout_is_what_the_shipped_code_expects() {
-        let bin_dir = staged_resource_dir()
-            .join("postgres")
-            .join("win64")
-            .join("bin");
+        // Through production's own builder, never hand-joined: that is what
+        // makes this a test of the shipped path rather than of a path only
+        // this test knows how to construct.
+        let bin_dir = staged_bin_dir();
 
         if let Err(detail) = preflight_bundle_layout(&bin_dir) {
             panic!(
                 "the resource tree materialized by bundle.resources does not match the layout \
-                 the shipped code reads (lib.rs / embedded_setup.rs both build \
-                 resource_dir/postgres/win64/bin):\n{detail}"
+                 the shipped code reads (pg_process::bundled_bin_dir):\n{detail}"
             );
         }
     }
@@ -903,6 +956,60 @@ mod tests {
             .contains("missing"));
         // An ordinary initdb failure must NOT be mistranslated.
         assert_eq!(explain_startup_exit_code(1), None);
+    }
+
+    /// The bundle path the app resolves must never be a verbatim (`\\?\`)
+    /// path, because PostgreSQL's tooling cannot use one — it reports
+    /// "invalid binary", "could not re-execute with restricted token", and
+    /// finally `program "postgres" is needed by initdb but was not found in
+    /// the same directory`, none of which point at the real cause.
+    #[test]
+    fn the_resolved_bundle_path_is_never_a_verbatim_path() {
+        let resource_dir =
+            bundled_resource_dir().expect("the running test binary must have a parent directory");
+        assert!(
+            !is_verbatim_path(&resource_dir),
+            "resolved resource dir must not be verbatim, got {}",
+            resource_dir.display()
+        );
+        assert!(
+            !is_verbatim_path(&bundled_bin_dir(&resource_dir)),
+            "resolved bin dir must not be verbatim"
+        );
+
+        // And a canonicalized path — exactly what Tauri's own resource_dir()
+        // hands back on Windows — must be simplified rather than passed on.
+        let canonical = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .canonicalize()
+            .unwrap();
+        assert!(
+            is_verbatim_path(&canonical),
+            "sanity: canonicalize() should produce a verbatim path on Windows"
+        );
+        assert!(
+            !is_verbatim_path(&bundled_bin_dir(&canonical)),
+            "bundled_bin_dir must simplify a canonicalized path, got {}",
+            bundled_bin_dir(&canonical).display()
+        );
+    }
+
+    #[test]
+    fn a_verbatim_bin_dir_is_refused_before_anything_is_spawned() {
+        let verbatim = PathBuf::from(r"\\?\D:\Stockiha\postgres\win64\bin");
+        assert!(
+            is_verbatim_path(&verbatim),
+            "sanity: test input is verbatim"
+        );
+
+        let err = preflight_bundle_layout(&verbatim)
+            .expect_err("a verbatim bin dir must be refused outright");
+        assert!(
+            err.contains("extended-length path"),
+            "error must explain the real cause, got: {err}"
+        );
     }
 
     #[test]

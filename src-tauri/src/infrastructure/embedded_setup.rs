@@ -184,6 +184,17 @@ pub async fn run_setup(
         guard.pgdata = pgdata.clone();
     }
 
+    // Recorded before anything runs. Three field failures in a row were
+    // reported as PostgreSQL complaining about a path, with no way to tell
+    // from the outside which path Stockiha had actually computed or why —
+    // each one cost a round trip to a real machine to find out.
+    append_setup_log(
+        &setup_log,
+        &format!("resource dir: {}", resource_dir.display()),
+    );
+    append_setup_log(&setup_log, &format!("bin dir:      {}", bin_dir.display()));
+    append_setup_log(&setup_log, &format!("data dir:     {}", pgdata.display()));
+
     let mut report = |step: SetupStep, status: StepStatus, detail: Option<String>| {
         let line = match (status, &detail) {
             (StepStatus::Running, _) => format!("{step:?}: starting"),
@@ -450,13 +461,20 @@ fn run_initdb(bin_dir: &Path, pgdata: &Path, admin_password: &str) -> Result<(),
                 .status
                 .code()
                 .and_then(|code| pg_process::explain_startup_exit_code(code as u32));
+            // Always name the binary we actually launched. When initdb
+            // complains about a path, its message describes the path *it*
+            // derived, not the one we passed — and without ours beside it,
+            // the two cannot be told apart from a bug report.
+            let launched = format!("\nStockiha ran: {}", initdb_exe.display());
             Err(match (explanation, stderr.is_empty()) {
-                (Some(reason), _) => format!("{reason} ({}).", output.status),
+                (Some(reason), _) => format!("{reason} ({}).{launched}", output.status),
                 (None, true) => format!(
-                    "initdb exited with {} and reported no error text.",
+                    "initdb exited with {} and reported no error text.{launched}",
                     output.status
                 ),
-                (None, false) => format!("initdb exited with {}: {stderr}", output.status),
+                (None, false) => {
+                    format!("initdb exited with {}: {stderr}{launched}", output.status)
+                }
             })
         }
         Err(err) => Err(format!("could not run initdb ({err})")),
@@ -953,8 +971,11 @@ mod tests {
         {
             let mut guard = handle.lock().unwrap();
             if let Some(mut child) = guard.child.take() {
-                let _ =
-                    pg_process::stop_postgres(&guard.bin_dir, &guard.pgdata, Duration::from_secs(10));
+                let _ = pg_process::stop_postgres(
+                    &guard.bin_dir,
+                    &guard.pgdata,
+                    Duration::from_secs(10),
+                );
                 let _ = child.wait();
             }
         }

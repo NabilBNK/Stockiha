@@ -24,6 +24,7 @@ import { listen } from '@tauri-apps/api/event';
 
 import { Banner, Button } from '../../shared/components';
 import { useI18n, type MessageKey } from '../../shared/i18n';
+import { APP_VERSION_MARKER } from '../../shared/version';
 import {
   EMBEDDED_SETUP_PROGRESS_EVENT,
   EMBEDDED_SETUP_STEPS,
@@ -132,6 +133,16 @@ export function EmbeddedSetupScreen() {
         data-testid="embedded-setup-screen"
       >
         <h1 id="embedded-setup-title">{t('embeddedSetup.title')}</h1>
+        {/* Shown here, not only on the dashboard: when setup fails the
+            dashboard is unreachable, and "which build is this?" is the first
+            question any report of a setup failure has to answer. */}
+        <div
+          className="sk-muted"
+          style={{ fontSize: '0.8rem', fontWeight: 500, marginBlock: '2px 8px' }}
+          data-testid="embedded-setup-version"
+        >
+          [ version = {APP_VERSION_MARKER} ]
+        </div>
         <p>{t('embeddedSetup.body')}</p>
 
         {!started ? (

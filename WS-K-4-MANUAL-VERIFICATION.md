@@ -36,8 +36,19 @@ for any of this** — that is one of the main things this redesign fixes.
 >   same directory" while it was sitting right beside it. Fixed in
 >   `WS-K-4.4`.
 >
-> Use the **`WS-K-4.4`** installer for everything below. You can confirm
-> the version after signing in: it is printed under the dashboard title.
+> - `WS-K-4.4` fixed that for the normal install location, but Stockiha was
+>   still asking Windows for the folder in a way that produces the same
+>   unusable form of path. `WS-K-4.5` stops asking for it that way at all.
+>
+> Use the **`WS-K-4.5`** installer for everything below. **The version is
+> now printed on the setup screen itself**, directly under "Setting up
+> Stockiha" — so you can confirm which build you are running before
+> pressing Start, without having to sign in first. If it does not say
+> `WS-K-4.5`, you are running an older installer.
+>
+> If setup fails again, please also send
+> `%APPDATA%\com.raqmenha.stockiha\setup.log`. It now records the exact
+> folders Stockiha used, which is what the previous reports could not show.
 
 Everything below assumes you are testing on a clean Windows machine (a
 fresh VM, or a machine that has never had Stockiha on it before), unless a
