@@ -39,6 +39,7 @@ import { DrawerPolicySettingsScreen } from '../features/settings/DrawerPolicySet
 import { RecoverySettingsScreen } from '../features/settings/RecoverySettingsScreen';
 import { InventoryCorrectionsSettingsScreen } from '../features/settings/InventoryCorrectionsSettingsScreen';
 import { UserManagementSettingsScreen } from '../features/settings/UserManagementSettingsScreen';
+import { PrintingSettingsScreen } from '../features/settings/PrintingSettingsScreen';
 import { getInventoryCorrectionsSetting } from '../shared/ipc/inventoryCorrectionsGateway';
 import SuppliersScreen from '../features/procurement/SuppliersScreen';
 import PurchasesScreen from '../features/procurement/PurchasesScreen';
@@ -268,6 +269,7 @@ function AuthenticatedApp() {
             can_post_customer_refund: false,
             can_manage_drawer_policy: false,
             can_override_credit_limit: false,
+            can_apply_sale_discount: false,
           });
         }
       });
@@ -430,6 +432,7 @@ function AuthenticatedApp() {
           <InventoryCorrectionsSettingsScreen sessionToken={user?.token ?? ''} />
           <RecoverySettingsScreen sessionToken={user?.token ?? ''} />
           <UserManagementSettingsScreen sessionToken={user?.token ?? ''} />
+          <PrintingSettingsScreen sessionToken={user?.token ?? ''} />
         </>
       )}
       {view === 'products' && (

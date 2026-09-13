@@ -52,11 +52,16 @@ for any of this** — that is one of the main things this redesign fixes.
 >   that restart skipped the normal shutdown. `WS-K-4.7` stops it before
 >   restarting, and also stops any such leftover on the next normal close.
 >
-> Use the **`WS-K-4.7`** installer for everything below. **The version is
+> - `WS-K-4.8` is `WS-K-4.7` plus the POS work from `task/ws-f-3-sale-discount`
+>   (WS-F-2 receipt printing and printing settings, WS-F-3 sale discount).
+>   The earlier installer did not contain that work, so the discount was
+>   not there to find; this one has it.
+>
+> Use the **`WS-K-4.8`** installer for everything below. **The version is
 > printed on the setup screen itself**, directly under "Setting up
 > Stockiha" — so you can confirm which build you are running before
 > pressing Start, without having to sign in first. If it does not say
-> `WS-K-4.7`, you are running an older installer.
+> `WS-K-4.8`, you are running an older installer.
 >
 > **If you install `WS-K-4.7` over `WS-K-4.6` on the same PC** (rather than
 > a fresh one), the leftover database from `WS-K-4.6` is still running when

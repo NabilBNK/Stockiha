@@ -310,6 +310,7 @@ pub fn run() {
             commands::catalog::list_attributes_v2,
             commands::catalog::rename_attribute,
             commands::catalog::set_attribute_active,
+            commands::catalog::set_attribute_visible_on_receipt,
             commands::catalog::delete_attribute,
             commands::catalog::list_attribute_values,
             commands::catalog::rename_attribute_value,
@@ -384,6 +385,9 @@ pub fn run() {
             commands::receivables::list_refundable_customer_payments,
             commands::receivables::authorize_customer_payment_refund,
             commands::receivables::post_customer_refund,
+            commands::printing::print_raw_receipt,
+            commands::printing::get_printing_settings,
+            commands::printing::save_printing_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

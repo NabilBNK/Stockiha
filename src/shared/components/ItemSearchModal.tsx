@@ -27,6 +27,7 @@ export interface ItemSearchModalProps {
   notice?: string | null;
   title?: string;
   placeholder?: string;
+  closeOnSelect?: boolean;
 }
 
 export function matchesItemQuery(item: ProductListItem, rawQuery: string): boolean {
@@ -84,6 +85,7 @@ export function ItemSearchModal({
   notice = null,
   title,
   placeholder,
+  closeOnSelect = true,
 }: ItemSearchModalProps) {
   const { t, locale } = useI18n();
   const searchInputId = useId();
@@ -92,6 +94,7 @@ export function ItemSearchModal({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({});
+  const [selectedCounts, setSelectedCounts] = useState<Record<number, number>>({});
   const [isMaximized, setIsMaximized] = useState(false);
   const serverControlled = onQueryChange != null;
 
@@ -110,6 +113,7 @@ export function ItemSearchModal({
     if (isOpen) {
       setSearchQuery("");
       clearAllFilters();
+      setSelectedCounts({});
       const timer = setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
@@ -670,6 +674,8 @@ export function ItemSearchModal({
                     ? `${item.product_name} — ${effectiveName}`
                     : effectiveName || item.product_name;
 
+                  const selectCount = selectedCounts[item.variant_id] || 0;
+
                   return (
                     <button
                       key={item.variant_id}
@@ -679,7 +685,14 @@ export function ItemSearchModal({
                       }`}
                       onClick={() => {
                         onSelect(item);
-                        onClose();
+                        if (closeOnSelect) {
+                          onClose();
+                        } else {
+                          setSelectedCounts((prev) => ({
+                            ...prev,
+                            [item.variant_id]: (prev[item.variant_id] || 0) + 1,
+                          }));
+                        }
                       }}
                       data-testid={`item-search-result-${item.variant_id}`}
                     >
@@ -707,8 +720,8 @@ export function ItemSearchModal({
                               style={{
                                 fontWeight: 600,
                                 color: isExactDecimalZero(item.quantity_on_hand)
-                                  ? "var(--sk-warning, #d97706)"
-                                  : "var(--sk-success, #059669)",
+                                   ? "var(--sk-warning, #d97706)"
+                                   : "var(--sk-success, #059669)",
                               }}
                             >
                               Stock: {formatExactDecimal(item.quantity_on_hand)}
@@ -743,13 +756,27 @@ export function ItemSearchModal({
                           flexShrink: 0,
                         }}
                       >
-                        <span className="sk-button sk-button--small sk-button--primary">
-                          {locale === "ar"
-                            ? "تحديد"
-                            : locale === "fr"
-                            ? "Choisir"
-                            : "Select"}
-                        </span>
+                        {!closeOnSelect && selectCount > 0 ? (
+                          <span
+                            className="sk-button sk-button--small"
+                            style={{
+                              backgroundColor: "var(--sk-success, #059669)",
+                              borderColor: "var(--sk-success, #059669)",
+                              color: "#ffffff",
+                              fontWeight: 700,
+                            }}
+                          >
+                            ✓ {locale === "ar" ? `تمت الإضافة (${selectCount})` : locale === "fr" ? `Ajouté (${selectCount})` : `Added (${selectCount})`}
+                          </span>
+                        ) : (
+                          <span className="sk-button sk-button--small sk-button--primary">
+                            {locale === "ar"
+                              ? "تحديد"
+                              : locale === "fr"
+                              ? "Choisir"
+                              : "Select"}
+                          </span>
+                        )}
                       </div>
                     </button>
                   );
@@ -770,11 +797,13 @@ export function ItemSearchModal({
         >
           <button
             type="button"
-            className="sk-button sk-button--secondary"
+            className={`sk-button ${closeOnSelect ? "sk-button--secondary" : "sk-button--primary"}`}
             onClick={onClose}
             data-testid="item-search-modal-cancel"
           >
-            {t("common.cancel")}
+            {closeOnSelect
+              ? t("common.cancel")
+              : (locale === "ar" ? "تم" : locale === "fr" ? "Terminé" : "Done")}
           </button>
         </div>
       </div>

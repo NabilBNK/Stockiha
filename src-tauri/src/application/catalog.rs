@@ -709,6 +709,14 @@ pub(crate) struct ReferenceItem {
     pub usage_count: i64,
 }
 
+pub(crate) struct AttributeItem {
+    pub id: i64,
+    pub name: String,
+    pub is_active: bool,
+    pub visible_on_receipt: bool,
+    pub usage_count: i64,
+}
+
 pub(crate) struct AttributeValueItem {
     pub id: i64,
     pub attribute_id: i64,
@@ -894,9 +902,9 @@ pub(crate) async fn delete_category(
 pub(crate) async fn list_attributes_v2(
     pool: &PgPool,
     session_token: &str,
-) -> Result<Vec<ReferenceItem>, AppError> {
-    let rows = sqlx::query_as::<_, (i64, String, bool, i64)>(
-        "SELECT id, name, is_active, usage_count FROM catalog.list_attributes_v2($1::text)",
+) -> Result<Vec<AttributeItem>, AppError> {
+    let rows = sqlx::query_as::<_, (i64, String, bool, bool, i64)>(
+        "SELECT id, name, is_active, visible_on_receipt, usage_count FROM catalog.list_attributes_v2($1::text)",
     )
     .bind(session_token)
     .fetch_all(pool)
@@ -904,12 +912,15 @@ pub(crate) async fn list_attributes_v2(
     .map_err(AppError::from_posting_error)?;
     Ok(rows
         .into_iter()
-        .map(|(id, name, is_active, usage_count)| ReferenceItem {
-            id,
-            name,
-            is_active,
-            usage_count,
-        })
+        .map(
+            |(id, name, is_active, visible_on_receipt, usage_count)| AttributeItem {
+                id,
+                name,
+                is_active,
+                visible_on_receipt,
+                usage_count,
+            },
+        )
         .collect())
 }
 
@@ -942,6 +953,24 @@ pub(crate) async fn set_attribute_active(
         .execute(pool)
         .await
         .map_err(AppError::from_posting_error)?;
+    Ok(())
+}
+
+pub(crate) async fn set_attribute_visible_on_receipt(
+    pool: &PgPool,
+    session_token: &str,
+    attribute_id: i64,
+    visible_on_receipt: bool,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "SELECT catalog.set_attribute_visible_on_receipt($1::text, $2::bigint, $3::boolean)",
+    )
+    .bind(session_token)
+    .bind(attribute_id)
+    .bind(visible_on_receipt)
+    .execute(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
     Ok(())
 }
 

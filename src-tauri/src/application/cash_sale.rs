@@ -30,6 +30,7 @@ pub(crate) struct CashSaleRequest {
     pub fiscal_period_id: i64,
     pub document_date: Date,
     pub lines: Vec<CashSaleLineInput>,
+    pub discount_amount: Option<Decimal>,
 }
 
 /// Serializes the line array to the `jsonb` shape `sales.confirm_cash_sale`
@@ -51,6 +52,7 @@ fn canonical_cash_sale_payload(
         "fiscal_period_id": request.fiscal_period_id,
         "document_date": request.document_date.to_string(),
         "lines": lines_json,
+        "discount_amount": request.discount_amount.unwrap_or(Decimal::ZERO).to_string(),
     });
     let hash = payload_hash(&payload);
 
@@ -70,7 +72,7 @@ pub(crate) async fn confirm_cash_sale(
 
     let document_id: i64 = sqlx::query_scalar(
         "SELECT sales.confirm_cash_sale(\
-            $1, $2::uuid, $3, $4, $5, $6, $7, $8\
+            $1, $2::uuid, $3, $4, $5, $6, $7, $8, $9\
          )",
     )
     .bind(session_token)
@@ -81,6 +83,7 @@ pub(crate) async fn confirm_cash_sale(
     .bind(request.fiscal_period_id)
     .bind(request.document_date)
     .bind(lines_json)
+    .bind(request.discount_amount.unwrap_or(Decimal::ZERO))
     .fetch_one(pool)
     .await
     .map_err(AppError::from_posting_error)?;
@@ -159,6 +162,7 @@ mod tests {
                     quantity: Decimal::new(2_000, 3),
                     unit_price: Decimal::new(10000, 2),
                 }],
+                discount_amount: None,
             },
         )
         .await
@@ -180,6 +184,7 @@ mod tests {
                     quantity: Decimal::new(2_000, 3),
                     unit_price: Decimal::new(10000, 2),
                 }],
+                discount_amount: None,
             },
         )
         .await
@@ -328,10 +333,11 @@ mod tests {
                 quantity: Decimal::ONE,
                 unit_price: Decimal::new(15_000, 2),
             }],
+            discount_amount: None,
         };
 
         const POST_SQL: &str = "SELECT sales.confirm_cash_sale(\
-                                    $1, $2::uuid, $3, $4, $5, $6, $7, $8\
+                                    $1, $2::uuid, $3, $4, $5, $6, $7, $8, $9\
                                 )";
 
         // Transaction A: post, then hold the transaction open.
@@ -351,6 +357,7 @@ mod tests {
             .bind(request_a.fiscal_period_id)
             .bind(request_a.document_date)
             .bind(&lines_a)
+            .bind(Decimal::ZERO)
             .fetch_one(&mut conn_a)
             .await
             .expect("the first sale must succeed");
@@ -377,6 +384,7 @@ mod tests {
                 .bind(request_b.fiscal_period_id)
                 .bind(request_b.document_date)
                 .bind(&lines_b)
+                .bind(Decimal::ZERO)
                 .fetch_one(&mut conn_b)
                 .await;
             let closing = if outcome.is_ok() {

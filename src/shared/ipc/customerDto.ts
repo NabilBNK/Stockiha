@@ -56,6 +56,7 @@ export interface CustomerCapabilities {
   can_post_customer_refund: boolean;
   can_manage_drawer_policy: boolean;
   can_override_credit_limit: boolean;
+  can_apply_sale_discount: boolean;
 }
 
 export interface CustomerCreditSummary {

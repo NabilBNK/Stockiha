@@ -479,6 +479,15 @@ pub(crate) struct ReferenceItemResponse {
 }
 
 #[derive(Serialize)]
+pub(crate) struct AttributeItemResponse {
+    pub id: i64,
+    pub name: String,
+    pub is_active: bool,
+    pub visible_on_receipt: bool,
+    pub usage_count: i64,
+}
+
+#[derive(Serialize)]
 pub(crate) struct AttributeValueItemResponse {
     pub id: i64,
     pub attribute_id: i64,
@@ -606,17 +615,18 @@ pub(crate) async fn delete_category(
 pub(crate) async fn list_attributes_v2(
     state: State<'_, DatabaseState>,
     session_token: String,
-) -> Result<Vec<ReferenceItemResponse>, IpcError> {
+) -> Result<Vec<AttributeItemResponse>, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     catalog::list_attributes_v2(pool, &session_token)
         .await
         .map(|items| {
             items
                 .into_iter()
-                .map(|i| ReferenceItemResponse {
+                .map(|i| AttributeItemResponse {
                     id: i.id,
                     name: i.name,
                     is_active: i.is_active,
+                    visible_on_receipt: i.visible_on_receipt,
                     usage_count: i.usage_count,
                 })
                 .collect()
@@ -648,6 +658,24 @@ pub(crate) async fn set_attribute_active(
     catalog::set_attribute_active(pool, &session_token, attribute_id, is_active)
         .await
         .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn set_attribute_visible_on_receipt(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    attribute_id: i64,
+    visible_on_receipt: bool,
+) -> Result<(), IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::set_attribute_visible_on_receipt(
+        pool,
+        &session_token,
+        attribute_id,
+        visible_on_receipt,
+    )
+    .await
+    .map_err(IpcError::from)
 }
 
 #[tauri::command]

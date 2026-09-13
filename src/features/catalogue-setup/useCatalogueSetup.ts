@@ -144,6 +144,11 @@ export function useCatalogueSetup(token: string) {
     await loadAttributes();
   }, [token, loadAttributes]);
 
+  const setAttributeVisibleOnReceipt = useCallback(async (id: number, visibleOnReceipt: boolean) => {
+    await ipc.setAttributeVisibleOnReceipt(token, id, visibleOnReceipt);
+    await loadAttributes();
+  }, [token, loadAttributes]);
+
   const deleteAttribute = useCallback(async (id: number) => {
     await ipc.deleteAttribute(token, id);
     await loadAttributes();
@@ -177,7 +182,7 @@ export function useCatalogueSetup(token: string) {
     loadAll,
     createCategory, renameCategory, setCategoryActive, deleteCategory,
     createUnit, renameUnit, setUnitActive, deleteUnit,
-    createAttribute, renameAttribute, setAttributeActive, deleteAttribute,
+    createAttribute, renameAttribute, setAttributeActive, setAttributeVisibleOnReceipt, deleteAttribute,
     addAttributeValue, renameAttributeValue, setAttributeValueActive, deleteAttributeValue,
   };
 }

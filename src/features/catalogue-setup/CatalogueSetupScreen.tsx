@@ -32,7 +32,7 @@ export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string })
     loadAll,
     createCategory, renameCategory, setCategoryActive, deleteCategory,
     createUnit, renameUnit, setUnitActive, deleteUnit,
-    createAttribute, renameAttribute, setAttributeActive, deleteAttribute,
+    createAttribute, renameAttribute, setAttributeActive, setAttributeVisibleOnReceipt, deleteAttribute,
     addAttributeValue, renameAttributeValue, setAttributeValueActive, deleteAttributeValue,
   } = setup;
 
@@ -107,6 +107,7 @@ export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string })
               onCreateAttribute={createAttribute}
               onRenameAttribute={renameAttribute}
               onToggleAttributeActive={setAttributeActive}
+              onToggleAttributeVisibleOnReceipt={setAttributeVisibleOnReceipt}
               onDeleteAttribute={deleteAttribute}
               onAddValue={addAttributeValue}
               onRenameValue={renameAttributeValue}

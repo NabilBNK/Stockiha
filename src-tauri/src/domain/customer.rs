@@ -94,6 +94,7 @@ pub struct CustomerCapabilities {
     pub can_post_customer_refund: bool,
     pub can_manage_drawer_policy: bool,
     pub can_override_credit_limit: bool,
+    pub can_apply_sale_discount: bool,
 }
 
 fn validate_credit_policy(

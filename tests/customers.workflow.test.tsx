@@ -63,10 +63,21 @@ function creditProduct() {
     variant_id: 7,
     sku: 'SKU-7',
     name: 'Credit Item',
+    product_name: 'Credit Item',
+    variant_name: '',
+    primary_barcode: null,
+    display_identifier: 'SKU-7',
+    identifier_type: 'SKU',
     sale_price: '1500.00',
+    minimum_stock: '0',
     is_active: true,
+    product_is_active: true,
+    category_id: null,
+    category_name: null,
     quantity_on_hand: '10.000',
     last_known_wac: '900.000000',
+    attributes: [],
+    total_count: 1,
   };
 }
 
@@ -124,6 +135,8 @@ function baseHandlers(extra: Handlers = {}): Handlers {
       pending_print_jobs: 0,
     }),
     list_products: () => [],
+    list_products_v2: () => [],
+    list_categories: () => [],
     list_catalog_products: () => [],
     list_units: () => [],
     list_customers: () => [customer()],
@@ -313,6 +326,7 @@ describe('S4 Customer Workflow', () => {
     wireInvoke(baseHandlers({
       inspect_active_cash_session: activeSession,
       list_products: () => [creditProduct()],
+      list_products_v2: () => [creditProduct()],
       confirm_cash_sale: () => {
         cashCalls += 1;
         return 999;
@@ -354,6 +368,7 @@ describe('S4 Customer Workflow', () => {
       },
       inspect_active_cash_session: activeSession,
       list_products: () => [creditProduct()],
+      list_products_v2: () => [creditProduct()],
       confirm_credit_sale: (args) => {
         creditAttempts += 1;
         if (args.overrideToken == null) throw { code: 'CREDIT_POLICY_BLOCKED' };

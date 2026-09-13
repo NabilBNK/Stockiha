@@ -243,6 +243,7 @@ mod tests {
                     quantity: Decimal::new(2000, 3),
                     unit_price: Decimal::new(10000, 2),
                 }],
+                discount_amount: None,
             },
         )
         .await
