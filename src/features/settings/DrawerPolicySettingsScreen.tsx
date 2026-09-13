@@ -134,11 +134,11 @@ export function DrawerPolicySettingsScreen({ sessionToken }: Props) {
   }
 
   return (
-    <section className="sk-page">
-      <div className="sk-page__header">
+    <section className="sk-page sk-settings-page">
+      <div className="sk-page__header sk-settings-page__header">
         <div>
-          <h1>{text.title}</h1>
-          <p>{text.subtitle}</p>
+          <h1 className="sk-settings-page__title">{text.title}</h1>
+          <p className="sk-settings-page__subtitle">{text.subtitle}</p>
         </div>
       </div>
 
@@ -146,36 +146,68 @@ export function DrawerPolicySettingsScreen({ sessionToken }: Props) {
       {feedback ? <Banner tone="success">{feedback}</Banner> : null}
       {!loading && !canManage ? <Banner tone="warning">{text.readOnly}</Banner> : null}
 
-      <div className="sk-card">
-        <h2>{text.subtitle}</h2>
-        <p>{text.help}</p>
+      <div className="sk-settings-card">
+        <div className="sk-settings-card__header">
+          <div className="sk-settings-card__title-group">
+            <h2 className="sk-settings-card__title">{text.subtitle}</h2>
+            <p className="sk-settings-card__desc">{text.help}</p>
+          </div>
+        </div>
 
         {loading ? <Spinner /> : (
-          <div className="sk-stack">
+          <div className="sk-toggle-grid">
             {policies.map((policy) => {
               const localized = OPERATION_COPY[locale][policy.operation_code] ?? {
                 title: policy.operation_code,
                 description: policy.description,
               };
               const pending = busyCode === policy.operation_code;
+              const isDisabled = !canManage || busyCode !== null;
               return (
-                <label className="sk-checkbox-row" key={policy.operation_code}>
+                <label
+                  className="sk-toggle-card"
+                  key={policy.operation_code}
+                  data-checked={policy.is_enabled ? 'true' : 'false'}
+                  data-disabled={isDisabled ? 'true' : 'false'}
+                >
                   <input
                     type="checkbox"
+                    className="sk-sr-only"
                     checked={policy.is_enabled}
-                    disabled={!canManage || busyCode !== null}
+                    disabled={isDisabled}
                     onChange={() => void toggle(policy)}
                   />
-                  <span>
-                    <strong>{localized.title}</strong>
-                    <small className="sk-field-help">
+                  <div>
+                    <div className="sk-toggle-card__top">
+                      <span className="sk-toggle-card__title">{localized.title}</span>
+                      <span
+                        className="sk-switch"
+                        data-checked={policy.is_enabled ? 'true' : 'false'}
+                        aria-hidden="true"
+                      >
+                        <span className="sk-switch__thumb" />
+                      </span>
+                    </div>
+                    <div className="sk-toggle-card__desc">
                       {localized.description}
-                      {!CURRENT_OPERATIONS.has(policy.operation_code) ? ` · ${text.future}` : ''}
-                    </small>
-                  </span>
-                  <span className={`sk-badge ${policy.is_enabled ? 'sk-badge--ok' : 'sk-badge--danger'}`}>
-                    {pending ? '…' : policy.is_enabled ? text.enabled : text.disabled}
-                  </span>
+                    </div>
+                  </div>
+
+                  <div className="sk-toggle-card__bottom">
+                    <span
+                      className={`sk-toggle-card__badge ${
+                        policy.is_enabled
+                          ? 'sk-toggle-card__badge--ok'
+                          : 'sk-toggle-card__badge--muted'
+                      }`}
+                    >
+                      <span className="sk-toggle-card__badge-dot" />
+                      {pending ? '…' : policy.is_enabled ? text.enabled : text.disabled}
+                    </span>
+                    {!CURRENT_OPERATIONS.has(policy.operation_code) ? (
+                      <span className="sk-toggle-card__meta">{text.future}</span>
+                    ) : null}
+                  </div>
                 </label>
               );
             })}

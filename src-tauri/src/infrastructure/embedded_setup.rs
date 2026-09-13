@@ -884,6 +884,41 @@ mod tests {
         )
         .await;
 
+        // While the server is still up: prove the schema actually reached the
+        // binary's latest migration, through the app's own production check
+        // (the same one WS-K-1's startup runs), connecting with exactly the
+        // credentials database.json now holds. SQLx applies migrations in
+        // order and stops at the first failure, so "applied latest ==
+        // embedded latest" is proof that every embedded migration applied —
+        // stated in this test's own output, by count and version, rather
+        // than inferred from run_setup returning Ok.
+        let schema_verdict = if result.is_ok() {
+            match local_config::load(&app_data_dir) {
+                local_config::LocalConfigOutcome::Loaded { options, .. } => {
+                    let mut conn = PgConnection::connect_with(&options)
+                        .await
+                        .expect("connect with the written database.json credentials");
+                    let verdict = schema_version::check_schema_compatibility(&mut conn).await;
+                    let applied_count: Option<i64> =
+                        sqlx::query_scalar("SELECT count(*) FROM _sqlx_migrations")
+                            .fetch_one(&mut conn)
+                            .await
+                            .ok();
+                    let _ = conn.close().await;
+                    eprintln!(
+                        "MIGRATIONS: embedded={} embedded_latest={} applied_rows={} verdict={verdict:?}",
+                        schema_version::embedded_migration_count(),
+                        schema_version::embedded_latest_version(),
+                        applied_count.map_or("(not readable by runtime role)".to_string(), |n| n.to_string()),
+                    );
+                    Some((verdict, applied_count))
+                }
+                _ => panic!("database.json should be loadable after setup"),
+            }
+        } else {
+            None
+        };
+
         // Always stop the spawned server before asserting/cleaning up, even
         // on failure, so no orphan is left running against a temp dir we
         // are about to delete out from under it.
@@ -902,6 +937,20 @@ mod tests {
         match result {
             Ok(outcome) => {
                 assert!(outcome.port >= 58432);
+                let (verdict, applied_count) =
+                    schema_verdict.expect("schema verdict is computed whenever setup succeeds");
+                assert_eq!(
+                    verdict,
+                    schema_version::SchemaCompatibility::UpToDate,
+                    "the embedded instance must end at the binary's latest migration"
+                );
+                if let Some(applied) = applied_count {
+                    assert_eq!(
+                        applied as usize,
+                        schema_version::embedded_migration_count(),
+                        "every embedded migration must have applied"
+                    );
+                }
                 assert!(app_data_dir.join("database.json").exists());
                 assert!(app_data_dir.join("setup.log").exists());
                 for step in SetupStep::ALL {

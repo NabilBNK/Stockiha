@@ -188,6 +188,10 @@ describe('inventory permissions and posting results', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Stock receipt' }));
     await screen.findByRole('heading', { name: 'Stock receipt' });
 
+    const barcodeInput = screen.getByTestId('stock-barcode-input');
+    fireEvent.change(barcodeInput, { target: { value: 'R8D-NB-S' } });
+    fireEvent.keyDown(barcodeInput, { key: 'Enter' });
+
     fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Unit cost'), { target: { value: '120' } });
     fireEvent.click(screen.getByRole('button', { name: 'Receive stock' }));
@@ -241,6 +245,9 @@ describe('inventory permissions and posting results', () => {
     render(<App />);
     await login();
     fireEvent.click(await screen.findByRole('button', { name: 'Stock receipt' }));
+    const barcodeInput = await screen.findByTestId('stock-barcode-input');
+    fireEvent.change(barcodeInput, { target: { value: 'R8D-NB-S' } });
+    fireEvent.keyDown(barcodeInput, { key: 'Enter' });
     fireEvent.change(await screen.findByLabelText('Quantity'), { target: { value: '1' } });
     fireEvent.change(screen.getByLabelText('Unit cost'), { target: { value: '100' } });
     fireEvent.click(screen.getByRole('button', { name: 'Receive stock' }));
@@ -274,6 +281,9 @@ describe('inventory permissions and posting results', () => {
     render(<App />);
     await login();
     fireEvent.click(await screen.findByRole('button', { name: 'Stock receipt' }));
+    const barcodeInput = await screen.findByTestId('stock-barcode-input');
+    fireEvent.change(barcodeInput, { target: { value: 'R8D-NB-S' } });
+    fireEvent.keyDown(barcodeInput, { key: 'Enter' });
     fireEvent.change(await screen.findByLabelText('Quantity'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('Unit cost'), { target: { value: '100' } });
 

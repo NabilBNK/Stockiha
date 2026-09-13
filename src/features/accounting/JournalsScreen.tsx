@@ -11,6 +11,13 @@ import {
   formatDisplayDate,
   humanDocumentType,
 } from '../../shared/utils/formatters';
+import {
+  printDocumentA4,
+  saveDocumentFileWithDialog,
+  buildOfficialDocumentHtml,
+  escapeHtml,
+} from '../../shared/documents/documentPrintService';
+import { generateGenericDocumentPdf } from '../../shared/documents/genericDocumentPdf';
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
@@ -37,6 +44,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     journalLines: 'Journal Entry Lines',
     description: 'Description',
     filterAll: 'All Sources',
+    printA4: 'Print A4',
+    downloadPdf: 'Download PDF',
+    downloading: 'Downloading...',
   },
   fr: {
     title: 'Journaux comptables',
@@ -62,6 +72,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     journalLines: 'Lignes d’écriture du journal',
     description: 'Description',
     filterAll: 'Toutes les sources',
+    printA4: 'Imprimer A4',
+    downloadPdf: 'Télécharger PDF',
+    downloading: 'Téléchargement...',
   },
   ar: {
     title: 'اليومية المحاسبية',
@@ -87,6 +100,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     journalLines: 'أسطر قيد اليومية',
     description: 'الوصف',
     filterAll: 'جميع المصادر',
+    printA4: 'طباعة A4',
+    downloadPdf: 'تحميل PDF',
+    downloading: 'جارٍ التحميل...',
   },
 };
 
@@ -293,6 +309,122 @@ export function JournalDetailModal({
       });
   }, [journalDocId, token, initialDetail]);
 
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handlePrintA4 = () => {
+    if (!detail) return;
+
+    const infoCardsHtml = `
+      <div class="info-card">
+        <div class="info-card-title">${escapeHtml(text.sourceType)} &amp; ${escapeHtml(text.sourceDocument)}</div>
+        <div class="info-row"><span>${escapeHtml(text.sourceType)}:</span><strong>${escapeHtml(humanDocumentType(detail.source_type, locale))}</strong></div>
+        <div class="info-row"><span>${escapeHtml(text.sourceDocument)}:</span><strong>${escapeHtml(detail.source_document_number ?? (detail.source_id ? `#${detail.source_id}` : '—'))}</strong></div>
+      </div>
+      <div class="info-card">
+        <div class="info-card-title">${escapeHtml(text.balanced)} &amp; Totaux</div>
+        <div class="info-row"><span>${escapeHtml(text.date)}:</span><strong>${escapeHtml(formatDisplayDate(detail.document_date, locale))}</strong></div>
+        <div class="info-row"><span>Statut:</span><strong>${detail.is_balanced ? 'Équilibré ✓' : 'Non équilibré ⚠'}</strong></div>
+      </div>
+    `;
+
+    const tableHeaders = [text.line, text.accountCode, text.accountName, text.debit, text.credit];
+
+    const tableRowsHtml = detail.lines.map((line) => {
+      const hasDebit = Number(line.debit) > 0;
+      const hasCredit = Number(line.credit) > 0;
+      return `
+        <tr>
+          <td style="color: #64748b;">${line.line_number}</td>
+          <td><code>${escapeHtml(line.account_code)}</code></td>
+          <td><strong>${escapeHtml(line.account_name)}</strong></td>
+          <td class="num">${hasDebit ? `<strong>${formatDisplayAmount(line.debit)}</strong>` : '<span style="color: #94a3b8;">—</span>'}</td>
+          <td class="num">${hasCredit ? `<strong>${formatDisplayAmount(line.credit)}</strong>` : '<span style="color: #94a3b8;">—</span>'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const totalsRowsHtml = `
+      <tr class="grand-total">
+        <td>TOTAL DÉBIT:</td>
+        <td>${formatDisplayAmount(detail.total_debit)}</td>
+      </tr>
+      <tr class="grand-total">
+        <td>TOTAL CRÉDIT:</td>
+        <td>${formatDisplayAmount(detail.total_credit)}</td>
+      </tr>
+    `;
+
+    const html = buildOfficialDocumentHtml({
+      title: locale === 'fr' ? 'PIÈCE COMPTABLE / JOURNAL' : locale === 'ar' ? 'سند قيد محاسبي' : 'JOURNAL VOUCHER',
+      documentNumber: detail.document_number ?? `JE-${detail.document_id}`,
+      documentDate: formatDisplayDate(detail.document_date, locale),
+      statusLabel: detail.is_balanced ? text.balanced : text.unbalanced,
+      isPosted: true,
+      locale,
+      infoCardsHtml,
+      tableHeaders,
+      tableRowsHtml,
+      totalsRowsHtml,
+      accountingBoxHtml: detail.description ? `<h4>${escapeHtml(text.description)}</h4><p style="font-size: 8.5pt; color: #334155;">${escapeHtml(detail.description)}</p>` : undefined,
+      signatures: locale === 'ar'
+        ? ['المحاسب', 'المراجع', 'المدير المالي']
+        : locale === 'fr'
+        ? ['Comptable', 'Vérificateur', 'Direction Financière']
+        : ['Accountant', 'Auditor', 'Finance Director'],
+      footerNote: `Stockiha ERP · Journal ${detail.document_number ?? `#${detail.document_id}`}`,
+    });
+
+    printDocumentA4(html);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!detail || downloadingPdf) return;
+    try {
+      setDownloadingPdf(true);
+      const pdfBytes = await generateGenericDocumentPdf({
+        title: locale === 'fr' ? 'PIECE COMPTABLE' : locale === 'ar' ? 'سند قيد محاسبي' : 'JOURNAL VOUCHER',
+        documentNumber: detail.document_number ?? `JE-${detail.document_id}`,
+        documentDate: formatDisplayDate(detail.document_date, locale),
+        statusText: detail.is_balanced ? text.balanced : text.unbalanced,
+        locale,
+        partyLabel: text.sourceType,
+        partyName: humanDocumentType(detail.source_type, locale),
+        referenceLabel: text.sourceDocument,
+        referenceValue: detail.source_document_number ?? (detail.source_id ? `#${detail.source_id}` : '—'),
+        tableHeaders: [text.line, text.accountCode, text.accountName, text.debit, text.credit],
+        lines: detail.lines.map((l) => ({
+          col1: String(l.line_number),
+          col2: l.account_code,
+          col3: l.account_name,
+          col4: Number(l.debit) > 0 ? formatDisplayAmount(l.debit) : '—',
+          col5: Number(l.credit) > 0 ? formatDisplayAmount(l.credit) : '—',
+        })),
+        totals: [
+          { label: text.totalDebit, value: formatDisplayAmount(detail.total_debit) },
+          { label: text.totalCredit, value: formatDisplayAmount(detail.total_credit), isGrandTotal: true },
+        ],
+        accountingNote: detail.description || undefined,
+        signatures: locale === 'ar'
+          ? ['المحاسب', 'المراجع', 'المدير المالي']
+          : locale === 'fr'
+          ? ['Comptable', 'Vérificateur', 'Direction Financière']
+          : ['Accountant', 'Auditor', 'Finance Director'],
+      });
+
+      const safeNum = (detail.document_number ?? `JE-${detail.document_id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+      await saveDocumentFileWithDialog({
+        defaultFileName: `Piece_Comptable_${safeNum}.pdf`,
+        bytes: pdfBytes,
+        filterName: 'PDF Document',
+        extension: 'pdf',
+      });
+    } catch (err) {
+      console.error('Failed to download journal PDF:', err);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   if (!detail && loading) {
     return (
       <div className="sk-modal-overlay" data-testid="journal-detail-modal">
@@ -450,6 +582,12 @@ export function JournalDetailModal({
 
         {/* FOOTER */}
         <footer className="sk-detail-dialog__footer">
+          <Button variant="primary" onClick={handlePrintA4}>
+            🖨️ {text.printA4}
+          </Button>
+          <Button variant="secondary" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+            {downloadingPdf ? text.downloading : `📄 ${text.downloadPdf}`}
+          </Button>
           <Button variant="secondary" onClick={onClose}>
             {text.close}
           </Button>

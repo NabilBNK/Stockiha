@@ -110,12 +110,19 @@ fn compare(embedded_latest: i64, applied_latest: Option<i64>) -> SchemaCompatibi
 /// (SQLx's own contract for `sqlx::migrate!()`), so the last entry is the
 /// newest. Panics only if the binary were built with zero migrations, which
 /// cannot happen against this repository's `migrations/` directory.
-fn embedded_latest_version() -> i64 {
+pub(crate) fn embedded_latest_version() -> i64 {
     MIGRATOR
         .migrations
         .last()
         .expect("at least one migration is embedded")
         .version
+}
+
+/// How many migrations are compiled into this binary. Exposed so the
+/// embedded-setup end-to-end test can state, in its own output, exactly how
+/// many migrations it just applied against a fresh embedded instance.
+pub(crate) fn embedded_migration_count() -> usize {
+    MIGRATOR.migrations.len()
 }
 
 /// Outcome of the raw `_sqlx_migrations` read, before comparison.

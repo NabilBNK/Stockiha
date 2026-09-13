@@ -410,17 +410,27 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   }
 
   return (
-    <section className="sk-page" aria-labelledby="recovery-settings-title">
-      <div className="sk-card">
-        <h2 id="recovery-settings-title">{text.title}</h2>
-        <p>{text.subtitle}</p>
+    <section className="sk-page sk-settings-page" aria-labelledby="recovery-settings-title">
+      <div className="sk-settings-card">
+        <div className="sk-settings-card__header">
+          <div className="sk-settings-card__title-group">
+            <h2 id="recovery-settings-title" className="sk-settings-card__title">{text.title}</h2>
+            <p className="sk-settings-card__desc">{text.subtitle}</p>
+          </div>
+        </div>
 
         {error ? <Banner tone="error">{error}</Banner> : null}
         {feedback ? <Banner tone="success">{feedback}</Banner> : null}
 
-        <div className="sk-form">
-          <div className="sk-field">
-            <div className="sk-field-row">
+        <div className="sk-recovery-section">
+          <div className="sk-recovery-box">
+            <div className="sk-recovery-box__header">
+              <div>
+                <h3 className="sk-recovery-box__title">{text.destination}</h3>
+                <p className="sk-recovery-box__desc">{text.destinationHelp}</p>
+              </div>
+            </div>
+            <div className="sk-recovery-input-row">
               <TextField
                 label={text.destination}
                 value={destination ?? ''}
@@ -437,23 +447,33 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
                 {text.destinationChange}
               </Button>
             </div>
-            <small className="sk-field-help">{text.destinationHelp}</small>
           </div>
 
-          <div className="sk-field">
-            <Button
-              type="button"
-              loading={busy === 'create'}
-              disabled={busy !== null}
-              onClick={() => void create()}
-            >
-              {text.create}
-            </Button>
-            <small className="sk-field-help">{text.createHelp}</small>
+          <div className="sk-recovery-box">
+            <div className="sk-recovery-box__header">
+              <div>
+                <h3 className="sk-recovery-box__title">{text.create}</h3>
+                <p className="sk-recovery-box__desc">{text.createHelp}</p>
+              </div>
+              <Button
+                type="button"
+                loading={busy === 'create'}
+                disabled={busy !== null}
+                onClick={() => void create()}
+              >
+                {text.create}
+              </Button>
+            </div>
           </div>
 
-          <div className="sk-field">
-            <div className="sk-field-row">
+          <div className="sk-recovery-box">
+            <div className="sk-recovery-box__header">
+              <div>
+                <h3 className="sk-recovery-box__title">{text.validate}</h3>
+                <p className="sk-recovery-box__desc">{text.validateHelp}</p>
+              </div>
+            </div>
+            <div className="sk-recovery-input-row">
               <TextField
                 label={text.path}
                 value={bundlePath}
@@ -468,25 +488,21 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
               >
                 {text.browse}
               </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                loading={busy === 'validate'}
+                disabled={!bundlePath.trim() || busy !== null}
+                onClick={() => void validate()}
+              >
+                {text.validate}
+              </Button>
             </div>
-            <small className="sk-field-help">{text.validateHelp}</small>
-          </div>
-
-          <div className="sk-field">
-            <Button
-              type="button"
-              variant="secondary"
-              loading={busy === 'validate'}
-              disabled={!bundlePath.trim() || busy !== null}
-              onClick={() => void validate()}
-            >
-              {text.validate}
-            </Button>
           </div>
         </div>
 
         {result ? (
-          <dl className="sk-details-grid" data-testid="backup-result">
+          <dl className="sk-details-grid" data-testid="backup-result" style={{ marginTop: '20px' }}>
             <div><dt>{text.bundle}</dt><dd>{result.bundleIdentifier}</dd></div>
             <div><dt>{text.application}</dt><dd>{result.applicationVersion} · {compatibilityLabel(result.applicationCompatible, text)}</dd></div>
             <div><dt>{text.schema}</dt><dd>{result.schemaVersion} · {compatibilityLabel(result.schemaCompatible, text)}</dd></div>
@@ -497,26 +513,29 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
         ) : null}
       </div>
 
-      <div className="sk-card sk-card--muted" aria-labelledby="recovery-restore-title">
-        <div className="sk-section-heading">
-          <h2 id="recovery-restore-title">
-            {RESTORE_DRILL_AVAILABLE ? text.restoreAvailableTitle : text.restoreDeferredTitle}
-          </h2>
-          {RESTORE_DRILL_AVAILABLE ? null : (
-            <span className="sk-badge sk-badge--warning">{text.restoreComingSoon}</span>
-          )}
+      <div className="sk-settings-card" aria-labelledby="recovery-restore-title">
+        <div className="sk-settings-card__header">
+          <div className="sk-settings-card__title-group">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h2 id="recovery-restore-title" className="sk-settings-card__title">
+                {RESTORE_DRILL_AVAILABLE ? text.restoreAvailableTitle : text.restoreDeferredTitle}
+              </h2>
+              {RESTORE_DRILL_AVAILABLE ? null : (
+                <span className="sk-badge sk-badge--warning">{text.restoreComingSoon}</span>
+              )}
+            </div>
+            <p className="sk-settings-card__desc">
+              {RESTORE_DRILL_AVAILABLE ? text.restoreAvailableBody : text.restoreDeferredBody}
+            </p>
+          </div>
         </div>
-        {/* Card body copy, not field help: this is the restore card's
-            equivalent of the backup card's subtitle, so it uses the same
-            plain paragraph rather than the 0.74rem `.sk-field-help` scale
-            reserved for text attached to a single control. */}
-        <p>{RESTORE_DRILL_AVAILABLE ? text.restoreAvailableBody : text.restoreDeferredBody}</p>
 
         <Banner tone="warning">{text.recoveryBoundary}</Banner>
 
         <fieldset
           className={RESTORE_DRILL_AVAILABLE ? 'sk-form' : 'sk-form sk-fieldset--disabled'}
           disabled={!RESTORE_DRILL_AVAILABLE}
+          style={{ marginTop: '16px' }}
         >
           <div className="sk-field">
             <label className="sk-checkbox-row">

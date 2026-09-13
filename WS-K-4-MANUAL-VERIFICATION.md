@@ -40,11 +40,16 @@ for any of this** — that is one of the main things this redesign fixes.
 >   still asking Windows for the folder in a way that produces the same
 >   unusable form of path. `WS-K-4.5` stops asking for it that way at all.
 >
-> Use the **`WS-K-4.5`** installer for everything below. **The version is
+> - `WS-K-4.6` is that same `WS-K-4.5` build merged with everything that
+>   landed on the main branch meanwhile (the supplier payments and supplier
+>   returns work) — the first build carrying both the new database setup
+>   and the latest shop features.
+>
+> Use the **`WS-K-4.6`** installer for everything below. **The version is
 > now printed on the setup screen itself**, directly under "Setting up
 > Stockiha" — so you can confirm which build you are running before
 > pressing Start, without having to sign in first. If it does not say
-> `WS-K-4.5`, you are running an older installer.
+> `WS-K-4.6`, you are running an older installer.
 >
 > If setup fails again, please also send
 > `%APPDATA%\com.raqmenha.stockiha\setup.log`. It now records the exact

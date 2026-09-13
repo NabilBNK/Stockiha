@@ -354,23 +354,27 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
   const roleCodeInvalid = newRoleCode.length > 0 && !ROLE_CODE_RE.test(newRoleCode);
 
   return (
-    <section className="sk-page" data-testid="user-management-settings">
-      <div className="sk-card">
-        <h2 id="user-management-title">{text.title}</h2>
-        <p>{text.subtitle}</p>
+    <section className="sk-page sk-settings-page" data-testid="user-management-settings">
+      {error ? <Banner tone="error">{error}</Banner> : null}
+      {feedback ? <Banner tone="success">{feedback}</Banner> : null}
 
-        {error ? <Banner tone="error">{error}</Banner> : null}
-        {feedback ? <Banner tone="success">{feedback}</Banner> : null}
-
-        <div className="sk-stack">
-          <Button
-            type="button"
-            data-testid="open-create-user"
-            onClick={() => setIsCreateUserOpen(true)}
-            disabled={busy || loading}
-          >
-            {text.createUser}
-          </Button>
+      <div className="sk-settings-card">
+        <div className="sk-settings-card__header">
+          <div className="sk-settings-card__title-group">
+            <h2 id="user-management-title" className="sk-settings-card__title">{text.title}</h2>
+            <p className="sk-settings-card__desc">{text.subtitle}</p>
+          </div>
+          <div className="sk-settings-card__actions">
+            <Button
+              type="button"
+              data-testid="open-create-user"
+              className="sk-settings-header-btn"
+              onClick={() => setIsCreateUserOpen(true)}
+              disabled={busy || loading}
+            >
+              + {text.createUser}
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -378,15 +382,15 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
         ) : users.length === 0 ? (
           <p className="sk-field-help">{text.empty}</p>
         ) : (
-          <div className="sk-table-wrap">
-            <table className="sk-table" data-testid="user-management-table">
+          <div className="sk-settings-table-wrap">
+            <table className="sk-settings-table" data-testid="user-management-table">
               <thead>
                 <tr>
                   <th>{text.username}</th>
                   <th>{text.displayName}</th>
                   <th>{text.role}</th>
                   <th>{text.status}</th>
-                  <th>{text.actions}</th>
+                  <th style={{ textAlign: 'end' }}>{text.actions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -400,7 +404,7 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
                       {user.role_names.length === 0 ? (
                         <span className="sk-badge sk-badge--muted">{text.noRole}</span>
                       ) : (
-                        <div className="sk-stack">
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           {user.role_names.map((name, index) => (
                             <span key={user.role_codes[index] ?? name} className="sk-badge sk-badge--info">
                               {name}
@@ -416,8 +420,8 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
                         {user.is_active ? text.active : text.inactive}
                       </span>
                     </td>
-                    <td>
-                      <div className="sk-stack">
+                    <td style={{ textAlign: 'end' }}>
+                      <div className="sk-settings-table-actions">
                         <Button
                           type="button"
                           variant="secondary"
@@ -459,28 +463,32 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
       </div>
 
       {canManageRoles ? (
-        <div className="sk-card" data-testid="role-management-card">
-          <h2 id="role-management-title">{text.rolesTitle}</h2>
-          <p>{text.rolesSubtitle}</p>
-
-          <div className="sk-stack">
-            <Button
-              type="button"
-              data-testid="open-create-role"
-              onClick={() => setIsCreateRoleOpen(true)}
-              disabled={busy}
-            >
-              {text.createRole}
-            </Button>
+        <div className="sk-settings-card" data-testid="role-management-card">
+          <div className="sk-settings-card__header">
+            <div className="sk-settings-card__title-group">
+              <h2 id="role-management-title" className="sk-settings-card__title">{text.rolesTitle}</h2>
+              <p className="sk-settings-card__desc">{text.rolesSubtitle}</p>
+            </div>
+            <div className="sk-settings-card__actions">
+              <Button
+                type="button"
+                data-testid="open-create-role"
+                className="sk-settings-header-btn"
+                onClick={() => setIsCreateRoleOpen(true)}
+                disabled={busy}
+              >
+                + {text.createRole}
+              </Button>
+            </div>
           </div>
 
-          <div className="sk-table-wrap">
-            <table className="sk-table" data-testid="role-management-table">
+          <div className="sk-settings-table-wrap">
+            <table className="sk-settings-table" data-testid="role-management-table">
               <thead>
                 <tr>
                   <th>{text.roleCode}</th>
                   <th>{text.roleName}</th>
-                  <th>{text.actions}</th>
+                  <th style={{ textAlign: 'end' }}>{text.actions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -490,7 +498,7 @@ export function UserManagementSettingsScreen({ sessionToken }: Props) {
                       <strong>{role.code}</strong>
                     </td>
                     <td>{role.name}</td>
-                    <td>
+                    <td style={{ textAlign: 'end' }}>
                       {role.code === 'SUPER_ADMIN' ? (
                         <span className="sk-field-help">{text.superAdminLocked}</span>
                       ) : (

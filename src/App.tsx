@@ -14,6 +14,7 @@ import './App.css';
 import './styles/global.css';
 import './styles/interaction-polish.css';
 import './styles/historical-finance.css';
+import './styles/settings.css';
 
 function App() {
   return (

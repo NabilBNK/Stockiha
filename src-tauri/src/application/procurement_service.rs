@@ -2,11 +2,14 @@ use crate::application::parse_iso_date;
 use crate::domain::canonical_json::payload_hash;
 use crate::domain::procurement::{
     AllocateLandedCostResult, ConfirmDirectPurchasePayload, ConfirmDirectPurchaseResult,
-    ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult, ConfirmSupplierInvoiceResult,
-    ConfirmSupplierReturnResult, CreatePurchaseOrderPayload, CreateSupplierInvoiceResult,
-    CreateSupplierReturnResult, PostSupplierPaymentResult, ProcurementCapabilities,
-    PurchaseOrderDetailDto, PurchaseOrderSummary, PurchaseProductOption, PurchaseReceiptLineDto,
-    PurchaseReceiptSummary, UpdatePurchaseOrderPayload,
+    ConfirmPurchaseReceiptPayload, ConfirmPurchaseReceiptResult, ConfirmPurchaseReturnPayload,
+    ConfirmPurchaseReturnResult, ConfirmSupplierInvoiceResult, ConfirmSupplierReturnResult,
+    CreatePurchaseOrderPayload, CreateSupplierInvoiceResult, CreateSupplierReturnResult,
+    PostPurchasePaymentPayload, PostPurchasePaymentResult, PostSupplierPaymentResult,
+    ProcurementCapabilities, PurchaseOrderDetailDto, PurchaseOrderSummary,
+    PurchasePaymentRecordDto, PurchasePaymentStatusDto, PurchaseProductOption,
+    PurchaseReceiptLineDto, PurchaseReceiptSummary, PurchaseReturnSummaryDto,
+    PurchaseReturnableLineDto, SupplierBalanceDto, UpdatePurchaseOrderPayload,
 };
 use crate::domain::supplier::{CreateSupplierPayload, Supplier, UpdateSupplierPayload};
 use crate::error::AppError;
@@ -719,4 +722,172 @@ pub(crate) async fn list_supplier_payments(
     let payments: Vec<crate::domain::procurement::SupplierPaymentDto> = serde_json::from_value(res)
         .map_err(|e| AppError::internal(format!("Failed to parse supplier payments: {e}")))?;
     Ok(payments)
+}
+
+pub(crate) async fn post_purchase_payment(
+    pool: &PgPool,
+    session_token: &str,
+    payload: PostPurchasePaymentPayload,
+) -> Result<PostPurchasePaymentResult, AppError> {
+    let amount: Decimal = payload
+        .amount
+        .parse()
+        .map_err(|_| AppError::ValidationError {
+            diagnostic: "Invalid payment amount".to_string(),
+        })?;
+
+    let canonical = json!({
+        "receipt_document_id": payload.receipt_document_id,
+        "fiscal_period_id": payload.fiscal_period_id,
+        "document_date": payload.document_date,
+        "payment_method": payload.payment_method,
+        "amount": payload.amount,
+        "reference_number": payload.reference_number,
+    });
+    let hash = payload_hash(&canonical);
+    let doc_date = parse_iso_date(&payload.document_date)?;
+
+    let res: JsonValue = query_scalar(
+        "SELECT procurement.post_purchase_payment($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(session_token)
+    .bind(&payload.request_id)
+    .bind(hash.as_slice())
+    .bind(payload.receipt_document_id)
+    .bind(payload.fiscal_period_id)
+    .bind(doc_date)
+    .bind(&payload.payment_method)
+    .bind(amount)
+    .bind(payload.reference_number.as_deref())
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    let result: PostPurchasePaymentResult = serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse purchase payment result: {e}")))?;
+    Ok(result)
+}
+
+pub(crate) async fn list_purchase_payment_status(
+    pool: &PgPool,
+    session_token: &str,
+    receipt_document_id: Option<i64>,
+) -> Result<Vec<PurchasePaymentStatusDto>, AppError> {
+    let res: JsonValue = query_scalar("SELECT procurement.list_purchase_payment_status($1, $2)")
+        .bind(session_token)
+        .bind(receipt_document_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse purchase payment status: {e}")))
+}
+
+pub(crate) async fn list_purchase_payments(
+    pool: &PgPool,
+    session_token: &str,
+    receipt_document_id: Option<i64>,
+) -> Result<Vec<PurchasePaymentRecordDto>, AppError> {
+    let res: JsonValue = query_scalar("SELECT procurement.list_purchase_payments($1, $2)")
+        .bind(session_token)
+        .bind(receipt_document_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse purchase payments: {e}")))
+}
+
+pub(crate) async fn list_supplier_balances(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<Vec<SupplierBalanceDto>, AppError> {
+    let res: JsonValue = query_scalar("SELECT procurement.list_supplier_balances($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse supplier balances: {e}")))
+}
+
+pub(crate) async fn confirm_purchase_return(
+    pool: &PgPool,
+    session_token: &str,
+    payload: ConfirmPurchaseReturnPayload,
+) -> Result<ConfirmPurchaseReturnResult, AppError> {
+    if payload.lines.is_empty() {
+        return Err(AppError::ValidationError {
+            diagnostic: "A supplier return needs at least one line".to_string(),
+        });
+    }
+
+    let canonical = json!({
+        "receipt_document_id": payload.receipt_document_id,
+        "fiscal_period_id": payload.fiscal_period_id,
+        "document_date": payload.document_date,
+        "reason_code": payload.reason_code,
+        "note": payload.note,
+        "lines": payload.lines,
+    });
+    let hash = payload_hash(&canonical);
+    let doc_date = parse_iso_date(&payload.document_date)?;
+
+    let lines_json = serde_json::to_value(&payload.lines)
+        .map_err(|e| AppError::internal(format!("Invalid return lines JSON: {e}")))?;
+
+    let res: JsonValue = query_scalar(
+        "SELECT procurement.confirm_purchase_return($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(session_token)
+    .bind(&payload.request_id)
+    .bind(hash.as_slice())
+    .bind(payload.receipt_document_id)
+    .bind(payload.fiscal_period_id)
+    .bind(doc_date)
+    .bind(&payload.reason_code)
+    .bind(payload.note.as_deref())
+    .bind(&lines_json)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    let result: ConfirmPurchaseReturnResult = serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse purchase return result: {e}")))?;
+    Ok(result)
+}
+
+pub(crate) async fn list_purchase_returnable_lines(
+    pool: &PgPool,
+    session_token: &str,
+    receipt_document_id: i64,
+) -> Result<Vec<PurchaseReturnableLineDto>, AppError> {
+    let res: JsonValue = query_scalar("SELECT procurement.list_purchase_returnable_lines($1, $2)")
+        .bind(session_token)
+        .bind(receipt_document_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse returnable lines: {e}")))
+}
+
+pub(crate) async fn list_purchase_returns(
+    pool: &PgPool,
+    session_token: &str,
+    receipt_document_id: Option<i64>,
+) -> Result<Vec<PurchaseReturnSummaryDto>, AppError> {
+    let res: JsonValue = query_scalar("SELECT procurement.list_purchase_returns($1, $2)")
+        .bind(session_token)
+        .bind(receipt_document_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse purchase returns: {e}")))
 }

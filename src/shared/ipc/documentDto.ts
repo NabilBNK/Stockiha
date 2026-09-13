@@ -113,6 +113,9 @@ export interface BusinessDocumentRelationship {
 export interface BusinessDocumentLinkedJournal {
   document_id: number;
   document_number: string | null;
+  is_balanced?: boolean;
+  total_debit?: string;
+  total_credit?: string;
 }
 
 export interface BusinessDocumentPrintJobs {
@@ -148,6 +151,7 @@ export interface DocumentReportTypeAmount {
   type: string;
   total_amount: string;
   semantic_label: string;
+  count?: number;
 }
 
 export interface BusinessDocumentReportSummary {
