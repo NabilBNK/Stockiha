@@ -235,6 +235,17 @@ pub async fn run_setup(
     // itself refuses to initialize an already-populated directory, loudly,
     // so skipping here is a courtesy, not a safety requirement. ———
     report(SetupStep::InitializeDatabase, StepStatus::Running, None);
+    // Checked before the spawn, not after it fails: a wrong bundle layout
+    // otherwise surfaces as `os error 3` naming neither the path tried nor
+    // what is actually there. See `pg_process::preflight_bundle_layout`.
+    if let Err(detail) = pg_process::preflight_bundle_layout(&bin_dir) {
+        report(
+            SetupStep::InitializeDatabase,
+            StepStatus::Failed,
+            Some(detail.clone()),
+        );
+        return Err(SetupError::Io(detail));
+    }
     if let Some(admin_password) = &admin_password {
         if let Err(detail) = run_initdb(&bin_dir, &pgdata, admin_password) {
             report(
@@ -624,12 +635,26 @@ mod tests {
     use crate::infrastructure::pg_process::EmbeddedPostgresHandle;
     use std::sync::Mutex;
 
-    /// The real, shipped resource root (`run_setup` itself joins
-    /// `postgres/win64/bin` onto this) — resolved relative to this crate's
-    /// own manifest dir so the test works regardless of current directory.
-    /// Same binaries the built installer carries.
+    /// The **materialized** resource root — the profile directory
+    /// (`target/<profile>`) that `tauri-build` stages `bundle.resources`
+    /// into, which is exactly what `app.path().resource_dir()` returns at
+    /// runtime. `run_setup` joins `postgres/win64/bin` onto it, the same as
+    /// in production.
+    ///
+    /// Deliberately **not** `CARGO_MANIFEST_DIR/resources` (the pristine
+    /// source tree), even though that is the more obvious choice: these
+    /// tests all passed for the entire life of a bug that shipped a
+    /// flattened PostgreSQL, precisely because they read the source tree
+    /// instead of what the resource mapping actually produced. Reading the
+    /// staged tree means a packaging regression fails these tests too, not
+    /// just `pg_process`'s dedicated layout test. Do not "simplify" this
+    /// back to the manifest dir.
     fn bundled_resource_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources")
+        let exe = std::env::current_exe().expect("current_exe() must resolve");
+        exe.parent()
+            .and_then(|deps| deps.parent())
+            .expect("test binary must live at target/<profile>/deps/")
+            .to_path_buf()
     }
 
     fn temp_app_data_dir(label: &str) -> PathBuf {

@@ -196,6 +196,133 @@ pub fn resolve_pgdata_dir(app_data_dir: &Path) -> PathBuf {
     program_data.join("Stockiha").join("pgdata")
 }
 
+/// The bundled programs this app cannot do anything without, expected in
+/// `<resource_dir>/postgres/win64/bin`.
+const REQUIRED_BINARIES: [&str; 3] = ["initdb.exe", "postgres.exe", "pg_ctl.exe"];
+
+/// Verify the bundled PostgreSQL layout *before* spawning anything out of
+/// it, and say precisely what was looked for and what is actually there if
+/// it is wrong.
+///
+/// This exists because of a real shipped bug worth not repeating: the NSIS
+/// resource mapping flattened `resources/postgres/win64/**/*` into a single
+/// directory, so `bin/`, `lib/` and `share/` did not exist in the installed
+/// app at all (1,565 source files collapsed to 1,100 — 465 silently
+/// overwrote each other by basename). All the running app could report was
+/// `CreateProcess` failing with `ERROR_PATH_NOT_FOUND (os error 3)`, which
+/// names neither the path it tried nor what it found instead — identifying
+/// it took a round trip to the Owner's machine. Everything below exists to
+/// make that a single, self-explanatory message instead.
+///
+/// `share/` is checked as carefully as `bin/`: `initdb` reads its template
+/// files (`postgres.bki`, the `*.conf.sample` files, timezone data) from
+/// there, resolved relative to the binary's own location. A layout that
+/// loses `share/` but keeps `bin/` would spawn successfully and then fail
+/// *inside* `initdb` with a far more confusing message.
+pub fn preflight_bundle_layout(bin_dir: &Path) -> Result<(), String> {
+    for exe in REQUIRED_BINARIES {
+        let candidate = bin_dir.join(exe);
+        if !candidate.is_file() {
+            return Err(format!(
+                "this installation of Stockiha is incomplete: the bundled database program \
+                 '{exe}' is not where it should be.\nLooked for: {}\n{}",
+                candidate.display(),
+                describe_nearest_existing_ancestor(&candidate)
+            ));
+        }
+    }
+
+    let Some(win64_root) = bin_dir.parent() else {
+        return Err(format!(
+            "this installation of Stockiha is incomplete: '{}' has no parent folder, so the \
+             bundled database's 'share' and 'lib' folders cannot be located.",
+            bin_dir.display()
+        ));
+    };
+
+    for required_dir in ["share", "lib"] {
+        let candidate = win64_root.join(required_dir);
+        if !candidate.is_dir() {
+            return Err(format!(
+                "this installation of Stockiha is incomplete: the bundled database's \
+                 '{required_dir}' folder is missing.\nLooked for: {}\n{}",
+                candidate.display(),
+                describe_nearest_existing_ancestor(&candidate)
+            ));
+        }
+    }
+
+    // The one file inside share/ that initdb cannot start without. Checked
+    // by name rather than trusting the directory's mere existence, since a
+    // partial-flattening regression could leave share/ present but empty.
+    let bki = win64_root.join("share").join("postgres.bki");
+    if !bki.is_file() {
+        return Err(format!(
+            "this installation of Stockiha is incomplete: the bundled database's template \
+             file 'postgres.bki' is missing.\nLooked for: {}\n{}",
+            bki.display(),
+            describe_nearest_existing_ancestor(&bki)
+        ));
+    }
+
+    Ok(())
+}
+
+/// Walk up from a missing path to the nearest folder that *does* exist and
+/// list what is in it. This is the half of the diagnostic that actually
+/// identifies the problem: "looked for `…/win64/bin/initdb.exe`" says where
+/// we looked, and "`…/win64` contains `Abidjan, Accra, …, initdb.exe, …`
+/// (1,060 more)" says, unmistakably, that the folder was flattened.
+fn describe_nearest_existing_ancestor(missing: &Path) -> String {
+    let mut current = missing.parent();
+    while let Some(dir) = current {
+        if dir.is_dir() {
+            let read = match std::fs::read_dir(dir) {
+                Ok(read) => read,
+                Err(err) => {
+                    return format!(
+                        "Nearest folder that does exist: {} (its contents could not be listed: \
+                         {err})",
+                        dir.display()
+                    );
+                }
+            };
+            let mut entries: Vec<String> = read
+                .filter_map(|entry| entry.ok())
+                .map(|entry| {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if entry.path().is_dir() {
+                        format!("{name}/")
+                    } else {
+                        name
+                    }
+                })
+                .collect();
+            entries.sort();
+
+            const MAX_LISTED: usize = 40;
+            let total = entries.len();
+            let listing = if total == 0 {
+                "(the folder is empty)".to_string()
+            } else if total > MAX_LISTED {
+                format!(
+                    "{}, … ({} more, {total} altogether)",
+                    entries[..MAX_LISTED].join(", "),
+                    total - MAX_LISTED
+                )
+            } else {
+                entries.join(", ")
+            };
+            return format!(
+                "Nearest folder that does exist: {}\nIt contains: {listing}",
+                dir.display()
+            );
+        }
+        current = dir.parent();
+    }
+    "No parent folder of that path exists at all.".to_string()
+}
+
 /// Find a free TCP port, starting at `preferred` and trying nine sequential
 /// alternates if it is taken. Only ever called once, during first-run setup
 /// — the chosen port is then persisted in `database.json` and reused on
@@ -323,6 +450,11 @@ pub async fn ensure_running(
     pgdata: PathBuf,
     port: u16,
 ) -> Result<Option<std::process::Child>, String> {
+    // Runs on every launch, not just first-run setup: this is where a
+    // broken or regressed bundle layout gets caught and named, instead of
+    // surfacing later as a bare `os error 3` from `CreateProcess`.
+    preflight_bundle_layout(&bin_dir)?;
+
     if let Some(pid) = read_postmaster_pid(&pgdata) {
         match check_postmaster_pid(pid) {
             PidStatus::Alive => {
@@ -392,6 +524,148 @@ impl EmbeddedPostgresHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Where `app.path().resource_dir()` actually points during a `cargo`
+    /// build: the profile directory (`target/debug`), which is where
+    /// `tauri-build` materializes `bundle.resources` using the very same
+    /// mapping — and the same `tauri_utils::resources::ResourcePaths`
+    /// code — that the NSIS bundler uses when building the installer.
+    ///
+    /// `current_exe()` for a lib test is `target/<profile>/deps/<test>.exe`,
+    /// so two levels up is that profile directory.
+    fn staged_resource_dir() -> PathBuf {
+        let exe = std::env::current_exe().expect("current_exe() must resolve");
+        exe.parent()
+            .and_then(|deps| deps.parent())
+            .expect("test binary must live at target/<profile>/deps/")
+            .to_path_buf()
+    }
+
+    /// **The test this whole class of bug needed.** Asserts the layout of
+    /// the *materialized* resource tree — what actually ships — not the
+    /// source tree.
+    ///
+    /// Every real-PostgreSQL test in this crate resolves its binaries from
+    /// `CARGO_MANIFEST_DIR/resources`, which is pristine by construction,
+    /// so all of them passed for the entire life of a bug that shipped a
+    /// flattened, partially-overwritten PostgreSQL to real machines: the
+    /// resource mapping `resources/postgres/win64/**/*` -> `postgres/win64/`
+    /// collapsed `bin/`, `lib/` and `share/` into one directory (1,565
+    /// files down to 1,100 — the rest silently overwritten by basename).
+    /// This test reads the same path the shipped code reads, so it fails
+    /// the moment the packaging stops matching the code's expectations.
+    #[test]
+    fn the_materialized_resource_layout_is_what_the_shipped_code_expects() {
+        let bin_dir = staged_resource_dir()
+            .join("postgres")
+            .join("win64")
+            .join("bin");
+
+        if let Err(detail) = preflight_bundle_layout(&bin_dir) {
+            panic!(
+                "the resource tree materialized by bundle.resources does not match the layout \
+                 the shipped code reads (lib.rs / embedded_setup.rs both build \
+                 resource_dir/postgres/win64/bin):\n{detail}"
+            );
+        }
+    }
+
+    /// The packaging-level guard for the same bug. `tauri.conf.json`'s
+    /// `bundle.resources` map flattens **any** pattern containing a glob:
+    /// `tauri_utils::resources`'s map+glob branch computes each target as
+    /// `dest.join(path.file_name())` — basename only, directory structure
+    /// discarded (their own test asserts `src/tiles/sky/grey.tile` ->
+    /// `tiles/grey.tile`). A plain directory pattern takes the walk branch
+    /// instead, `dest.join(path.strip_prefix(pattern))`, which preserves
+    /// structure. So: no globs here, ever.
+    #[test]
+    fn the_bundle_resource_mapping_cannot_reintroduce_flattening() {
+        let conf_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+        let raw = std::fs::read_to_string(&conf_path).expect("tauri.conf.json must be readable");
+        let conf: serde_json::Value =
+            serde_json::from_str(&raw).expect("tauri.conf.json must be valid JSON");
+
+        let resources = conf["bundle"]["resources"]
+            .as_object()
+            .expect("bundle.resources must be an object (source -> target map)");
+        assert!(
+            !resources.is_empty(),
+            "bundle.resources must not be empty — the app cannot run without bundled PostgreSQL"
+        );
+
+        for (pattern, target) in resources {
+            assert!(
+                !pattern.contains('*'),
+                "bundle.resources pattern {pattern:?} (-> {target}) contains a glob. In map \
+                 form, a glob flattens every matched file into the target directory by \
+                 basename, destroying bin/, lib/ and share/ — the exact bug WS-K-4.2 fixed. \
+                 Map the directory itself instead."
+            );
+        }
+
+        assert_eq!(
+            resources
+                .get("resources/postgres/win64")
+                .and_then(|target| target.as_str()),
+            Some("postgres/win64"),
+            "the bundled PostgreSQL directory must be mapped whole, so that \
+             resource_dir/postgres/win64/bin resolves in the installed app"
+        );
+    }
+
+    #[test]
+    fn a_flattened_bundle_is_reported_with_the_path_searched_and_what_is_actually_there() {
+        // Reproduces the exact shipped layout: everything dumped directly
+        // into win64/, no bin/ at all.
+        let root = temp_pgdata("flattened-bundle");
+        let win64 = root.join("postgres").join("win64");
+        std::fs::create_dir_all(&win64).unwrap();
+        std::fs::write(win64.join("initdb.exe"), b"").unwrap();
+        std::fs::write(win64.join("Abidjan"), b"").unwrap();
+
+        let bin_dir = win64.join("bin");
+        let err = preflight_bundle_layout(&bin_dir).expect_err("a flattened bundle must fail");
+
+        // Names the exact absolute path it looked for...
+        assert!(
+            err.contains(&bin_dir.join("initdb.exe").display().to_string()),
+            "error must name the absolute path searched, got: {err}"
+        );
+        // ...and lists what is actually at the nearest existing folder,
+        // which is what makes the flattening self-evident.
+        assert!(
+            err.contains("Nearest folder that does exist"),
+            "error must name the nearest existing folder, got: {err}"
+        );
+        assert!(
+            err.contains("Abidjan") && err.contains("initdb.exe"),
+            "error must list what is actually there, got: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_bundle_missing_share_is_caught_even_though_every_binary_is_present() {
+        // The subtler regression: bin/ survives, share/ does not. Without
+        // this check it spawns fine and then dies inside initdb with a
+        // message about a missing "database system directory".
+        let root = temp_pgdata("bundle-without-share");
+        let bin_dir = root.join("postgres").join("win64").join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        std::fs::create_dir_all(root.join("postgres").join("win64").join("lib")).unwrap();
+        for exe in REQUIRED_BINARIES {
+            std::fs::write(bin_dir.join(exe), b"").unwrap();
+        }
+
+        let err = preflight_bundle_layout(&bin_dir).expect_err("a bundle without share/ must fail");
+        assert!(
+            err.contains("share"),
+            "error must name the missing share folder, got: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn a_dead_process_is_reported_dead() {
@@ -509,9 +783,11 @@ mod tests {
     // `trust` auth is used here (never in shipped code): these tests only
     // care about process lifecycle, not credentials.
 
+    /// The materialized (staged) bundle, not the source tree — see
+    /// `embedded_setup`'s `bundled_resource_dir` for why that distinction
+    /// is load-bearing rather than incidental.
     fn bundled_bin_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("resources")
+        staged_resource_dir()
             .join("postgres")
             .join("win64")
             .join("bin")

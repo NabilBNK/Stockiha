@@ -14,6 +14,14 @@ Written for a non-developer: what to do, what you should see, and what it
 means if you see something else. **You do not need Administrator rights
 for any of this** — that is one of the main things this redesign fixes.
 
+> **If you tested the earlier build (version `WS-K-4.1`) and setup failed
+> at the "setting up the database" step:** that was a packaging fault, now
+> fixed in `WS-K-4.2`. The installer was putting PostgreSQL's files in the
+> wrong place — all of them dumped into a single folder instead of the
+> `bin`, `lib` and `share` folders it needs — so the app could not find
+> the program it had to run. You need the **new** installer for the steps
+> below; the old one cannot work no matter how many times it is retried.
+
 Everything below assumes you are testing on a clean Windows machine (a
 fresh VM, or a machine that has never had Stockiha on it before), unless a
 step says otherwise.

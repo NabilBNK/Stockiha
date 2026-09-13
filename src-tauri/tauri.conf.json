@@ -33,7 +33,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/postgres/win64/**/*": "postgres/win64/"
+      "resources/postgres/win64": "postgres/win64"
     },
     "windows": {
       "nsis": {
