@@ -15,12 +15,15 @@ import { listCustomers } from '../../shared/ipc/customerGateway';
 import { authorizeCreditOverride, confirmCreditSale } from '../../shared/ipc/creditSaleGateway';
 import type { Customer } from '../../shared/ipc/customerDto';
 import type { CreditSaleResult } from '../../shared/ipc/creditSaleDto';
-import type { ProductListItem, ProductListItemV2, ReferenceLifecycleItem } from '../../shared/ipc/dto';
+import type { ProductListItem, ProductListItemV2, ReferenceLifecycleItem, VariantAttributeDto } from '../../shared/ipc/dto';
 import { addExactMoney, multiplyMoneyByQuantity } from '../../shared/money/exactMoney';
 import { formatExactDecimal, isExactDecimalZero } from '../inventory/exactDecimal';
 import { ReceiptView } from '../documents/ReceiptView';
 import { resolveBarcodeFirst } from '../../shared/search/barcodeFirstSearch';
 import { ItemSearchModal } from '../../shared/components/ItemSearchModal';
+import { printSaleReceipt, type PrintOutcome } from './printReceipt';
+import { formatReceiptItemName } from './receiptBuilder';
+import type { PrintingSettingsDto } from '../../shared/ipc/dto';
 
 interface CartLine {
   variantId: number;
@@ -28,6 +31,9 @@ interface CartLine {
   name: string;
   unitPrice: string;
   qty: number;
+  productName?: string;
+  variantName?: string;
+  attributes?: VariantAttributeDto[];
 }
 
 type PaymentMode = 'cash' | 'credit';
@@ -71,6 +77,13 @@ function currentLocalDate(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function currentLocalTime(): string {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 function toProductListItem(row: ProductListItemV2): ProductListItem {
@@ -123,6 +136,9 @@ export function PosScreen() {
   const [clearing, setClearing] = useState(false);
   const [lastSaleDocId, setLastSaleDocId] = useState<number | null>(null);
   const [lastCreditSale, setLastCreditSale] = useState<CreditSaleResult | null>(null);
+  const [printingSettings, setPrintingSettings] = useState<PrintingSettingsDto | null>(null);
+  const [printOutcome, setPrintOutcome] = useState<PrintOutcome | null>(null);
+  const [lastReceiptInput, setLastReceiptInput] = useState<Parameters<typeof printSaleReceipt>[0] | null>(null);
 
   const [overridePromptOpen, setOverridePromptOpen] = useState(false);
   const [overrideBusy, setOverrideBusy] = useState(false);
@@ -137,10 +153,12 @@ export function PosScreen() {
     Promise.all([
       listCustomers(token, false).catch(() => []),
       ipc.listCategories(token).catch(() => []),
+      ipc.getPrintingSettings(token).catch(() => null),
     ])
-      .then(([customerRows, categoryRows]) => {
+      .then(([customerRows, categoryRows, printingRow]) => {
         setCustomers(customerRows);
         setCategories(categoryRows.filter((category) => category.is_active));
+        setPrintingSettings(printingRow);
       })
       .finally(() => setLoading(false));
   }, [token]);
@@ -210,6 +228,8 @@ export function PosScreen() {
     setBanner(null);
     setLastSaleDocId(null);
     setLastCreditSale(null);
+    setPrintOutcome(null);
+    setLastReceiptInput(null);
   }, []);
 
   const mutateCart = useCallback((next: (prev: CartLine[]) => CartLine[]) => {
@@ -283,10 +303,16 @@ export function PosScreen() {
     setBanner(null);
   }
 
-  function displayNameOf(product: ProductListItemV2): string {
-    return product.variant_name
-      ? `${product.product_name} — ${product.variant_name}`
-      : product.product_name;
+  function displayNameOf(product: { product_name?: string; variant_name?: string }): string {
+    const pName = (product.product_name ?? '').trim();
+    const vName = (product.variant_name ?? '').trim();
+    if (!vName || vName === pName) {
+      return pName || vName;
+    }
+    if (pName && vName.toLowerCase().startsWith(pName.toLowerCase())) {
+      return vName;
+    }
+    return pName ? `${pName} — ${vName}` : vName;
   }
 
   function addToCart(p: ProductListItemV2) {
@@ -303,6 +329,9 @@ export function PosScreen() {
           name: displayNameOf(p),
           unitPrice: p.sale_price,
           qty: 1,
+          productName: p.product_name,
+          variantName: p.variant_name,
+          attributes: p.attributes,
         },
       ];
     });
@@ -314,10 +343,7 @@ export function PosScreen() {
       if (existing) {
         return prev.map((l) => (l.variantId === item.variant_id ? { ...l, qty: l.qty + 1 } : l));
       }
-      const displayName =
-        item.product_name && item.name && item.product_name !== item.name
-          ? `${item.product_name} — ${item.name}`
-          : item.name || item.product_name || item.sku;
+      const displayName = displayNameOf({ product_name: item.product_name, variant_name: item.name });
 
       return [
         ...prev,
@@ -327,6 +353,9 @@ export function PosScreen() {
           name: displayName,
           unitPrice: item.sale_price,
           qty: 1,
+          productName: item.product_name,
+          variantName: item.name,
+          attributes: item.attributes,
         },
       ];
     });
@@ -399,6 +428,35 @@ export function PosScreen() {
     [cart],
   );
 
+  const runReceiptPrint = useCallback(
+    async (documentNumber: string, customerName: string | null) => {
+      const input = {
+        documentNumber,
+        documentDate: currentLocalDate(),
+        documentTime: currentLocalTime(),
+        cashierName: user?.username ?? '',
+        paymentLabel: paymentMode === 'cash' ? creditText.cash : creditText.credit,
+        customerName,
+        lines: cart.map((l) => ({
+          name: formatReceiptItemName({
+            productName: l.productName,
+            variantName: l.variantName,
+            fallbackName: l.name,
+            attributes: l.attributes,
+          }),
+          qty: l.qty,
+          unitPrice: l.unitPrice,
+          lineTotal: multiplyMoneyByQuantity(l.unitPrice, l.qty),
+        })),
+        total: provisionalTotal,
+        currency: 'DZD',
+      };
+      setLastReceiptInput(input);
+      setPrintOutcome(await printSaleReceipt(input, printingSettings));
+    },
+    [cart, provisionalTotal, paymentMode, printingSettings, user, creditText],
+  );
+
   async function confirmSale() {
     setConfirming(false);
     if (
@@ -435,6 +493,7 @@ export function PosScreen() {
         setCreditOverrideToken(null);
         setLastSaleDocId(null);
         setLastCreditSale(result);
+        void runReceiptPrint(result.document_number, selectedCustomer?.name ?? null);
       } else {
         const documentId = await ipc.confirmCashSale(token, {
           requestId: rid,
@@ -450,6 +509,7 @@ export function PosScreen() {
         setCreditOverrideToken(null);
         setLastCreditSale(null);
         setLastSaleDocId(documentId);
+        void runReceiptPrint(String(documentId), null);
       }
     } catch (err) {
       const code = codeForError(err);
@@ -776,6 +836,28 @@ export function PosScreen() {
                 <Banner tone="success" testId="pos-sold">
                   {t('pos.sold', { number: lastSaleDocId })}
                 </Banner>
+                {printOutcome && printOutcome.status !== 'disabled' ? (
+                  <div className="sk-pos__print-status" data-testid="pos-print-status">
+                    {printOutcome.status === 'printed' ? (
+                      <Banner tone="success" testId="pos-print-ok">{t('pos.printOk')}</Banner>
+                    ) : (
+                      <>
+                        <Banner tone="warning" testId="pos-print-failed">{t('pos.printFailed')}</Banner>
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            if (lastReceiptInput) {
+                              void printSaleReceipt(lastReceiptInput, printingSettings).then(setPrintOutcome);
+                            }
+                          }}
+                          data-testid="pos-reprint"
+                        >
+                          {t('pos.reprint')}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -793,6 +875,7 @@ export function PosScreen() {
             <div className="sk-pos__receipt-scroll-body">
               <ReceiptView
                 documentId={lastSaleDocId}
+                showJobs={false}
                 onClose={() => {
                   setLastSaleDocId(null);
                   mutateCart(() => []);
@@ -806,6 +889,28 @@ export function PosScreen() {
       {lastCreditSale ? (
         <div className="sk-card" data-testid="credit-sale-success">
           <Banner tone="success">{creditText.creditPosted}: {lastCreditSale.document_number}</Banner>
+          {printOutcome && printOutcome.status !== 'disabled' ? (
+            <div className="sk-pos__print-status" data-testid="pos-print-status">
+              {printOutcome.status === 'printed' ? (
+                <Banner tone="success" testId="pos-print-ok">{t('pos.printOk')}</Banner>
+              ) : (
+                <>
+                  <Banner tone="warning" testId="pos-print-failed">{t('pos.printFailed')}</Banner>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      if (lastReceiptInput) {
+                        void printSaleReceipt(lastReceiptInput, printingSettings).then(setPrintOutcome);
+                      }
+                    }}
+                    data-testid="pos-reprint"
+                  >
+                    {t('pos.reprint')}
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : null}
           <p>{creditText.due}: <strong>{lastCreditSale.due_date}</strong></p>
           <p>{creditText.newExposure}: <strong>{lastCreditSale.exposure_amount}</strong></p>
           <p>{creditText.available}: <strong>{lastCreditSale.available_credit}</strong></p>

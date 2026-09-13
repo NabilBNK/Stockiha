@@ -48,9 +48,11 @@ function formatReceiptDateTime(dateStr: string | null | undefined, locale: Local
 
 export function ReceiptView({
   documentId,
+  showJobs = true,
   onClose,
 }: {
   documentId: number;
+  showJobs?: boolean;
   onClose?: () => void;
 }) {
   const { t, locale } = useI18n();
@@ -99,6 +101,7 @@ export function ReceiptView({
   // Modest polling: refresh job statuses every 2s until all are terminal;
   // always cleared on unmount.
   useEffect(() => {
+    if (!showJobs) return;
     const anyPending = jobs.some((j) => !TERMINAL_STATUSES.has(j.status));
     if (!anyPending) {
       if (pollRef.current) {
@@ -115,7 +118,7 @@ export function ReceiptView({
         pollRef.current = null;
       }
     };
-  }, [jobs, loadJobs]);
+  }, [jobs, loadJobs, showJobs]);
 
   const handlePrint = useCallback(() => {
     if (!doc) return;
@@ -278,46 +281,48 @@ export function ReceiptView({
         </div>
 
         {/* Jobs & Hardware Status */}
-        <div className="sk-receipt__jobs-card">
-          <div className="sk-receipt__jobs-title-row">
-            <h3>{t('jobs.title')}</h3>
-            <Button variant="secondary" className="sk-button--small" onClick={() => void loadJobs()}>
-              ↻ {t('jobs.refresh')}
-            </Button>
-          </div>
-          <div className="sk-table-wrap">
-            <table className="sk-table" data-testid="receipt-jobs">
-              <thead>
-                <tr>
-                  <th>{t('jobs.kind')}</th>
-                  <th>{t('jobs.status')}</th>
-                  <th className="sk-num">{t('jobs.attempts')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {jobs.map((j) => (
-                  <tr key={`${j.job_kind}-${j.id}`}>
-                    <td><strong>{t(JOB_KIND_KEY[j.job_kind])}</strong></td>
-                    <td>
-                      <span
-                        className={`sk-badge ${
-                          j.status === 'COMPLETED' || j.status === 'PULSE_SUBMITTED'
-                            ? 'sk-badge--success'
-                            : j.status === 'PENDING'
-                            ? 'sk-badge--warning'
-                            : 'sk-badge--secondary'
-                        }`}
-                      >
-                        {j.status}
-                      </span>
-                    </td>
-                    <td className="sk-num">{j.attempt_count}</td>
+        {showJobs ? (
+          <div className="sk-receipt__jobs-card">
+            <div className="sk-receipt__jobs-title-row">
+              <h3>{t('jobs.title')}</h3>
+              <Button variant="secondary" className="sk-button--small" onClick={() => void loadJobs()}>
+                ↻ {t('jobs.refresh')}
+              </Button>
+            </div>
+            <div className="sk-table-wrap">
+              <table className="sk-table" data-testid="receipt-jobs">
+                <thead>
+                  <tr>
+                    <th>{t('jobs.kind')}</th>
+                    <th>{t('jobs.status')}</th>
+                    <th className="sk-num">{t('jobs.attempts')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {jobs.map((j) => (
+                    <tr key={`${j.job_kind}-${j.id}`}>
+                      <td><strong>{t(JOB_KIND_KEY[j.job_kind])}</strong></td>
+                      <td>
+                        <span
+                          className={`sk-badge ${
+                            j.status === 'COMPLETED' || j.status === 'PULSE_SUBMITTED'
+                              ? 'sk-badge--success'
+                              : j.status === 'PENDING'
+                              ? 'sk-badge--warning'
+                              : 'sk-badge--secondary'
+                          }`}
+                        >
+                          {j.status}
+                        </span>
+                      </td>
+                      <td className="sk-num">{j.attempt_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {/* Print Note Info Banner */}
         <Banner tone="info">{t('receipt.printNote')}</Banner>

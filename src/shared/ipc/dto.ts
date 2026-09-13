@@ -29,7 +29,7 @@ export interface ProductListItem {
   primary_barcode?: string | null;
   category_name?: string | null;
   default_unit_code?: string | null;
-  attributes?: { name: string; value: string }[];
+  attributes?: VariantAttributeDto[];
   sale_price: string;
   is_active: boolean;
   quantity_on_hand: string;
@@ -674,6 +674,7 @@ export interface BrandDto {
 export interface VariantAttributeDto {
   name: string;
   value: string;
+  visible_on_receipt?: boolean;
 }
 
 export interface AlternateUnitOptionDto {
@@ -790,7 +791,7 @@ export interface JournalDetail extends JournalSummary {
 // a plain count, not a monetary/quantity value, so it stays a number, same
 // as the existing CatalogProduct.variant_count precedent above.
 
-export interface ReferenceLifecycleItem { id: number; name: string; is_active: boolean; usage_count: number; }
+export interface ReferenceLifecycleItem { id: number; name: string; is_active: boolean; visible_on_receipt?: boolean; usage_count: number; }
 export interface AttributeValueLifecycleItem { id: number; attribute_id: number; attribute_name: string; value: string; is_active: boolean; usage_count: number; }
 // WS-D-13 Phase A: `allows_fractions` says whether quantities in this unit may
 // carry a fractional part (true for Kg/Litre, false for Piece/Box). It is UI
@@ -968,3 +969,29 @@ export interface PurchaseReturnSummaryDto {
   journal_document_number: string | null;
   posted_at: string;
 }
+
+export type ReceiptTarget = 'THERMAL' | 'A4';
+
+export interface PrintingSettingsDto {
+  receipt_printing_enabled: boolean;
+  receipt_target: ReceiptTarget;
+  thermal_printer_name: string | null;
+  thermal_columns: 32 | 42 | 48;
+  shop_name: string | null;
+  shop_address: string | null;
+  shop_phone: string | null;
+  receipt_footer: string | null;
+  updated_at: string;
+}
+
+export interface SavePrintingSettingsPayload {
+  receipt_printing_enabled: boolean;
+  receipt_target: ReceiptTarget;
+  thermal_printer_name: string | null;
+  thermal_columns: 32 | 42 | 48;
+  shop_name: string | null;
+  shop_address: string | null;
+  shop_phone: string | null;
+  receipt_footer: string | null;
+}
+

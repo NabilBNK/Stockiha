@@ -20,6 +20,7 @@ export interface AttributesManagerProps {
   onCreateAttribute: (name: string) => Promise<void>;
   onRenameAttribute: (id: number, name: string) => Promise<void>;
   onToggleAttributeActive: (id: number, isActive: boolean) => Promise<void>;
+  onToggleAttributeVisibleOnReceipt?: (id: number, visibleOnReceipt: boolean) => Promise<void>;
   onDeleteAttribute: (id: number) => Promise<void>;
   onAddValue: (attributeId: number, value: string) => Promise<void>;
   onRenameValue: (id: number, value: string) => Promise<void>;
@@ -29,7 +30,7 @@ export interface AttributesManagerProps {
 
 export function AttributesManager({
   attributes, attributeValues, loading, error,
-  onCreateAttribute, onRenameAttribute, onToggleAttributeActive, onDeleteAttribute,
+  onCreateAttribute, onRenameAttribute, onToggleAttributeActive, onToggleAttributeVisibleOnReceipt, onDeleteAttribute,
   onAddValue, onRenameValue, onToggleValueActive, onDeleteValue,
 }: AttributesManagerProps) {
   const { t } = useI18n();
@@ -91,6 +92,20 @@ export function AttributesManager({
     setAttrRowError(null);
     try {
       await onToggleAttributeActive(item.id, !item.is_active);
+    } catch (err) {
+      setAttrRowError(errorText(err));
+    } finally {
+      setBusyAttrId(null);
+    }
+  }
+
+  async function handleToggleVisibleOnReceipt(item: ReferenceLifecycleItem) {
+    if (busyAttrId != null || !onToggleAttributeVisibleOnReceipt) return;
+    setBusyAttrId(item.id);
+    setAttrRowError(null);
+    try {
+      const nextVal = item.visible_on_receipt === false;
+      await onToggleAttributeVisibleOnReceipt(item.id, nextVal);
     } catch (err) {
       setAttrRowError(errorText(err));
     } finally {
@@ -171,6 +186,20 @@ export function AttributesManager({
                         ? t('catalogueSetup.common.active')
                         : t('catalogueSetup.common.inactive')}
                     </span>
+                    {attribute.visible_on_receipt === false ? (
+                      <span
+                        className="sk-muted"
+                        style={{
+                          fontSize: '0.75rem',
+                          background: 'rgba(0,0,0,0.06)',
+                          padding: '0.15rem 0.45rem',
+                          borderRadius: '4px',
+                          marginInlineStart: '0.5rem',
+                        }}
+                      >
+                        {t('catalogueSetup.attributes.hiddenOnReceiptBadge')}
+                      </span>
+                    ) : null}
                   </button>
                   <div className="sk-catalogue-setup__actions">
                     {isEditing ? (
@@ -188,6 +217,32 @@ export function AttributesManager({
                       </>
                     ) : (
                       <>
+                        {onToggleAttributeVisibleOnReceipt ? (
+                          <label
+                            className="sk-checkbox-row"
+                            title={t('catalogueSetup.attributes.visibleOnReceiptHint')}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              marginInlineEnd: '0.5rem',
+                              cursor: 'pointer',
+                              userSelect: 'none',
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={attribute.visible_on_receipt !== false}
+                              disabled={isBusy}
+                              onChange={() => void handleToggleVisibleOnReceipt(attribute)}
+                              data-testid={`toggle-receipt-visible-${attribute.id}`}
+                            />
+                            <span style={{ fontSize: '0.85rem' }}>
+                              {t('catalogueSetup.attributes.visibleOnReceipt')}
+                            </span>
+                          </label>
+                        ) : null}
                         <Button variant="secondary" onClick={() => startEditAttr(attribute)} disabled={busyAttrId != null}>
                           {t('catalogueSetup.actions.rename')}
                         </Button>

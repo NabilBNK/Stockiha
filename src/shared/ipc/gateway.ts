@@ -463,6 +463,10 @@ export function setAttributeActive(sessionToken: string, attributeId: number, is
   return call<void>(COMMANDS.SET_ATTRIBUTE_ACTIVE, { sessionToken, attributeId, isActive });
 }
 
+export function setAttributeVisibleOnReceipt(sessionToken: string, attributeId: number, visibleOnReceipt: boolean): Promise<void> {
+  return call<void>(COMMANDS.SET_ATTRIBUTE_VISIBLE_ON_RECEIPT, { sessionToken, attributeId, visibleOnReceipt });
+}
+
 export function deleteAttribute(sessionToken: string, attributeId: number): Promise<void> {
   return call<void>(COMMANDS.DELETE_ATTRIBUTE, { sessionToken, attributeId });
 }
@@ -889,4 +893,34 @@ export function listPurchaseReturns(
     receiptDocumentId: receiptDocumentId ?? null,
   });
 }
+
+export function getPrintingSettings(
+  sessionToken: string
+): Promise<import('./dto').PrintingSettingsDto> {
+  return call<import('./dto').PrintingSettingsDto>(COMMANDS.GET_PRINTING_SETTINGS, {
+    sessionToken,
+  });
+}
+
+export function savePrintingSettings(
+  sessionToken: string,
+  payload: import('./dto').SavePrintingSettingsPayload
+): Promise<import('./dto').PrintingSettingsDto> {
+  return call<import('./dto').PrintingSettingsDto>(COMMANDS.SAVE_PRINTING_SETTINGS, {
+    sessionToken,
+    receiptPrintingEnabled: payload.receipt_printing_enabled,
+    receiptTarget: payload.receipt_target,
+    thermalPrinterName: payload.thermal_printer_name,
+    thermalColumns: payload.thermal_columns,
+    shopName: payload.shop_name,
+    shopAddress: payload.shop_address,
+    shopPhone: payload.shop_phone,
+    receiptFooter: payload.receipt_footer,
+  });
+}
+
+export function printRawReceipt(printerName: string, payload: number[]): Promise<number> {
+  return call<number>(COMMANDS.PRINT_RAW_RECEIPT, { printerName, payload });
+}
+
 

@@ -37,7 +37,7 @@ pub(crate) mod schema_version;
 // the harmless payload builder are platform-neutral and unit-tested on every
 // platform. Only the Win32 FFI writer and the live proof are cfg(windows).
 #[cfg_attr(not(test), allow(dead_code))]
-mod escpos_proof;
+pub(crate) mod escpos_proof;
 // S0-007: Typst French/Arabic PDF generation proof. Crate-private and
 // consumer-free (no Tauri command, no IPC); dead code in non-test builds until
 // a later slice renders real documents. The exemption is removed then.

@@ -483,7 +483,7 @@ describe('WS-F-1 Touchscreen Till Workflow', () => {
     expect(await screen.findByTestId('receipt')).toBeInTheDocument();
     expect(screen.getAllByTestId('receipt-number')[0]).toHaveTextContent('VC-2026-000001');
     expect(screen.getByTestId('receipt-total-amount')).toHaveTextContent('150.00 DZD');
-    expect(screen.getByTestId('receipt-jobs')).toBeInTheDocument();
+    expect(screen.queryByTestId('receipt-jobs')).toBeNull();
 
     // Click "Start new sale" to return to fresh till
     const newSaleBtn = screen.getByRole('button', { name: /start new sale/i });

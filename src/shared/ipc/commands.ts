@@ -126,6 +126,7 @@ export const COMMANDS = {
   LIST_ATTRIBUTES_V2: 'list_attributes_v2',
   RENAME_ATTRIBUTE: 'rename_attribute',
   SET_ATTRIBUTE_ACTIVE: 'set_attribute_active',
+  SET_ATTRIBUTE_VISIBLE_ON_RECEIPT: 'set_attribute_visible_on_receipt',
   DELETE_ATTRIBUTE: 'delete_attribute',
   LIST_ATTRIBUTE_VALUES: 'list_attribute_values',
   RENAME_ATTRIBUTE_VALUE: 'rename_attribute_value',
@@ -198,6 +199,11 @@ export const COMMANDS = {
   LIST_ROLES: 'list_roles',
   LIST_ROLE_PERMISSIONS: 'list_role_permissions',
   SET_ROLE_PERMISSIONS: 'set_role_permissions',
+
+  // WS-F-2 Receipt Printing
+  GET_PRINTING_SETTINGS: 'get_printing_settings',
+  SAVE_PRINTING_SETTINGS: 'save_printing_settings',
+  PRINT_RAW_RECEIPT: 'print_raw_receipt',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

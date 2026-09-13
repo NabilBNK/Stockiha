@@ -3129,3 +3129,11 @@ fieldset.sk-form {
   font-size: 1.1rem;
 }
 
+.sk-pos__print-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-block-start: 8px;
+}
+
+
