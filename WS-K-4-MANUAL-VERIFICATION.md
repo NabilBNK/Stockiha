@@ -14,13 +14,24 @@ Written for a non-developer: what to do, what you should see, and what it
 means if you see something else. **You do not need Administrator rights
 for any of this** — that is one of the main things this redesign fixes.
 
-> **If you tested the earlier build (version `WS-K-4.1`) and setup failed
-> at the "setting up the database" step:** that was a packaging fault, now
-> fixed in `WS-K-4.2`. The installer was putting PostgreSQL's files in the
-> wrong place — all of them dumped into a single folder instead of the
-> `bin`, `lib` and `share` folders it needs — so the app could not find
-> the program it had to run. You need the **new** installer for the steps
-> below; the old one cannot work no matter how many times it is retried.
+> **If you tested an earlier build and setup failed at the "Initializing
+> the database" step, you need the newest installer.** Two separate faults
+> were found by testing on real machines, and neither can be worked around
+> by pressing Retry:
+>
+> - `WS-K-4.1` put PostgreSQL's files in the wrong place — all of them
+>   dumped into a single folder instead of the `bin`, `lib` and `share`
+>   folders it needs. Fixed in `WS-K-4.2`.
+> - `WS-K-4.2` put them in the right place, but the database programs
+>   still could not start on a computer that has never had developer
+>   tools installed: they need a standard Microsoft component
+>   (`VCRUNTIME140.dll`) that is not part of a clean Windows install.
+>   Every development machine already had it, which is why this only
+>   appeared on a fresh PC. Fixed in `WS-K-4.3` by including that
+>   component with the app.
+>
+> Use the **`WS-K-4.3`** installer for everything below. You can confirm
+> the version after signing in: it is printed under the dashboard title.
 
 Everything below assumes you are testing on a clean Windows machine (a
 fresh VM, or a machine that has never had Stockiha on it before), unless a

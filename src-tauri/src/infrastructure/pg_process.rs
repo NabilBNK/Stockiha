@@ -200,6 +200,68 @@ pub fn resolve_pgdata_dir(app_data_dir: &Path) -> PathBuf {
 /// `<resource_dir>/postgres/win64/bin`.
 const REQUIRED_BINARIES: [&str; 3] = ["initdb.exe", "postgres.exe", "pg_ctl.exe"];
 
+/// The Microsoft Visual C++ runtime DLLs that PostgreSQL's own binaries are
+/// linked against, deployed **app-local** (next to the `.exe`s in `bin/`,
+/// which is first in Windows' DLL search order).
+///
+/// These are not part of a clean Windows install — they come from the
+/// Visual C++ 2015-2022 Redistributable. EDB's official PostgreSQL
+/// installer installs that redistributable as one of its steps; Stockiha
+/// bundles the raw binaries from the zip instead, so it inherited a
+/// dependency it was not shipping. On a fresh machine every bundled
+/// PostgreSQL program therefore died during loading with
+/// `0xC0000135` (`STATUS_DLL_NOT_FOUND`) before executing a single
+/// instruction — while every development machine worked, because Visual
+/// Studio's Build Tools put these same DLLs in `System32`.
+///
+/// App-local deployment (rather than running `vc_redist.x64.exe` during
+/// install) is what keeps the WS-K-4 promise intact: no elevation, no
+/// admin rights, no machine-wide change.
+const REQUIRED_RUNTIME_DLLS: [&str; 3] = ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"];
+
+/// Windows exit codes that mean "the program never actually ran".
+///
+/// These arrive as the child's exit status with **no stderr at all** — the
+/// loader fails before `main`, so there is nothing for the program itself
+/// to print. Left untranslated, the operator sees only a bare hex number
+/// (the real report from the field was `initdb exited with exit code:
+/// 0xc0000135:` followed by nothing).
+pub fn explain_startup_exit_code(code: u32) -> Option<&'static str> {
+    match code {
+        0xC000_0135 => Some(
+            "a required Windows runtime component was missing, so the database program could \
+             not start at all",
+        ),
+        0xC000_0142 => Some(
+            "a required component failed to initialize, so the database program could not \
+             start at all",
+        ),
+        0xC000_007B => Some(
+            "a required component was the wrong type (32-bit instead of 64-bit), so the \
+             database program could not start at all",
+        ),
+        _ => None,
+    }
+}
+
+/// Run bundled console programs without flashing a console window.
+///
+/// Stockiha is a GUI process with no console of its own, so Windows creates
+/// a fresh one for every console-subsystem child unless told not to —
+/// visible to the operator as a black window mid-setup, which the manual
+/// verification document explicitly promises will never appear.
+#[cfg(windows)]
+pub fn hide_console_window(command: &mut std::process::Command) -> &mut std::process::Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW)
+}
+
+#[cfg(not(windows))]
+pub fn hide_console_window(command: &mut std::process::Command) -> &mut std::process::Command {
+    command
+}
+
 /// Verify the bundled PostgreSQL layout *before* spawning anything out of
 /// it, and say precisely what was looked for and what is actually there if
 /// it is wrong.
@@ -226,6 +288,23 @@ pub fn preflight_bundle_layout(bin_dir: &Path) -> Result<(), String> {
             return Err(format!(
                 "this installation of Stockiha is incomplete: the bundled database program \
                  '{exe}' is not where it should be.\nLooked for: {}\n{}",
+                candidate.display(),
+                describe_nearest_existing_ancestor(&candidate)
+            ));
+        }
+    }
+
+    // Checked in the same breath as the binaries themselves: a missing
+    // runtime DLL is not a "maybe it still works" condition — every one of
+    // the programs above fails to load, before executing anything, with an
+    // exit code and no error text. See REQUIRED_RUNTIME_DLLS.
+    for dll in REQUIRED_RUNTIME_DLLS {
+        let candidate = bin_dir.join(dll);
+        if !candidate.is_file() {
+            return Err(format!(
+                "this installation of Stockiha is incomplete: the Windows runtime component \
+                 '{dll}', which the bundled database programs need in order to start, is \
+                 missing.\nLooked for: {}\n{}",
                 candidate.display(),
                 describe_nearest_existing_ancestor(&candidate)
             ));
@@ -348,7 +427,9 @@ fn is_port_free(port: u16) -> bool {
 /// fails to exit in time.
 pub fn spawn_postgres(bin_dir: &Path, pgdata: &Path) -> io::Result<std::process::Child> {
     let postgres_exe = bin_dir.join("postgres.exe");
-    std::process::Command::new(postgres_exe)
+    let mut command = std::process::Command::new(postgres_exe);
+    hide_console_window(&mut command);
+    command
         .arg("-D")
         .arg(pgdata)
         .stdin(std::process::Stdio::null())
@@ -419,7 +500,9 @@ pub fn stop_postgres(
 
 fn run_pg_ctl_stop(pg_ctl: &Path, pgdata: &Path, mode: &str, timeout: Duration) -> bool {
     let timeout_secs = timeout.as_secs().max(1).to_string();
-    std::process::Command::new(pg_ctl)
+    let mut command = std::process::Command::new(pg_ctl);
+    hide_console_window(&mut command);
+    command
         .arg("stop")
         .arg("-D")
         .arg(pgdata)
@@ -611,6 +694,169 @@ mod tests {
             "the bundled PostgreSQL directory must be mapped whole, so that \
              resource_dir/postgres/win64/bin resolves in the installed app"
         );
+    }
+
+    /// Minimal PE import-table reader: the names of every DLL `pe_path`
+    /// imports. Deliberately reads the file itself rather than shelling out
+    /// to `dumpbin` (not present on most machines) — and, crucially, rather
+    /// than asking the *running* system what it can resolve.
+    fn imported_dll_names(pe_path: &Path) -> Vec<String> {
+        let data = std::fs::read(pe_path)
+            .unwrap_or_else(|e| panic!("could not read {}: {e}", pe_path.display()));
+        let u16_at = |off: usize| u16::from_le_bytes(data[off..off + 2].try_into().unwrap());
+        let u32_at = |off: usize| u32::from_le_bytes(data[off..off + 4].try_into().unwrap());
+
+        let pe = u32_at(0x3C) as usize;
+        assert_eq!(
+            &data[pe..pe + 4],
+            b"PE\0\0",
+            "{} is not a PE image",
+            pe_path.display()
+        );
+
+        let coff = pe + 4;
+        let section_count = u16_at(coff + 2) as usize;
+        let optional_header_size = u16_at(coff + 16) as usize;
+        let optional = coff + 20;
+
+        // Data directories sit at a different offset for PE32 vs PE32+.
+        let data_dirs = match u16_at(optional) {
+            0x20b => optional + 112,
+            0x10b => optional + 96,
+            other => panic!("unexpected optional header magic {other:#x}"),
+        };
+        // Directory entry 1 is the import table.
+        let import_rva = u32_at(data_dirs + 8) as usize;
+        if import_rva == 0 {
+            return Vec::new();
+        }
+
+        let sections = optional + optional_header_size;
+        let to_offset = |rva: usize| -> Option<usize> {
+            (0..section_count).find_map(|i| {
+                let s = sections + i * 40;
+                let virtual_size = u32_at(s + 8) as usize;
+                let virtual_address = u32_at(s + 12) as usize;
+                let raw_size = u32_at(s + 16) as usize;
+                let raw_pointer = u32_at(s + 20) as usize;
+                let span = virtual_size.max(raw_size);
+                (rva >= virtual_address && rva < virtual_address + span)
+                    .then_some(raw_pointer + (rva - virtual_address))
+            })
+        };
+
+        let mut names = Vec::new();
+        let mut descriptor = to_offset(import_rva).expect("import directory must lie in a section");
+        loop {
+            // The descriptor array is terminated by an all-zero entry.
+            let name_rva = u32_at(descriptor + 12) as usize;
+            if name_rva == 0 {
+                break;
+            }
+            let Some(start) = to_offset(name_rva) else {
+                break;
+            };
+            let end = start
+                + data[start..]
+                    .iter()
+                    .position(|&b| b == 0)
+                    .expect("DLL name must be NUL-terminated");
+            names.push(String::from_utf8_lossy(&data[start..end]).to_ascii_lowercase());
+            descriptor += 20;
+        }
+        names
+    }
+
+    /// The Visual C++ runtime family. These ship in the Microsoft Visual
+    /// C++ Redistributable and are **not** present on a clean Windows
+    /// install — unlike the `api-ms-win-crt-*` API sets and `ucrtbase.dll`,
+    /// which are part of Windows 10 and later.
+    fn is_visual_cpp_runtime(dll: &str) -> bool {
+        ["vcruntime", "msvcp", "msvcr", "concrt", "vccorlib"]
+            .iter()
+            .any(|family| dll.starts_with(family))
+    }
+
+    /// **The test this bug needed.** Reads what the bundled binaries
+    /// actually import, straight out of their PE headers, and requires
+    /// every Visual C++ runtime dependency to ship inside the bundle.
+    ///
+    /// Environment-independent by design, and that is the whole point: the
+    /// previous failure was invisible on every development machine
+    /// precisely because Visual Studio's Build Tools leave these DLLs in
+    /// `System32`, so the binaries loaded locally and died on a clean PC
+    /// with `0xC0000135` before executing a single instruction. A test that
+    /// merely ran `initdb --version` here would have passed too.
+    #[test]
+    fn every_visual_cpp_runtime_dependency_ships_beside_the_binaries() {
+        let bin_dir = bundled_bin_dir();
+        let mut executables = 0usize;
+        let mut runtime_imports = 0usize;
+
+        let entries = std::fs::read_dir(&bin_dir)
+            .unwrap_or_else(|e| panic!("could not list {}: {e}", bin_dir.display()));
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("exe") {
+                continue;
+            }
+            executables += 1;
+            for dll in imported_dll_names(&path) {
+                if !is_visual_cpp_runtime(&dll) {
+                    continue;
+                }
+                runtime_imports += 1;
+                assert!(
+                    bin_dir.join(&dll).is_file(),
+                    "{} imports {dll}, which is part of the Microsoft Visual C++ \
+                     Redistributable and is NOT present on a clean Windows install. It must be \
+                     deployed app-local, beside the binaries.\nExpected: {}",
+                    path.file_name().unwrap().to_string_lossy(),
+                    bin_dir.join(&dll).display()
+                );
+            }
+        }
+
+        assert!(
+            executables > 0 && runtime_imports > 0,
+            "expected to inspect real bundled executables with real runtime imports \
+             (saw {executables} executables, {runtime_imports} runtime imports) — if this \
+             fires, the bundle is missing or this test is no longer looking at it"
+        );
+    }
+
+    #[test]
+    fn a_bundle_missing_the_visual_cpp_runtime_is_reported_before_anything_is_spawned() {
+        let root = temp_pgdata("bundle-without-runtime");
+        let bin_dir = root.join("postgres").join("win64").join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        std::fs::create_dir_all(root.join("postgres").join("win64").join("lib")).unwrap();
+        let share = root.join("postgres").join("win64").join("share");
+        std::fs::create_dir_all(&share).unwrap();
+        std::fs::write(share.join("postgres.bki"), b"").unwrap();
+        for exe in REQUIRED_BINARIES {
+            std::fs::write(bin_dir.join(exe), b"").unwrap();
+        }
+        // Everything present except the runtime DLLs.
+
+        let err = preflight_bundle_layout(&bin_dir)
+            .expect_err("a bundle without the VC++ runtime must fail preflight");
+        assert!(
+            err.contains("vcruntime140.dll"),
+            "error must name the missing runtime component, got: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_load_failure_exit_code_is_explained_rather_than_shown_as_raw_hex() {
+        // The exact code reported from the field.
+        assert!(explain_startup_exit_code(0xC000_0135)
+            .expect("STATUS_DLL_NOT_FOUND must be explained")
+            .contains("missing"));
+        // An ordinary initdb failure must NOT be mistranslated.
+        assert_eq!(explain_startup_exit_code(1), None);
     }
 
     #[test]

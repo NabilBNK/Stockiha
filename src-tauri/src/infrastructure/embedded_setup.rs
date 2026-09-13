@@ -415,7 +415,9 @@ fn run_initdb(bin_dir: &Path, pgdata: &Path, admin_password: &str) -> Result<(),
     std::fs::write(&pwfile, admin_password)
         .map_err(|e| format!("could not write a temporary password file ({e})"))?;
 
-    let result = std::process::Command::new(&initdb_exe)
+    let mut command = std::process::Command::new(&initdb_exe);
+    pg_process::hide_console_window(&mut command);
+    let result = command
         .arg("-D")
         .arg(pgdata)
         .arg("-E")
@@ -435,11 +437,28 @@ fn run_initdb(bin_dir: &Path, pgdata: &Path, admin_password: &str) -> Result<(),
 
     match result {
         Ok(output) if output.status.success() => Ok(()),
-        Ok(output) => Err(format!(
-            "initdb exited with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        )),
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = stderr.trim();
+            // A load-time failure produces an exit code and *no* stderr —
+            // the loader gives up before `main` runs, so initdb never gets
+            // to say anything. Reporting only the raw hex in that case
+            // (the real field report was `initdb exited with exit code:
+            // 0xc0000135:` and nothing after it) tells the operator
+            // nothing at all.
+            let explanation = output
+                .status
+                .code()
+                .and_then(|code| pg_process::explain_startup_exit_code(code as u32));
+            Err(match (explanation, stderr.is_empty()) {
+                (Some(reason), _) => format!("{reason} ({}).", output.status),
+                (None, true) => format!(
+                    "initdb exited with {} and reported no error text.",
+                    output.status
+                ),
+                (None, false) => format!("initdb exited with {}: {stderr}", output.status),
+            })
+        }
         Err(err) => Err(format!("could not run initdb ({err})")),
     }
 }

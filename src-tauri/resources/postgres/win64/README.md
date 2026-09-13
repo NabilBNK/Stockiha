@@ -70,6 +70,63 @@ paths on this machine — a local tooling limitation, not a provenance
 concern). Only `bin/`, `lib/`, and `share/` were copied into this
 directory.
 
+## Microsoft Visual C++ runtime DLLs in `bin/` (added WS-K-4.3)
+
+`bin/` contains three files that did **not** come from the PostgreSQL zip:
+
+- `vcruntime140.dll`
+- `vcruntime140_1.dll`
+- `msvcp140.dll`
+
+**Why they are here.** PostgreSQL's Windows binaries are built with MSVC
+and link against the Visual C++ runtime: 154 of the bundled binaries
+import `vcruntime140.dll`, 12 import `vcruntime140_1.dll`, and 9 import
+`msvcp140.dll` (measured with `dumpbin /dependents` over every `.exe` and
+`.dll` in `bin/` and `lib/`). That runtime is **not** part of a clean
+Windows install — it comes from the Visual C++ 2015-2022 Redistributable,
+which EDB's own installer installs as one of its steps. Bundling the raw
+zip binaries skipped that step, so on a fresh machine every bundled
+PostgreSQL program failed to load with `0xC0000135`
+(`STATUS_DLL_NOT_FOUND`) before executing a single instruction. Every
+development machine worked, because Visual Studio's Build Tools leave
+these same DLLs in `System32`.
+
+**Why app-local rather than running `vc_redist.x64.exe`.** Running the
+redistributable installer requires elevation and makes a machine-wide
+change — which would undo the central WS-K-4 decision that installing and
+setting up Stockiha needs no administrator rights at all. Placing the
+DLLs beside the `.exe` files works because the executable's own directory
+is first in Windows' DLL search order, and it is a deployment model
+Microsoft supports explicitly (the `Redist\MSVC\...\Microsoft.VC143.CRT`
+folder these were taken from exists for exactly this purpose).
+
+**Provenance — and note this chain is stronger than the PostgreSQL
+binaries' own.** Copied byte-for-byte (SHA-256 verified identical after
+the copy) from
+`C:\BuildTools\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.CRT\` on the
+build machine, the redistributable folder shipped with Microsoft Visual
+Studio Build Tools. All three are file version `14.44.35211.0`, and unlike
+the PostgreSQL binaries above, **each one is Authenticode-signed and
+verifies `Status: Valid`** — `vcruntime140.dll` and `vcruntime140_1.dll`
+signed by "Microsoft Windows Software Compatibility Publisher",
+`msvcp140.dll` by "Microsoft Windows Hardware Compatibility Publisher"
+(checked with `Get-AuthenticodeSignature` against the copies in this
+directory, not just the originals).
+
+**Servicing caveat, stated rather than left to be discovered:** an
+app-local copy does not receive Windows Update servicing the way a
+machine-wide redistributable does. Security updates to the VC++ runtime
+will require replacing these files and shipping a new build. That is a
+real, accepted tradeoff of not requiring administrator rights.
+
+**Guarded by a test.** `pg_process`'s
+`every_visual_cpp_runtime_dependency_ships_beside_the_binaries` parses the
+PE import table of every executable in `bin/` and fails if any Visual C++
+runtime import is not present in this directory. It reads the files
+themselves rather than asking the running system what it can resolve —
+deliberately, since a machine with the redistributable installed (every
+development machine) cannot otherwise detect this problem at all.
+
 ## sqlx-cli — no longer needed
 
 WS-K-3 replaced the separately-bundled `sqlx.exe` this directory's sibling
