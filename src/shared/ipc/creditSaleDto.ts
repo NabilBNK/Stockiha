@@ -22,6 +22,8 @@ export interface CreditSaleResult {
   due_date: string;
   exposure_amount: string;
   available_credit: string;
+  credit_limit: string;
+  over_limit: boolean;
   journal_document_id: number;
 }
 

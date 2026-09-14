@@ -256,6 +256,17 @@ export function PosScreen() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lastSaleDocId, mutateCart]);
 
+  useEffect(() => {
+    if (lastCreditSale == null) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLastCreditSale(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lastCreditSale]);
+
   function changePaymentMode(next: PaymentMode) {
     setPaymentMode(next);
     if (next === 'cash') setCustomerId(null);
@@ -449,6 +460,15 @@ export function PosScreen() {
     () => creditCustomers.find((customer) => customer.id === customerId) ?? null,
     [creditCustomers, customerId],
   );
+  const creditOverBy = useMemo(() => {
+    if (paymentMode !== 'credit' || !selectedCustomer) return null;
+    const projected = addExactMoney([
+      selectedCustomer.exposure_amount,
+      netTotal,
+      `-${selectedCustomer.credit_limit}`,
+    ]);
+    return projected.startsWith('-') || projected === '0.00' ? null : projected;
+  }, [paymentMode, selectedCustomer, netTotal]);
   const saleLines = useMemo(
     () => cart.map((line) => ({
       variant_id: line.variantId,
@@ -620,7 +640,36 @@ export function PosScreen() {
   return (
     <section className="sk-page sk-pos">
       <div className="sk-pos__header">
-        <div><h1>{t('pos.title')}</h1><p>{t('pos.subtitle')}</p></div>
+        <div className="sk-pos__header-title">
+          <h1>{t('pos.title')}</h1>
+          <p>{t('pos.subtitle')}</p>
+        </div>
+
+        {banner || creditOverBy ? (
+          <div className="sk-pos__header-alerts" data-testid="pos-alerts">
+            {banner ? (
+              <div
+                className={`sk-pos__pill-alert sk-pos__pill-alert--${banner.tone}`}
+                role={banner.tone === 'error' ? 'alert' : 'status'}
+                data-testid="pos-banner"
+              >
+                <span aria-hidden>{banner.tone === 'error' ? '✕' : 'ℹ'}</span>
+                <span>{banner.text}</span>
+              </div>
+            ) : null}
+            {creditOverBy ? (
+              <div
+                className="sk-pos__pill-alert sk-pos__pill-alert--warning"
+                role="status"
+                data-testid="pos-credit-over-limit"
+              >
+                <span aria-hidden>⚠️</span>
+                <span>{t('pos.creditOverLimit', { amount: creditOverBy })}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <span className="sk-badge sk-badge--ok">{t('header.session.open')}</span>
       </div>
 
@@ -804,7 +853,6 @@ export function PosScreen() {
             ) : null}
           </div>
 
-          {banner ? <Banner tone={banner.tone} testId="pos-banner">{banner.text}</Banner> : null}
           <div className="sk-pos__cart-body">
             {cart.length === 0 ? (
               <div className="sk-cart__empty"><span aria-hidden>▤</span><strong>{t('pos.cartEmpty')}</strong><small>{t('pos.cartEmptyHint')}</small></div>
@@ -909,7 +957,7 @@ export function PosScreen() {
                 loading={submitting}
                 onClick={() => setConfirming(true)}
               >
-                {t('pos.confirm')}
+                {creditOverBy ? t('pos.confirmAnyway') : t('pos.confirm')}
               </Button>
             </div>
           </div>
@@ -1019,33 +1067,77 @@ export function PosScreen() {
       ) : null}
 
       {lastCreditSale ? (
-        <div className="sk-card" data-testid="credit-sale-success">
-          <Banner tone="success">{creditText.creditPosted}: {lastCreditSale.document_number}</Banner>
-          {printOutcome && printOutcome.status !== 'disabled' ? (
-            <div className="sk-pos__print-status" data-testid="pos-print-status">
-              {printOutcome.status === 'printed' ? (
-                <Banner tone="success" testId="pos-print-ok">{t('pos.printOk')}</Banner>
-              ) : (
-                <>
-                  <Banner tone="warning" testId="pos-print-failed">{t('pos.printFailed')}</Banner>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      if (lastReceiptInput) {
-                        void printSaleReceipt(lastReceiptInput, printingSettings).then(setPrintOutcome);
-                      }
-                    }}
-                    data-testid="pos-reprint"
-                  >
-                    {t('pos.reprint')}
-                  </Button>
-                </>
-              )}
+        <div
+          className="sk-pos__receipt-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={creditText.creditPosted}
+          data-testid="pos-credit-modal"
+        >
+          <div className="sk-pos__receipt-dialog sk-pos__credit-dialog" data-testid="credit-sale-success">
+            <div className="sk-pos__receipt-dialog-header">
+              <div className="sk-pos__receipt-dialog-title-wrap">
+                <Banner tone="success">
+                  {creditText.creditPosted}: {lastCreditSale.document_number}
+                  {lastCreditSale.over_limit ? ` — ${t('pos.soldOverLimit')}` : ''}
+                </Banner>
+                {printOutcome && printOutcome.status !== 'disabled' ? (
+                  <div className="sk-pos__print-status" data-testid="pos-print-status">
+                    {printOutcome.status === 'printed' ? (
+                      <Banner tone="success" testId="pos-print-ok">{t('pos.printOk')}</Banner>
+                    ) : (
+                      <>
+                        <Banner tone="warning" testId="pos-print-failed">{t('pos.printFailed')}</Banner>
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            if (lastReceiptInput) {
+                              void printSaleReceipt(lastReceiptInput, printingSettings).then(setPrintOutcome);
+                            }
+                          }}
+                          data-testid="pos-reprint"
+                        >
+                          {t('pos.reprint')}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className="sk-modal-close"
+                aria-label={t('common.close')}
+                onClick={() => setLastCreditSale(null)}
+                data-testid="pos-credit-close"
+              >
+                ×
+              </button>
             </div>
-          ) : null}
-          <p>{creditText.due}: <strong>{lastCreditSale.due_date}</strong></p>
-          <p>{creditText.newExposure}: <strong>{lastCreditSale.exposure_amount}</strong></p>
-          <p>{creditText.available}: <strong>{lastCreditSale.available_credit}</strong></p>
+            <div className="sk-pos__receipt-scroll-body">
+              <div className="sk-pos__credit-summary-details">
+                <div className="sk-pos__credit-summary-row">
+                  <span>{creditText.due}:</span>
+                  <strong>{lastCreditSale.due_date}</strong>
+                </div>
+                <div className="sk-pos__credit-summary-row">
+                  <span>{creditText.newExposure}:</span>
+                  <strong>{lastCreditSale.exposure_amount}</strong>
+                </div>
+                <div className="sk-pos__credit-summary-row">
+                  <span>{creditText.available}:</span>
+                  <strong className={lastCreditSale.over_limit ? 'sk-pos__credit-over-val' : ''}>
+                    {lastCreditSale.available_credit}
+                  </strong>
+                </div>
+              </div>
+              <div className="sk-pos__credit-dialog-actions">
+                <Button onClick={() => setLastCreditSale(null)} data-testid="pos-credit-dismiss">
+                  {t('common.close')}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 

@@ -44,6 +44,8 @@ pub struct CreditSaleResult {
     pub due_date: String,
     pub exposure_amount: String,
     pub available_credit: String,
+    pub credit_limit: String,
+    pub over_limit: bool,
     pub journal_document_id: i64,
 }
 
@@ -73,6 +75,7 @@ fn is_credit_policy_message(message: &str) -> bool {
     message.contains("customer is inactive")
         || message.contains("customer is not enabled for credit sales")
         || message.contains("customer credit policy blocks this sale")
+        || message.contains("customer has an overdue invoice beyond the allowed window")
         || message
             .contains("credit override is invalid, expired, consumed, or does not match this sale")
 }

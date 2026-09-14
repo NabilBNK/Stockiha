@@ -29,6 +29,7 @@ DECLARE
     v_result2 jsonb;
     v_doc1 bigint;
     v_doc2 bigint;
+    v_doc3 bigint;
     v_qty numeric(18,3);
     v_val numeric(18,4);
     v_exposure numeric(14,2);
@@ -245,10 +246,30 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed: reprint idempotency key did not return the same print job';
     END IF;
 
-    -- Another 300 exceeds the 500 limit and must roll back cleanly.
+    -- WS-F-004: Another 300 exceeds the 500 limit, but posts with over_limit = true without override.
+    v_result2 := sales.confirm_credit_sale(
+        v_session_token, v_request2,
+        v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
+        v_lines, NULL
+    );
+    v_doc2 := (v_result2 ->> 'document_id')::bigint;
+
+    IF (v_result2 ->> 'over_limit')::boolean IS NOT TRUE THEN
+        RAISE EXCEPTION 'Assertion failed: over-limit credit sale did not report over_limit = true';
+    END IF;
+    IF (v_result2 ->> 'exposure_amount')::numeric <> 600.00 THEN
+        RAISE EXCEPTION 'Assertion failed: over-limit credit sale exposure expected 600.00';
+    END IF;
+
+    -- Now simulate an overdue invoice to verify the override authorization chain (WS-F-004 preserves override for overdue)
+    UPDATE receivables.customer_credit_state
+    SET oldest_open_due_date = (now() AT TIME ZONE 'Africa/Algiers')::date - 70
+    WHERE customer_id = v_customer_id;
+
+    -- Attempting sale while overdue without override is blocked
     BEGIN
         PERFORM sales.confirm_credit_sale(
-            v_session_token, v_request2,
+            v_session_token, v_request4,
             v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
             v_lines, NULL
         );
@@ -258,22 +279,14 @@ BEGIN
     END;
 
     IF NOT v_blocked THEN
-        RAISE EXCEPTION 'Assertion failed: over-limit credit sale was not blocked';
+        RAISE EXCEPTION 'Assertion failed: overdue credit sale was not blocked without override';
     END IF;
 
-    SELECT exposure_amount INTO v_exposure
-    FROM receivables.customer_credit_state WHERE customer_id = v_customer_id;
-    SELECT quantity_on_hand INTO v_qty
-    FROM inventory.positions WHERE warehouse_id = v_warehouse_id AND variant_id = v_variant_id;
-    IF v_exposure <> 300.00 OR v_qty <> 8.000 THEN
-        RAISE EXCEPTION 'Assertion failed: rejected credit sale changed exposure or stock';
-    END IF;
-
-    -- Manager authorizes exact 2-unit intent using actual fields, not caller hash.
+    -- Manager authorizes exact 2-unit intent for overdue sale using actual fields, not caller hash.
     PERFORM receivables.authorize_credit_override(
         v_session_token, v_override,
         v_customer_id, v_warehouse_id, v_period_id, v_doc_date, v_lines,
-        'Approved S4 integration over-limit sale', 15
+        'Approved S4 integration overdue sale', 15
     );
 
     -- Same token MUST fail for a mutated 3-unit cart even though caller owns the
@@ -301,26 +314,23 @@ BEGIN
 
     -- Exact authorized intent succeeds and consumes token once.
     v_result2 := sales.confirm_credit_sale(
-        v_session_token, v_request2,
+        v_session_token, v_request4,
         v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
         v_lines, v_override
     );
-    v_doc2 := (v_result2 ->> 'document_id')::bigint;
+    v_doc3 := (v_result2 ->> 'document_id')::bigint;
 
-    IF (v_result2 ->> 'exposure_amount')::numeric <> 600.00 THEN
-        RAISE EXCEPTION 'Assertion failed: override sale exposure expected 600.00';
-    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM receivables.credit_override_tokens
         WHERE id = v_override
           AND consumed_at IS NOT NULL
-          AND consumed_document_id = v_doc2
+          AND consumed_document_id = v_doc3
     ) THEN
         RAISE EXCEPTION 'Assertion failed: override token was not consumed by posted document';
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM documents.generation_jobs
-        WHERE business_document_id = v_doc2
+        WHERE business_document_id = v_doc3
           AND document_kind = 'CREDIT_SALE_INVOICE_PDF'
           AND status = 'PENDING'
     ) THEN
@@ -329,7 +339,7 @@ BEGIN
 
     BEGIN
         PERFORM sales.confirm_credit_sale(
-            v_session_token, v_request4,
+            v_session_token, md5('s4001-r-reuse-' || v_suffix)::uuid,
             v_customer_id, v_warehouse_id, v_period_id, v_doc_date,
             v_lines, v_override
         );
@@ -358,18 +368,18 @@ BEGIN
 
     SELECT count(*) INTO v_cash_count
     FROM cash.movements
-    WHERE business_document_id IN (v_doc1, v_doc2);
+    WHERE business_document_id IN (v_doc1, v_doc2, v_doc3);
     SELECT count(*) INTO v_drawer_count
     FROM cash.drawer_jobs
-    WHERE business_document_id IN (v_doc1, v_doc2);
+    WHERE business_document_id IN (v_doc1, v_doc2, v_doc3);
     IF v_cash_count <> 0 OR v_drawer_count <> 0 THEN
         RAISE EXCEPTION 'Assertion failed: credit sale or invoice reprint created cash movement/drawer pulse';
     END IF;
 
     SELECT exposure_amount INTO v_exposure
     FROM receivables.customer_credit_state WHERE customer_id = v_customer_id;
-    IF v_exposure <> 600.00 THEN
-        RAISE EXCEPTION 'Assertion failed: document generation/reprint changed customer exposure';
+    IF v_exposure <> 900.00 THEN
+        RAISE EXCEPTION 'Assertion failed: final customer exposure expected 900.00, got %', v_exposure;
     END IF;
 
     RAISE NOTICE 'PASSED: S4-001 credit sale, idempotency, override, ledger, accounting, invoice generation/reprint queue, and no-cash assertions';
