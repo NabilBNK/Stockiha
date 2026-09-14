@@ -125,6 +125,13 @@ export interface DbDiagnostic {
   schema: SchemaCompatibility | null;
   /** Known independent of `code` — see `ConfigWarning`. */
   config_warning: ConfigWarning | null;
+  /**
+   * WS-K-5: true when this installation carries a migrator credential and
+   * can therefore run the safe automatic upgrade itself. Meaningful only
+   * alongside `schema?.status === 'OLDER_THAN_BINARY'` — see AppRouter's
+   * routing to `DatabaseUpgradeScreen`.
+   */
+  self_upgrade_available: boolean;
 }
 
 /**
@@ -191,6 +198,68 @@ export const EMBEDDED_SETUP_PROGRESS_EVENT = 'embedded-setup-progress';
  */
 export function runEmbeddedSetup(): Promise<void> {
   return call<void>(COMMANDS.RUN_EMBEDDED_SETUP);
+}
+
+/**
+ * WS-K-5 — the six safe-upgrade steps, in the fixed order the backend
+ * always reports them in. Mirrors `safe_upgrade::UpgradeStep::ALL` exactly.
+ * `ROLLBACK` only ever progresses past `pending` on a failed upgrade.
+ */
+export type SafeUpgradeStep =
+  | 'PREFLIGHT'
+  | 'BACKUP'
+  | 'VERIFY_BACKUP'
+  | 'MIGRATE'
+  | 'VERIFY_SCHEMA'
+  | 'ROLLBACK';
+
+export const SAFE_UPGRADE_STEPS: SafeUpgradeStep[] = [
+  'PREFLIGHT',
+  'BACKUP',
+  'VERIFY_BACKUP',
+  'MIGRATE',
+  'VERIFY_SCHEMA',
+  'ROLLBACK',
+];
+
+export type SafeUpgradeStepStatus = 'RUNNING' | 'DONE' | 'FAILED';
+
+export interface SafeUpgradeProgress {
+  step: SafeUpgradeStep;
+  status: SafeUpgradeStepStatus;
+  detail: string | null;
+}
+
+export const SAFE_UPGRADE_PROGRESS_EVENT = 'safe-upgrade-progress';
+
+/**
+ * The terminal event fired exactly once if a safe-upgrade attempt does not
+ * end in a restart (i.e. it failed in one of the three ways WS-K-5 defines).
+ * Mirrors `commands::safe_upgrade::SafeUpgradeOutcomeEvent`.
+ */
+export type SafeUpgradeOutcomeEvent =
+  | { outcome: 'ABORTED_BEFORE_MIGRATION'; reason: string; backup_path: string | null }
+  | { outcome: 'ROLLED_BACK'; reason: string; backup_path: string }
+  | {
+      outcome: 'ROLLBACK_FAILED';
+      reason: string;
+      backup_path: string;
+      rollback_error: string;
+    };
+
+export const SAFE_UPGRADE_OUTCOME_EVENT = 'safe-upgrade-outcome';
+
+/**
+ * Start the safe automatic database upgrade. Resolves once the command has
+ * been accepted and the upgrade thread is running — it does **not** wait
+ * for the upgrade to finish. Progress arrives via
+ * `SAFE_UPGRADE_PROGRESS_EVENT`; on a successful upgrade the backend
+ * restarts the app process itself, same as `runEmbeddedSetup`. On failure
+ * (of any of the three kinds WS-K-5 defines) the process is NOT restarted —
+ * the final state arrives instead via `SAFE_UPGRADE_OUTCOME_EVENT`.
+ */
+export function runSafeDatabaseUpgrade(): Promise<void> {
+  return call<void>(COMMANDS.RUN_SAFE_DATABASE_UPGRADE);
 }
 
 export interface BootstrapAdminInput {

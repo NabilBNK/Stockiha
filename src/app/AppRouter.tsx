@@ -21,6 +21,7 @@ import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
 import { BackendUnavailableScreen } from '../features/startup/BackendUnavailableScreen';
 import { EmbeddedSetupScreen } from '../features/startup/EmbeddedSetupScreen';
+import { DatabaseUpgradeScreen } from '../features/startup/DatabaseUpgradeScreen';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { CatalogScreen } from '../features/catalog2/CatalogScreen';
 import { CatalogueSetupScreen } from '../features/catalogue-setup/CatalogueSetupScreen';
@@ -127,6 +128,16 @@ export function AppRouter() {
     // unavailable card; every other diagnostic reason is unchanged.
     if (reason?.code === 'NOT_CONFIGURED') {
       return <EmbeddedSetupScreen />;
+    }
+    // WS-K-5: an embedded install that can self-upgrade (a migrator
+    // credential is on file) routes to the safe-upgrade screen instead of
+    // the plain "contact your supplier" card — that message was written for
+    // a database someone else administers, and here Stockiha is the one
+    // that can bring it up to date, safely, itself. An installation with no
+    // migrator credential (pre-WS-K-4.9, or a non-embedded database) still
+    // falls through to the unchanged BackendUnavailableScreen.
+    if (reason?.code === 'OK' && reason.schema?.status === 'OLDER_THAN_BINARY' && reason.self_upgrade_available) {
+      return <DatabaseUpgradeScreen />;
     }
     return <BackendUnavailableScreen diagnostic={reason} onRetry={() => void refresh()} />;
   }

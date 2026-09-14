@@ -558,6 +558,15 @@ pub struct DbDiagnostic {
     /// Never causes `code` to change and never gates anything; see
     /// `local_config`'s module-level safety note.
     pub config_warning: Option<ConfigWarning>,
+    /// WS-K-5: true when this installation has a migrator credential on
+    /// file (`local_config::has_migrator`), i.e. it can run the safe
+    /// automatic upgrade itself rather than needing a supplier to
+    /// intervene. Computed at the IPC boundary (`commands::db_health::
+    /// get_db_diagnostic`), not here: this module has no `app_data_dir` to
+    /// check it against. Meaningful only alongside `schema.status ==
+    /// OLDER_THAN_BINARY`; the frontend uses the combination to route to
+    /// the upgrade screen instead of the plain "contact your supplier" one.
+    pub self_upgrade_available: bool,
 }
 
 impl fmt::Display for DbDiagnostic {
@@ -573,6 +582,7 @@ impl DbDiagnostic {
             detail: detail.into(),
             schema: None,
             config_warning: None,
+            self_upgrade_available: false,
         }
     }
 
@@ -1247,6 +1257,7 @@ mod tests {
             detail: "connected".to_owned(),
             schema: Some(SchemaCompatibility::UpToDate),
             config_warning: Some(ConfigWarning::InsecurePermissions),
+            self_upgrade_available: false,
         })
         .unwrap();
         assert!(json.contains(r#""schema":{"status":"UP_TO_DATE"}"#));

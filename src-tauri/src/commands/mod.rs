@@ -21,6 +21,7 @@ pub mod procurement;
 pub mod receivables;
 pub mod recovery;
 pub mod reference;
+pub mod safe_upgrade;
 pub mod setup;
 pub mod stock_adjustment;
 pub mod stock_receipt;

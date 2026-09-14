@@ -101,40 +101,6 @@ async fn ensure_embedded_postgres_running(
     }
 }
 
-/// See the call site in `.setup()`. Outcome goes to `setup.log` so an
-/// upgrade that fails is diagnosable from the same file as first-run setup.
-async fn apply_pending_migrations_if_embedded(app_data_dir: &std::path::Path) {
-    if std::env::var(infrastructure::db::DATABASE_URL_ENV).is_ok() {
-        return;
-    }
-    if !infrastructure::local_config::has_migrator(app_data_dir) {
-        return;
-    }
-    let log = |line: String| {
-        use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(app_data_dir.join("setup.log"))
-        {
-            let _ = writeln!(f, "[startup] {line}");
-        }
-    };
-    match infrastructure::embedded_setup::apply_pending_migrations(app_data_dir).await {
-        Ok(Some(infrastructure::schema_version::SchemaCompatibility::UpToDate)) => {}
-        Ok(Some(before)) => {
-            log(format!(
-                "schema was {before:?} for this build; pending migrations applied"
-            ));
-        }
-        Ok(None) => {}
-        Err(detail) => {
-            tracing::error!("could not apply pending migrations: {detail}");
-            log(format!("could not apply pending migrations: {detail}"));
-        }
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(debug_assertions)]
@@ -211,19 +177,23 @@ pub fn run() {
                 )
                 .await;
 
-                // WS-K-4.9: an embedded database is this app's own to keep
-                // current. Apply whatever this build ships that the schema
-                // does not yet have, BEFORE the WS-K-1 diagnostic looks —
-                // otherwise every upgrade dead-ends on "Database needs an
-                // update, contact your supplier", which was written for a
-                // database someone else administers. No-op on a fresh
-                // install, a current install, or a non-embedded one; on a
-                // newer-than-binary database SQLx refuses and the existing
-                // downgrade screen still shows.
-                if let Some(dir) = app_data_dir.as_deref() {
-                    apply_pending_migrations_if_embedded(dir).await;
-                }
-
+                // WS-K-4.9 applied a pending embedded-database migration
+                // right here, synchronously, before the window's event loop
+                // ever started pumping — unattended, with no backup, no
+                // verification, and no rollback if it failed. WS-K-5 removes
+                // that call entirely: `.setup()` must stay fast (a long
+                // migration here would freeze the window itself, since
+                // nothing pumps messages until this closure returns), and
+                // an automatic schema upgrade is exactly the kind of action
+                // this task's own safety review found should never run
+                // unattended without a backup. The OlderThanBinary verdict
+                // is still detected below (same `database_state_from_precedence`
+                // / `startup_diagnostic` this always ran), and the frontend
+                // now routes it — only when a migrator credential is on file
+                // — to a dedicated upgrade screen that invokes
+                // `commands::safe_upgrade::run_safe_database_upgrade`
+                // explicitly, after the window is already live. See
+                // `infrastructure::safe_upgrade`'s module doc comment.
                 let state = infrastructure::db::database_state_from_precedence(app_data_dir);
                 // Eager readiness proof: one real connection and `SELECT 1`,
                 // so a broken configuration announces its true cause at
@@ -251,6 +221,7 @@ pub fn run() {
             commands::db_health::check_db_health,
             commands::db_health::get_db_diagnostic,
             commands::embedded_setup::run_embedded_setup,
+            commands::safe_upgrade::run_safe_database_upgrade,
             commands::auth::login,
             commands::auth::logout,
             commands::iam::create_user,

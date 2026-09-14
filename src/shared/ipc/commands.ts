@@ -8,6 +8,8 @@ export const COMMANDS = {
   GET_SETUP_STATUS: 'get_setup_status',
   // WS-K-4 — embedded PostgreSQL first-run setup
   RUN_EMBEDDED_SETUP: 'run_embedded_setup',
+  // WS-K-5 — safe automatic database upgrade (mandatory backup + rollback)
+  RUN_SAFE_DATABASE_UPGRADE: 'run_safe_database_upgrade',
   BOOTSTRAP_FIRST_ADMIN: 'bootstrap_first_admin',
   LOGIN: 'login',
   LOGOUT: 'logout',

@@ -464,7 +464,7 @@ pub fn preflight_bundle_layout(bin_dir: &Path) -> Result<(), String> {
 /// identifies the problem: "looked for `…/win64/bin/initdb.exe`" says where
 /// we looked, and "`…/win64` contains `Abidjan, Accra, …, initdb.exe, …`
 /// (1,060 more)" says, unmistakably, that the folder was flattened.
-fn describe_nearest_existing_ancestor(missing: &Path) -> String {
+pub(crate) fn describe_nearest_existing_ancestor(missing: &Path) -> String {
     let mut current = missing.parent();
     while let Some(dir) = current {
         if dir.is_dir() {
@@ -512,6 +512,89 @@ fn describe_nearest_existing_ancestor(missing: &Path) -> String {
         current = dir.parent();
     }
     "No parent folder of that path exists at all.".to_string()
+}
+
+/// The bundled dump/restore programs WS-K-5's safe upgrade needs, in the same
+/// `<resource_dir>/postgres/win64/bin` directory as [`REQUIRED_BINARIES`].
+/// Not part of [`REQUIRED_BINARIES`] itself: first-run setup and ordinary
+/// startup never need them, and folding them in there would make every
+/// existing install (never having needed a database upgrade yet) fail a
+/// layout check for binaries it has no use for.
+const BACKUP_BINARIES: [&str; 2] = ["pg_dump.exe", "pg_restore.exe"];
+
+/// Verify the bundled `pg_dump`/`pg_restore` are where WS-K-5's safe upgrade
+/// expects, before spawning either — same discipline as
+/// [`preflight_bundle_layout`] (named binary, named path, and a listing of
+/// the nearest folder that does exist), so a missing binary is reported here,
+/// clearly, rather than failing three steps into a backup with a bare
+/// `os error 3` after a database has already been dumped halfway.
+pub fn preflight_backup_binaries(bin_dir: &Path) -> Result<(), String> {
+    if is_verbatim_path(bin_dir) {
+        return Err(format!(
+            "internal path problem: the database programs were located through a Windows \
+             extended-length path, which PostgreSQL's own tools cannot use.\nPath: {}\nThis is \
+             a bug in Stockiha, not a problem with this computer - please report it with this \
+             message.",
+            bin_dir.display()
+        ));
+    }
+    for exe in BACKUP_BINARIES {
+        let candidate = bin_dir.join(exe);
+        if !candidate.is_file() {
+            return Err(format!(
+                "this installation of Stockiha is incomplete: the bundled database program \
+                 '{exe}' is not where it should be.\nLooked for: {}\n{}",
+                candidate.display(),
+                describe_nearest_existing_ancestor(&candidate)
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Free bytes available to the current user on the volume containing `path`.
+///
+/// `None` means "could not be determined" — a missing drive, an unexpected
+/// Win32 failure, or (on any non-Windows build, which this app never ships
+/// to) no implementation at all. Deliberately not defaulted to "assume
+/// there is room": WS-K-5's preflight disk-space check treats `None` as a
+/// reason to refuse, the same fail-closed posture a backup taken right
+/// before a schema migration needs — unlike the advisory, fail-*open*
+/// `database.json` ACL check elsewhere in this crate, an inability to prove
+/// there is room is not evidence that there is.
+#[cfg(windows)]
+pub fn free_disk_space_bytes(path: &Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut free_bytes_available: u64 = 0;
+    // SAFETY: `wide` is a valid, NUL-terminated UTF-16 buffer that outlives
+    // the call; the other three pointers are a valid local `u64` and two
+    // nulls, matching `GetDiskFreeSpaceExW`'s documented contract of
+    // accepting `NULL` for either total-bytes out-parameter.
+    let ok = unsafe {
+        GetDiskFreeSpaceExW(
+            wide.as_ptr(),
+            &mut free_bytes_available,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 {
+        None
+    } else {
+        Some(free_bytes_available)
+    }
+}
+
+#[cfg(not(windows))]
+pub fn free_disk_space_bytes(_path: &Path) -> Option<u64> {
+    None
 }
 
 /// Find a free TCP port, starting at `preferred` and trying nine sequential

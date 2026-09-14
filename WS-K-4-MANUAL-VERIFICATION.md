@@ -66,8 +66,15 @@ for any of this** — that is one of the main things this redesign fixes.
 >   credential on disk — which `4.6`–`4.8` did not, so those three builds
 >   can never self-upgrade (see the one-time reset just below).
 >
-> Use the **`WS-K-4.9`** installer for everything below. Installers are now
-> named after their version — **`Stockiha_WS-K-4.9-setup.exe`** — so you
+> - `WS-K-4.9` brought a database up to date automatically, but did it with
+>   no safety net at all: no backup, no check that a backup could even be
+>   restored, and no way back if the update itself went wrong. `WS-K-5.1`
+>   adds exactly that safety net, in front of the same self-update — see
+>   **Scenario 7** below, which is the one that matters most for this
+>   version.
+>
+> Use the **`WS-K-5.1`** installer for everything below. Installers are now
+> named after their version — **`Stockiha_WS-K-5.1-setup.exe`** — so you
 > can tell them apart on disk.
 >
 > **One-time reset if this PC already has `WS-K-4.6`, `4.7` or `4.8` on it:**
@@ -83,7 +90,7 @@ for any of this** — that is one of the main things this redesign fixes.
 > printed on the setup screen itself**, directly under "Setting up
 > Stockiha" — so you can confirm which build you are running before
 > pressing Start, without having to sign in first. If it does not say
-> `WS-K-4.9`, you are running an older installer.
+> `WS-K-5.1`, you are running an older installer.
 >
 > **If you install `WS-K-4.7` over `WS-K-4.6` on the same PC** (rather than
 > a fresh one), the leftover database from `WS-K-4.6` is still running when
@@ -271,10 +278,82 @@ above.
    is safe to resume — you should not need to uninstall or reinstall
    anything to try again.
 
+## Scenario 7 — updating over an older build: the safe automatic upgrade
+
+This is the most important scenario in this document for `WS-K-5.1`. It
+proves that installing a newer Stockiha over an older one, with real shop
+data already in it, cannot lose that data — even if something goes wrong
+partway through.
+
+**What this scenario is checking for, in plain terms:** every earlier
+version of Stockiha that could bring its own database up to date did so
+silently, with nothing kept in reserve if it went wrong. This version takes
+a full backup first, checks that the backup actually works, and only then
+updates — and if anything about the update itself does not go perfectly, it
+puts everything back exactly the way it was before touching anything.
+
+1. On a clean test machine, install an **older** Stockiha build — any
+   installer from before `WS-K-5.1` that you still have (`WS-K-4.9` works
+   well for this). Complete first-run setup (Scenario 1).
+2. Sign in and add something memorable and easy to check later — for
+   example, create a product named **`WS-K-5 UPGRADE TEST PRODUCT`**. Note
+   its name exactly.
+3. Close Stockiha normally.
+4. Now install **`Stockiha_WS-K-5.1-setup.exe`** over the same installation
+   (do not uninstall the old one first — this scenario is specifically
+   about installing over an existing, working database).
+5. Open Stockiha. **You should see** a new screen, different from the
+   first-run setup screen, explaining that this version needs to update the
+   shop's database, that a backup is taken and checked first, and that this
+   is not optional — there should be **no Start button**; it should begin
+   on its own the moment this screen appears.
+6. **You should see** a checklist appear and update live, in front of you,
+   through these steps: checking disk space and required programs, backing
+   up the current database, checking that the backup can be used, updating
+   the shop's tables, and checking that the update succeeded. **The window
+   should never look frozen** while this runs, the same as Scenario 1.
+7. This should finish within a minute or two for an ordinary shop database.
+   **You should see** Stockiha restart itself and land on the sign-in
+   screen, exactly like first-run setup does.
+8. Sign in and find **`WS-K-5 UPGRADE TEST PRODUCT`** in the product list.
+   **You should see it, unchanged.** This is the single most important
+   check in this whole document — the update must never lose or alter data
+   that already existed.
+9. In File Explorer's address bar, paste
+   `%APPDATA%\com.raqmenha.stockiha\backups` and press Enter. **You should
+   see** a file whose name starts with `stockiha-preupgrade-` and ends in
+   `.dump` — the backup this update took of your database before changing
+   anything. Leave it there; it is kept on purpose.
+10. Open `%APPDATA%\com.raqmenha.stockiha\upgrade.log` in Notepad
+    (read-only). **You should see** a plain-language, timestamped line for
+    every step in the checklist above, and — the same rule as `setup.log` —
+    **you should never see anything that looks like a password** anywhere
+    in this file.
+
+### If something goes wrong during Scenario 7
+
+This is hard to force on purpose, so only follow this if a real failure
+happens.
+
+- If the checklist ever shows a red/failed step, **you should see** a
+  message that starts by saying plainly whether any data was lost (it
+  should say it was not), that the previous version of Stockiha still
+  works, and that you should contact your supplier — never a message that
+  could be read as "your data may be gone."
+- After a failed update, reopen the **older** Stockiha installer you used
+  in step 1 (do not try `WS-K-5.1` again yet). **You should see** it start
+  normally and your test product should still be there — the failed update
+  must leave the database exactly as it was, usable by the old version
+  again.
+- The backup file from the failed attempt should still be in the `backups`
+  folder from step 9 above — under a `backups\failed` subfolder specifically
+  for a failed attempt's backup, which is never deleted automatically.
+
 ---
 
 Report back which steps and scenarios matched "what you should see" and
 which did not. For any mismatch, attach `%APPDATA%\com.raqmenha.stockiha\setup.log`
-if it exists (never attach `database.json` itself, since it holds real
-database credentials) — `setup.log` is designed to be read by someone who
-is not a developer, and is guaranteed not to contain any password.
+and, for Scenario 7, `%APPDATA%\com.raqmenha.stockiha\upgrade.log` too, if
+they exist (never attach `database.json` itself, since it holds real
+database credentials) — both log files are designed to be read by someone
+who is not a developer, and are guaranteed not to contain any password.
