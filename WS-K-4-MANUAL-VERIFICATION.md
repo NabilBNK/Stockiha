@@ -292,9 +292,33 @@ a full backup first, checks that the backup actually works, and only then
 updates — and if anything about the update itself does not go perfectly, it
 puts everything back exactly the way it was before touching anything.
 
-1. On a clean test machine, install an **older** Stockiha build — any
-   installer from before `WS-K-5.1` that you still have (`WS-K-4.9` works
-   well for this). Complete first-run setup (Scenario 1).
+> **Do not use `WS-K-4.9` for step 1 below.** It was tried first, on the
+> Owner's real machine, and nothing happened: no backup, no `upgrade.log`.
+> That was the *correct* behavior, not a bug — `WS-K-4.9` and `WS-K-5.1`
+> ship the exact same 152 database migrations, so there was genuinely
+> nothing to update, and "nothing to update means no backup is taken" is
+> itself one of this feature's requirements. But it also means this
+> scenario cannot be exercised with those two installers together — they
+> are not far enough apart. Use the dedicated **TEST** installer named
+> below instead, which is deliberately built a few migrations behind so
+> this scenario has something real to do.
+>
+> **`Stockiha_WS-K-5.1-TEST-OLDER-DB-147of152-setup.exe`** is that
+> installer — the exact same `WS-K-5.1` code, compiled with its newest 5
+> database migrations deliberately left out, so it is genuinely behind
+> `WS-K-5.1` itself. Its setup screen shows the marker
+> `WS-K-5.1-TEST-OLDER-DB-147of152` — unmistakably not a real release — and
+> it must only ever be installed on a disposable test machine or VM, never
+> on a real shop computer, and never pointed at real shop data. A developer
+> can rebuild a fresh copy of it for any future release with
+> `scripts\build-test-older-installer.ps1` (see the note at the end of this
+> scenario) — this is now the standing way to test this path, since not
+> every release will happen to add new migrations on its own.
+
+1. On a clean test machine, install the **TEST** installer named above.
+   Complete first-run setup (Scenario 1) — it looks and behaves identically
+   to a normal first-run setup, just with the unmistakable TEST marker on
+   screen.
 2. Sign in and add something memorable and easy to check later — for
    example, create a product named **`WS-K-5 UPGRADE TEST PRODUCT`**. Note
    its name exactly.
@@ -348,6 +372,35 @@ happens.
 - The backup file from the failed attempt should still be in the `backups`
   folder from step 9 above — under a `backups\failed` subfolder specifically
   for a failed attempt's backup, which is never deleted automatically.
+
+### For developers: producing a fresh TEST installer for a future release
+
+`scripts\build-test-older-installer.ps1` automates exactly what produced
+the installer named above: it temporarily hides the newest few migration
+files, builds normally, names the result unmistakably, and puts everything
+back — the repository is left exactly as committed either way, success or
+failure. It does not change one line of the actual upgrade/backup/rollback
+code; it only changes which migrations that one build embeds.
+
+Run it from a clean checkout:
+
+```powershell
+powershell -File scripts\build-test-older-installer.ps1
+```
+
+It refuses to run if there are uncommitted changes to tracked files (so its
+own restore step means something exact), and it refuses to hold out any
+migration that grants `stockiha_runtime` access to `_sqlx_migrations` —
+without that grant the TEST build could not even tell it was behind.
+
+**Important limit, stated plainly:** once a real machine's database is
+fully up to date with a shipped build — which is exactly where the Owner's
+real machine now sits, at all 152 migrations — there is no way to make
+that same, real installation exercise this path again except by installing
+a genuinely newer build that adds new migrations of its own. A TEST
+installer like the one above must only ever be used on a disposable
+test machine or VM, pointed at a fresh, purpose-made app-data folder — it
+must never be installed over, or point at, a real shop's actual database.
 
 ---
 
