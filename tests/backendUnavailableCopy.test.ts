@@ -6,7 +6,14 @@ import {
 import type { DbDiagnostic, DbReasonCode, SchemaCompatibility } from '../src/shared/ipc/gateway';
 
 function diag(partial: Partial<DbDiagnostic>): DbDiagnostic {
-  return { code: 'OK', detail: '', schema: null, config_warning: null, ...partial };
+  return {
+    code: 'OK',
+    detail: '',
+    schema: null,
+    config_warning: null,
+    self_upgrade_available: false,
+    ...partial,
+  };
 }
 
 describe('resolveBackendUnavailableStateKey', () => {

@@ -101,40 +101,6 @@ async fn ensure_embedded_postgres_running(
     }
 }
 
-/// See the call site in `.setup()`. Outcome goes to `setup.log` so an
-/// upgrade that fails is diagnosable from the same file as first-run setup.
-async fn apply_pending_migrations_if_embedded(app_data_dir: &std::path::Path) {
-    if std::env::var(infrastructure::db::DATABASE_URL_ENV).is_ok() {
-        return;
-    }
-    if !infrastructure::local_config::has_migrator(app_data_dir) {
-        return;
-    }
-    let log = |line: String| {
-        use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(app_data_dir.join("setup.log"))
-        {
-            let _ = writeln!(f, "[startup] {line}");
-        }
-    };
-    match infrastructure::embedded_setup::apply_pending_migrations(app_data_dir).await {
-        Ok(Some(infrastructure::schema_version::SchemaCompatibility::UpToDate)) => {}
-        Ok(Some(before)) => {
-            log(format!(
-                "schema was {before:?} for this build; pending migrations applied"
-            ));
-        }
-        Ok(None) => {}
-        Err(detail) => {
-            tracing::error!("could not apply pending migrations: {detail}");
-            log(format!("could not apply pending migrations: {detail}"));
-        }
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(debug_assertions)]
@@ -158,6 +124,13 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        // WS-K-6: internet-delivered updates. Checks the signed manifest
+        // configured in `tauri.conf.json` and verifies/installs the NSIS
+        // installer. No `tauri-plugin-process` alongside it: on Windows,
+        // `Update::downloadAndInstall` already exits this process once NSIS
+        // launches, and NSIS's own `restartAfterInstall` (default `true`)
+        // relaunches Stockiha afterward — see the Cargo.toml note.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state::AppState {
             stage: "Slice 4".to_string(),
         })
@@ -211,19 +184,23 @@ pub fn run() {
                 )
                 .await;
 
-                // WS-K-4.9: an embedded database is this app's own to keep
-                // current. Apply whatever this build ships that the schema
-                // does not yet have, BEFORE the WS-K-1 diagnostic looks —
-                // otherwise every upgrade dead-ends on "Database needs an
-                // update, contact your supplier", which was written for a
-                // database someone else administers. No-op on a fresh
-                // install, a current install, or a non-embedded one; on a
-                // newer-than-binary database SQLx refuses and the existing
-                // downgrade screen still shows.
-                if let Some(dir) = app_data_dir.as_deref() {
-                    apply_pending_migrations_if_embedded(dir).await;
-                }
-
+                // WS-K-4.9 applied a pending embedded-database migration
+                // right here, synchronously, before the window's event loop
+                // ever started pumping — unattended, with no backup, no
+                // verification, and no rollback if it failed. WS-K-5 removes
+                // that call entirely: `.setup()` must stay fast (a long
+                // migration here would freeze the window itself, since
+                // nothing pumps messages until this closure returns), and
+                // an automatic schema upgrade is exactly the kind of action
+                // this task's own safety review found should never run
+                // unattended without a backup. The OlderThanBinary verdict
+                // is still detected below (same `database_state_from_precedence`
+                // / `startup_diagnostic` this always ran), and the frontend
+                // now routes it — only when a migrator credential is on file
+                // — to a dedicated upgrade screen that invokes
+                // `commands::safe_upgrade::run_safe_database_upgrade`
+                // explicitly, after the window is already live. See
+                // `infrastructure::safe_upgrade`'s module doc comment.
                 let state = infrastructure::db::database_state_from_precedence(app_data_dir);
                 // Eager readiness proof: one real connection and `SELECT 1`,
                 // so a broken configuration announces its true cause at
@@ -251,6 +228,10 @@ pub fn run() {
             commands::db_health::check_db_health,
             commands::db_health::get_db_diagnostic,
             commands::embedded_setup::run_embedded_setup,
+            commands::safe_upgrade::run_safe_database_upgrade,
+            commands::update_policy::get_update_policy,
+            commands::update_shutdown::prepare_for_update_install,
+            commands::update_shutdown::resume_after_failed_update_install,
             commands::auth::login,
             commands::auth::logout,
             commands::iam::create_user,
@@ -449,9 +430,8 @@ pub fn run() {
             use tauri::Manager;
             let handle = app_handle
                 .state::<std::sync::Arc<std::sync::Mutex<infrastructure::pg_process::EmbeddedPostgresHandle>>>();
-            let mut guard = handle.lock().unwrap_or_else(|p| p.into_inner());
 
-            // Stop the server if this process spawned it — OR if a live
+            // Stops the server if this process spawned it — OR if a live
             // server is running against our data directory that this
             // process did not spawn. The second case is real, not
             // theoretical: `tauri::process::restart` after first-run setup
@@ -460,42 +440,30 @@ pub fn run() {
             // very first install. It is safe because the data directory is
             // exclusively Stockiha's — single-instance is enforced, and the
             // developer cluster lives elsewhere — so any server on it is ours
-            // to stop. `pg_ctl stop -D` targets the data directory, not a
-            // process handle, so it needs no `Child` to do so. This also
-            // self-heals an orphan left by an earlier build on the next
-            // normal close, with no reboot.
-            let owns_child = guard.child.is_some();
-            let live_server_on_our_data =
-                infrastructure::pg_process::live_server_on(&guard.pgdata);
-
-            if owns_child || live_server_on_our_data {
-                if !owns_child {
+            // to stop. This also self-heals an orphan left by an earlier
+            // build on the next normal close, with no reboot.
+            //
+            // WS-K-6: shared with `commands::update_shutdown::
+            // prepare_for_update_install`, which calls this exact same
+            // function itself, deliberately, BEFORE the updater ever
+            // launches its installer — because a *successful* update
+            // install on Windows calls `std::process::exit(0)` directly
+            // (see that command's own doc comment) and never reaches this
+            // `RunEvent::Exit` hook at all.
+            match infrastructure::pg_process::stop_embedded_postgres_if_running(
+                handle.inner(),
+                infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT,
+            ) {
+                Ok(None) => {}
+                Ok(Some(infrastructure::pg_process::StopOutcome::Fast)) => {}
+                Ok(Some(infrastructure::pg_process::StopOutcome::Immediate)) => {
                     tracing::warn!(
-                        "stopping an embedded PostgreSQL server this process did not start                          (left running by an earlier instance)"
+                        "embedded PostgreSQL did not stop gracefully within {:?}; escalated to -m immediate",
+                        infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT
                     );
                 }
-                let child = guard.child.take();
-                match infrastructure::pg_process::stop_postgres(
-                    &guard.bin_dir,
-                    &guard.pgdata,
-                    infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT,
-                ) {
-                    Ok(infrastructure::pg_process::StopOutcome::Immediate) => {
-                        tracing::warn!(
-                            "embedded PostgreSQL did not stop gracefully within {:?}; escalated to -m immediate",
-                            infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT
-                        );
-                    }
-                    Ok(infrastructure::pg_process::StopOutcome::Fast) => {}
-                    Err(err) => {
-                        tracing::error!("failed to stop embedded PostgreSQL cleanly: {err}");
-                    }
-                }
-                // pg_ctl stop -w already waited for the server to exit; this
-                // reaps our own Child handle (when we have one) so no
-                // zombie/handle leak remains on our side regardless.
-                if let Some(mut child) = child {
-                    let _ = child.wait();
+                Err(err) => {
+                    tracing::error!("failed to stop embedded PostgreSQL cleanly: {err}");
                 }
             }
         }

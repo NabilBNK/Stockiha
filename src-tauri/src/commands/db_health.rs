@@ -9,8 +9,9 @@
 
 use crate::error::IpcError;
 use crate::infrastructure::db::{self, DatabaseState};
+use crate::infrastructure::local_config;
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 /// Typed health status. `CONNECTED` is the only success value; failures are
 /// reported through the `IpcError` rejection channel, never in this payload.
@@ -57,11 +58,25 @@ pub(crate) async fn check_db_health(
 /// reading logs.
 ///
 /// Infallible by design: a diagnostic must never itself fail to be reported.
+///
+/// WS-K-5: also states whether this installation can run the safe automatic
+/// upgrade itself (`local_config::has_migrator`) — computed here, not inside
+/// `infrastructure::db`, which has no `app_data_dir` to check it against.
+/// A best-effort fact only: if `app_data_dir` cannot be resolved, this is
+/// simply `false`, same as a genuinely non-embedded installation.
 #[tauri::command]
 pub(crate) async fn get_db_diagnostic(
+    app: AppHandle,
     state: State<'_, DatabaseState>,
 ) -> Result<db::DbDiagnostic, IpcError> {
-    Ok(db::diagnose(state.inner()).await)
+    let mut diagnostic = db::diagnose(state.inner()).await;
+    diagnostic.self_upgrade_available = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| local_config::has_migrator(&dir))
+        .unwrap_or(false);
+    Ok(diagnostic)
 }
 
 #[cfg(test)]

@@ -53,32 +53,32 @@ beforeEach(() => {
 const CASES: Array<{ name: string; diagnostic: DbDiagnostic; expectedTitle: string }> = [
   {
     name: 'invalid configuration',
-    diagnostic: { code: 'INVALID_CONFIGURATION', detail: 'x', schema: null, config_warning: null },
+    diagnostic: { code: 'INVALID_CONFIGURATION', detail: 'x', schema: null, config_warning: null, self_upgrade_available: false },
     expectedTitle: 'Settings file problem',
   },
   {
     name: 'connect refused',
-    diagnostic: { code: 'CONNECT_REFUSED', detail: 'x', schema: null, config_warning: null },
+    diagnostic: { code: 'CONNECT_REFUSED', detail: 'x', schema: null, config_warning: null, self_upgrade_available: false },
     expectedTitle: 'Database is not running',
   },
   {
     name: 'connect failed',
-    diagnostic: { code: 'CONNECT_FAILED', detail: 'x', schema: null, config_warning: null },
+    diagnostic: { code: 'CONNECT_FAILED', detail: 'x', schema: null, config_warning: null, self_upgrade_available: false },
     expectedTitle: 'Cannot reach the database',
   },
   {
     name: 'auth failed',
-    diagnostic: { code: 'AUTH_FAILED', detail: 'x', schema: null, config_warning: null },
+    diagnostic: { code: 'AUTH_FAILED', detail: 'x', schema: null, config_warning: null, self_upgrade_available: false },
     expectedTitle: 'Database rejected the connection',
   },
   {
     name: 'database missing',
-    diagnostic: { code: 'DATABASE_MISSING', detail: 'x', schema: null, config_warning: null },
+    diagnostic: { code: 'DATABASE_MISSING', detail: 'x', schema: null, config_warning: null, self_upgrade_available: false },
     expectedTitle: 'Database not found',
   },
   {
     name: 'pool saturated',
-    diagnostic: { code: 'POOL_SATURATED', detail: 'x', schema: null, config_warning: null },
+    diagnostic: { code: 'POOL_SATURATED', detail: 'x', schema: null, config_warning: null, self_upgrade_available: false },
     expectedTitle: 'Internal problem',
   },
   {
@@ -88,6 +88,7 @@ const CASES: Array<{ name: string; diagnostic: DbDiagnostic; expectedTitle: stri
       detail: 'x',
       schema: { status: 'OLDER_THAN_BINARY', applied: 0, latest: 12 },
       config_warning: null,
+      self_upgrade_available: false,
     },
     expectedTitle: 'Database is empty',
   },
@@ -98,6 +99,7 @@ const CASES: Array<{ name: string; diagnostic: DbDiagnostic; expectedTitle: stri
       detail: 'x',
       schema: { status: 'OLDER_THAN_BINARY', applied: 8, latest: 12 },
       config_warning: null,
+      self_upgrade_available: false,
     },
     expectedTitle: 'Database needs an update',
   },
@@ -108,6 +110,7 @@ const CASES: Array<{ name: string; diagnostic: DbDiagnostic; expectedTitle: stri
       detail: 'x',
       schema: { status: 'NEWER_THAN_BINARY', applied: 20, latest: 12 },
       config_warning: null,
+      self_upgrade_available: false,
     },
     expectedTitle: 'This version of Stockiha is out of date',
   },
@@ -123,6 +126,7 @@ const CASES: Array<{ name: string; diagnostic: DbDiagnostic; expectedTitle: stri
       detail: 'connected to 127.0.0.1:5433/stockiha_acceptance (pool size=2, idle=2)',
       schema: { status: 'UP_TO_DATE' },
       config_warning: null,
+      self_upgrade_available: false,
     },
     expectedTitle: 'Something went wrong',
   },
@@ -136,6 +140,7 @@ const CASES: Array<{ name: string; diagnostic: DbDiagnostic; expectedTitle: stri
       detail: 'connected to 127.0.0.1:5433/stockiha_acceptance (pool size=2, idle=2)',
       schema: { status: 'UNKNOWN' },
       config_warning: null,
+      self_upgrade_available: false,
     },
     expectedTitle: 'Something went wrong',
   },
@@ -175,6 +180,7 @@ describe('backend-unavailable states', () => {
         detail: 'x',
         schema: null,
         config_warning: null,
+        self_upgrade_available: false,
       }),
     });
     render(<App />);
@@ -244,6 +250,7 @@ describe('config-file permission warning (correction 1: non-blocking)', () => {
       detail: 'x',
       schema: { status: 'UP_TO_DATE' },
       config_warning: 'INSECURE_PERMISSIONS',
+      self_upgrade_available: false,
     });
 
     const banner = await screen.findByTestId('db-config-permission-warning');
@@ -259,6 +266,7 @@ describe('config-file permission warning (correction 1: non-blocking)', () => {
       detail: 'x',
       schema: { status: 'UP_TO_DATE' },
       config_warning: null,
+      self_upgrade_available: false,
     });
 
     expect(screen.queryByTestId('db-config-permission-warning')).not.toBeInTheDocument();
