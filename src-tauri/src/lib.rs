@@ -124,6 +124,13 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        // WS-K-6: internet-delivered updates. Checks the signed manifest
+        // configured in `tauri.conf.json` and verifies/installs the NSIS
+        // installer. No `tauri-plugin-process` alongside it: on Windows,
+        // `Update::downloadAndInstall` already exits this process once NSIS
+        // launches, and NSIS's own `restartAfterInstall` (default `true`)
+        // relaunches Stockiha afterward — see the Cargo.toml note.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state::AppState {
             stage: "Slice 4".to_string(),
         })
@@ -222,6 +229,7 @@ pub fn run() {
             commands::db_health::get_db_diagnostic,
             commands::embedded_setup::run_embedded_setup,
             commands::safe_upgrade::run_safe_database_upgrade,
+            commands::update_policy::get_update_policy,
             commands::auth::login,
             commands::auth::logout,
             commands::iam::create_user,

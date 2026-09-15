@@ -31,6 +31,43 @@ tauri-plugin-dialog = "2"
 # launch is redirected into the already-running instance instead of ever
 # reaching .setup() again.
 tauri-plugin-single-instance = "2"
+# WS-K-6: internet-delivered updates. `tauri-plugin-updater` checks a
+# manifest fetched over HTTPS (never through the webview — the whole
+# request happens in this privileged Rust plugin, so the strict CSP in
+# `tauri.conf.json` needs no change for it), verifies the downloaded NSIS
+# installer's Ed25519/minisign signature against the public key configured
+# in `tauri.conf.json`'s `plugins.updater.pubkey`, and only then hands it to
+# NSIS silently. `tauri-plugin-process` (a natural pairing suggested
+# alongside `tauri-plugin-updater` for the post-install restart) was tried
+# and deliberately dropped: on Windows, `Update::downloadAndInstall` /
+# `Update::install` already exits this process once NSIS launches
+# successfully, and NSIS's own `restartAfterInstall` (default `true`) is
+# what relaunches Stockiha afterward — confirmed against the plugin's own
+# documented behavior, not assumed. A manual `relaunch()` call is therefore
+# unreachable code on the one platform this app ships for; adding the
+# dependency for it would violate this project's own "no dependency without
+# concrete need" rule.
+tauri-plugin-updater = "2"
+# WS-K-6: `tauri-plugin-updater` handles the signed, versioned NSIS-installer
+# manifest entirely on its own — this crate never touches that. What it does
+# NOT provide is the forced-vs-optional policy Tauri's manifest format has no
+# field for (see `infrastructure::update_policy`): a second, tiny, UNSIGNED
+# JSON file fetched separately, so the Owner can flip a release from
+# optional to forced by editing one file on the host, no rebuild, no new
+# signature. Pinned to the exact `reqwest` version already resolved
+# transitively via `tauri-plugin-updater` (confirmed in Cargo.lock), so this
+# adds no new *package*. Feature choice is deliberate, though: `rustls`
+# pulls in `aws-lc-rs`, a second TLS/crypto stack alongside the `ring`-based
+# one already present, AND requires a C build toolchain (cmake) this project
+# does not otherwise need — confirmed by actually building it. `default-tls`
+# uses Windows' own SChannel (via the `native-tls` crate) instead: no second
+# crypto stack, no new build-tool requirement, and it is the OS's own
+# already-trusted certificate store doing the verification for a plain
+# public JSON fetch that carries no credential either way.
+reqwest = { version = "=0.13.4", default-features = false, features = [
+    "json",
+    "default-tls",
+] }
 # WS-K-4.4: strips Windows' `\\?\` verbatim prefix before a path is handed to
 # a bundled PostgreSQL program. Tauri's `resource_dir()` canonicalizes
 # `current_exe()` (a deliberate symlink-resolution security measure), and on
@@ -209,3 +246,20 @@ windows-sys = { version = "0.61.2", features = [
 [dev-dependencies]
 # S0-003: async runtime for the opt-in PostgreSQL integration tests only.
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# WS-K-6: `minisign-verify` is the exact crate `tauri-plugin-updater` itself
+# uses to verify a downloaded installer's signature (confirmed by reading
+# that crate's own source, not assumed) — the one piece of that plugin
+# testable from outside it without a full Tauri app context (`UpdaterBuilder
+# ::new` is `pub(crate)`, requiring a live `&AppHandle`). This proves "a
+# tampered installer cannot install" against the real verification
+# primitive in play, using a real (throwaway, test-only) Ed25519/minisign
+# keypair — see tests/update_signature_verification.rs. Pinned to the exact
+# version already resolved transitively via `tauri-plugin-updater`
+# (confirmed in Cargo.lock), so this adds zero new package versions.
+minisign-verify = "=0.2.5"
+# WS-K-6: the manifest/config layer of base64 `tauri-plugin-updater` wraps
+# around the plain minisign text before `minisign-verify` ever sees it (see
+# that plugin's `verify_signature`) - needed here only to reproduce that
+# exact real decode order in the test. Pinned to the version already
+# resolved transitively, zero new package versions.
+base64 = "=0.22.1"

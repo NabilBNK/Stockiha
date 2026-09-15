@@ -45,6 +45,10 @@ pub(crate) mod pg_process;
 // failure. Does not re-implement migration itself; wraps
 // `embedded_setup::apply_pending_migrations`.
 pub(crate) mod safe_upgrade;
+// WS-K-6: the forced/optional update policy, fetched separately from
+// tauri-plugin-updater's own signed, versioned manifest — see the module's
+// own doc comment for why this needs a second file at all.
+pub(crate) mod update_policy;
 // S0-008: ESC/POS Windows RAW spooler proof. Crate-private and consumer-free
 // (no Tauri command, no IPC); dead code in non-test builds until a later
 // slice sends real receipts. The exemption is removed then. The module is

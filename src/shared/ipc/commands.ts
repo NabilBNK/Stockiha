@@ -10,6 +10,8 @@ export const COMMANDS = {
   RUN_EMBEDDED_SETUP: 'run_embedded_setup',
   // WS-K-5 — safe automatic database upgrade (mandatory backup + rollback)
   RUN_SAFE_DATABASE_UPGRADE: 'run_safe_database_upgrade',
+  // WS-K-6 — internet-delivered updates: forced/optional policy
+  GET_UPDATE_POLICY: 'get_update_policy',
   BOOTSTRAP_FIRST_ADMIN: 'bootstrap_first_admin',
   LOGIN: 'login',
   LOGOUT: 'logout',

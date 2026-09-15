@@ -22,6 +22,7 @@ import { SetupScreen } from '../features/setup/SetupScreen';
 import { BackendUnavailableScreen } from '../features/startup/BackendUnavailableScreen';
 import { EmbeddedSetupScreen } from '../features/startup/EmbeddedSetupScreen';
 import { DatabaseUpgradeScreen } from '../features/startup/DatabaseUpgradeScreen';
+import { UpdateBanner } from '../features/update/UpdateBanner';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { CatalogScreen } from '../features/catalog2/CatalogScreen';
 import { CatalogueSetupScreen } from '../features/catalogue-setup/CatalogueSetupScreen';
@@ -160,7 +161,7 @@ export function AppRouter() {
 function AuthenticatedApp() {
   const { locale, t } = useI18n();
   const text = OPENING_SETUP_COPY[locale];
-  const { user, refreshActiveCashSession, clearSession } = useSession();
+  const { user, activeCashSession, refreshActiveCashSession, clearSession } = useSession();
   const { error, openFiscalPeriod } = useAppData();
   const [view, setView] = useState<AppView>('dashboard');
   /**
@@ -395,6 +396,7 @@ function AuthenticatedApp() {
       procurementCapabilities={procurementCapabilities}
       customerCapabilities={customerCapabilities}
     >
+      <UpdateBanner cashSessionOpen={activeCashSession !== null} />
       {configWarning === 'INSECURE_PERMISSIONS' ? (
         <Banner tone="warning" testId="db-config-permission-warning">
           {t('backend.configWarning.insecurePermissions')}

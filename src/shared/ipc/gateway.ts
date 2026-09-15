@@ -262,6 +262,21 @@ export function runSafeDatabaseUpgrade(): Promise<void> {
   return call<void>(COMMANDS.RUN_SAFE_DATABASE_UPGRADE);
 }
 
+/**
+ * WS-K-6 — mirrors `infrastructure::update_policy::UpdatePolicyResult`.
+ * `mode` is always present and always safe to act on directly: every
+ * failure to fetch or parse `update-policy.json` already resolved to
+ * `'optional'` on the Rust side before this ever reaches the frontend.
+ */
+export interface UpdatePolicyResult {
+  mode: 'optional' | 'forced';
+  fetched: boolean;
+}
+
+export function getUpdatePolicy(): Promise<UpdatePolicyResult> {
+  return call<UpdatePolicyResult>(COMMANDS.GET_UPDATE_POLICY);
+}
+
 export interface BootstrapAdminInput {
   username: string;
   password: string;

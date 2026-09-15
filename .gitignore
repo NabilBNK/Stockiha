@@ -75,3 +75,14 @@ Folders/
 
 # Stray agent git worktrees (local-only; polluted lint/test runs when untracked)
 .claude/worktrees/
+
+# WS-K-6 — update signing key material. The PUBLIC key lives in
+# tauri.conf.json (safe, meant to be distributed with the app); the PRIVATE
+# key and its password are the Owner's alone, stored in a password manager,
+# and must never exist inside this repository at all. These patterns are a
+# safety net against an accidental `tauri signer generate` run without an
+# explicit `-w` path pointing elsewhere.
+*.key
+*.key.pub
+*.minisign
+stockiha-update-signing*

@@ -25,4 +25,5 @@ pub mod safe_upgrade;
 pub mod setup;
 pub mod stock_adjustment;
 pub mod stock_receipt;
+pub mod update_policy;
 pub mod warehouse;
