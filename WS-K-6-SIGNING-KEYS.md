@@ -3,6 +3,16 @@
 This is the single point of trust for every future Stockiha update. Read
 this whole page before doing anything else with the key.
 
+> **Rotation note:** the key first generated for this task was shown in
+> plain text in a chat transcript and was rotated immediately afterward,
+> before any release shipped — rotation is free before the first
+> client installation exists and becomes permanently expensive
+> afterward (every already-updated client would need an in-person
+> reinstall). `tauri.conf.json`'s `pubkey` now holds the SECOND,
+> rotated key. The instructions below apply to whichever key is
+> currently in that file — always check `tauri.conf.json` itself for
+> the live value, never a copy pasted into a chat or ticket.
+
 ## What was generated
 
 An Ed25519 key pair, using Tauri's own signing tool (`tauri signer

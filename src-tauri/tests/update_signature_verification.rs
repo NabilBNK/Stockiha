@@ -37,7 +37,7 @@ const FIXTURE_VALID_SIGNATURE_B64: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZ
 /// wrong-key test below; the fixture above was never signed with it, and
 /// the private half of this one is not, and must never be, in this
 /// repository (see `WS-K-6-SIGNING-KEYS.md`).
-const APP_REAL_PUBLIC_KEY_B64: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGODYxREVGM0UxRUMyNDUKUldSRndoNCs3eDJHZnk0T1JEZ0N2SzdGNWFkUDhuSXd1N2lNQW8zVUtNR1A5ZHNjU29QSzByZjAK";
+const APP_REAL_PUBLIC_KEY_B64: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3N0I1MUM0NzU3MjBBMjAKUldRZ0NuSjF4RkY3MTNRTjRmdlRHcTVZckN6ZjlkYml6a2c5UFpQVTJqWGw0L3JQQ29WZG9jRU0K";
 
 /// Reverses one layer of base64: `tauri.conf.json`'s `pubkey` and a
 /// manifest's `signature` field are both base64 of the *plain multi-line

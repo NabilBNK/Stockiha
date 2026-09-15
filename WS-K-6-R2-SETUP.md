@@ -69,23 +69,63 @@ page is.
    the same Settings tab — Cloudflare's exact wording here changes from
    time to time.
 
-## Part D — where each file goes
+### Why making these files public is safe (this is not "security by obscurity")
+
+It is natural to worry that "anyone with the link can download it" sounds
+insecure. It is not, for one specific reason: **the security here comes
+from the Ed25519/minisign signature (see `WS-K-6-SIGNING-KEYS.md`), not
+from hiding the file.** Concretely:
+
+- Anyone in the world can already download and inspect a Stockiha
+  installer today — it isn't secret software, it's an app you hand to
+  clients. There is nothing sensitive inside the `.exe` itself.
+- What actually matters is whether the app you run **trusts** a file
+  before installing it. Every copy of Stockiha has the PUBLIC signing
+  key built in, and refuses, unconditionally, to install anything that
+  isn't signed by the matching PRIVATE key — the one that never leaves
+  your Bitwarden. An attacker who finds the download URL (trivial, since
+  it's public on purpose) gains nothing: they can download the genuine
+  file, but they cannot produce a fake one the app will accept, because
+  they don't have the private key.
+- This is the same reasoning banks and Windows itself rely on for
+  software updates generally: the *file* being public is fine; the
+  *signature* is the actual lock. Hiding the URL instead of signing the
+  file would be the weaker design — a leaked or guessed URL would then
+  be a real problem, which is exactly the "security by obscurity" trap
+  this setup avoids.
+- `update-policy.json` (the forced/optional file) is the one exception
+  worth naming: it is deliberately **not** signed at all, because it
+  carries no executable code — at worst, someone editing a copy of it
+  they hosted themselves could make their own fake copy of the app
+  falsely claim "forced" or "optional", but they still cannot make the
+  real Stockiha install anything unsigned, ever.
+
+## Part D — where each file goes, and the exact public URL each one gets
 
 Everything lives in the root of the `stockiha-updates` bucket (no
 subfolders needed, though subfolders are harmless if you prefer to
 organize by version). After each new release (see
 `WS-K-6-RELEASE-PROCESS.md` for the full step-by-step), you will have
-these files to upload:
+these files to upload.
 
-| File | Example name | Purpose |
-|---|---|---|
-| The installer | `Stockiha_WS-K-6.2-setup.exe` | The actual update, downloaded by the app |
-| Its signature | (embedded inside `latest.json`, not a separate uploaded file) | Proves the installer is genuine |
-| The manifest | `latest.json` | Tells the app a new version exists, and where to get it |
-| The policy file | `update-policy.json` | Tells the app whether this release is optional or forced — this is the ONE file you edit to change that, without rebuilding anything |
+**Worked example** — assume your chosen subdomain from Part B is
+`updates.stockiha.example.com` (replace with your real one everywhere
+below) and you are publishing version `WS-K-6.2`:
+
+| File | Uploaded as (bucket root) | Resulting public URL | Purpose |
+|---|---|---|---|
+| The installer | `Stockiha_WS-K-6.2-setup.exe` | `https://updates.stockiha.example.com/Stockiha_WS-K-6.2-setup.exe` | The actual update, downloaded by the app |
+| The manifest | `latest.json` | `https://updates.stockiha.example.com/latest.json` | Tells the app a new version exists, and where to get it — its own `url` field must contain the exact installer URL above |
+| The policy file | `update-policy.json` | `https://updates.stockiha.example.com/update-policy.json` | Tells the app whether this release is optional or forced — the ONE file you edit to change that, without rebuilding anything |
+
+The installer's signature is not a separate uploaded file — it is a
+block of text that goes *inside* `latest.json`'s own `signature` field
+(see `WS-K-6-RELEASE-PROCESS.md` step 3–4 for exactly where that text
+comes from).
 
 `latest.json` and `update-policy.json` get **overwritten** each release
-(same file name every time); the installer file itself gets a **new**
+(same file name, same URL, every time — this is what lets the app always
+ask the same two addresses); the installer file itself gets a **new**
 name each release (it includes the version number), and old installer
 files can be deleted once you're confident nobody needs to fetch them
 again — nothing reads an old installer's name from anywhere once
@@ -95,6 +135,45 @@ To upload: open the bucket in the Cloudflare dashboard, click **Upload**,
 and drag the files in, OR use `rclone`/`aws-cli` configured for R2 if you
 prefer a command-line tool later — the dashboard upload is enough for
 now.
+
+## Part E — once your real subdomain exists, two code files must be updated
+
+This part is for whoever builds the app (a developer), not something you
+need to do yourself — but you should know it exists, so you can ask for
+it to be done before the first real release, and so you can verify it
+was done by searching for the text below.
+
+Right now, two files in the source code hold a **placeholder** domain
+that does not point anywhere real. Search the codebase for this exact
+text — it appears in both places, character for character:
+
+```
+PLACEHOLDER-REPLACE-WITH-YOUR-DOMAIN
+```
+
+The two places it appears:
+
+1. **`src-tauri/tauri.conf.json`**, inside `plugins.updater.endpoints` —
+   currently:
+   ```
+   "https://updates.PLACEHOLDER-REPLACE-WITH-YOUR-DOMAIN.com/latest.json"
+   ```
+   must become your real address, e.g.:
+   ```
+   "https://updates.stockiha.example.com/latest.json"
+   ```
+2. **`src-tauri/src/commands/update_policy.rs`**, the
+   `UPDATE_POLICY_URL` constant — currently:
+   ```
+   "https://updates.PLACEHOLDER-REPLACE-WITH-YOUR-DOMAIN.com/update-policy.json"
+   ```
+   must become the same real domain, with `/update-policy.json` instead
+   of `/latest.json`.
+
+Both must point at the exact subdomain you set up in Part B, and the app
+must be rebuilt after this change (a plain text edit does not take
+effect until the next build) — this is a one-time change, not something
+repeated per release.
 
 ---
 
