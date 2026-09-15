@@ -26,4 +26,5 @@ pub mod setup;
 pub mod stock_adjustment;
 pub mod stock_receipt;
 pub mod update_policy;
+pub mod update_shutdown;
 pub mod warehouse;

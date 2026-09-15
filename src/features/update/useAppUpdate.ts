@@ -34,11 +34,30 @@
  *   banner. `performUpdate` failing (network drop mid-download, a broken
  *   release) leaves `error` set and `installing: false`; nothing here ever
  *   throws past its own boundary or blocks the rest of the app.
+ *
+ * WS-K-6 real-hardware defect fix — install ordering: `performUpdate` calls
+ * `update.download()` and `update.install()` as two separate steps, with
+ * `prepare_for_update_install` (Rust) run in between, rather than the
+ * combined `update.downloadAndInstall()`. This is not a style preference:
+ * real-hardware testing found NSIS failing to overwrite a bundled
+ * PostgreSQL file mid-update, because a *successful* `install()` on
+ * Windows calls `std::process::exit(0)` internally and never reaches this
+ * app's own database-shutdown hook (`RunEvent::Exit` in `lib.rs`) — see
+ * `commands::update_shutdown`'s own doc comment for the full chain of
+ * evidence. `prepare_for_update_install` stops the database itself,
+ * explicitly, and confirms its files are writable again before this code
+ * ever calls `install()`. If `download()` fails, nothing has been touched
+ * yet. If `prepare_for_update_install` or `install()` itself fails after
+ * the database was already stopped, `resume_after_failed_update_install`
+ * restarts it — the shop must never end up with neither the update nor a
+ * working database.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 
 import { getUpdatePolicy } from '../../shared/ipc/gateway';
+import { COMMANDS } from '../../shared/ipc/commands';
 
 export type UpdateMode = 'optional' | 'forced';
 
@@ -124,15 +143,42 @@ export function useAppUpdate({ cashSessionOpen, enabled = true }: UseAppUpdateOp
     if (!update) return;
 
     setState((prev) => ({ ...prev, installing: true, error: null }));
+    let stoppedDatabase = false;
     try {
-      await update.downloadAndInstall();
+      // Nothing has been touched yet at this point - a failure here (a
+      // dropped connection, a broken release) leaves the app exactly as it
+      // was before the click.
+      await update.download();
+
+      // Only from here on does anything change: stop the database and
+      // confirm its files are writable again BEFORE ever calling install().
+      // See the module doc comment for why this ordering - not a race
+      // against the plugin's own internal exit call - is the actual fix.
+      await invoke(COMMANDS.PREPARE_FOR_UPDATE_INSTALL);
+      stoppedDatabase = true;
+
+      await update.install();
       // On Windows this line is normally unreachable: a successful
-      // `downloadAndInstall` already exits the process once NSIS launches
-      // (see the Rust-side Cargo.toml note). Reaching here at all means
-      // installation did not actually happen, so it is treated the same
-      // as any other failure - the UI must not claim success.
+      // `install()` already exits the process once NSIS launches (see the
+      // Rust-side Cargo.toml note). Reaching here at all means installation
+      // did not actually happen, so it is treated the same as any other
+      // failure - the UI must not claim success.
       setState((prev) => ({ ...prev, installing: false }));
     } catch (err) {
+      if (stoppedDatabase) {
+        // install() itself failed after we already stopped the database
+        // (or prepare_for_update_install stopped it but then refused to
+        // proceed because files stayed locked) - get it running again so
+        // the shop is not left without a database on top of not getting
+        // the update. Best-effort: if this also fails, the error below is
+        // still surfaced, and a normal app restart retries startup's own
+        // database-start path regardless.
+        try {
+          await invoke(COMMANDS.RESUME_AFTER_FAILED_UPDATE_INSTALL);
+        } catch {
+          // Nothing more to do from here.
+        }
+      }
       // 2b: a failed download/install must never block trading. This
       // leaves every other screen exactly as usable as before the click.
       setState((prev) => ({

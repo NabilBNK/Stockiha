@@ -799,6 +799,123 @@ impl EmbeddedPostgresHandle {
     }
 }
 
+/// Stop the embedded server this handle tracks — if this process spawned
+/// it, or if a live server is otherwise confirmed running against our own
+/// data directory (see [`live_server_on`]'s own doc comment for why that
+/// second case is real, not theoretical). A no-op, cheaply, when nothing
+/// needs stopping.
+///
+/// WS-K-6: shared by the `RunEvent::Exit` shutdown hook (`lib.rs`) and the
+/// pre-update-install command (`commands::update_shutdown`) — both need
+/// the exact same "stop it, and mean it" behavior. Real-hardware testing
+/// found that `tauri-plugin-updater`'s own successful-install path on
+/// Windows never reaches `RunEvent::Exit` at all: it calls
+/// `std::process::exit(0)` directly (confirmed by reading that crate's
+/// source), which runs no Rust destructors and dispatches no Tauri event.
+/// The pre-update-install command exists specifically to call this
+/// function itself, deliberately, before ever asking the updater to
+/// install anything — see that module's own doc comment for the full
+/// chain of evidence.
+pub fn stop_embedded_postgres_if_running(
+    handle: &std::sync::Arc<std::sync::Mutex<EmbeddedPostgresHandle>>,
+    graceful_timeout: Duration,
+) -> Result<Option<StopOutcome>, String> {
+    let (owns_child, live, bin_dir, pgdata, child) = {
+        let mut guard = handle.lock().unwrap_or_else(|p| p.into_inner());
+        let owns_child = guard.child.is_some();
+        let live = live_server_on(&guard.pgdata);
+        let child = guard.child.take();
+        (
+            owns_child,
+            live,
+            guard.bin_dir.clone(),
+            guard.pgdata.clone(),
+            child,
+        )
+    };
+
+    if !owns_child && !live {
+        return Ok(None);
+    }
+
+    if !owns_child {
+        tracing::warn!(
+            "stopping an embedded PostgreSQL server this process did not start \
+             (left running by an earlier instance)"
+        );
+    }
+
+    let outcome = stop_postgres(&bin_dir, &pgdata, graceful_timeout).map_err(|e| e.to_string())?;
+
+    // `pg_ctl stop -w` already waited for the postmaster to exit; this
+    // reaps our own `Child` handle (when we have one) so no zombie/handle
+    // leak remains on our side regardless.
+    if let Some(mut child) = child {
+        let _ = child.wait();
+    }
+
+    Ok(Some(outcome))
+}
+
+/// The exact bundled files WS-K-6's real-hardware update failure was
+/// reported against, checked as a representative sample — not every file
+/// under `share/`/`lib/` (hundreds of static data files no running process
+/// ever keeps open), but the handful a live `postgres.exe` and its worker
+/// processes actually load: the three binaries [`REQUIRED_BINARIES`]
+/// already requires, plus `icudt77.dll` (the ICU data library every
+/// backend loads for locale/collation support — the exact file NSIS's log
+/// named: "Error opening file for writing: ...postgres\win64\bin\
+/// icudt77.dll").
+const REPRESENTATIVE_LOCKABLE_FILES: [&str; 4] =
+    ["initdb.exe", "postgres.exe", "pg_ctl.exe", "icudt77.dll"];
+
+/// Can every file in [`REPRESENTATIVE_LOCKABLE_FILES`] actually be opened
+/// for writing right now, without truncating or otherwise modifying it?
+///
+/// Deliberately checks "can this exact operation succeed" rather than "is
+/// a process named postgres.exe still running": the latter would need to
+/// walk the whole system process table (this module has no code to do
+/// that, and adding it would still miss a completely unrelated locker,
+/// such as an antivirus scan reading the same file mid-flight) and reports
+/// a fact one step removed from what actually matters — whether NSIS's own
+/// overwrite is about to succeed. A locked file refuses this exact request
+/// the same way it would refuse NSIS's; an unlocked one accepts it and the
+/// handle is dropped immediately, unmodified.
+fn resources_are_unlocked(bin_dir: &Path) -> bool {
+    for name in REPRESENTATIVE_LOCKABLE_FILES {
+        let path = bin_dir.join(name);
+        if !path.is_file() {
+            // Nothing to check yet — a bundle-layout problem is a
+            // different, already-covered failure (preflight_bundle_layout/
+            // preflight_backup_binaries), not this function's concern.
+            continue;
+        }
+        if std::fs::OpenOptions::new().write(true).open(&path).is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Bounded wait for [`resources_are_unlocked`] to become true. Generous
+/// relative to [`stop_postgres`]'s own bounded graceful/escalated stop: a
+/// confirmed-stopped postmaster's child worker processes (checkpointer,
+/// background writer, autovacuum launcher, I/O workers — each capable of
+/// holding its own handle to the same DLLs) do not always finish tearing
+/// down at the exact instant the postmaster itself reports stopped.
+pub fn wait_until_resources_unlocked(bin_dir: &Path, timeout: Duration) -> bool {
+    let started = Instant::now();
+    loop {
+        if resources_are_unlocked(bin_dir) {
+            return true;
+        }
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1518,5 +1635,157 @@ mod tests {
              host    all             all             ::1/128                 trust\n",
         )
         .unwrap();
+    }
+
+    // ——— WS-K-6: resource-lock detection ———
+    //
+    // Real-hardware testing found NSIS failing to overwrite a bundled
+    // PostgreSQL DLL mid-update because this app's own embedded postgres.exe
+    // was still holding it open. These tests prove the detection mechanism
+    // itself — using a genuinely, exclusively-locked file opened by this
+    // test process, the same Win32 sharing-violation condition a live
+    // postgres.exe process would produce — without needing a real
+    // PostgreSQL instance at all.
+
+    fn scratch_bin_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "sk-pg-process-lock-test-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn resources_are_unlocked_when_no_representative_file_exists_yet() {
+        // A bundle that hasn't been laid out yet (or is missing files for
+        // an unrelated reason already covered by preflight_bundle_layout)
+        // must not be reported as "locked" — there is nothing to lock.
+        let dir = scratch_bin_dir("missing-files");
+        assert!(resources_are_unlocked(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resources_are_unlocked_reports_true_for_a_genuinely_free_file() {
+        let dir = scratch_bin_dir("free-file");
+        std::fs::write(dir.join("postgres.exe"), b"not a real binary, just bytes").unwrap();
+        assert!(resources_are_unlocked(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The core proof: a file exclusively opened by this very test process
+    /// — `FILE_SHARE_MODE` of zero, the strictest possible lock, exactly
+    /// what a live process with the file open for exclusive access would
+    /// produce — must be detected as locked, not silently treated as free.
+    #[test]
+    #[cfg(windows)]
+    fn resources_are_unlocked_reports_false_for_an_exclusively_locked_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = scratch_bin_dir("locked-file");
+        let path = dir.join("icudt77.dll");
+        std::fs::write(&path, b"not real ICU data, just bytes").unwrap();
+
+        // share_mode(0) = FILE_SHARE_NONE: no other handle, including one
+        // opened by this exact same process, may share this file while
+        // this handle is held open.
+        let _exclusive_handle = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .expect("must be able to open the file exclusively to set up this test");
+
+        assert!(
+            !resources_are_unlocked(&dir),
+            "an exclusively-locked file must be reported as locked, not free"
+        );
+
+        drop(_exclusive_handle);
+        assert!(
+            resources_are_unlocked(&dir),
+            "once the exclusive handle is released, the same file must report as free again"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wait_until_resources_unlocked_returns_immediately_when_already_free() {
+        let dir = scratch_bin_dir("wait-already-free");
+        std::fs::write(dir.join("pg_ctl.exe"), b"bytes").unwrap();
+        let started = Instant::now();
+        assert!(wait_until_resources_unlocked(&dir, Duration::from_secs(5)));
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "must not wait out the timeout when the file is already free"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The bounded-wait contract's other half: a lock that is released
+    /// partway through the wait must be picked up before the timeout, and
+    /// a lock that never releases must time out and return `false` rather
+    /// than block forever.
+    #[test]
+    #[cfg(windows)]
+    fn wait_until_resources_unlocked_picks_up_a_lock_released_mid_wait() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = scratch_bin_dir("wait-released-mid-flight");
+        let path = dir.join("initdb.exe");
+        std::fs::write(&path, b"bytes").unwrap();
+        let handle = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+
+        let dir_for_thread = dir.clone();
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(500));
+            drop(handle);
+            let _ = dir_for_thread; // keep the path alive for clarity only
+        });
+
+        assert!(
+            wait_until_resources_unlocked(&dir, Duration::from_secs(5)),
+            "must detect the lock's release within the bounded wait"
+        );
+        releaser.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn wait_until_resources_unlocked_times_out_on_a_lock_that_never_releases() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = scratch_bin_dir("wait-never-releases");
+        let path = dir.join("postgres.exe");
+        std::fs::write(&path, b"bytes").unwrap();
+        let _handle = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+
+        let started = Instant::now();
+        let result = wait_until_resources_unlocked(&dir, Duration::from_millis(600));
+        assert!(
+            !result,
+            "a lock that never releases must time out, not hang forever"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "must actually respect the bound"
+        );
+
+        drop(_handle);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

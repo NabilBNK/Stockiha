@@ -230,6 +230,8 @@ pub fn run() {
             commands::embedded_setup::run_embedded_setup,
             commands::safe_upgrade::run_safe_database_upgrade,
             commands::update_policy::get_update_policy,
+            commands::update_shutdown::prepare_for_update_install,
+            commands::update_shutdown::resume_after_failed_update_install,
             commands::auth::login,
             commands::auth::logout,
             commands::iam::create_user,
@@ -428,9 +430,8 @@ pub fn run() {
             use tauri::Manager;
             let handle = app_handle
                 .state::<std::sync::Arc<std::sync::Mutex<infrastructure::pg_process::EmbeddedPostgresHandle>>>();
-            let mut guard = handle.lock().unwrap_or_else(|p| p.into_inner());
 
-            // Stop the server if this process spawned it — OR if a live
+            // Stops the server if this process spawned it — OR if a live
             // server is running against our data directory that this
             // process did not spawn. The second case is real, not
             // theoretical: `tauri::process::restart` after first-run setup
@@ -439,42 +440,30 @@ pub fn run() {
             // very first install. It is safe because the data directory is
             // exclusively Stockiha's — single-instance is enforced, and the
             // developer cluster lives elsewhere — so any server on it is ours
-            // to stop. `pg_ctl stop -D` targets the data directory, not a
-            // process handle, so it needs no `Child` to do so. This also
-            // self-heals an orphan left by an earlier build on the next
-            // normal close, with no reboot.
-            let owns_child = guard.child.is_some();
-            let live_server_on_our_data =
-                infrastructure::pg_process::live_server_on(&guard.pgdata);
-
-            if owns_child || live_server_on_our_data {
-                if !owns_child {
+            // to stop. This also self-heals an orphan left by an earlier
+            // build on the next normal close, with no reboot.
+            //
+            // WS-K-6: shared with `commands::update_shutdown::
+            // prepare_for_update_install`, which calls this exact same
+            // function itself, deliberately, BEFORE the updater ever
+            // launches its installer — because a *successful* update
+            // install on Windows calls `std::process::exit(0)` directly
+            // (see that command's own doc comment) and never reaches this
+            // `RunEvent::Exit` hook at all.
+            match infrastructure::pg_process::stop_embedded_postgres_if_running(
+                handle.inner(),
+                infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT,
+            ) {
+                Ok(None) => {}
+                Ok(Some(infrastructure::pg_process::StopOutcome::Fast)) => {}
+                Ok(Some(infrastructure::pg_process::StopOutcome::Immediate)) => {
                     tracing::warn!(
-                        "stopping an embedded PostgreSQL server this process did not start                          (left running by an earlier instance)"
+                        "embedded PostgreSQL did not stop gracefully within {:?}; escalated to -m immediate",
+                        infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT
                     );
                 }
-                let child = guard.child.take();
-                match infrastructure::pg_process::stop_postgres(
-                    &guard.bin_dir,
-                    &guard.pgdata,
-                    infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT,
-                ) {
-                    Ok(infrastructure::pg_process::StopOutcome::Immediate) => {
-                        tracing::warn!(
-                            "embedded PostgreSQL did not stop gracefully within {:?}; escalated to -m immediate",
-                            infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT
-                        );
-                    }
-                    Ok(infrastructure::pg_process::StopOutcome::Fast) => {}
-                    Err(err) => {
-                        tracing::error!("failed to stop embedded PostgreSQL cleanly: {err}");
-                    }
-                }
-                // pg_ctl stop -w already waited for the server to exit; this
-                // reaps our own Child handle (when we have one) so no
-                // zombie/handle leak remains on our side regardless.
-                if let Some(mut child) = child {
-                    let _ = child.wait();
+                Err(err) => {
+                    tracing::error!("failed to stop embedded PostgreSQL cleanly: {err}");
                 }
             }
         }

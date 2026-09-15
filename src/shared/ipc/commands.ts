@@ -12,6 +12,9 @@ export const COMMANDS = {
   RUN_SAFE_DATABASE_UPGRADE: 'run_safe_database_upgrade',
   // WS-K-6 — internet-delivered updates: forced/optional policy
   GET_UPDATE_POLICY: 'get_update_policy',
+  // WS-K-6 — stop/restart the embedded database around an update install
+  PREPARE_FOR_UPDATE_INSTALL: 'prepare_for_update_install',
+  RESUME_AFTER_FAILED_UPDATE_INSTALL: 'resume_after_failed_update_install',
   BOOTSTRAP_FIRST_ADMIN: 'bootstrap_first_admin',
   LOGIN: 'login',
   LOGOUT: 'logout',

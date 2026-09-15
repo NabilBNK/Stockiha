@@ -15,6 +15,15 @@
  * and to `null` when it is not (already, by construction, "same or older
  * version" from the plugin's perspective) — never that this repository's
  * code re-implements or second-guesses that comparison itself.
+ *
+ * Also covers the real-hardware install-ordering defect fix: `performUpdate`
+ * must call `download()`, then `prepare_for_update_install` (Rust — stops
+ * the embedded database and confirms its files are unlocked), then
+ * `install()`, in that exact order, and must call
+ * `resume_after_failed_update_install` if anything after the database was
+ * stopped then fails. The Rust-side stop/restart logic itself is proven in
+ * `src-tauri` (`pg_process`'s own tests); what is testable here is that
+ * THIS code invokes it at the right moments, in the right order.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -23,7 +32,8 @@ const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 
 const checkMock = vi.fn();
-const downloadAndInstallMock = vi.fn();
+const downloadMock = vi.fn();
+const installMock = vi.fn();
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: (...args: unknown[]) => checkMock(...args),
 }));
@@ -36,7 +46,8 @@ function fakeUpdate(version: string) {
   return {
     version,
     currentVersion: '5.0.0',
-    downloadAndInstall: (...args: unknown[]) => downloadAndInstallMock(...args),
+    download: (...args: unknown[]) => downloadMock(...args),
+    install: (...args: unknown[]) => installMock(...args),
   };
 }
 
@@ -48,11 +59,23 @@ function renderBanner(cashSessionOpen: boolean) {
   );
 }
 
+/**
+ * Wires `invoke()` for the policy fetch plus both update-shutdown commands.
+ * `prepare_for_update_install`/`resume_after_failed_update_install` resolve
+ * successfully by default — individual tests override via `invokeMock`
+ * directly when they need one to fail.
+ */
 function wirePolicy(mode: 'optional' | 'forced' | null) {
   invokeMock.mockImplementation((command: string) => {
     if (command === COMMANDS.GET_UPDATE_POLICY) {
       if (mode === null) return Promise.reject(new Error('offline'));
       return Promise.resolve({ mode, fetched: true });
+    }
+    if (
+      command === COMMANDS.PREPARE_FOR_UPDATE_INSTALL ||
+      command === COMMANDS.RESUME_AFTER_FAILED_UPDATE_INSTALL
+    ) {
+      return Promise.resolve();
     }
     return Promise.reject(new Error(`unexpected command ${command}`));
   });
@@ -61,7 +84,8 @@ function wirePolicy(mode: 'optional' | 'forced' | null) {
 beforeEach(() => {
   invokeMock.mockReset();
   checkMock.mockReset();
-  downloadAndInstallMock.mockReset();
+  downloadMock.mockReset();
+  installMock.mockReset();
   cleanup();
 });
 
@@ -109,7 +133,8 @@ describe('WS-K-6 update engine', () => {
     const installButton = await screen.findByTestId('update-banner-install');
     expect(installButton).toBeDisabled();
     expect(screen.getByTestId('update-banner-cash-session-notice')).toBeInTheDocument();
-    expect(downloadAndInstallMock).not.toHaveBeenCalled();
+    expect(downloadMock).not.toHaveBeenCalled();
+    expect(installMock).not.toHaveBeenCalled();
   });
 
   it('the forced/optional flag is read from the policy fetch, not compiled in - same update, different mode', async () => {
@@ -132,7 +157,7 @@ describe('WS-K-6 update engine', () => {
   it('a failed install on a forced update leaves the rest of the app usable (never blocks trading)', async () => {
     wirePolicy('forced');
     checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
-    downloadAndInstallMock.mockRejectedValue(new Error('download interrupted'));
+    downloadMock.mockRejectedValue(new Error('download interrupted'));
 
     renderBanner(false);
 
@@ -146,5 +171,85 @@ describe('WS-K-6 update engine', () => {
     // component's own boundary (a thrown error would have failed this
     // test via an uncaught rejection).
     expect(screen.getByTestId('update-banner-install')).toBeInTheDocument();
+    // download() failing must never even attempt to touch the database.
+    expect(invokeMock).not.toHaveBeenCalledWith(COMMANDS.PREPARE_FOR_UPDATE_INSTALL);
+  });
+
+  it('stops the database (prepare_for_update_install) strictly between download() and install(), never before download or instead of it', async () => {
+    wirePolicy('optional');
+    checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
+    const callOrder: string[] = [];
+    downloadMock.mockImplementation(async () => {
+      callOrder.push('download');
+    });
+    installMock.mockImplementation(async () => {
+      callOrder.push('install');
+    });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === COMMANDS.GET_UPDATE_POLICY) {
+        return Promise.resolve({ mode: 'optional', fetched: true });
+      }
+      if (command === COMMANDS.PREPARE_FOR_UPDATE_INSTALL) {
+        callOrder.push('prepare');
+        return Promise.resolve();
+      }
+      return Promise.reject(new Error(`unexpected command ${command}`));
+    });
+
+    renderBanner(false);
+    const installButton = await screen.findByTestId('update-banner-install');
+    fireEvent.click(installButton);
+
+    await waitFor(() => expect(callOrder).toEqual(['download', 'prepare', 'install']));
+  });
+
+  it('restarts the database (resume_after_failed_update_install) when install() fails after the database was already stopped', async () => {
+    wirePolicy('optional');
+    checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
+    downloadMock.mockResolvedValue(undefined);
+    installMock.mockRejectedValue(new Error('NSIS launch failed'));
+    const resumeMock = vi.fn().mockResolvedValue(undefined);
+    invokeMock.mockImplementation((command: string) => {
+      if (command === COMMANDS.GET_UPDATE_POLICY) {
+        return Promise.resolve({ mode: 'optional', fetched: true });
+      }
+      if (command === COMMANDS.PREPARE_FOR_UPDATE_INSTALL) {
+        return Promise.resolve();
+      }
+      if (command === COMMANDS.RESUME_AFTER_FAILED_UPDATE_INSTALL) {
+        return resumeMock();
+      }
+      return Promise.reject(new Error(`unexpected command ${command}`));
+    });
+
+    renderBanner(false);
+    const installButton = await screen.findByTestId('update-banner-install');
+    fireEvent.click(installButton);
+
+    await screen.findByTestId('update-banner-error');
+    expect(resumeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT attempt to restart the database when download() itself fails (the database was never stopped)', async () => {
+    wirePolicy('optional');
+    checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
+    downloadMock.mockRejectedValue(new Error('network dropped'));
+    const resumeMock = vi.fn().mockResolvedValue(undefined);
+    invokeMock.mockImplementation((command: string) => {
+      if (command === COMMANDS.GET_UPDATE_POLICY) {
+        return Promise.resolve({ mode: 'optional', fetched: true });
+      }
+      if (command === COMMANDS.RESUME_AFTER_FAILED_UPDATE_INSTALL) {
+        return resumeMock();
+      }
+      return Promise.reject(new Error(`unexpected command ${command}`));
+    });
+
+    renderBanner(false);
+    const installButton = await screen.findByTestId('update-banner-install');
+    fireEvent.click(installButton);
+
+    await screen.findByTestId('update-banner-error');
+    expect(resumeMock).not.toHaveBeenCalled();
   });
 });
