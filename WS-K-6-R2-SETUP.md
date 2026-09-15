@@ -136,44 +136,49 @@ and drag the files in, OR use `rclone`/`aws-cli` configured for R2 if you
 prefer a command-line tool later — the dashboard upload is enough for
 now.
 
-## Part E — once your real subdomain exists, two code files must be updated
+## Part E — what was actually chosen: a public GitHub releases repository, not R2
 
-This part is for whoever builds the app (a developer), not something you
-need to do yourself — but you should know it exists, so you can ask for
-it to be done before the first real release, and so you can verify it
-was done by searching for the text below.
+The Owner ultimately used **Option 1** from the fallback section below
+rather than R2 itself: a second, public, source-free repository,
+**`https://github.com/NabilBNK/Stockiha-releases`**, holding only
+compiled installers and the two small JSON files. Parts A–D above are
+kept for reference (R2 remains a valid path if ever revisited), but the
+two code files now point at this repository instead of any Cloudflare
+subdomain — the placeholder text this section used to describe has been
+replaced, in both places, with real, live URLs:
 
-Right now, two files in the source code hold a **placeholder** domain
-that does not point anywhere real. Search the codebase for this exact
-text — it appears in both places, character for character:
+1. **`src-tauri/tauri.conf.json`**, `plugins.updater.endpoints`:
+   ```
+   "https://raw.githubusercontent.com/NabilBNK/Stockiha-releases/main/latest.json"
+   ```
+2. **`src-tauri/src/commands/update_policy.rs`**, `UPDATE_POLICY_URL`:
+   ```
+   "https://raw.githubusercontent.com/NabilBNK/Stockiha-releases/main/update-policy.json"
+   ```
 
-```
-PLACEHOLDER-REPLACE-WITH-YOUR-DOMAIN
-```
+Both are confirmed present in the source as of this document's last
+update, and the earlier placeholder domain this section used to
+describe no longer appears anywhere in the codebase.
 
-The two places it appears:
-
-1. **`src-tauri/tauri.conf.json`**, inside `plugins.updater.endpoints` —
-   currently:
-   ```
-   "https://updates.PLACEHOLDER-REPLACE-WITH-YOUR-DOMAIN.com/latest.json"
-   ```
-   must become your real address, e.g.:
-   ```
-   "https://updates.stockiha.example.com/latest.json"
-   ```
-2. **`src-tauri/src/commands/update_policy.rs`**, the
-   `UPDATE_POLICY_URL` constant — currently:
-   ```
-   "https://updates.PLACEHOLDER-REPLACE-WITH-YOUR-DOMAIN.com/update-policy.json"
-   ```
-   must become the same real domain, with `/update-policy.json` instead
-   of `/latest.json`.
-
-Both must point at the exact subdomain you set up in Part B, and the app
-must be rebuilt after this change (a plain text edit does not take
-effect until the next build) — this is a one-time change, not something
-repeated per release.
+**How files are uploaded to this repository, since it is GitHub, not a
+bucket:**
+- `latest.json` and `update-policy.json` — committed as plain files at
+  the repository root on the `main` branch (edit and commit like any
+  text file — GitHub's own web editor works fine for this, no command
+  line required). `raw.githubusercontent.com` serves whatever is
+  currently on `main`, so a commit takes effect immediately.
+- The installer `.exe` — attached as a **Release asset** (GitHub →
+  the repository → **Releases** → **Draft a new release** → upload the
+  `.exe` there), not committed as a plain file (GitHub discourages
+  large binaries as plain repository files; Releases exist exactly for
+  this). Its permanent download URL has this exact shape:
+  ```
+  https://github.com/NabilBNK/Stockiha-releases/releases/download/<tag>/<exact filename>
+  ```
+  where `<tag>` is the release tag you choose when drafting it (e.g.
+  `v0.2.0`) and `<exact filename>` must match the uploaded `.exe`
+  byte-for-byte in spelling — this is the value that goes in
+  `latest.json`'s own `url` field.
 
 ---
 

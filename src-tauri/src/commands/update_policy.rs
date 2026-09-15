@@ -8,15 +8,15 @@
 
 use crate::infrastructure::update_policy::{self, UpdatePolicyResult};
 
-/// Where `update-policy.json` lives. Same host/bucket as the installer and
-/// `latest.json` (see `tauri.conf.json`'s `plugins.updater.endpoints`) — a
-/// sibling file, not a versioned one, so the Owner edits this one file to
+/// Where `update-policy.json` lives: the same public, source-free
+/// `Stockiha-releases` repository as the installer and `latest.json` (see
+/// `tauri.conf.json`'s `plugins.updater.endpoints`), fetched as a raw file
+/// rather than a release asset — a sibling file, not a versioned one, so
+/// the Owner edits this one file (a plain commit to that repository) to
 /// change any release's urgency without touching the signed manifest at
-/// all. **Placeholder**: replace the domain here (and in `tauri.conf.json`)
-/// with the Owner's real subdomain before the first real release — see
-/// `WS-K-6-RELEASE-PROCESS.md`.
+/// all.
 const UPDATE_POLICY_URL: &str =
-    "https://updates.PLACEHOLDER-REPLACE-WITH-YOUR-DOMAIN.com/update-policy.json";
+    "https://raw.githubusercontent.com/NabilBNK/Stockiha-releases/main/update-policy.json";
 
 #[tauri::command]
 pub(crate) async fn get_update_policy() -> UpdatePolicyResult {
