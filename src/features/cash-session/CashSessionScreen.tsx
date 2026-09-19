@@ -9,6 +9,9 @@ import * as ipc from '../../shared/ipc/gateway';
 import * as cashIpc from '../../shared/ipc/cashSessionGateway';
 import type {
   CashDenomination,
+  CashMovement,
+  CashMovementDirection,
+  CashMovementReason,
   CashSessionCloseResult,
   CurrentCashSession,
   DenominationCountInput,
@@ -31,6 +34,27 @@ const COPY: Record<Locale, Record<string, string>> = {
     ownerChanged: 'Cash ownership changed. Only the displayed current cashier can resume this session.',
     closed: 'Session closed', exactClose: 'Blind count accepted. Session closed.', managerFields: 'Manager credentials and reason are required.',
     handoverFields: 'Manager credentials, target cashier, and reason are required.', reasonRequired: 'A reason is required.',
+    movementsTitle: 'Cash in and out',
+    movementsHelp: 'Record money taken from or added to the drawer during the day, so the closing count matches.',
+    direction: 'Direction',
+    cashIn: 'Money in',
+    cashOut: 'Money out',
+    amount: 'Amount',
+    reason: 'Reason',
+    reasonExpense: 'Expense',
+    reasonSupplier: 'Paid a supplier',
+    reasonChange: 'Change float',
+    reasonCorrection: 'Correction',
+    reasonOther: 'Other',
+    reasonTag_EXPENSE: 'Expense',
+    reasonTag_SUPPLIER_PAYMENT: 'Supplier',
+    reasonTag_CHANGE_FLOAT: 'Change',
+    reasonTag_CORRECTION: 'Correction',
+    reasonTag_OTHER: 'Other',
+    note: 'Note',
+    recordMovement: 'Record',
+    movementRecorded: 'Cash movement recorded',
+    movementAmountInvalid: 'Enter an amount greater than zero, for example 500 or 500.50.',
   },
   fr: {
     currentCashier: 'Caissier actuel', state: 'État', beginClose: 'Commencer la clôture à l’aveugle',
@@ -44,6 +68,27 @@ const COPY: Record<Locale, Record<string, string>> = {
     ownerChanged: 'La responsabilité de caisse a changé. Seul le caissier affiché peut reprendre cette session.',
     closed: 'Session clôturée', exactClose: 'Comptage accepté. Session clôturée.', managerFields: 'Identifiants du responsable et motif requis.',
     handoverFields: 'Identifiants du responsable, nouveau caissier et motif requis.', reasonRequired: 'Un motif est obligatoire.',
+    movementsTitle: 'Entrées et sorties de caisse',
+    movementsHelp: "Enregistrez l'argent retiré ou ajouté à la caisse pendant la journée, pour que le comptage final corresponde.",
+    direction: 'Sens',
+    cashIn: 'Entrée',
+    cashOut: 'Sortie',
+    amount: 'Montant',
+    reason: 'Motif',
+    reasonExpense: 'Dépense',
+    reasonSupplier: 'Paiement fournisseur',
+    reasonChange: 'Appoint de monnaie',
+    reasonCorrection: 'Correction',
+    reasonOther: 'Autre',
+    reasonTag_EXPENSE: 'Dépense',
+    reasonTag_SUPPLIER_PAYMENT: 'Fournisseur',
+    reasonTag_CHANGE_FLOAT: 'Monnaie',
+    reasonTag_CORRECTION: 'Correction',
+    reasonTag_OTHER: 'Autre',
+    note: 'Note',
+    recordMovement: 'Enregistrer',
+    movementRecorded: 'Mouvement de caisse enregistré',
+    movementAmountInvalid: 'Saisissez un montant supérieur à zéro, par exemple 500 ou 500.50.',
   },
   ar: {
     currentCashier: 'أمين الصندوق الحالي', state: 'الحالة', beginClose: 'بدء الإغلاق بالجرد الأعمى',
@@ -57,6 +102,27 @@ const COPY: Record<Locale, Record<string, string>> = {
     ownerChanged: 'تم تغيير مسؤولية الصندوق. فقط أمين الصندوق الظاهر يمكنه استئناف الجلسة.',
     closed: 'تم إغلاق الجلسة', exactClose: 'تم قبول الجرد وإغلاق الجلسة.', managerFields: 'بيانات المسؤول والسبب مطلوبة.',
     handoverFields: 'بيانات المسؤول وأمين الصندوق الجديد والسبب مطلوبة.', reasonRequired: 'السبب مطلوب.',
+    movementsTitle: 'دخول وخروج النقد',
+    movementsHelp: 'سجّل المال المسحوب من الصندوق أو المضاف إليه خلال اليوم حتى يتطابق الجرد النهائي.',
+    direction: 'الاتجاه',
+    cashIn: 'دخول',
+    cashOut: 'خروج',
+    amount: 'المبلغ',
+    reason: 'السبب',
+    reasonExpense: 'مصروف',
+    reasonSupplier: 'دفع لمورد',
+    reasonChange: 'صرف عملة',
+    reasonCorrection: 'تصحيح',
+    reasonOther: 'أخرى',
+    reasonTag_EXPENSE: 'مصروف',
+    reasonTag_SUPPLIER_PAYMENT: 'مورد',
+    reasonTag_CHANGE_FLOAT: 'عملة',
+    reasonTag_CORRECTION: 'تصحيح',
+    reasonTag_OTHER: 'أخرى',
+    note: 'ملاحظة',
+    recordMovement: 'تسجيل',
+    movementRecorded: 'تم تسجيل حركة النقد',
+    movementAmountInvalid: 'أدخل مبلغاً أكبر من صفر، مثال 500 أو 500.50.',
   },
 };
 
@@ -86,14 +152,25 @@ export function CashSessionScreen() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [closedSummary, setClosedSummary] = useState<CashSessionDetail | null>(null);
+  const [movements, setMovements] = useState<CashMovement[]>([]);
+  const [movementDirection, setMovementDirection] = useState<CashMovementDirection>('CASH_OUT');
+  const [movementAmount, setMovementAmount] = useState('');
+  const [movementReason, setMovementReason] = useState<CashMovementReason>('EXPENSE');
+  const [movementNote, setMovementNote] = useState('');
 
   const refreshLifecycle = useCallback(async () => {
     if (!token) {
       setCurrent(null);
+      setMovements([]);
       return;
     }
     const session = await cashIpc.inspectCurrentCashSession(token, workstationId);
     setCurrent(session);
+    if (session) {
+      setMovements(await cashIpc.listCashMovements(token, session.id).catch(() => []));
+    } else {
+      setMovements([]);
+    }
   }, [token, workstationId]);
 
   useEffect(() => {
@@ -128,6 +205,29 @@ export function CashSessionScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function recordMovement(event: FormEvent) {
+    event.preventDefault();
+    if (!current) return;
+    if (!AMOUNT_RE.test(movementAmount) || movementAmount === '0') {
+      setError(text.movementAmountInvalid);
+      return;
+    }
+    await run(async () => {
+      await cashIpc.recordCashMovement(
+        token,
+        current.id,
+        movementDirection,
+        movementAmount,
+        movementReason,
+        movementNote.trim() || null,
+      );
+      setMovementAmount('');
+      setMovementNote('');
+      setInfo(text.movementRecorded);
+      await sync();
+    });
   }
 
   async function onOpen(event: FormEvent) {
@@ -286,6 +386,75 @@ export function CashSessionScreen() {
           <p><strong>{text.currentCashier}:</strong> {current.current_cashier_display_name}</p>
           <p><strong>{t('session.openingFloat')}:</strong> {current.opening_float}</p>
         </div>
+      ) : null}
+
+      {current && current.status === 'OPEN' ? (
+        <section className="sk-card sk-form" data-testid="cash-movement-panel">
+          <h3>{text.movementsTitle}</h3>
+          <p>{text.movementsHelp}</p>
+
+          <form onSubmit={recordMovement}>
+            <label>
+              {text.direction}
+              <select
+                value={movementDirection}
+                onChange={(e) => setMovementDirection(e.target.value as CashMovementDirection)}
+                data-testid="cash-movement-direction"
+              >
+                <option value="CASH_OUT">{text.cashOut}</option>
+                <option value="CASH_IN">{text.cashIn}</option>
+              </select>
+            </label>
+
+            <TextField
+              label={`${text.amount} (DZD)`}
+              value={movementAmount}
+              onChange={(e) => setMovementAmount(e.target.value)}
+              data-testid="cash-movement-amount"
+            />
+
+            <label>
+              {text.reason}
+              <select
+                value={movementReason}
+                onChange={(e) => setMovementReason(e.target.value as CashMovementReason)}
+                data-testid="cash-movement-reason"
+              >
+                <option value="EXPENSE">{text.reasonExpense}</option>
+                <option value="SUPPLIER_PAYMENT">{text.reasonSupplier}</option>
+                <option value="CHANGE_FLOAT">{text.reasonChange}</option>
+                <option value="CORRECTION">{text.reasonCorrection}</option>
+                <option value="OTHER">{text.reasonOther}</option>
+              </select>
+            </label>
+
+            <TextField
+              label={text.note}
+              value={movementNote}
+              onChange={(e) => setMovementNote(e.target.value)}
+              data-testid="cash-movement-note"
+            />
+
+            <Button type="submit" disabled={busy} data-testid="cash-movement-submit">
+              {text.recordMovement}
+            </Button>
+          </form>
+
+          <table data-testid="cash-movement-list">
+            <tbody>
+              {movements
+                .filter((m) => m.movement_type !== 'SALE')
+                .map((m) => (
+                  <tr key={m.movement_id} data-testid={`cash-movement-${m.movement_id}`}>
+                    <td>{m.movement_type === 'CASH_OUT' ? text.cashOut : text.cashIn}</td>
+                    <td>{m.amount} DZD</td>
+                    <td>{m.reason_code ? text[`reasonTag_${m.reason_code}`] : ''}</td>
+                    <td>{m.note ?? ''}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </section>
       ) : null}
 
       {current?.status === 'OPEN' ? (

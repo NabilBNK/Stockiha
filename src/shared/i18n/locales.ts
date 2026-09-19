@@ -496,6 +496,10 @@ const fr = {
   'printing.footer': 'Message de pied de ticket',
   'printing.test': "Test d'impression",
   'printing.saved': "Paramètres d'impression enregistrés",
+  'cashPolicy.title': "Tol\u00e9rance d'\u00e9cart de caisse",
+  'cashPolicy.threshold': "Accepter les \u00e9carts jusqu'\u00e0 (DZD)",
+  'cashPolicy.help': "Un \u00e9cart de cl\u00f4ture inf\u00e9rieur ou \u00e9gal \u00e0 ce montant cl\u00f4ture la session automatiquement. Au-del\u00e0, un responsable est requis.",
+  'cashPolicy.saved': 'Tol\u00e9rance enregistr\u00e9e',
 };
 
 export type MessageKey = keyof typeof fr;
@@ -988,6 +992,10 @@ const ar: Record<MessageKey, string> = {
   'printing.footer': '\u0631\u0633\u0627\u0644\u0629 \u0623\u0633\u0641\u0644 \u0627\u0644\u0648\u0635\u0644',
   'printing.test': '\u062a\u062c\u0631\u0628\u0629 \u0627\u0644\u0637\u0628\u0639',
   'printing.saved': '\u062a\u0645 \u062d\u0641\u0638 \u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u0637\u0628\u0627\u0639\u0629',
+  'cashPolicy.title': '\u062d\u062f \u0627\u0644\u062a\u0633\u0627\u0645\u062d \u0641\u064a \u0641\u0631\u0642 \u0627\u0644\u0635\u0646\u062f\u0648\u0642',
+  'cashPolicy.threshold': '\u0642\u0628\u0648\u0644 \u0627\u0644\u0641\u0631\u0648\u0642 \u062d\u062a\u0649 (\u062f\u062c)',
+  'cashPolicy.help': '\u0623\u064a \u0641\u0631\u0642 \u0639\u0646\u062f \u0627\u0644\u0625\u063a\u0644\u0627\u0642 \u0644\u0627 \u064a\u062a\u062c\u0627\u0648\u0632 \u0647\u0630\u0627 \u0627\u0644\u0645\u0628\u0644\u063a \u064a\u063a\u0644\u0642 \u0627\u0644\u062c\u0644\u0633\u0629 \u062a\u0644\u0642\u0627\u0626\u064a\u0627\u064b. \u0648\u0645\u0627 \u0632\u0627\u062f \u0639\u0646\u0647 \u064a\u062a\u0637\u0644\u0628 \u0645\u0648\u0627\u0641\u0642\u0629 \u0645\u0633\u0624\u0648\u0644.',
+  'cashPolicy.saved': '\u062a\u0645 \u062d\u0641\u0638 \u062d\u062f \u0627\u0644\u062a\u0633\u0627\u0645\u062d',
 };
 
 const en: Record<MessageKey, string> = {
@@ -1479,6 +1487,10 @@ const en: Record<MessageKey, string> = {
   'printing.footer': 'Footer message',
   'printing.test': 'Test print',
   'printing.saved': 'Printing settings saved',
+  'cashPolicy.title': 'Cash variance tolerance',
+  'cashPolicy.threshold': 'Accept differences up to (DZD)',
+  'cashPolicy.help': 'A closing difference at or below this amount closes the session automatically. Anything larger needs a manager.',
+  'cashPolicy.saved': 'Tolerance saved',
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { fr, ar, en };

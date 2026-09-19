@@ -45,3 +45,37 @@ export interface CashSessionCloseResult {
   requires_manager_approval: boolean;
   approved_by_user_id: number | null;
 }
+
+export type CashMovementDirection = 'CASH_IN' | 'CASH_OUT';
+
+export type CashMovementReason =
+  | 'SUPPLIER_PAYMENT'
+  | 'EXPENSE'
+  | 'CHANGE_FLOAT'
+  | 'CORRECTION'
+  | 'OTHER';
+
+export interface CashMovement {
+  movement_id: number;
+  movement_type: 'SALE' | CashMovementDirection;
+  amount: string;
+  reason_code: CashMovementReason | null;
+  note: string | null;
+  business_document_id: number | null;
+  journal_document_id: number | null;
+  created_at: string;
+}
+
+export interface RecordCashMovementResult {
+  movement_id: number;
+  cash_session_id: number;
+  movement_type: CashMovementDirection;
+  amount: string;
+  reason_code: CashMovementReason;
+  journal_document_id: number;
+}
+
+export interface CashSessionPolicy {
+  material_variance_threshold: string;
+  updated_at: string;
+}

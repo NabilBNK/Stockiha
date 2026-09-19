@@ -5,9 +5,14 @@ import type { AppErrorCode } from '../types/errors';
 import { COMMANDS } from './commands';
 import type {
   CashDenomination,
+  CashMovement,
+  CashMovementDirection,
+  CashMovementReason,
   CashSessionCloseResult,
+  CashSessionPolicy,
   CurrentCashSession,
   DenominationCountInput,
+  RecordCashMovementResult,
 } from './cashSessionDto';
 
 export class CashSessionGatewayError extends Error {
@@ -99,5 +104,51 @@ export function handoverCashSession(
     cashSessionId,
     targetUsername,
     reason,
+  });
+}
+
+export function recordCashMovement(
+  sessionToken: string,
+  cashSessionId: number,
+  movementType: CashMovementDirection,
+  amount: string,
+  reasonCode: CashMovementReason,
+  note: string | null,
+): Promise<RecordCashMovementResult> {
+  return call<RecordCashMovementResult>(COMMANDS.RECORD_CASH_MOVEMENT, {
+    sessionToken,
+    cashSessionId,
+    movementType,
+    amount,
+    reasonCode,
+    note,
+  });
+}
+
+export function listCashMovements(
+  sessionToken: string,
+  cashSessionId: number,
+): Promise<CashMovement[]> {
+  return call<CashMovement[]>(COMMANDS.LIST_CASH_MOVEMENTS, {
+    sessionToken,
+    cashSessionId,
+  });
+}
+
+export function getCashSessionPolicy(
+  sessionToken: string,
+): Promise<CashSessionPolicy> {
+  return call<CashSessionPolicy>(COMMANDS.GET_CASH_SESSION_POLICY, {
+    sessionToken,
+  });
+}
+
+export function saveCashSessionPolicy(
+  sessionToken: string,
+  materialVarianceThreshold: string,
+): Promise<CashSessionPolicy> {
+  return call<CashSessionPolicy>(COMMANDS.SAVE_CASH_SESSION_POLICY, {
+    sessionToken,
+    materialVarianceThreshold,
   });
 }

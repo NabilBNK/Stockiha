@@ -3,9 +3,11 @@
 //! variance materiality, approval, suspension, and handover.
 
 use rust_decimal::Decimal;
-use sqlx::{PgPool, Row};
+use serde_json::Value as JsonValue;
+use sqlx::{query_scalar, PgPool, Row};
 use time::OffsetDateTime;
 
+use crate::domain::cash_policy::{CashMovementDto, CashSessionPolicyDto, RecordCashMovementResult};
 use crate::domain::cash_session::{
     validate_denomination_counts, CashDenomination, CashSessionCloseResult, DenominationCountInput,
 };
@@ -336,4 +338,74 @@ pub(crate) async fn get_cash_session(
         opened_at: rfc3339(r.7),
         closed_at: r.8.map(rfc3339),
     }))
+}
+
+pub(crate) async fn record_cash_movement(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+    movement_type: &str,
+    amount: Decimal,
+    reason_code: &str,
+    note: Option<&str>,
+) -> Result<RecordCashMovementResult, AppError> {
+    let res: JsonValue = query_scalar("SELECT cash.record_cash_movement($1, $2, $3, $4, $5, $6)")
+        .bind(session_token)
+        .bind(cash_session_id)
+        .bind(movement_type)
+        .bind(amount)
+        .bind(reason_code)
+        .bind(note)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse cash movement result: {e}")))
+}
+
+pub(crate) async fn list_cash_movements(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+) -> Result<Vec<CashMovementDto>, AppError> {
+    let res: JsonValue = query_scalar("SELECT cash.list_cash_movements($1, $2)")
+        .bind(session_token)
+        .bind(cash_session_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse cash movements list: {e}")))
+}
+
+pub(crate) async fn get_cash_session_policy(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<CashSessionPolicyDto, AppError> {
+    let res: JsonValue = query_scalar("SELECT cash.get_session_policy($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse cash session policy: {e}")))
+}
+
+pub(crate) async fn save_cash_session_policy(
+    pool: &PgPool,
+    session_token: &str,
+    threshold: Decimal,
+) -> Result<CashSessionPolicyDto, AppError> {
+    let res: JsonValue = query_scalar("SELECT cash.save_session_policy($1, $2)")
+        .bind(session_token)
+        .bind(threshold)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse saved cash session policy: {e}")))
 }

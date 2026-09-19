@@ -6,10 +6,11 @@ use tauri::State;
 use time::OffsetDateTime;
 
 use crate::application::cash_session;
+use crate::domain::cash_policy::{CashMovementDto, CashSessionPolicyDto, RecordCashMovementResult};
 use crate::domain::cash_session::{
     CashDenomination, CashSessionCloseResult, DenominationCountInput,
 };
-use crate::error::IpcError;
+use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
 
 #[tauri::command]
@@ -223,5 +224,73 @@ pub(crate) async fn get_cash_session(
                 closed_at: d.closed_at,
             })
         })
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn record_cash_movement(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    cash_session_id: i64,
+    movement_type: String,
+    amount: String,
+    reason_code: String,
+    note: Option<String>,
+) -> Result<RecordCashMovementResult, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let parsed_amount: Decimal = amount.parse().map_err(|_| AppError::ValidationError {
+        diagnostic: "Invalid movement amount".to_string(),
+    })?;
+    cash_session::record_cash_movement(
+        pool,
+        &session_token,
+        cash_session_id,
+        &movement_type,
+        parsed_amount,
+        &reason_code,
+        note.as_deref(),
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn list_cash_movements(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    cash_session_id: i64,
+) -> Result<Vec<CashMovementDto>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::list_cash_movements(pool, &session_token, cash_session_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_cash_session_policy(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<CashSessionPolicyDto, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::get_cash_session_policy(pool, &session_token)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn save_cash_session_policy(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    material_variance_threshold: String,
+) -> Result<CashSessionPolicyDto, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let threshold: Decimal =
+        material_variance_threshold
+            .parse()
+            .map_err(|_| AppError::ValidationError {
+                diagnostic: "Invalid material variance threshold".to_string(),
+            })?;
+    cash_session::save_cash_session_policy(pool, &session_token, threshold)
+        .await
         .map_err(IpcError::from)
 }
