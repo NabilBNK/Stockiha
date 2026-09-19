@@ -329,6 +329,12 @@ fn build_result(
         integrity_valid: true,
         file_count,
         total_bytes,
+        format_version: None,
+        backup_kind: None,
+        schema_verdict: None,
+        restorable: None,
+        created_at_utc: None,
+        used_fallback_destination: None,
     })
 }
 
@@ -428,7 +434,9 @@ fn resolve_pg_dump_target() -> Result<(String, u16, String), AppError> {
     Ok((options.get_host().to_string(), options.get_port(), database))
 }
 
-fn collect_backup_inputs(app_data_dir: &Path) -> Result<backup_proof::BackupInputs, AppError> {
+pub(crate) fn collect_backup_inputs(
+    app_data_dir: &Path,
+) -> Result<backup_proof::BackupInputs, AppError> {
     Ok(backup_proof::BackupInputs {
         attachments: collect_flat_files(&app_data_dir.join("attachments"))?,
         generated_documents: collect_flat_files(
@@ -490,7 +498,7 @@ fn create_stage_root(root: &Path, attempt_id: i64) -> Result<PathBuf, AppError> 
     Ok(stage)
 }
 
-fn parse_bundle_identifier_time(value: &str) -> Result<OffsetDateTime, AppError> {
+pub(crate) fn parse_bundle_identifier_time(value: &str) -> Result<OffsetDateTime, AppError> {
     let timestamp = value
         .strip_prefix(backup_proof::BUNDLE_NAME_PREFIX)
         .ok_or_else(identifier_error)?;
@@ -699,9 +707,15 @@ fn map_creation_proof_error(error: backup_proof::BackupProofError) -> AppError {
     }
 }
 
-fn creation_audit_error_code(error: &AppError) -> String {
+pub(crate) fn creation_audit_error_code(error: &AppError) -> String {
     match error {
+        // WS-H-3: the embedded engine's `EngineError::to_app_error` places
+        // the detail code (plan section 5.7.1) in `diagnostic`, so these variants
+        // pass it through to the audit row the same way `BACKUP_*` creation
+        // diagnostics always have.
         AppError::BackupCreationFailed { diagnostic }
+        | AppError::BackupDestinationUnavailable { diagnostic }
+        | AppError::InsufficientDiskSpace { diagnostic }
             if diagnostic.starts_with("BACKUP_")
                 && diagnostic.len() <= 128
                 && diagnostic.bytes().all(|byte| {
@@ -710,6 +724,10 @@ fn creation_audit_error_code(error: &AppError) -> String {
         {
             diagnostic.clone()
         }
+        AppError::BackupDestinationUnavailable { .. } => {
+            "BACKUP_DESTINATION_UNAVAILABLE".to_string()
+        }
+        AppError::InsufficientDiskSpace { .. } => "BACKUP_INSUFFICIENT_SPACE".to_string(),
         AppError::DatabaseConfiguration { .. } => "CONFIGURATION_ERROR".to_string(),
         AppError::SessionInvalid { .. } => "SESSION_INVALID".to_string(),
         AppError::PermissionDenied { .. } => "PERMISSION_DENIED".to_string(),

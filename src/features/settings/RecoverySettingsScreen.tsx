@@ -5,12 +5,18 @@ import { Banner, Button, TextField } from '../../shared/components';
 import { codeForError, useErrorText } from '../../shared/hooks/useErrorText';
 import { useI18n, type Locale } from '../../shared/i18n';
 import type {
+  BackupDestinationSetting,
+  BackupKind,
+  BackupStatus,
   OperatorBackupValidationResult,
   OperatorRestoreVerificationResult,
+  RecoveryCapabilities,
 } from '../../shared/ipc/recoveryDto';
 import {
   createOperatorBackup,
   getBackupDestinationSetting,
+  getBackupStatus,
+  getRecoveryCapabilities,
   getRestoreVerificationSetting,
   updateBackupDestinationSetting,
   updateRestoreVerificationSetting,
@@ -24,13 +30,8 @@ interface Props {
 
 type BusyAction = 'setting' | 'create' | 'validate' | 'restore' | 'destination' | null;
 
-// Restore verification is a WS-H MVP requirement per STOCKIHA_GROUND_TRUTH.md
-// §4 ("Database restore capability (pg_restore into temporary validation
-// target)"). It is not in the deferred/future list (only cloud sync,
-// off-device retention, and scheduled encrypted backups are). The drill is
-// isolated to a temporary database that it creates and drops — see
-// restore_proof/mod.rs — and never touches the live database.
-const RESTORE_DRILL_AVAILABLE = true;
+/** A backup older than this is flagged on the status line (WS-H-3). */
+const STALE_BACKUP_MS = 3 * 24 * 60 * 60 * 1000;
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
@@ -61,9 +62,6 @@ const COPY: Record<Locale, Record<string, string>> = {
     restoreHelp: 'Requires an exact application, schema, and PostgreSQL 18 match. The temporary database must be deleted before success is reported.',
     restored: 'Backup restored and reconciled successfully in a temporary database.',
     restoreFailed: 'The temporary restore verification failed. The live database was not replaced.',
-    restoreComingSoon: 'Coming after MVP',
-    restoreDeferredTitle: 'Restoring from a backup is not available yet',
-    restoreDeferredBody: 'This version can create and validate backup files, so your data is protected while the rest of Stockiha is completed. The ability to actually restore your data from a backup file will be added in a later update. Keep every backup file you create — they will work with that update.',
     restoreAvailableTitle: 'Restore from a backup',
     restoreAvailableBody: 'Verifying a restore builds a temporary database from the backup file, checks it, then deletes it. Your live Stockiha database is never touched.',
     valid: 'Backup integrity verified.',
@@ -97,6 +95,19 @@ const COPY: Record<Locale, Record<string, string>> = {
     customerExposure: 'Customer exposure',
     supplierOutstanding: 'Supplier outstanding',
     openingApplications: 'Applied opening states',
+    // WS-H-3
+    lastBackup: 'Last successful backup: {date}',
+    noBackupYet: 'No backup has been made yet.',
+    lastBackupFailed: 'The last backup attempt failed.',
+    destinationDefaultHelp: 'Default folder on this computer. For real protection choose a USB drive or another disk.',
+    sameDriveWarning: 'This folder is on the same disk as your data. If the disk fails, the backups are lost too.',
+    kind: 'Backup type',
+    kindManual: 'Manual',
+    kindDaily: 'Daily automatic',
+    kindPreUpdate: 'Before update',
+    kindPreRestore: 'Before restore',
+    kindUnknown: 'Unknown',
+    restorable: 'Can be restored by this version',
   },
   fr: {
     title: 'Sauvegarde et récupération',
@@ -126,9 +137,6 @@ const COPY: Record<Locale, Record<string, string>> = {
     restoreHelp: 'Exige la même version d’application, de schéma et PostgreSQL 18. La base temporaire doit être supprimée avant le succès.',
     restored: 'Sauvegarde restaurée et rapprochée avec succès dans une base temporaire.',
     restoreFailed: 'La vérification de restauration temporaire a échoué. La base active n’a pas été remplacée.',
-    restoreComingSoon: 'Disponible après le MVP',
-    restoreDeferredTitle: 'La restauration à partir d’une sauvegarde n’est pas encore disponible',
-    restoreDeferredBody: 'Cette version permet de créer et de valider des fichiers de sauvegarde, afin que vos données soient protégées pendant que le reste de Stockiha est finalisé. La restauration réelle de vos données à partir d’un fichier de sauvegarde sera ajoutée dans une prochaine mise à jour. Conservez chaque sauvegarde créée — elles fonctionneront avec cette mise à jour.',
     restoreAvailableTitle: 'Restaurer depuis une sauvegarde',
     restoreAvailableBody: 'La vérification de restauration crée une base de données temporaire à partir du fichier de sauvegarde, la contrôle, puis la supprime. Votre base Stockiha active n’est jamais modifiée.',
     valid: 'Intégrité de la sauvegarde vérifiée.',
@@ -162,6 +170,19 @@ const COPY: Record<Locale, Record<string, string>> = {
     customerExposure: 'Encours clients',
     supplierOutstanding: 'Solde fournisseurs',
     openingApplications: 'Situations initiales appliquées',
+    // WS-H-3
+    lastBackup: 'Dernière sauvegarde réussie : {date}',
+    noBackupYet: 'Aucune sauvegarde n’a encore été faite.',
+    lastBackupFailed: 'La dernière tentative de sauvegarde a échoué.',
+    destinationDefaultHelp: 'Dossier par défaut sur cet ordinateur. Pour une vraie protection, choisissez une clé USB ou un autre disque.',
+    sameDriveWarning: 'Ce dossier est sur le même disque que vos données. Si le disque tombe en panne, les sauvegardes sont perdues aussi.',
+    kind: 'Type de sauvegarde',
+    kindManual: 'Manuelle',
+    kindDaily: 'Automatique quotidienne',
+    kindPreUpdate: 'Avant mise à jour',
+    kindPreRestore: 'Avant restauration',
+    kindUnknown: 'Inconnu',
+    restorable: 'Restaurable par cette version',
   },
   ar: {
     title: 'النسخ الاحتياطي والاسترجاع',
@@ -191,9 +212,6 @@ const COPY: Record<Locale, Record<string, string>> = {
     restoreHelp: 'يتطلب تطابق إصدار التطبيق والمخطط وPostgreSQL 18. يجب حذف القاعدة المؤقتة قبل إعلان النجاح.',
     restored: 'تم استرجاع النسخة ومطابقة الأرصدة بنجاح داخل قاعدة مؤقتة.',
     restoreFailed: 'فشل اختبار الاسترجاع المؤقت. لم يتم استبدال قاعدة البيانات الحالية.',
-    restoreComingSoon: 'متوفر بعد الإصدار الأول',
-    restoreDeferredTitle: 'استرجاع البيانات من نسخة احتياطية غير متاح بعد',
-    restoreDeferredBody: 'تتيح هذه النسخة إنشاء ملفات النسخ الاحتياطي والتحقق منها، لحماية بياناتك أثناء إتمام باقي أجزاء Stockiha. سيتم إضافة الاسترجاع الفعلي للبيانات من ملف نسخة احتياطية في تحديث لاحق. احتفظ بكل نسخة تنشئها الآن، فهي ستعمل مع ذلك التحديث.',
     restoreAvailableTitle: 'الاسترجاع من نسخة احتياطية',
     restoreAvailableBody: 'يُنشئ التحقق من الاسترجاع قاعدة بيانات مؤقتة من ملف النسخة الاحتياطية، ويتحقق منها، ثم يحذفها. لا يتم أبدًا لمس قاعدة بيانات Stockiha الفعلية.',
     valid: 'تم التحقق من سلامة النسخة الاحتياطية.',
@@ -227,6 +245,31 @@ const COPY: Record<Locale, Record<string, string>> = {
     customerExposure: 'ديون الزبائن',
     supplierOutstanding: 'ديون الموردين',
     openingApplications: 'الوضعيات الافتتاحية المطبقة',
+    // WS-H-3 — English copies until WS-H-7 translates them.
+    // TODO(WS-H-7)
+    lastBackup: 'Last successful backup: {date}',
+    // TODO(WS-H-7)
+    noBackupYet: 'No backup has been made yet.',
+    // TODO(WS-H-7)
+    lastBackupFailed: 'The last backup attempt failed.',
+    // TODO(WS-H-7)
+    destinationDefaultHelp: 'Default folder on this computer. For real protection choose a USB drive or another disk.',
+    // TODO(WS-H-7)
+    sameDriveWarning: 'This folder is on the same disk as your data. If the disk fails, the backups are lost too.',
+    // TODO(WS-H-7)
+    kind: 'Backup type',
+    // TODO(WS-H-7)
+    kindManual: 'Manual',
+    // TODO(WS-H-7)
+    kindDaily: 'Daily automatic',
+    // TODO(WS-H-7)
+    kindPreUpdate: 'Before update',
+    // TODO(WS-H-7)
+    kindPreRestore: 'Before restore',
+    // TODO(WS-H-7)
+    kindUnknown: 'Unknown',
+    // TODO(WS-H-7)
+    restorable: 'Can be restored by this version',
   },
 };
 
@@ -241,12 +284,60 @@ function compatibilityLabel(compatible: boolean, text: Record<string, string>): 
   return compatible ? text.compatible : text.incompatible;
 }
 
+function kindLabel(kind: BackupKind | undefined, text: Record<string, string>): string {
+  switch (kind) {
+    case 'MANUAL':
+      return text.kindManual;
+    case 'DAILY':
+      return text.kindDaily;
+    case 'PRE_UPDATE':
+      return text.kindPreUpdate;
+    case 'PRE_RESTORE':
+      return text.kindPreRestore;
+    default:
+      return text.kindUnknown;
+  }
+}
+
+function formatDateTime(iso: string, locale: Locale): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+}
+
+type StatusTone = 'success' | 'warning' | 'error';
+
+/**
+ * WS-H-3 status line: warning when no backup exists or the last one is older
+ * than three days; error when the most recent attempt failed after the last
+ * success.
+ */
+function describeStatus(
+  status: BackupStatus,
+  now: number,
+): { tone: StatusTone; failed: boolean; stale: boolean } {
+  const successAt = status.lastSuccessAt ? new Date(status.lastSuccessAt).getTime() : null;
+  const failureAt = status.lastFailureAt ? new Date(status.lastFailureAt).getTime() : null;
+  const failed = failureAt !== null && (successAt === null || failureAt > successAt);
+  const stale = successAt === null || now - successAt > STALE_BACKUP_MS;
+  if (failed) return { tone: 'error', failed, stale };
+  if (stale) return { tone: 'warning', failed, stale };
+  return { tone: 'success', failed, stale };
+}
+
 export function RecoverySettingsScreen({ sessionToken }: Props) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const text = COPY[locale];
   const errorText = useErrorText();
+  // WS-H-3: `undefined` = still loading (render nothing); `null` = the user
+  // may not see this screen at all (no capability, or the call failed).
+  const [capabilities, setCapabilities] = useState<RecoveryCapabilities | null | undefined>(
+    undefined,
+  );
+  const [status, setStatus] = useState<BackupStatus | null>(null);
+  const [statusRefresh, setStatusRefresh] = useState(0);
   const [bundlePath, setBundlePath] = useState('');
-  const [destination, setDestination] = useState<string | null>(null);
+  const [destination, setDestination] = useState<BackupDestinationSetting | null>(null);
   const [restoreEnabled, setRestoreEnabled] = useState<boolean | null>(null);
   const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
@@ -256,7 +347,29 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   const [restoreResult, setRestoreResult] = useState<OperatorRestoreVerificationResult | null>(null);
 
   useEffect(() => {
-    if (!RESTORE_DRILL_AVAILABLE) return;
+    let active = true;
+    void getRecoveryCapabilities(sessionToken)
+      .then((loaded) => {
+        if (active) setCapabilities(loaded);
+      })
+      .catch(() => {
+        // A failed capabilities call (including SESSION_INVALID, handled by
+        // the session layer) hides the screen rather than showing errors.
+        if (active) setCapabilities(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [sessionToken]);
+
+  const mode = capabilities?.mode ?? null;
+  const usable = capabilities !== null && capabilities !== undefined && mode !== 'UNAVAILABLE';
+  const canCreate = usable && capabilities.canCreateBackup;
+  const canValidate = usable && capabilities.canValidateBackup;
+  const canVerify = usable && capabilities.canVerifyRestore;
+
+  useEffect(() => {
+    if (!canVerify) return;
     let active = true;
     void getRestoreVerificationSetting(sessionToken)
       .then((setting) => {
@@ -268,13 +381,14 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
     return () => {
       active = false;
     };
-  }, [errorText, sessionToken]);
+  }, [canVerify, errorText, sessionToken]);
 
   useEffect(() => {
+    if (!canCreate) return;
     let active = true;
     void getBackupDestinationSetting(sessionToken)
       .then((setting) => {
-        if (active) setDestination(setting.path);
+        if (active) setDestination(setting);
       })
       .catch((settingError) => {
         if (active) setError(errorText(settingError));
@@ -282,7 +396,23 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
     return () => {
       active = false;
     };
-  }, [errorText, sessionToken]);
+  }, [canCreate, errorText, sessionToken]);
+
+  useEffect(() => {
+    if (!canCreate) return;
+    let active = true;
+    void getBackupStatus(sessionToken)
+      .then((loaded) => {
+        if (active) setStatus(loaded);
+      })
+      .catch(() => {
+        // The status line is informational; a failure just leaves it off.
+        if (active) setStatus(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canCreate, sessionToken, statusRefresh]);
 
   function resetMessages() {
     setError(null);
@@ -320,8 +450,10 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
     setError(null);
     setFeedback(null);
     try {
-      const updated = await updateBackupDestinationSetting(sessionToken, { path: selected });
-      setDestination(updated.path ?? null);
+      await updateBackupDestinationSetting(sessionToken, { path: selected });
+      // Re-fetch: the effective path, default flag and same-drive warning
+      // are computed by the backend, not by the setter's response.
+      setDestination(await getBackupDestinationSetting(sessionToken));
       setFeedback(text.destinationUpdated);
     } catch (destinationError) {
       setError(errorText(destinationError));
@@ -352,6 +484,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
       });
       setResult(created);
       setFeedback(text.created);
+      setStatusRefresh((value) => value + 1);
     } catch (creationError) {
       setError(
         codeForError(creationError) === 'BACKUP_CREATION_FAILED'
@@ -386,7 +519,6 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   }
 
   async function verifyRestore() {
-    if (!RESTORE_DRILL_AVAILABLE) return;
     if (!bundlePath.trim() || !restoreConfirmed || !restoreEnabled || busy) return;
     setBusy('restore');
     resetMessages();
@@ -409,6 +541,27 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
     }
   }
 
+  // WS-H-3: nothing is rendered until the capabilities are known, and
+  // nothing at all for a user without any recovery permission (cashier).
+  if (capabilities === undefined) return null;
+  if (mode === 'UNAVAILABLE') {
+    return (
+      <section className="sk-page sk-settings-page" aria-labelledby="recovery-settings-title">
+        <div className="sk-settings-card">
+          <div className="sk-settings-card__header">
+            <div className="sk-settings-card__title-group">
+              <h2 id="recovery-settings-title" className="sk-settings-card__title">{text.title}</h2>
+            </div>
+          </div>
+          <Banner tone="error">{t('errors.recoveryUnavailable')}</Banner>
+        </div>
+      </section>
+    );
+  }
+  if (!canCreate && !canValidate && !canVerify && !capabilities?.canRestoreLive) return null;
+
+  const statusView = status ? describeStatus(status, Date.now()) : null;
+
   return (
     <section className="sk-page sk-settings-page" aria-labelledby="recovery-settings-title">
       <div className="sk-settings-card">
@@ -419,124 +572,148 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
           </div>
         </div>
 
+        {canCreate && status && statusView ? (
+          <div data-testid="backup-status-line">
+            <Banner tone={statusView.tone}>
+              {status.lastSuccessAt
+                ? text.lastBackup.replace('{date}', formatDateTime(status.lastSuccessAt, locale))
+                : text.noBackupYet}
+              {statusView.failed ? ` ${text.lastBackupFailed}` : ''}
+            </Banner>
+          </div>
+        ) : null}
+
         {error ? <Banner tone="error">{error}</Banner> : null}
         {feedback ? <Banner tone="success">{feedback}</Banner> : null}
 
         <div className="sk-recovery-section">
-          <div className="sk-recovery-box">
-            <div className="sk-recovery-box__header">
-              <div>
-                <h3 className="sk-recovery-box__title">{text.destination}</h3>
-                <p className="sk-recovery-box__desc">{text.destinationHelp}</p>
+          {canCreate ? (
+            <div className="sk-recovery-box" data-testid="destination-box">
+              <div className="sk-recovery-box__header">
+                <div>
+                  <h3 className="sk-recovery-box__title">{text.destination}</h3>
+                  <p className="sk-recovery-box__desc">{text.destinationHelp}</p>
+                </div>
               </div>
+              <div className="sk-recovery-input-row">
+                <TextField
+                  label={text.destination}
+                  value={destination?.effectivePath ?? ''}
+                  placeholder={text.destinationNotSet}
+                  readOnly
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={busy === 'destination'}
+                  disabled={busy !== null}
+                  onClick={() => void changeDestination()}
+                >
+                  {text.destinationChange}
+                </Button>
+              </div>
+              {destination?.isDefault ? (
+                <small className="sk-field-help">{text.destinationDefaultHelp}</small>
+              ) : null}
+              {destination && destination.available === false ? (
+                <Banner tone="error">{t('errors.backupDestinationUnavailable')}</Banner>
+              ) : null}
+              {destination?.sameDriveWarning ? (
+                <Banner tone="warning">{text.sameDriveWarning}</Banner>
+              ) : null}
             </div>
-            <div className="sk-recovery-input-row">
-              <TextField
-                label={text.destination}
-                value={destination ?? ''}
-                placeholder={text.destinationNotSet}
-                readOnly
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                loading={busy === 'destination'}
-                disabled={busy !== null}
-                onClick={() => void changeDestination()}
-              >
-                {text.destinationChange}
-              </Button>
-            </div>
-          </div>
+          ) : null}
 
-          <div className="sk-recovery-box">
-            <div className="sk-recovery-box__header">
-              <div>
-                <h3 className="sk-recovery-box__title">{text.create}</h3>
-                <p className="sk-recovery-box__desc">{text.createHelp}</p>
+          {canCreate ? (
+            <div className="sk-recovery-box">
+              <div className="sk-recovery-box__header">
+                <div>
+                  <h3 className="sk-recovery-box__title">{text.create}</h3>
+                  <p className="sk-recovery-box__desc">{text.createHelp}</p>
+                </div>
+                <Button
+                  type="button"
+                  loading={busy === 'create'}
+                  disabled={busy !== null}
+                  onClick={() => void create()}
+                >
+                  {text.create}
+                </Button>
               </div>
-              <Button
-                type="button"
-                loading={busy === 'create'}
-                disabled={busy !== null}
-                onClick={() => void create()}
-              >
-                {text.create}
-              </Button>
             </div>
-          </div>
+          ) : null}
 
-          <div className="sk-recovery-box">
-            <div className="sk-recovery-box__header">
-              <div>
-                <h3 className="sk-recovery-box__title">{text.validate}</h3>
-                <p className="sk-recovery-box__desc">{text.validateHelp}</p>
+          {canValidate ? (
+            <div className="sk-recovery-box">
+              <div className="sk-recovery-box__header">
+                <div>
+                  <h3 className="sk-recovery-box__title">{text.validate}</h3>
+                  <p className="sk-recovery-box__desc">{text.validateHelp}</p>
+                </div>
+              </div>
+              <div className="sk-recovery-input-row">
+                <TextField
+                  label={text.path}
+                  value={bundlePath}
+                  placeholder={text.placeholder}
+                  readOnly
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy !== null}
+                  onClick={() => void browseBundle()}
+                >
+                  {text.browse}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={busy === 'validate'}
+                  disabled={!bundlePath.trim() || busy !== null}
+                  onClick={() => void validate()}
+                >
+                  {text.validate}
+                </Button>
               </div>
             </div>
-            <div className="sk-recovery-input-row">
-              <TextField
-                label={text.path}
-                value={bundlePath}
-                placeholder={text.placeholder}
-                readOnly
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={busy !== null}
-                onClick={() => void browseBundle()}
-              >
-                {text.browse}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                loading={busy === 'validate'}
-                disabled={!bundlePath.trim() || busy !== null}
-                onClick={() => void validate()}
-              >
-                {text.validate}
-              </Button>
-            </div>
-          </div>
+          ) : null}
         </div>
 
         {result ? (
           <dl className="sk-details-grid" data-testid="backup-result" style={{ marginTop: '20px' }}>
             <div><dt>{text.bundle}</dt><dd>{result.bundleIdentifier}</dd></div>
-            <div><dt>{text.application}</dt><dd>{result.applicationVersion} · {compatibilityLabel(result.applicationCompatible, text)}</dd></div>
+            {/* WS-H-3 (R5): the application version is informational; only a
+                mismatch is worth a label. */}
+            <div><dt>{text.application}</dt><dd>{result.applicationCompatible ? result.applicationVersion : `${result.applicationVersion} · ${text.incompatible}`}</dd></div>
             <div><dt>{text.schema}</dt><dd>{result.schemaVersion} · {compatibilityLabel(result.schemaCompatible, text)}</dd></div>
             <div><dt>{text.postgres}</dt><dd>{result.postgresMajorVersion} · {compatibilityLabel(result.postgresCompatible, text)}</dd></div>
+            {result.backupKind !== undefined ? (
+              <div><dt>{text.kind}</dt><dd>{kindLabel(result.backupKind, text)}</dd></div>
+            ) : null}
+            {result.restorable !== undefined ? (
+              <div><dt>{text.restorable}</dt><dd>{result.restorable ? text.yes : text.no}</dd></div>
+            ) : null}
             <div><dt>{text.files}</dt><dd>{new Intl.NumberFormat(locale).format(result.fileCount)}</dd></div>
             <div><dt>{text.bytes}</dt><dd>{new Intl.NumberFormat(locale).format(result.totalBytes)}</dd></div>
           </dl>
         ) : null}
       </div>
 
+      {canVerify ? (
       <div className="sk-settings-card" aria-labelledby="recovery-restore-title">
         <div className="sk-settings-card__header">
           <div className="sk-settings-card__title-group">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h2 id="recovery-restore-title" className="sk-settings-card__title">
-                {RESTORE_DRILL_AVAILABLE ? text.restoreAvailableTitle : text.restoreDeferredTitle}
-              </h2>
-              {RESTORE_DRILL_AVAILABLE ? null : (
-                <span className="sk-badge sk-badge--warning">{text.restoreComingSoon}</span>
-              )}
-            </div>
-            <p className="sk-settings-card__desc">
-              {RESTORE_DRILL_AVAILABLE ? text.restoreAvailableBody : text.restoreDeferredBody}
-            </p>
+            <h2 id="recovery-restore-title" className="sk-settings-card__title">
+              {text.restoreAvailableTitle}
+            </h2>
+            <p className="sk-settings-card__desc">{text.restoreAvailableBody}</p>
           </div>
         </div>
 
         <Banner tone="warning">{text.recoveryBoundary}</Banner>
 
-        <fieldset
-          className={RESTORE_DRILL_AVAILABLE ? 'sk-form' : 'sk-form sk-fieldset--disabled'}
-          disabled={!RESTORE_DRILL_AVAILABLE}
-          style={{ marginTop: '16px' }}
-        >
+        <fieldset className="sk-form" style={{ marginTop: '16px' }}>
           <div className="sk-field">
             <label className="sk-checkbox-row">
               <input
@@ -608,6 +785,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
           </dl>
         ) : null}
       </div>
+      ) : null}
     </section>
   );
 }

@@ -801,6 +801,161 @@ fn is_backup_file_name(name: &str) -> bool {
 // Tests
 // ===========================================================================
 
+/// Real-embedded-instance test support, shared with the WS-H-3 recovery
+/// engine's own ignored tests (`recovery_engine::backup`, and the WS-H-4/5
+/// drill and restore tests that follow). Mirrors `embedded_setup`'s own
+/// harness shape (`bundled_resource_dir`/`temp_app_data_dir`); every
+/// helper spawns or talks to a real, disposable PostgreSQL instance.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+    use crate::infrastructure::pg_process::{self as pg_process_mod, EmbeddedPostgresHandle};
+    use std::sync::Mutex;
+
+    pub(crate) fn bundled_resource_dir_for_tests() -> PathBuf {
+        let exe = std::env::current_exe().expect("current_exe() must resolve");
+        let dir = exe
+            .parent()
+            .and_then(|deps| deps.parent())
+            .expect("test binary must live at target/<profile>/deps/");
+        dir.canonicalize()
+            .expect("the staged resource directory must exist")
+    }
+
+    pub(crate) fn temp_app_data_dir_for_tests(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "sk-safe-upgrade-e2e-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Provision a fresh, fully-migrated embedded instance via the real
+    /// `embedded_setup::run_setup`. The server is left running on return
+    /// (setup's own final step already proved it is reachable); the caller
+    /// gets `bin_dir`/`pgdata`/`port` back so it can stop and, if needed,
+    /// restart the same server itself later in the test.
+    pub(crate) async fn provision_fresh_instance(
+        app_data_dir: &Path,
+        port: u16,
+    ) -> (PathBuf, PathBuf, u16) {
+        let resource_dir = bundled_resource_dir_for_tests();
+        let handle = std::sync::Arc::new(Mutex::new(EmbeddedPostgresHandle::new(
+            PathBuf::new(),
+            PathBuf::new(),
+            0,
+        )));
+        let result = embedded_setup::run_setup(
+            app_data_dir.to_path_buf(),
+            resource_dir,
+            port,
+            handle.clone(),
+            |_| {},
+        )
+        .await;
+        let (bin_dir, pgdata, actual_port) = {
+            let guard = handle.lock().unwrap();
+            (guard.bin_dir.clone(), guard.pgdata.clone(), guard.port)
+        };
+        result.unwrap_or_else(|e| panic!("provisioning fixture failed: {e}"));
+        (bin_dir, pgdata, actual_port)
+    }
+
+    pub(crate) fn stop_server(bin_dir: &Path, pgdata: &Path) {
+        let _ = pg_process_mod::stop_postgres(bin_dir, pgdata, std::time::Duration::from_secs(10));
+    }
+
+    /// Stop the server via `pg_ctl` (as [`stop_server`] does), then reap the
+    /// `Child` this test itself spawned via [`start_server_and_wait`] — the
+    /// process already exited once `pg_ctl stop` returned; this only
+    /// collects its exit status so the OS process table entry is released
+    /// immediately rather than at test-process exit.
+    pub(crate) fn stop_server_and_reap(
+        bin_dir: &Path,
+        pgdata: &Path,
+        mut child: std::process::Child,
+    ) {
+        stop_server(bin_dir, pgdata);
+        let _ = child.wait();
+    }
+
+    pub(crate) async fn start_server_and_wait(
+        bin_dir: &Path,
+        pgdata: &Path,
+        port: u16,
+    ) -> std::process::Child {
+        let child =
+            pg_process_mod::spawn_postgres(bin_dir, pgdata).expect("spawn postgres for test");
+        pg_process_mod::wait_until_ready(port, std::time::Duration::from_secs(15))
+            .await
+            .expect("server must become ready");
+        child
+    }
+
+    pub(crate) async fn seed_row_and_count(conn: &mut PgConnection) -> i64 {
+        // `finance.accounts` is untouched by the last migration's rewind
+        // below and exists from far earlier in the migration set — a safe,
+        // stable table to prove "pre-existing data survives" against.
+        sqlx::raw_sql(
+            "INSERT INTO finance.accounts \
+             (scf_code, legacy_code, name_fr, name_en, account_type, normal_balance, is_postable, is_control) \
+             VALUES ('999', 'WS_K_5_TEST_MARKER', 'Marqueur de test', 'Test marker', 'asset', 'debit', true, false) \
+             ON CONFLICT (scf_code) DO NOTHING",
+        )
+        .execute(&mut *conn)
+        .await
+        .expect("seed row");
+        sqlx::query_scalar("SELECT count(*) FROM finance.accounts WHERE scf_code = '999'")
+            .fetch_one(conn)
+            .await
+            .expect("count seeded rows")
+    }
+
+    /// Delete the newest migration's `_sqlx_migrations` bookkeeping row — a
+    /// real, honest "one migration behind" fixture: the real compiled
+    /// `MIGRATOR` genuinely re-applies that exact file.
+    ///
+    /// The newest migration (WS-H-3 onward) is written to be fully
+    /// idempotent, so deleting its bookkeeping row alone is an honest "one
+    /// migration behind" fixture. Any future migration that becomes the
+    /// newest MUST stay idempotent, or this fixture must undo its
+    /// non-idempotent statements.
+    pub(crate) async fn rewind_latest_migration(conn: &mut PgConnection) -> i64 {
+        let latest = schema_version::embedded_latest_version();
+        sqlx::query("DELETE FROM _sqlx_migrations WHERE version = $1")
+            .bind(latest)
+            .execute(&mut *conn)
+            .await
+            .expect("rewind: delete the latest migration's bookkeeping row");
+        latest
+    }
+
+    /// Corrupt an already-applied migration's recorded checksum. SQLx's own
+    /// migrator refuses to run at all when an applied migration's checksum
+    /// no longer matches what is compiled in — a deterministic, real
+    /// migration failure that does not depend on any migration file's own
+    /// idempotency, used here purely to exercise the rollback path.
+    pub(crate) async fn corrupt_an_earlier_checksum(conn: &mut PgConnection) {
+        let earliest: i64 =
+            sqlx::query_scalar("SELECT MIN(version) FROM _sqlx_migrations WHERE success = true")
+                .fetch_one(&mut *conn)
+                .await
+                .expect("read the earliest applied version");
+        sqlx::query(
+            "UPDATE _sqlx_migrations SET checksum = decode('00', 'hex') WHERE version = $1",
+        )
+        .bind(earliest)
+        .execute(conn)
+        .await
+        .expect("corrupt the earliest migration's checksum");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -999,165 +1154,12 @@ mod tests {
     }
 
     // =======================================================================
-    // Real-embedded-instance integration tests.
-    //
-    // Mirrors `embedded_setup`'s own test harness exactly (same
-    // `bundled_resource_dir`/`temp_app_data_dir` shape) rather than sharing
-    // it across modules — this crate has no existing precedent for a shared
-    // test-support module, and each of these helpers is a handful of lines.
+    // Real-embedded-instance integration tests. Helpers live in the sibling
+    // `test_support` module (WS-H-3 shares them with the recovery engine).
     // =======================================================================
 
-    use crate::infrastructure::pg_process::{self as pg_process_mod, EmbeddedPostgresHandle};
-    use std::sync::Mutex;
-
-    fn bundled_resource_dir_for_tests() -> PathBuf {
-        let exe = std::env::current_exe().expect("current_exe() must resolve");
-        let dir = exe
-            .parent()
-            .and_then(|deps| deps.parent())
-            .expect("test binary must live at target/<profile>/deps/");
-        dir.canonicalize()
-            .expect("the staged resource directory must exist")
-    }
-
-    fn temp_app_data_dir_for_tests(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "sk-safe-upgrade-e2e-{label}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    /// Provision a fresh, fully-migrated embedded instance via the real
-    /// `embedded_setup::run_setup`. The server is left running on return
-    /// (setup's own final step already proved it is reachable); the caller
-    /// gets `bin_dir`/`pgdata`/`port` back so it can stop and, if needed,
-    /// restart the same server itself later in the test.
-    async fn provision_fresh_instance(app_data_dir: &Path, port: u16) -> (PathBuf, PathBuf, u16) {
-        let resource_dir = bundled_resource_dir_for_tests();
-        let handle = std::sync::Arc::new(Mutex::new(EmbeddedPostgresHandle::new(
-            PathBuf::new(),
-            PathBuf::new(),
-            0,
-        )));
-        let result = embedded_setup::run_setup(
-            app_data_dir.to_path_buf(),
-            resource_dir,
-            port,
-            handle.clone(),
-            |_| {},
-        )
-        .await;
-        let (bin_dir, pgdata, actual_port) = {
-            let guard = handle.lock().unwrap();
-            (guard.bin_dir.clone(), guard.pgdata.clone(), guard.port)
-        };
-        result.unwrap_or_else(|e| panic!("provisioning fixture failed: {e}"));
-        (bin_dir, pgdata, actual_port)
-    }
-
-    fn stop_server(bin_dir: &Path, pgdata: &Path) {
-        let _ = pg_process_mod::stop_postgres(bin_dir, pgdata, std::time::Duration::from_secs(10));
-    }
-
-    /// Stop the server via `pg_ctl` (as [`stop_server`] does), then reap the
-    /// `Child` this test itself spawned via [`start_server_and_wait`] — the
-    /// process already exited once `pg_ctl stop` returned; this only
-    /// collects its exit status so the OS process table entry is released
-    /// immediately rather than at test-process exit.
-    fn stop_server_and_reap(bin_dir: &Path, pgdata: &Path, mut child: std::process::Child) {
-        stop_server(bin_dir, pgdata);
-        let _ = child.wait();
-    }
-
-    async fn start_server_and_wait(
-        bin_dir: &Path,
-        pgdata: &Path,
-        port: u16,
-    ) -> std::process::Child {
-        let child =
-            pg_process_mod::spawn_postgres(bin_dir, pgdata).expect("spawn postgres for test");
-        pg_process_mod::wait_until_ready(port, std::time::Duration::from_secs(15))
-            .await
-            .expect("server must become ready");
-        child
-    }
-
-    async fn seed_row_and_count(conn: &mut PgConnection) -> i64 {
-        // `finance.accounts` is untouched by the last migration's rewind
-        // below and exists from far earlier in the migration set — a safe,
-        // stable table to prove "pre-existing data survives" against.
-        sqlx::raw_sql(
-            "INSERT INTO finance.accounts \
-             (scf_code, legacy_code, name_fr, name_en, account_type, normal_balance, is_postable, is_control) \
-             VALUES ('999', 'WS_K_5_TEST_MARKER', 'Marqueur de test', 'Test marker', 'asset', 'debit', true, false) \
-             ON CONFLICT (scf_code) DO NOTHING",
-        )
-        .execute(&mut *conn)
-        .await
-        .expect("seed row");
-        sqlx::query_scalar("SELECT count(*) FROM finance.accounts WHERE scf_code = '999'")
-            .fetch_one(conn)
-            .await
-            .expect("count seeded rows")
-    }
-
-    /// Reverse the one non-idempotent statement in the current latest
-    /// migration (`sales.confirm_cash_sale`'s 9-argument overload did not
-    /// exist before that migration ran) and delete its `_sqlx_migrations`
-    /// bookkeeping row — a real, honest "one migration behind" fixture: the
-    /// real compiled `MIGRATOR` can genuinely re-apply this exact file and
-    /// succeed, because its one non-idempotent side effect was undone.
-    ///
-    /// Coupled to the current latest migration's content by construction —
-    /// if a later migration changes what "latest" is, this fixture must be
-    /// updated to match whatever that migration's own non-idempotent
-    /// statement is. `embedded_setup`'s own end-to-end test hit and
-    /// documented this identical limit ("the last migration is not
-    /// idempotent enough to fake a pending state without corrupting the
-    /// schema") — this fixture is the more targeted fix: undo only the one
-    /// statement that is not safely re-runnable, not the whole migration.
-    async fn rewind_latest_migration(conn: &mut PgConnection) -> i64 {
-        let latest = schema_version::embedded_latest_version();
-        sqlx::raw_sql(
-            "DROP FUNCTION IF EXISTS sales.confirm_cash_sale\
-             (text, uuid, bytea, bigint, bigint, bigint, date, jsonb, numeric)",
-        )
-        .execute(&mut *conn)
-        .await
-        .expect("rewind: drop the 9-arg overload the latest migration created");
-        sqlx::query("DELETE FROM _sqlx_migrations WHERE version = $1")
-            .bind(latest)
-            .execute(&mut *conn)
-            .await
-            .expect("rewind: delete the latest migration's bookkeeping row");
-        latest
-    }
-
-    /// Corrupt an already-applied migration's recorded checksum. SQLx's own
-    /// migrator refuses to run at all when an applied migration's checksum
-    /// no longer matches what is compiled in — a deterministic, real
-    /// migration failure that does not depend on any migration file's own
-    /// idempotency, used here purely to exercise the rollback path.
-    async fn corrupt_an_earlier_checksum(conn: &mut PgConnection) {
-        let earliest: i64 =
-            sqlx::query_scalar("SELECT MIN(version) FROM _sqlx_migrations WHERE success = true")
-                .fetch_one(&mut *conn)
-                .await
-                .expect("read the earliest applied version");
-        sqlx::query(
-            "UPDATE _sqlx_migrations SET checksum = decode('00', 'hex') WHERE version = $1",
-        )
-        .bind(earliest)
-        .execute(conn)
-        .await
-        .expect("corrupt the earliest migration's checksum");
-    }
+    use super::test_support::*;
+    use crate::infrastructure::pg_process as pg_process_mod;
 
     #[tokio::test]
     #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]

@@ -47,6 +47,13 @@ use super::credentials::{read_secret, CredentialTarget, SecretBytes};
 /// manifest's own structure changes incompatibly.
 pub(crate) const BUNDLE_FORMAT_VERSION: u32 = 1;
 
+/// WS-H-3: the validator accepts both bundle formats. Format 1 is what this
+/// module's own writer (the developer/`run.bat` path) still produces; format
+/// 2 is written by the embedded engine (`recovery_engine::bundle`) — same
+/// layout, dump taken **with** privileges, extra manifest fields. Only format
+/// 2 bundles are restorable in-app (ruling R3).
+pub(crate) const SUPPORTED_BUNDLE_FORMAT_VERSIONS: [u32; 2] = [1, 2];
+
 /// Application version recorded in the manifest and `application-version.txt`.
 pub(crate) const APPLICATION_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -230,7 +237,9 @@ impl BackupProofError {
             },
             BackupProofError::CredentialUnavailable(summary) => summary.0.clone(),
             BackupProofError::BundleFormatVersionMismatch(found) => {
-                format!("found bundle_format_version {found}, expected {BUNDLE_FORMAT_VERSION}")
+                format!(
+                    "found bundle_format_version {found}, expected one of {SUPPORTED_BUNDLE_FORMAT_VERSIONS:?}"
+                )
             }
             other => other.code().to_string(),
         }
@@ -804,6 +813,7 @@ where
 /// This is the entire preflight surface a consumer needs — it deliberately
 /// exposes only the small set of fields a restore actually has to act on,
 /// not the raw parsed manifest.
+#[derive(Debug)]
 pub(crate) struct ValidatedBundle {
     pub(crate) bundle_dir: PathBuf,
     pub(crate) dump_path: PathBuf,
@@ -811,6 +821,15 @@ pub(crate) struct ValidatedBundle {
     pub(crate) application_version: String,
     pub(crate) schema_version: String,
     pub(crate) postgres_major_version: u32,
+    /// WS-H-3 format 2: `MANUAL | DAILY | PRE_UPDATE | PRE_RESTORE`; absent
+    /// on format 1 bundles.
+    pub(crate) backup_kind: Option<String>,
+    /// WS-H-3 format 2: the dump was taken without `--no-privileges`, so a
+    /// restored copy keeps the GRANTs `stockiha_runtime` needs. Always
+    /// `false` for format 1, whatever the manifest claims.
+    pub(crate) dump_includes_privileges: bool,
+    /// The manifest's `created_at_unix`, when present.
+    pub(crate) created_at_unix: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -827,6 +846,14 @@ struct ManifestDe {
     schema_version: String,
     database_dump_filename: String,
     files: Vec<ManifestFileEntryDe>,
+    // WS-H-3 format 2 fields; all optional so format 1 manifests (and any
+    // hand-written test manifest) still parse.
+    #[serde(default)]
+    backup_kind: Option<String>,
+    #[serde(default)]
+    dump_includes_privileges: bool,
+    #[serde(default)]
+    created_at_unix: Option<u64>,
 }
 
 /// Reject a manifest-listed relative path that could escape `bundle_dir`:
@@ -873,7 +900,7 @@ pub(crate) fn validate_bundle(bundle_dir: &Path) -> Result<ValidatedBundle, Back
         fs::read_to_string(&manifest_path).map_err(|_| BackupProofError::ManifestNotFound)?;
     let manifest: ManifestDe =
         serde_json::from_str(&manifest_text).map_err(|_| BackupProofError::ManifestParseFailed)?;
-    if manifest.bundle_format_version != BUNDLE_FORMAT_VERSION {
+    if !SUPPORTED_BUNDLE_FORMAT_VERSIONS.contains(&manifest.bundle_format_version) {
         return Err(BackupProofError::BundleFormatVersionMismatch(
             manifest.bundle_format_version,
         ));
@@ -994,6 +1021,12 @@ pub(crate) fn validate_bundle(bundle_dir: &Path) -> Result<ValidatedBundle, Back
         ));
     }
 
+    // Format 1 dumps were always taken with `--no-privileges`; a manifest
+    // claiming otherwise is either hand-edited or wrong, and trusting it
+    // would let a privilege-less dump reach the live restore path.
+    let dump_includes_privileges =
+        manifest.bundle_format_version >= 2 && manifest.dump_includes_privileges;
+
     Ok(ValidatedBundle {
         bundle_dir: bundle_dir.to_path_buf(),
         dump_path,
@@ -1001,6 +1034,9 @@ pub(crate) fn validate_bundle(bundle_dir: &Path) -> Result<ValidatedBundle, Back
         application_version: manifest.application_version,
         schema_version: manifest.schema_version,
         postgres_major_version,
+        backup_kind: manifest.backup_kind,
+        dump_includes_privileges,
+        created_at_unix: manifest.created_at_unix,
     })
 }
 
@@ -1977,6 +2013,96 @@ exit "${{STOCKIHA_FAKE_PG_DUMP_EXIT_CODE:-0}}"
             validate_bundle(&bundle),
             Err(BackupProofError::BundleFormatVersionMismatch(99))
         ));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Rewrite `manifest.json` in place and recompute its `checksums.sha256`
+    /// line, so a test can change manifest fields without tripping the
+    /// integrity check that would otherwise mask what is under test.
+    fn rewrite_manifest_keeping_checksums_valid(bundle: &Path, edit: impl Fn(&str) -> String) {
+        let manifest_text = fs::read_to_string(bundle.join(MANIFEST_FILENAME)).unwrap();
+        let edited = edit(&manifest_text);
+        assert_ne!(edited, manifest_text, "the edit must change the manifest");
+        fs::write(bundle.join(MANIFEST_FILENAME), &edited).unwrap();
+        let new_manifest_hash = hash_bytes(edited.as_bytes());
+        let checksums_text = fs::read_to_string(bundle.join(CHECKSUMS_FILENAME)).unwrap();
+        let new_checksums: String = checksums_text
+            .lines()
+            .map(|line| {
+                if line.ends_with(MANIFEST_FILENAME) {
+                    format!(
+                        "{new_manifest_hash}  {MANIFEST_FILENAME}
+"
+                    )
+                } else {
+                    format!(
+                        "{line}
+"
+                    )
+                }
+            })
+            .collect();
+        fs::write(bundle.join(CHECKSUMS_FILENAME), new_checksums).unwrap();
+    }
+
+    /// WS-H-3: a format 2 manifest (embedded engine) validates and exposes
+    /// its extra fields; format 3 is refused; a format 1 manifest claiming
+    /// `dump_includes_privileges` is not believed.
+    #[test]
+    fn validate_bundle_accepts_format_2_and_refuses_format_3() {
+        let root = scratch_dir("validate-bundle-format-2");
+        let bundle = create_backup_bundle(
+            &root,
+            fixed_now(),
+            "pg_dump (PostgreSQL) 18.0",
+            &BackupInputs::empty(),
+            fake_dump(b"dump"),
+        )
+        .unwrap();
+
+        let legacy = validate_bundle(&bundle).unwrap();
+        assert_eq!(legacy.bundle_format_version, 1);
+        assert!(!legacy.dump_includes_privileges);
+        assert_eq!(legacy.backup_kind, None);
+        assert_eq!(legacy.created_at_unix, Some(1_784_713_815));
+
+        rewrite_manifest_keeping_checksums_valid(&bundle, |text| {
+            text.replacen(
+                "\"bundle_format_version\":1",
+                "\"bundle_format_version\":2,\"backup_kind\":\"DAILY\",\"dump_includes_privileges\":true,\"source\":\"EMBEDDED\"",
+                1,
+            )
+        });
+        let v2 = validate_bundle(&bundle).unwrap();
+        assert_eq!(v2.bundle_format_version, 2);
+        assert!(v2.dump_includes_privileges);
+        assert_eq!(v2.backup_kind.as_deref(), Some("DAILY"));
+
+        rewrite_manifest_keeping_checksums_valid(&bundle, |text| {
+            text.replacen(
+                "\"bundle_format_version\":2",
+                "\"bundle_format_version\":3",
+                1,
+            )
+        });
+        assert!(matches!(
+            validate_bundle(&bundle),
+            Err(BackupProofError::BundleFormatVersionMismatch(3))
+        ));
+
+        rewrite_manifest_keeping_checksums_valid(&bundle, |text| {
+            text.replacen(
+                "\"bundle_format_version\":3",
+                "\"bundle_format_version\":1",
+                1,
+            )
+        });
+        let lying_v1 = validate_bundle(&bundle).unwrap();
+        assert_eq!(lying_v1.bundle_format_version, 1);
+        assert!(
+            !lying_v1.dump_includes_privileges,
+            "a format 1 bundle never carries privileges, whatever its manifest says"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 

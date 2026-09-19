@@ -52,6 +52,14 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   BACKUP_DESTINATION_CREATE_FAILED: 'This backup folder could not be created or used.',
   BACKUP_BUNDLE_OUTSIDE_ROOT: 'This backup folder is outside your configured backup destination.',
   RECOVERY_OPERATION_IN_PROGRESS: 'Another backup or recovery operation is already running. Wait for it to finish.',
+  // WS-H-3 (plan section 5.7).
+  RECOVERY_UNAVAILABLE: "Backup and restore are not available on this computer's setup. Contact your supplier.",
+  BACKUP_DESTINATION_UNAVAILABLE: 'The backup folder is not available. Plug in the drive or choose another folder.',
+  BACKUP_NOT_RESTORABLE: 'This backup cannot be restored by this version of Stockiha.',
+  RESTORE_TEST_FAILED: 'The backup could not be restored in the safe test. Your data was not changed.',
+  FRESH_RESTORE_NOT_ALLOWED: 'Restoring here is only possible on a new installation with no user accounts.',
+  BACKUP_COPY_FAILED: 'The backup could not be copied. Nothing was left behind in the target folder.',
+  INSUFFICIENT_DISK_SPACE: 'There is not enough free disk space for this operation.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

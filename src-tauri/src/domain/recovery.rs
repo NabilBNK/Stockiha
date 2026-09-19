@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::infrastructure::recovery_engine::mode::UnavailableReason;
+
 const REQUEST_ID_MIN_LEN: usize = 8;
 const REQUEST_ID_MAX_LEN: usize = 128;
 const PATH_MAX_LEN: usize = 4096;
@@ -90,6 +92,22 @@ pub(crate) struct OperatorBackupValidationResult {
     pub(crate) postgres_compatible: bool,
     pub(crate) file_count: u64,
     pub(crate) total_bytes: u64,
+    // WS-H-3 (plan section 5.8.1): optional so a result stored before WS-H-3
+    // still replays. `None` is omitted on the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) format_version: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) backup_kind: Option<String>,
+    /// `SAME | OLDER | NEWER | UNKNOWN`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) schema_verdict: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) restorable: Option<bool>,
+    /// RFC3339
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) created_at_utc: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) used_fallback_destination: Option<bool>,
 }
 
 /// Creation and validation intentionally return the same safe metadata shape.
@@ -139,7 +157,19 @@ impl UpdateBackupDestinationRequest {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BackupDestinationSetting {
+    /// The stored setting (what the administrator chose), or `None`.
     pub(crate) path: Option<String>,
+    /// WS-H-3: where the next backup would actually go - the stored path,
+    /// the EMBEDDED default folder, or (EXTERNAL) the `STOCKIHA_BACKUP_ROOT`
+    /// env var. `None` only when nothing at all is configured.
+    pub(crate) effective_path: Option<String>,
+    /// WS-H-3: `true` when `effective_path` is the EMBEDDED default folder.
+    pub(crate) is_default: bool,
+    /// WS-H-3: `false` when the stored destination cannot be used right now
+    /// (drive unplugged, folder not creatable).
+    pub(crate) available: bool,
+    /// WS-H-3: the effective folder is on the same drive as the live data.
+    pub(crate) same_drive_warning: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,9 +186,80 @@ pub(crate) struct OperatorRestoreVerificationResult {
     pub(crate) bundle_identifier: String,
     pub(crate) schema_version: String,
     pub(crate) postgres_major_version: u32,
+    /// In EMBEDDED mode (WS-H-4) this means "the test server was stopped".
     pub(crate) temporary_database_cleaned: bool,
     pub(crate) journal_balanced: bool,
     pub(crate) control_totals: RestoreControlTotals,
+    // WS-H-3 (plan section 5.8.1): optional so pre-WS-H-3 stored results replay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) schema_verdict: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) migrated_forward: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) cleanup_pending: Option<bool>,
+}
+
+// ---------------------------------------------------------------------------
+// WS-H-3: mode, capabilities and status (plan section 5.8).
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RecoveryModeResponse {
+    /// `EMBEDDED | EXTERNAL | UNAVAILABLE`
+    pub(crate) mode: String,
+    /// Set only when `mode == "UNAVAILABLE"`.
+    pub(crate) unavailable_reason: Option<UnavailableReason>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RecoveryCapabilities {
+    pub(crate) mode: String,
+    pub(crate) can_create_backup: bool,
+    pub(crate) can_validate_backup: bool,
+    pub(crate) can_verify_restore: bool,
+    pub(crate) can_restore_live: bool,
+}
+
+impl RecoveryCapabilities {
+    pub(crate) fn none(mode: &str) -> Self {
+        RecoveryCapabilities {
+            mode: mode.to_string(),
+            can_create_backup: false,
+            can_validate_backup: false,
+            can_verify_restore: false,
+            can_restore_live: false,
+        }
+    }
+}
+
+/// Raw shape of `operations.get_recovery_capabilities`.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RecoveryCapabilitiesRow {
+    pub(crate) can_create_backup: bool,
+    pub(crate) can_validate_backup: bool,
+    pub(crate) can_verify_restore: bool,
+    pub(crate) can_restore_live: bool,
+}
+
+/// `operations.get_backup_status`: timestamps are ISO-8601 strings exactly
+/// as PostgreSQL's `jsonb` renders `timestamptz`; nulls stay `null`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BackupStatus {
+    #[serde(default)]
+    pub(crate) last_success_at: Option<String>,
+    #[serde(default)]
+    pub(crate) last_success_bundle: Option<String>,
+    #[serde(default)]
+    pub(crate) last_failure_at: Option<String>,
+    #[serde(default)]
+    pub(crate) last_failure_code: Option<String>,
+    #[serde(default)]
+    pub(crate) last_restore_at: Option<String>,
+    #[serde(default)]
+    pub(crate) last_restore_bundle: Option<String>,
 }
 
 #[cfg(test)]
@@ -245,12 +346,97 @@ mod tests {
             postgres_compatible: true,
             file_count: 7,
             total_bytes: 1024,
+            format_version: None,
+            backup_kind: None,
+            schema_verdict: None,
+            restorable: None,
+            created_at_utc: None,
+            used_fallback_destination: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"bundleIdentifier\""));
         assert!(json.contains("\"schemaCompatible\":true"));
         assert!(!json.contains("bundle_identifier"));
+        // WS-H-3 optional fields are omitted when absent, so a stored
+        // pre-WS-H-3 result and a fresh one serialize identically.
+        assert!(!json.contains("formatVersion"));
+        assert!(!json.contains("restorable"));
+    }
+
+    /// WS-H-3: a result stored before the optional fields existed must still
+    /// deserialize (replay of an old audit row), and a format 2 result
+    /// carries its new fields in camelCase.
+    #[test]
+    fn validation_result_tolerates_missing_and_present_ws_h_3_fields() {
+        let legacy: OperatorBackupValidationResult = serde_json::from_str(
+            r#"{"requestId":"validate-20260803-001","bundleIdentifier":"GestStock-Backup-20260803-190000",
+                "createdAtLabel":"20260803-190000","applicationVersion":"0.1.0","schemaVersion":"20260803193000",
+                "postgresMajorVersion":18,"integrityValid":true,"applicationCompatible":true,
+                "schemaCompatible":true,"postgresCompatible":true,"fileCount":7,"totalBytes":1024}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.format_version, None);
+        assert_eq!(legacy.restorable, None);
+
+        let modern = OperatorBackupValidationResult {
+            format_version: Some(2),
+            backup_kind: Some("MANUAL".to_string()),
+            schema_verdict: Some("SAME".to_string()),
+            restorable: Some(true),
+            created_at_utc: Some("2026-09-19T10:15:00Z".to_string()),
+            used_fallback_destination: Some(false),
+            ..legacy
+        };
+        let value = serde_json::to_value(&modern).unwrap();
+        assert_eq!(value["formatVersion"], 2);
+        assert_eq!(value["backupKind"], "MANUAL");
+        assert_eq!(value["schemaVerdict"], "SAME");
+        assert_eq!(value["restorable"], true);
+        assert_eq!(value["createdAtUtc"], "2026-09-19T10:15:00Z");
+        assert_eq!(value["usedFallbackDestination"], false);
+    }
+
+    #[test]
+    fn backup_status_tolerates_nulls_and_missing_fields() {
+        let status: BackupStatus = serde_json::from_str(
+            r#"{"last_success_at":null,"last_success_bundle":null,"last_failure_at":null,
+                "last_failure_code":null,"last_restore_at":null,"last_restore_bundle":null}"#,
+        )
+        .unwrap();
+        assert_eq!(status.last_success_at, None);
+        let empty: BackupStatus = serde_json::from_str("{}").unwrap();
+        assert_eq!(empty, status);
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("\"lastSuccessAt\":null"));
+    }
+
+    #[test]
+    fn capabilities_and_mode_serialize_camel_case() {
+        let caps = RecoveryCapabilities::none("UNAVAILABLE");
+        let json = serde_json::to_string(&caps).unwrap();
+        assert_eq!(
+            json,
+            r#"{"mode":"UNAVAILABLE","canCreateBackup":false,"canValidateBackup":false,"canVerifyRestore":false,"canRestoreLive":false}"#
+        );
+        let mode = RecoveryModeResponse {
+            mode: "UNAVAILABLE".to_string(),
+            unavailable_reason: Some(UnavailableReason::NoMigratorCredential),
+        };
+        assert_eq!(
+            serde_json::to_string(&mode).unwrap(),
+            r#"{"mode":"UNAVAILABLE","unavailableReason":"NO_MIGRATOR_CREDENTIAL"}"#
+        );
+        let destination = BackupDestinationSetting {
+            path: None,
+            effective_path: Some("C:/x".to_string()),
+            is_default: true,
+            available: true,
+            same_drive_warning: false,
+        };
+        let value = serde_json::to_value(&destination).unwrap();
+        assert_eq!(value["isDefault"], true);
+        assert_eq!(value["effectivePath"], "C:/x");
     }
 
     #[test]
@@ -279,11 +465,15 @@ mod tests {
                 supplier_outstanding_total: "0".to_string(),
                 opening_state_application_count: 0,
             },
+            schema_verdict: None,
+            migrated_forward: None,
+            cleanup_pending: None,
         };
         let value = serde_json::to_value(result).unwrap();
         assert_eq!(value["temporaryDatabaseCleaned"], true);
         assert!(value.get("temporaryDatabaseName").is_none());
         assert!(value.get("databaseUrl").is_none());
         assert!(value.get("credential").is_none());
+        assert!(value.get("schemaVerdict").is_none());
     }
 }

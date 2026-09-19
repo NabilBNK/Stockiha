@@ -3,10 +3,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { COMMANDS } from './commands';
 import type {
   BackupDestinationSetting,
+  BackupStatus,
   CreateOperatorBackupRequest,
   OperatorBackupCreationResult,
   OperatorBackupValidationResult,
   OperatorRestoreVerificationResult,
+  RecoveryCapabilities,
+  RecoveryModeResponse,
   RestoreVerificationSetting,
   UpdateBackupDestinationRequest,
   UpdateBackupDestinationResult,
@@ -107,6 +110,36 @@ export async function updateBackupDestinationSetting(
       COMMANDS.UPDATE_BACKUP_DESTINATION_SETTING,
       { sessionToken, request },
     );
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+// WS-H-3: mode, capabilities and status.
+
+export async function getRecoveryMode(): Promise<RecoveryModeResponse> {
+  try {
+    return await invoke<RecoveryModeResponse>(COMMANDS.GET_RECOVERY_MODE);
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+export async function getRecoveryCapabilities(
+  sessionToken: string,
+): Promise<RecoveryCapabilities> {
+  try {
+    return await invoke<RecoveryCapabilities>(COMMANDS.GET_RECOVERY_CAPABILITIES, {
+      sessionToken,
+    });
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+export async function getBackupStatus(sessionToken: string): Promise<BackupStatus> {
+  try {
+    return await invoke<BackupStatus>(COMMANDS.GET_BACKUP_STATUS, { sessionToken });
   } catch (error: unknown) {
     throw new GatewayError(parseTauriError(error));
   }

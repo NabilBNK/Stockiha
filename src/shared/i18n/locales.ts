@@ -462,6 +462,14 @@ const fr = {
   'errors.backupDestinationCreateFailed': "Impossible de cr\u00e9er ou d'utiliser ce dossier de sauvegarde. V\u00e9rifiez le chemin et les autorisations, puis r\u00e9essayez.",
   'errors.backupBundleOutsideRoot': "Ce dossier de sauvegarde se trouve en dehors de votre destination de sauvegarde configur\u00e9e. Choisissez un dossier cr\u00e9\u00e9 par \u00ab Cr\u00e9er une sauvegarde \u00bb dans cette destination.",
   'errors.recoveryOperationInProgress': "Une autre opération de sauvegarde ou de récupération est déjà en cours. Attendez qu'elle se termine.",
+  // WS-H-3 (plan §5.7).
+  'errors.recoveryUnavailable': "La sauvegarde et la restauration ne sont pas disponibles avec la configuration de cet ordinateur. Contactez votre fournisseur.",
+  'errors.backupDestinationUnavailable': "Le dossier de sauvegarde n’est pas disponible. Branchez le disque ou choisissez un autre dossier.",
+  'errors.backupNotRestorable': "Cette sauvegarde ne peut pas être restaurée par cette version de Stockiha.",
+  'errors.restoreTestFailed': "La sauvegarde n’a pas pu être restaurée lors du test de sécurité. Vos données n’ont pas été modifiées.",
+  'errors.freshRestoreNotAllowed': "La restauration ici n’est possible que sur une nouvelle installation sans compte utilisateur.",
+  'errors.backupCopyFailed': "La sauvegarde n’a pas pu être copiée. Rien n’a été laissé dans le dossier cible.",
+  'errors.insufficientDiskSpace': "Il n’y a pas assez d’espace disque libre pour cette opération.",
   // S2-003: Zero-quantity safeguards
   'inventory.zeroQtyWarning.title': 'Attention : stock z\u00e9ro',
   'inventory.zeroQtyWarning.message': '"{variant}" a un stock confirm\u00e9 de z\u00e9ro et aucun co\u00fbt moyen pond\u00e9r\u00e9 ant\u00e9rieur enregistr\u00e9. Une augmentation positive n\u00e9cessite une base de co\u00fbts approuv\u00e9e.',
@@ -982,6 +990,21 @@ const ar: Record<MessageKey, string> = {
   'errors.backupDestinationCreateFailed': 'تعذر إنشاء أو استخدام مجلد النسخ الاحتياطي هذا. تحقق من المسار والأذونات ثم أعد المحاولة.',
   'errors.backupBundleOutsideRoot': 'مجلد النسخة الاحتياطية هذا يقع خارج وجهة النسخ الاحتياطي المُهيأة. اختر مجلدًا أنشأه "إنشاء نسخة احتياطية" داخل هذه الوجهة.',
   'errors.recoveryOperationInProgress': 'هناك عملية نسخ احتياطي أو استرجاع أخرى قيد التنفيذ بالفعل. انتظر حتى تنتهي.',
+  // WS-H-3 (plan §5.7).
+  // TODO(WS-H-7)
+  'errors.recoveryUnavailable': "Backup and restore are not available on this computer's setup. Contact your supplier.",
+  // TODO(WS-H-7)
+  'errors.backupDestinationUnavailable': 'The backup folder is not available. Plug in the drive or choose another folder.',
+  // TODO(WS-H-7)
+  'errors.backupNotRestorable': 'This backup cannot be restored by this version of Stockiha.',
+  // TODO(WS-H-7)
+  'errors.restoreTestFailed': 'The backup could not be restored in the safe test. Your data was not changed.',
+  // TODO(WS-H-7)
+  'errors.freshRestoreNotAllowed': 'Restoring here is only possible on a new installation with no user accounts.',
+  // TODO(WS-H-7)
+  'errors.backupCopyFailed': 'The backup could not be copied. Nothing was left behind in the target folder.',
+  // TODO(WS-H-7)
+  'errors.insufficientDiskSpace': 'There is not enough free disk space for this operation.',
   'inventory.zeroQtyWarning.title': 'تحذير مخزون منعدم',
   'inventory.zeroQtyWarning.message': '"{variant}" يملك مخزونًا مؤكدًا منعدمًا ولا يملك متوسط تكلفة موازنًا سابقًا مسجلاً. تتطلب الزيادة قاعدة تكلفة معتمدة.',
   'errors.unknown': '\u062d\u062f\u062b \u062e\u0637\u0623 \u063a\u064a\u0631 \u0645\u062a\u0648\u0642\u0639. \u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629.',
@@ -1499,6 +1522,14 @@ const en: Record<MessageKey, string> = {
   'errors.backupDestinationCreateFailed': 'This backup folder could not be created or used. Check the path and permissions, then try again.',
   'errors.backupBundleOutsideRoot': 'This backup folder is outside your configured backup destination. Choose a folder created by "Create backup" inside that destination.',
   'errors.recoveryOperationInProgress': 'Another backup or recovery operation is already running. Wait for it to finish.',
+  // WS-H-3 (plan §5.7).
+  'errors.recoveryUnavailable': "Backup and restore are not available on this computer's setup. Contact your supplier.",
+  'errors.backupDestinationUnavailable': 'The backup folder is not available. Plug in the drive or choose another folder.',
+  'errors.backupNotRestorable': 'This backup cannot be restored by this version of Stockiha.',
+  'errors.restoreTestFailed': 'The backup could not be restored in the safe test. Your data was not changed.',
+  'errors.freshRestoreNotAllowed': 'Restoring here is only possible on a new installation with no user accounts.',
+  'errors.backupCopyFailed': 'The backup could not be copied. Nothing was left behind in the target folder.',
+  'errors.insufficientDiskSpace': 'There is not enough free disk space for this operation.',
   // S2-003: Zero-quantity safeguards
   'inventory.zeroQtyWarning.title': 'Warning: Zero Quantity',
   'inventory.zeroQtyWarning.message': '"{variant}" has zero confirmed stock and no prior weighted-average cost on record. A positive adjustment requires an approved cost basis.',

@@ -6,14 +6,18 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::application::recovery::{self, RestoreVerificationAttempt, ValidationAttempt};
 use crate::application::recovery_creation::{self, CreationAttempt};
+use crate::application::recovery_embedded;
 use crate::domain::recovery::{
-    BackupDestinationSetting, CreateOperatorBackupRequest, OperatorBackupCreationResult,
-    OperatorBackupValidationResult, OperatorRestoreVerificationResult,
+    BackupDestinationSetting, BackupStatus, CreateOperatorBackupRequest,
+    OperatorBackupCreationResult, OperatorBackupValidationResult,
+    OperatorRestoreVerificationResult, RecoveryCapabilities, RecoveryModeResponse,
     UpdateBackupDestinationRequest, UpdateBackupDestinationResult, ValidateOperatorBackupRequest,
     VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
+use crate::infrastructure::recovery_engine::mode::{self, RecoveryMode};
+use crate::infrastructure::{local_config, pg_process};
 
 /// WS-H-2: at most one recovery operation may run at a time, process-wide.
 ///
@@ -51,19 +55,128 @@ impl Drop for RecoveryOperationLease {
     }
 }
 
+// ---------------------------------------------------------------------------
+// WS-H-3: recovery mode (plan §5.1, ruling R1).
+// ---------------------------------------------------------------------------
+
+/// The one place the Tauri `AppHandle` is turned into a [`RecoveryMode`].
+/// The precedence mirrors `db::database_state_from_precedence` (env var
+/// first), so a backup always targets the database the app is connected to.
+/// Resource dir: `pg_process::bundled_resource_dir()` first — Tauri's own
+/// `resource_dir()` canonicalizes into a `\\?\` path PostgreSQL's tools
+/// cannot use (see WS-K-4.4).
+fn resolve_recovery_mode(app: &AppHandle) -> RecoveryMode {
+    let env = std::env::var(db::DATABASE_URL_ENV).ok();
+    let app_data = app.path().app_data_dir().ok();
+    let resource = pg_process::bundled_resource_dir().or_else(|| app.path().resource_dir().ok());
+    mode::resolve_from(
+        env.as_deref(),
+        app_data,
+        resource,
+        |dir| local_config::load_migrator_connection_info(dir).is_some(),
+        app.package_info().version.to_string(),
+    )
+}
+
+fn recovery_unavailable(reason: mode::UnavailableReason) -> IpcError {
+    IpcError::from(AppError::RecoveryUnavailable {
+        diagnostic: format!("{reason:?}"),
+    })
+}
+
+/// A command that exists only in EMBEDDED mode was called in EXTERNAL mode.
+fn embedded_only() -> IpcError {
+    IpcError::from(AppError::RecoveryUnavailable {
+        diagnostic: "EXTERNAL_MODE".to_string(),
+    })
+}
+
 #[tauri::command]
-pub(crate) async fn get_backup_destination_setting(
+pub(crate) async fn get_recovery_mode(app: AppHandle) -> Result<RecoveryModeResponse, IpcError> {
+    let mode = resolve_recovery_mode(&app);
+    Ok(RecoveryModeResponse {
+        mode: mode.as_str().to_string(),
+        unavailable_reason: match mode {
+            RecoveryMode::Unavailable(reason) => Some(reason),
+            _ => None,
+        },
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn get_recovery_capabilities(
+    app: AppHandle,
     state: State<'_, DatabaseState>,
     session_token: String,
-) -> Result<BackupDestinationSetting, IpcError> {
+) -> Result<RecoveryCapabilities, IpcError> {
+    let mode = resolve_recovery_mode(&app);
+    if matches!(mode, RecoveryMode::Unavailable(_)) {
+        return Ok(RecoveryCapabilities::none(mode.as_str()));
+    }
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    recovery::get_backup_destination(pool, &session_token)
+    recovery_embedded::fetch_capabilities(pool, &session_token, mode.as_str())
         .await
         .map_err(IpcError::from)
 }
 
 #[tauri::command]
+pub(crate) async fn get_backup_status(
+    app: AppHandle,
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<BackupStatus, IpcError> {
+    if let RecoveryMode::Unavailable(reason) = resolve_recovery_mode(&app) {
+        return Err(recovery_unavailable(reason));
+    }
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    recovery_embedded::fetch_backup_status(pool, &session_token)
+        .await
+        .map_err(IpcError::from)
+}
+
+// ---------------------------------------------------------------------------
+// Destination setting.
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub(crate) async fn get_backup_destination_setting(
+    app: AppHandle,
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<BackupDestinationSetting, IpcError> {
+    let mode = resolve_recovery_mode(&app);
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    match mode {
+        RecoveryMode::External => {
+            // WS-H-1 behaviour, unchanged: the stored path, else the env var.
+            let setting = recovery::get_backup_destination(pool, &session_token)
+                .await
+                .map_err(IpcError::from)?;
+            let effective_path = setting.path.clone().or_else(|| {
+                std::env::var(recovery::BACKUP_ROOT_ENV)
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            });
+            Ok(BackupDestinationSetting {
+                path: setting.path,
+                effective_path,
+                is_default: false,
+                available: true,
+                same_drive_warning: false,
+            })
+        }
+        RecoveryMode::Embedded(ctx) => {
+            recovery_embedded::get_destination(pool, &session_token, &ctx)
+                .await
+                .map_err(IpcError::from)
+        }
+        RecoveryMode::Unavailable(reason) => Err(recovery_unavailable(reason)),
+    }
+}
+
+#[tauri::command]
 pub(crate) async fn update_backup_destination_setting(
+    app: AppHandle,
     state: State<'_, DatabaseState>,
     session_token: String,
     request: UpdateBackupDestinationRequest,
@@ -71,11 +184,26 @@ pub(crate) async fn update_backup_destination_setting(
     request
         .validate()
         .map_err(|diagnostic| IpcError::from(AppError::ValidationError { diagnostic }))?;
+    let mode = resolve_recovery_mode(&app);
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    recovery::update_backup_destination(pool, &session_token, &request.path)
-        .await
-        .map_err(IpcError::from)
+    match mode {
+        RecoveryMode::External => {
+            recovery::update_backup_destination(pool, &session_token, &request.path)
+                .await
+                .map_err(IpcError::from)
+        }
+        RecoveryMode::Embedded(ctx) => {
+            recovery_embedded::update_destination(pool, &session_token, &ctx, &request.path)
+                .await
+                .map_err(IpcError::from)
+        }
+        RecoveryMode::Unavailable(reason) => Err(recovery_unavailable(reason)),
+    }
 }
+
+// ---------------------------------------------------------------------------
+// Restore-verification policy (unchanged, mode-independent).
+// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub(crate) async fn get_restore_verification_setting(
@@ -107,6 +235,10 @@ pub(crate) async fn update_restore_verification_setting(
         .map_err(IpcError::from)
 }
 
+// ---------------------------------------------------------------------------
+// Create.
+// ---------------------------------------------------------------------------
+
 #[tauri::command]
 pub(crate) async fn create_operator_backup(
     app: AppHandle,
@@ -116,6 +248,27 @@ pub(crate) async fn create_operator_backup(
 ) -> Result<OperatorBackupCreationResult, IpcError> {
     // Held for the whole operation; released on every exit path by `Drop`.
     let _lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
+    match resolve_recovery_mode(&app) {
+        RecoveryMode::External => {
+            create_operator_backup_external(app, state, session_token, request).await
+        }
+        RecoveryMode::Embedded(ctx) => {
+            let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+            recovery_embedded::create_manual_backup(pool, &session_token, &ctx, request)
+                .await
+                .map_err(IpcError::from)
+        }
+        RecoveryMode::Unavailable(reason) => Err(recovery_unavailable(reason)),
+    }
+}
+
+/// WS-H-1/WS-H-2 body, moved here verbatim in WS-H-3 (EXTERNAL mode only).
+async fn create_operator_backup_external(
+    app: AppHandle,
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: CreateOperatorBackupRequest,
+) -> Result<OperatorBackupCreationResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     let attempt = recovery_creation::begin_operator_backup_creation(pool, &session_token, request)
         .await
@@ -213,14 +366,39 @@ pub(crate) async fn create_operator_backup(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Validate.
+// ---------------------------------------------------------------------------
+
 #[tauri::command]
 pub(crate) async fn validate_operator_backup(
+    app: AppHandle,
     state: State<'_, DatabaseState>,
     session_token: String,
     request: ValidateOperatorBackupRequest,
 ) -> Result<OperatorBackupValidationResult, IpcError> {
     // Held for the whole operation; released on every exit path by `Drop`.
     let _lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
+    match resolve_recovery_mode(&app) {
+        RecoveryMode::External => {
+            validate_operator_backup_external(state, session_token, request).await
+        }
+        RecoveryMode::Embedded(ctx) => {
+            let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+            recovery_embedded::validate_backup(pool, &session_token, &ctx, request)
+                .await
+                .map_err(IpcError::from)
+        }
+        RecoveryMode::Unavailable(reason) => Err(recovery_unavailable(reason)),
+    }
+}
+
+/// WS-H-1/WS-H-2 body, moved here verbatim in WS-H-3 (EXTERNAL mode only).
+async fn validate_operator_backup_external(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: ValidateOperatorBackupRequest,
+) -> Result<OperatorBackupValidationResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     let attempt = recovery::begin_operator_backup_validation(pool, &session_token, request)
         .await
@@ -295,14 +473,36 @@ pub(crate) async fn validate_operator_backup(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Verify (temporary restore).
+// ---------------------------------------------------------------------------
+
 #[tauri::command]
 pub(crate) async fn verify_operator_backup_restore(
+    app: AppHandle,
     state: State<'_, DatabaseState>,
     session_token: String,
     request: VerifyOperatorBackupRestoreRequest,
 ) -> Result<OperatorRestoreVerificationResult, IpcError> {
     // Held for the whole operation; released on every exit path by `Drop`.
     let _lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
+    match resolve_recovery_mode(&app) {
+        RecoveryMode::External => {
+            verify_operator_backup_restore_external(state, session_token, request).await
+        }
+        // WS-H-4 implements the isolated-cluster test; until then an
+        // installed build answers RECOVERY_UNAVAILABLE here (plan H3-06).
+        RecoveryMode::Embedded(_ctx) => Err(embedded_only()),
+        RecoveryMode::Unavailable(reason) => Err(recovery_unavailable(reason)),
+    }
+}
+
+/// WS-H-2 body, moved here verbatim in WS-H-3 (EXTERNAL mode only).
+async fn verify_operator_backup_restore_external(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: VerifyOperatorBackupRestoreRequest,
+) -> Result<OperatorRestoreVerificationResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     let attempt = recovery::begin_operator_restore_verification(pool, &session_token, request)
         .await
@@ -397,6 +597,18 @@ mod tests {
         assert!(
             again.is_ok(),
             "the lease must be released on Drop, or recovery stays disabled for the session"
+        );
+    }
+
+    #[test]
+    fn unavailable_and_embedded_only_errors_map_to_recovery_unavailable() {
+        assert_eq!(
+            recovery_unavailable(mode::UnavailableReason::NoMigratorCredential).code,
+            crate::error::ErrorCode::RecoveryUnavailable
+        );
+        assert_eq!(
+            embedded_only().code,
+            crate::error::ErrorCode::RecoveryUnavailable
         );
     }
 }

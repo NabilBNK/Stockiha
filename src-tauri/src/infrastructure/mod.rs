@@ -39,6 +39,10 @@ pub(crate) mod embedded_setup;
 // safety-critical piece of this workstream (see the module's own doc
 // comment).
 pub(crate) mod pg_process;
+// WS-H-3: the embedded backup & recovery engine (Tauri-free, like
+// `safe_upgrade`): mode resolver, destination rules, bundle format 2,
+// migrator-authenticated bundled `pg_dump`/`pg_restore`, `recovery.log`.
+pub(crate) mod recovery_engine;
 // WS-K-5: the safety wrapper around WS-K-4.9's automatic embedded-database
 // upgrade — mandatory pre-upgrade backup (bundled pg_dump), backup
 // verification (bundled pg_restore --list), and automatic rollback on

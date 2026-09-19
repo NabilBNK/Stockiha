@@ -125,6 +125,33 @@ pub(crate) fn embedded_migration_count() -> usize {
     MIGRATOR.migrations.len()
 }
 
+/// WS-H-3: every migration version compiled into this binary, ascending.
+/// The recovery engine classifies a backup's schema version against this
+/// list (`recovery_engine::schema::classify`). This repository has only
+/// plain up-migrations (`*.sql`, no `.up`/`.down` pairs), but the filter is
+/// kept so a future reversible migration's down half is never counted.
+pub(crate) fn embedded_versions() -> Vec<i64> {
+    MIGRATOR
+        .migrations
+        .iter()
+        .filter(|m| m.migration_type.is_up_migration())
+        .map(|m| m.version)
+        .collect()
+}
+
+/// WS-H-3: `(version, checksum)` of every compiled-in migration, ascending.
+/// The isolated restore test compares a restored `_sqlx_migrations` history
+/// against this, byte for byte.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn embedded_checksums() -> Vec<(i64, Vec<u8>)> {
+    MIGRATOR
+        .migrations
+        .iter()
+        .filter(|m| m.migration_type.is_up_migration())
+        .map(|m| (m.version, m.checksum.to_vec()))
+        .collect()
+}
+
 /// Outcome of the raw `_sqlx_migrations` read, before comparison.
 enum AppliedVersionQuery {
     /// The query succeeded; `_sqlx_migrations` may still have zero rows.
@@ -364,6 +391,49 @@ mod tests {
     /// versions must be sorted ascending (SQLx's own contract) — proves
     /// [`embedded_latest_version`] actually reads the real migration set
     /// rather than an empty/stub one.
+    /// WS-H-3 (ruling R4): the newest migration file must bump
+    /// `operations.schema_state` to its own version, so the legacy
+    /// EXTERNAL-mode backup path (which reads that table) stays honest.
+    /// Fourteen migrations forgot this once, and every backup taken since
+    /// was stamped with a stale version.
+    #[test]
+    fn newest_migration_keeps_schema_state_current() {
+        let migrations_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut names: Vec<String> = std::fs::read_dir(&migrations_dir)
+            .expect("migrations directory must exist")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".sql"))
+            .collect();
+        names.sort();
+        let newest = names.last().expect("at least one migration file").clone();
+        let version = &newest[..14];
+        assert!(
+            version.bytes().all(|b| b.is_ascii_digit()),
+            "migration file {newest} must start with a 14-digit version"
+        );
+        let text = std::fs::read_to_string(migrations_dir.join(&newest)).unwrap();
+        assert!(
+            text.contains(&format!("migration_version = {version}")),
+            "The newest migration {newest} must end with `UPDATE operations.schema_state SET migration_version = {version}, updated_at = now() WHERE singleton;` (see WS-H plan R4)."
+        );
+        assert_eq!(
+            embedded_latest_version().to_string(),
+            version,
+            "the compiled migrator's latest version must be the newest file on disk"
+        );
+    }
+
+    #[test]
+    fn embedded_versions_are_ascending_and_end_with_the_latest() {
+        let versions = embedded_versions();
+        assert_eq!(versions.len(), embedded_migration_count());
+        assert_eq!(*versions.last().unwrap(), embedded_latest_version());
+        let checksums = embedded_checksums();
+        assert_eq!(checksums.len(), versions.len());
+        assert!(checksums.iter().all(|(_, sum)| !sum.is_empty()));
+    }
+
     #[test]
     fn embedded_migrator_has_at_least_one_migration() {
         assert!(!MIGRATOR.migrations.is_empty());

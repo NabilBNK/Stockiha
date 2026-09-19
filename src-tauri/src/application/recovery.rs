@@ -11,6 +11,10 @@ use crate::domain::recovery::{
     ValidateOperatorBackupRequest, VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::AppError;
+// WS-H-3: `canonicalize_best_effort` and `drive_letter` moved into the
+// recovery engine (bodies unchanged); the WS-H-1 destination path below
+// calls the moved functions.
+use crate::infrastructure::recovery_engine::destination::{canonicalize_best_effort, drive_letter};
 use crate::infrastructure::{backup_proof, restore_proof};
 
 pub(crate) const BACKUP_ROOT_ENV: &str = "STOCKIHA_BACKUP_ROOT";
@@ -360,6 +364,12 @@ pub(crate) fn validate_operator_backup_files(
         integrity_valid: true,
         file_count,
         total_bytes,
+        format_version: None,
+        backup_kind: None,
+        schema_verdict: None,
+        restorable: None,
+        created_at_utc: None,
+        used_fallback_destination: None,
     })
 }
 
@@ -492,10 +502,13 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
         temporary_database_cleaned: true,
         journal_balanced,
         control_totals,
+        schema_verdict: None,
+        migrated_forward: None,
+        cleanup_pending: None,
     })
 }
 
-async fn collect_restore_control_totals(
+pub(crate) async fn collect_restore_control_totals(
     connection: &mut PgConnection,
 ) -> Result<(RestoreControlTotals, bool), AppError> {
     async fn count(connection: &mut PgConnection, sql: &str) -> Result<i64, AppError> {
@@ -720,10 +733,17 @@ pub(crate) fn stable_error_code(error: &AppError) -> &'static str {
         AppError::BackupDestinationCreateFailed { .. } => "BACKUP_DESTINATION_CREATE_FAILED",
         AppError::BackupBundleOutsideRoot { .. } => "BACKUP_BUNDLE_OUTSIDE_ROOT",
         AppError::RecoveryOperationInProgress { .. } => "RECOVERY_OPERATION_IN_PROGRESS",
+        AppError::RecoveryUnavailable { .. } => "RECOVERY_UNAVAILABLE",
+        AppError::BackupDestinationUnavailable { .. } => "BACKUP_DESTINATION_UNAVAILABLE",
+        AppError::BackupNotRestorable { .. } => "BACKUP_NOT_RESTORABLE",
+        AppError::RestoreTestFailed { .. } => "RESTORE_TEST_FAILED",
+        AppError::FreshRestoreNotAllowed { .. } => "FRESH_RESTORE_NOT_ALLOWED",
+        AppError::BackupCopyFailed { .. } => "BACKUP_COPY_FAILED",
+        AppError::InsufficientDiskSpace { .. } => "INSUFFICIENT_DISK_SPACE",
     }
 }
 
-fn is_canonical_bundle_identifier(value: &str) -> bool {
+pub(crate) fn is_canonical_bundle_identifier(value: &str) -> bool {
     let Some(timestamp) = value.strip_prefix(backup_proof::BUNDLE_NAME_PREFIX) else {
         return false;
     };
@@ -736,7 +756,7 @@ fn is_canonical_bundle_identifier(value: &str) -> bool {
             .all(|(index, byte)| index == 8 || byte.is_ascii_digit())
 }
 
-fn canonical_bundle_stats(bundle_root: &Path) -> Result<(u64, u64), AppError> {
+pub(crate) fn canonical_bundle_stats(bundle_root: &Path) -> Result<(u64, u64), AppError> {
     let mut file_count = 0u64;
     let mut total_bytes = 0u64;
 
@@ -824,7 +844,15 @@ pub(crate) async fn get_backup_destination(
         .get("path")
         .and_then(JsonValue::as_str)
         .map(str::to_string);
-    Ok(crate::domain::recovery::BackupDestinationSetting { path })
+    // WS-H-3: the stored setting only; the mode-aware command layer fills
+    // in `effective_path` / `is_default` / `available` / `same_drive_warning`.
+    Ok(crate::domain::recovery::BackupDestinationSetting {
+        effective_path: path.clone(),
+        is_default: false,
+        available: true,
+        same_drive_warning: false,
+        path,
+    })
 }
 
 pub(crate) async fn update_backup_destination(
@@ -900,55 +928,6 @@ async fn fetch_pg_data_directory() -> Result<PathBuf, AppError> {
     Ok(PathBuf::from(data_directory))
 }
 
-/// Canonicalize `path`, falling back to canonicalizing the nearest existing
-/// ancestor when `path` itself does not exist yet (a not-yet-created backup
-/// destination candidate). Never fails: an unresolvable path is returned
-/// as-is, which simply makes the containment/same-drive comparisons using it
-/// a syntactic (not symlink-resistant) best effort.
-fn canonicalize_best_effort(path: &Path) -> PathBuf {
-    if let Ok(canonical) = path.canonicalize() {
-        return canonical;
-    }
-    let mut trailing: Vec<std::ffi::OsString> = Vec::new();
-    let mut ancestor = path.to_path_buf();
-    loop {
-        let Some(file_name) = ancestor.file_name() else {
-            break;
-        };
-        trailing.push(file_name.to_os_string());
-        if !ancestor.pop() {
-            break;
-        }
-        if let Ok(canonical_ancestor) = ancestor.canonicalize() {
-            let mut resolved = canonical_ancestor;
-            for component in trailing.into_iter().rev() {
-                resolved.push(component);
-            }
-            return resolved;
-        }
-    }
-    path.to_path_buf()
-}
-
-#[cfg(windows)]
-fn drive_letter(path: &Path) -> Option<char> {
-    use std::path::{Component, Prefix};
-    match path.components().next() {
-        Some(Component::Prefix(prefix)) => match prefix.kind() {
-            Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
-                Some((letter as char).to_ascii_uppercase())
-            }
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-#[cfg(not(windows))]
-fn drive_letter(_path: &Path) -> Option<char> {
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -986,6 +965,59 @@ mod tests {
         assert!(!format!("{busy:?}").contains("DO_NOT_EXPOSE"));
     }
 
+    /// WS-H-3: every new variant has a stable audit code.
+    #[test]
+    fn ws_h_3_error_codes_are_stable_and_payload_free() {
+        let cases: [(AppError, &str); 7] = [
+            (
+                AppError::RecoveryUnavailable {
+                    diagnostic: "DO_NOT_EXPOSE".to_string(),
+                },
+                "RECOVERY_UNAVAILABLE",
+            ),
+            (
+                AppError::BackupDestinationUnavailable {
+                    diagnostic: "DO_NOT_EXPOSE".to_string(),
+                },
+                "BACKUP_DESTINATION_UNAVAILABLE",
+            ),
+            (
+                AppError::BackupNotRestorable {
+                    diagnostic: "DO_NOT_EXPOSE".to_string(),
+                },
+                "BACKUP_NOT_RESTORABLE",
+            ),
+            (
+                AppError::RestoreTestFailed {
+                    diagnostic: "DO_NOT_EXPOSE".to_string(),
+                },
+                "RESTORE_TEST_FAILED",
+            ),
+            (
+                AppError::FreshRestoreNotAllowed {
+                    diagnostic: "DO_NOT_EXPOSE".to_string(),
+                },
+                "FRESH_RESTORE_NOT_ALLOWED",
+            ),
+            (
+                AppError::BackupCopyFailed {
+                    diagnostic: "DO_NOT_EXPOSE".to_string(),
+                },
+                "BACKUP_COPY_FAILED",
+            ),
+            (
+                AppError::InsufficientDiskSpace {
+                    diagnostic: "DO_NOT_EXPOSE".to_string(),
+                },
+                "INSUFFICIENT_DISK_SPACE",
+            ),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(stable_error_code(&error), expected);
+            assert!(!format!("{error:?}").contains("DO_NOT_EXPOSE"));
+        }
+    }
+
     #[test]
     fn error_code_mapping_is_stable_and_payload_free() {
         let error = AppError::BackupValidationFailed {
@@ -1010,6 +1042,12 @@ mod tests {
             postgres_compatible: true,
             file_count: 7,
             total_bytes: 2048,
+            format_version: None,
+            backup_kind: None,
+            schema_verdict: None,
+            restorable: None,
+            created_at_utc: None,
+            used_fallback_destination: None,
         };
         let value = serde_json::to_value(&result).unwrap();
         assert_eq!(value["bundleIdentifier"], json!(result.bundle_identifier));
@@ -1044,6 +1082,9 @@ mod tests {
                 supplier_outstanding_total: "0".to_string(),
                 opening_state_application_count: 0,
             },
+            schema_verdict: None,
+            migrated_forward: None,
+            cleanup_pending: None,
         };
         let value = serde_json::to_value(result).unwrap();
         assert_eq!(value["temporaryDatabaseCleaned"], true);

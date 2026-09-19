@@ -23,6 +23,14 @@ export const BACKEND_ERROR_CODES = [
   'BACKUP_DESTINATION_CREATE_FAILED',
   'BACKUP_BUNDLE_OUTSIDE_ROOT',
   'RECOVERY_OPERATION_IN_PROGRESS',
+  // WS-H-3 (plan §5.7).
+  'RECOVERY_UNAVAILABLE',
+  'BACKUP_DESTINATION_UNAVAILABLE',
+  'BACKUP_NOT_RESTORABLE',
+  'RESTORE_TEST_FAILED',
+  'FRESH_RESTORE_NOT_ALLOWED',
+  'BACKUP_COPY_FAILED',
+  'INSUFFICIENT_DISK_SPACE',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -52,6 +60,13 @@ export const ERROR_MESSAGE_KEYS = {
   BACKUP_DESTINATION_CREATE_FAILED: 'errors.backupDestinationCreateFailed',
   BACKUP_BUNDLE_OUTSIDE_ROOT: 'errors.backupBundleOutsideRoot',
   RECOVERY_OPERATION_IN_PROGRESS: 'errors.recoveryOperationInProgress',
+  RECOVERY_UNAVAILABLE: 'errors.recoveryUnavailable',
+  BACKUP_DESTINATION_UNAVAILABLE: 'errors.backupDestinationUnavailable',
+  BACKUP_NOT_RESTORABLE: 'errors.backupNotRestorable',
+  RESTORE_TEST_FAILED: 'errors.restoreTestFailed',
+  FRESH_RESTORE_NOT_ALLOWED: 'errors.freshRestoreNotAllowed',
+  BACKUP_COPY_FAILED: 'errors.backupCopyFailed',
+  INSUFFICIENT_DISK_SPACE: 'errors.insufficientDiskSpace',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 

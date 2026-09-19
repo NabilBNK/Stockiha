@@ -208,16 +208,26 @@ pub fn run() {
                 // unavailable" fifteen seconds later with an evidence-free
                 // pool timeout.
                 infrastructure::db::startup_diagnostic(&state).await;
-                // WS-H-2: the recovery environment is supplied only by
-                // run.bat. Report it missing here, by name, rather than
-                // letting it surface later as a message that reads like a
-                // broken feature.
-                application::recovery::startup_environment_diagnostic();
-                // WS-H-2: remove restore-drill databases stranded by a
-                // previous run (e.g. a PostgreSQL backend crash that killed
-                // the drill's connection before it could clean up). Safe
-                // here: no drill of this process can be in flight yet.
-                application::recovery::sweep_orphaned_restore_databases().await;
+                // WS-H-3 (H3-08): both WS-H-2 startup steps below belong to
+                // the developer (`run.bat`, EXTERNAL) environment only. An
+                // installed build has no `STOCKIHA_DEV_DATABASE_URL`, and
+                // warning it about missing `run.bat` variables on every
+                // launch was misleading (plan G16).
+                if std::env::var(infrastructure::db::DATABASE_URL_ENV)
+                    .map(|v| !v.trim().is_empty())
+                    .unwrap_or(false)
+                {
+                    // WS-H-2: the recovery environment is supplied only by
+                    // run.bat. Report it missing here, by name, rather than
+                    // letting it surface later as a message that reads like a
+                    // broken feature.
+                    application::recovery::startup_environment_diagnostic();
+                    // WS-H-2: remove restore-drill databases stranded by a
+                    // previous run (e.g. a PostgreSQL backend crash that killed
+                    // the drill's connection before it could clean up). Safe
+                    // here: no drill of this process can be in flight yet.
+                    application::recovery::sweep_orphaned_restore_databases().await;
+                }
                 app.manage(state);
             });
 
@@ -308,6 +318,9 @@ pub fn run() {
             commands::recovery::verify_operator_backup_restore,
             commands::recovery::get_backup_destination_setting,
             commands::recovery::update_backup_destination_setting,
+            commands::recovery::get_recovery_mode,
+            commands::recovery::get_recovery_capabilities,
+            commands::recovery::get_backup_status,
             commands::setup::get_setup_status,
             commands::setup::bootstrap_first_admin,
             commands::catalog::create_product,

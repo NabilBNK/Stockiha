@@ -51,6 +51,25 @@ pub enum ErrorCode {
     /// crash during acceptance. Rejected outright rather than queued, so the
     /// operator is told plainly instead of waiting on a hidden queue.
     RecoveryOperationInProgress,
+    /// WS-H-3: recovery mode is UNAVAILABLE on this computer (no app data
+    /// dir, no resource dir, or no migrator credential), or a command that
+    /// exists only in EMBEDDED mode was called in EXTERNAL mode.
+    RecoveryUnavailable,
+    /// WS-H-3: a manual backup was asked for while the stored destination is
+    /// unusable (drive unplugged, folder not creatable).
+    BackupDestinationUnavailable,
+    /// WS-H-3: format 1, no privileges, NEWER/UNKNOWN schema, or a
+    /// migration-history mismatch - this build cannot restore the bundle.
+    BackupNotRestorable,
+    /// WS-H-4: the isolated restore test failed; live data untouched.
+    RestoreTestFailed,
+    /// WS-H-5: new-PC restore attempted after a user account already exists.
+    FreshRestoreNotAllowed,
+    /// WS-H-4: copying a bundle to another folder failed; nothing left
+    /// behind in the target.
+    BackupCopyFailed,
+    /// WS-H-3: a free-space preflight refused the operation.
+    InsufficientDiskSpace,
 }
 
 pub enum AppError {
@@ -117,6 +136,34 @@ pub enum AppError {
         diagnostic: String,
     },
     RecoveryOperationInProgress {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    RecoveryUnavailable {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    BackupDestinationUnavailable {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    BackupNotRestorable {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    RestoreTestFailed {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    FreshRestoreNotAllowed {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    BackupCopyFailed {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    InsufficientDiskSpace {
         #[cfg_attr(not(test), allow(dead_code))]
         diagnostic: String,
     },
@@ -266,6 +313,27 @@ impl fmt::Debug for AppError {
             AppError::RecoveryOperationInProgress { .. } => {
                 f.write_str("AppError::RecoveryOperationInProgress(<redacted>)")
             }
+            AppError::RecoveryUnavailable { .. } => {
+                f.write_str("AppError::RecoveryUnavailable(<redacted>)")
+            }
+            AppError::BackupDestinationUnavailable { .. } => {
+                f.write_str("AppError::BackupDestinationUnavailable(<redacted>)")
+            }
+            AppError::BackupNotRestorable { .. } => {
+                f.write_str("AppError::BackupNotRestorable(<redacted>)")
+            }
+            AppError::RestoreTestFailed { .. } => {
+                f.write_str("AppError::RestoreTestFailed(<redacted>)")
+            }
+            AppError::FreshRestoreNotAllowed { .. } => {
+                f.write_str("AppError::FreshRestoreNotAllowed(<redacted>)")
+            }
+            AppError::BackupCopyFailed { .. } => {
+                f.write_str("AppError::BackupCopyFailed(<redacted>)")
+            }
+            AppError::InsufficientDiskSpace { .. } => {
+                f.write_str("AppError::InsufficientDiskSpace(<redacted>)")
+            }
         }
     }
 }
@@ -305,6 +373,21 @@ impl fmt::Display for AppError {
             AppError::RecoveryOperationInProgress { .. } => {
                 f.write_str("another recovery operation is already running")
             }
+            AppError::RecoveryUnavailable { .. } => {
+                f.write_str("backup and restore are not available on this computer")
+            }
+            AppError::BackupDestinationUnavailable { .. } => {
+                f.write_str("the backup destination is not available")
+            }
+            AppError::BackupNotRestorable { .. } => {
+                f.write_str("this backup cannot be restored by this version")
+            }
+            AppError::RestoreTestFailed { .. } => f.write_str("the isolated restore test failed"),
+            AppError::FreshRestoreNotAllowed { .. } => {
+                f.write_str("restore is only possible on a new installation")
+            }
+            AppError::BackupCopyFailed { .. } => f.write_str("the backup could not be copied"),
+            AppError::InsufficientDiskSpace { .. } => f.write_str("not enough free disk space"),
         }
     }
 }
@@ -359,6 +442,19 @@ impl From<AppError> for IpcError {
             AppError::RecoveryOperationInProgress { .. } => {
                 IpcError::new(ErrorCode::RecoveryOperationInProgress)
             }
+            AppError::RecoveryUnavailable { .. } => IpcError::new(ErrorCode::RecoveryUnavailable),
+            AppError::BackupDestinationUnavailable { .. } => {
+                IpcError::new(ErrorCode::BackupDestinationUnavailable)
+            }
+            AppError::BackupNotRestorable { .. } => IpcError::new(ErrorCode::BackupNotRestorable),
+            AppError::RestoreTestFailed { .. } => IpcError::new(ErrorCode::RestoreTestFailed),
+            AppError::FreshRestoreNotAllowed { .. } => {
+                IpcError::new(ErrorCode::FreshRestoreNotAllowed)
+            }
+            AppError::BackupCopyFailed { .. } => IpcError::new(ErrorCode::BackupCopyFailed),
+            AppError::InsufficientDiskSpace { .. } => {
+                IpcError::new(ErrorCode::InsufficientDiskSpace)
+            }
         }
     }
 }
@@ -397,6 +493,65 @@ mod tests {
             serde_json::to_string(&ErrorCode::CreditPolicyBlocked).unwrap(),
             r#""CREDIT_POLICY_BLOCKED""#
         );
+    }
+
+    /// WS-H-3 (plan section 5.7): the seven new codes serialize to the exact
+    /// strings the frontend allowlist (`BACKEND_ERROR_CODES`) carries.
+    #[test]
+    fn ws_h_3_error_codes_serialize_to_the_planned_strings() {
+        let cases = [
+            (
+                AppError::RecoveryUnavailable {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "RECOVERY_UNAVAILABLE",
+            ),
+            (
+                AppError::BackupDestinationUnavailable {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "BACKUP_DESTINATION_UNAVAILABLE",
+            ),
+            (
+                AppError::BackupNotRestorable {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "BACKUP_NOT_RESTORABLE",
+            ),
+            (
+                AppError::RestoreTestFailed {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "RESTORE_TEST_FAILED",
+            ),
+            (
+                AppError::FreshRestoreNotAllowed {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "FRESH_RESTORE_NOT_ALLOWED",
+            ),
+            (
+                AppError::BackupCopyFailed {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "BACKUP_COPY_FAILED",
+            ),
+            (
+                AppError::InsufficientDiskSpace {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "INSUFFICIENT_DISK_SPACE",
+            ),
+        ];
+        for (error, expected) in cases {
+            assert!(!format!("{error:?}").contains(SENTINEL));
+            assert!(format!("{error:?}").ends_with("(<redacted>)"));
+            let ipc: IpcError = error.into();
+            assert_eq!(
+                serde_json::to_string(&ipc).unwrap(),
+                format!(r#"{{"code":"{expected}"}}"#)
+            );
+        }
     }
 
     #[test]
