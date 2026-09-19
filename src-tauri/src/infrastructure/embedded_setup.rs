@@ -705,9 +705,24 @@ async fn run_migrations(options: PgConnectOptions) -> Result<(), String> {
 /// later (no migrator credential on file): nothing is attempted and the
 /// WS-K-1 diagnostic reports whatever it would have reported. Otherwise
 /// returns the schema verdict *before* applying, so the caller can log
-/// what was actually done. SQLx applies only what is pending, in order,
-/// and refuses outright if the database is *newer* than this binary
-/// (`VersionMissing`), so the downgrade protection is unchanged.
+/// what was actually done.
+///
+/// WS-K-5 correction: migrations are attempted **only** when `before` is
+/// [`SchemaCompatibility::OlderThanBinary`]. The version this function
+/// shipped at (WS-K-4.9) instead migrated whenever `before != UpToDate`,
+/// which also covered [`SchemaCompatibility::Unknown`] (attempting a
+/// migration against a database whose version genuinely could not be
+/// determined — the opposite of that state's own fail-open contract) and
+/// [`SchemaCompatibility::NewerThanBinary`] (attempting a migration SQLx
+/// was always going to refuse via its own `VersionMissing` check, but only
+/// after connecting as the migrator and reaching for it — an avoidable,
+/// unauthorized action against a database an older binary must never
+/// touch). Neither case ever corrupted data — SQLx's own guard and the
+/// fail-open design elsewhere absorbed both — but neither should have been
+/// attempted, and WS-K-5's safe-upgrade wrapper (`infrastructure::
+/// safe_upgrade`) depends on this function being a true no-op for every
+/// verdict except `OlderThanBinary` to keep its "zero backup/migration
+/// side effects on Unknown/NewerThanBinary/UpToDate" guarantee honest.
 pub async fn apply_pending_migrations(
     app_data_dir: &Path,
 ) -> Result<Option<schema_version::SchemaCompatibility>, String> {
@@ -718,12 +733,15 @@ pub async fn apply_pending_migrations(
         .await
         .map_err(|e| format!("could not connect as stockiha_migrator ({e})"))?;
     let before = schema_version::check_schema_compatibility(&mut conn).await;
-    let result = if before == schema_version::SchemaCompatibility::UpToDate {
-        Ok(())
-    } else {
-        schema_version::run_all_migrations(&mut conn)
-            .await
-            .map_err(|e| format!("migrations failed ({e})"))
+    let result = match before {
+        schema_version::SchemaCompatibility::OlderThanBinary { .. } => {
+            schema_version::run_all_migrations(&mut conn)
+                .await
+                .map_err(|e| format!("migrations failed ({e})"))
+        }
+        schema_version::SchemaCompatibility::UpToDate
+        | schema_version::SchemaCompatibility::NewerThanBinary { .. }
+        | schema_version::SchemaCompatibility::Unknown => Ok(()),
     };
     let _ = conn.close().await;
     result.map(|()| Some(before))

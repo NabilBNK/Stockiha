@@ -186,6 +186,39 @@ pub fn has_migrator(app_data_dir: &Path) -> bool {
     app_data_dir.join(MIGRATOR_FILE_NAME).is_file()
 }
 
+/// The migrator's discrete connection fields, password included as plain
+/// text for the lifetime of the returned value.
+///
+/// WS-K-5: [`load_migrator`] returns a [`PgConnectOptions`], which is exactly
+/// right for a SQLx connection but has no accessor to read the password back
+/// out (by design — the other `get_*` accessors on it are deliberately not
+/// mirrored for the password). Spawning `pg_dump`/`pg_restore` as a child
+/// process needs the raw password to place in that child's `PGPASSWORD`
+/// environment variable (never argv, never a connection URL — see
+/// `infrastructure::safe_upgrade`), so this reads the same file a second,
+/// narrower way rather than trying to extract a value `PgConnectOptions`
+/// intentionally does not expose. `password` is `Zeroizing`, matching every
+/// other credential handled in this module.
+pub struct MigratorConnectionInfo {
+    pub host: String,
+    pub port: u16,
+    pub database: String,
+    pub username: String,
+    pub password: Zeroizing<String>,
+}
+
+pub fn load_migrator_connection_info(app_data_dir: &Path) -> Option<MigratorConnectionInfo> {
+    let contents = std::fs::read_to_string(app_data_dir.join(MIGRATOR_FILE_NAME)).ok()?;
+    let fields: DatabaseConfigFile = serde_json::from_str(&contents).ok()?;
+    Some(MigratorConnectionInfo {
+        host: fields.host,
+        port: fields.port,
+        database: fields.database,
+        username: fields.user,
+        password: Zeroizing::new(fields.password),
+    })
+}
+
 /// Load and parse `database.json` from `app_data_dir`, using the real
 /// (Windows ACL) permission checker.
 pub fn load(app_data_dir: &Path) -> LocalConfigOutcome {

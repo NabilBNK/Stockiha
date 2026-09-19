@@ -10,6 +10,7 @@ import { Banner, Button, TextField } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useSession } from '../../shared/session/SessionContext';
+import { APP_VERSION_MARKER } from '../../shared/version';
 
 export function LoginScreen() {
   const { t } = useI18n();
@@ -67,6 +68,18 @@ export function LoginScreen() {
         <Button type="submit" loading={submitting} disabled={!username || !password}>
           {t('auth.submit')}
         </Button>
+        {/* WS-K-6 update-testing marker: harmless, visible confirmation of
+            which build is actually running, from the sign-in screen itself
+            (the setup/dashboard screens already show APP_VERSION_MARKER
+            elsewhere, but this is the screen an update lands the operator
+            on right after a restart). */}
+        <p
+          className="sk-muted"
+          style={{ fontSize: '0.75rem', marginTop: '4px' }}
+          data-testid="login-version-marker"
+        >
+          [ version = {APP_VERSION_MARKER} ]
+        </p>
       </form>
     </div>
   );
