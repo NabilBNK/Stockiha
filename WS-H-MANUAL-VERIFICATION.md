@@ -52,3 +52,11 @@ Before each round: build the installer yourself (`npm run tauri:build`), install
 5. Logging out and in again the same day does not create a second daily backup.
 6. After more than 14 daily backups exist, only the newest 14 remain; manual backups are never removed.
 7. An admin with no backup for 7 days sees the warning banner with a working button to the backup settings.
+
+## §M7 — Final end-to-end acceptance
+
+1. Switch the language to Arabic: every backup and restore screen reads correctly right-to-left with no English text left, and the confirmation still asks for the Latin word `RESTORE`.
+2. Switch to French: same check, correct wording, no English left.
+3. Create a backup, record one sale, restore the backup, confirm the sale is gone and the app restarts to the login screen.
+4. Restore the automatically created "Before restore" backup and confirm the sale is back.
+5. Confirm the Settings status line shows the correct date of the last successful backup, in all three languages.

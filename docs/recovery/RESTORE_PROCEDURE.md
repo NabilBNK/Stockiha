@@ -1,5 +1,34 @@
 # Stockiha manual restore procedure
 
+## Installed Stockiha (WS-H-5 and later)
+
+This section is for an installed (embedded) build of Stockiha — the version a
+shop actually runs. It replaces the command-line procedure below for every
+real Owner/operator restore; the command-line procedure only ever applies to
+a developer database started with `run.bat` (see the heading below).
+
+**To restore on a working installation:** Settings → Backup and recovery →
+Your backups → click **Restore…** on the backup you want. Stockiha checks the
+backup, tests it in a temporary database, saves a safety copy of the current
+data, replaces the data, then restarts.
+
+**To restore onto a new PC:** install Stockiha, let the first-run database
+setup finish, then on the setup screen choose **Restore from a backup
+instead** and pick the backup folder (for example on a USB drive). This is
+only possible while no user accounts exist yet.
+
+**If a restore is interrupted (for example a power cut) and the database
+comes back empty:** start Stockiha and let it finish rebuilding an empty
+database. When the first-run setup screen appears, use **Restore from a
+backup instead** with the newest `Before restore` backup in the backup
+folder. The path of that backup is also written in `recovery.log` in the
+Stockiha data folder.
+
+The command-line procedure documented below applies only to developer
+databases started with `run.bat`, not to installed builds.
+
+## Developer databases only (run.bat)
+
 **Audience:** the developer performing a restore, on a machine where Stockiha
 will not start (new PC, reinstalled Windows, failed drive replaced). This is
 not a Stockiha UI feature — restoring the live database is a deliberately

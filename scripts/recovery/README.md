@@ -1,5 +1,12 @@
 # Stockiha recovery bootstrap (WS-H-1, G1)
 
+> **Legacy note:** this script applies only to the developer command-line
+> restore path (`run.bat`, see `docs/recovery/RESTORE_PROCEDURE.md`'s
+> "Developer databases only" section) and has been out of date since
+> 2026-08-27. Installed builds restore through the app (Settings → Backup and
+> recovery, or the first-run "Restore from a backup instead" screen) and
+> never use it.
+
 ## What this is
 
 `stockiha_bootstrap_roles_and_grants.sql` is a **generated, idempotent** SQL

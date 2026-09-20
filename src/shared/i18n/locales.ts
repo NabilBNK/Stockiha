@@ -750,14 +750,10 @@ const ar: Record<MessageKey, string> = {
   'update.installing': '\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u062b\u0628\u064a\u062a... \u0633\u064a\u064f\u0639\u0627\u062f \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u062a\u0637\u0628\u064a\u0642.',
   'update.blockedByCashSession': '\u0623\u063a\u0644\u0642 \u062c\u0644\u0633\u0629 \u0627\u0644\u0635\u0646\u062f\u0648\u0642 \u0623\u0648\u0644\u0627\u064b \u0644\u062a\u062b\u0628\u064a\u062a \u0627\u0644\u062a\u062d\u062f\u064a\u062b.',
   'update.failed': '\u0641\u0634\u0644 \u0627\u0644\u062a\u062d\u062f\u064a\u062b. \u064a\u0633\u062a\u0645\u0631 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0641\u064a \u0627\u0644\u0639\u0645\u0644 \u0628\u0634\u0643\u0644 \u0637\u0628\u064a\u0639\u064a \u0628\u0627\u0644\u0625\u0635\u062f\u0627\u0631 \u0627\u0644\u062d\u0627\u0644\u064a.',
-  // TODO(WS-H-7): translate to Arabic.
-  'update.downloading': 'Downloading the update\u2026',
-  // TODO(WS-H-7): translate to Arabic.
-  'update.backingUp': 'Saving a safety backup before updating\u2026 this can take a minute or two.',
-  // TODO(WS-H-7): translate to Arabic.
-  'update.backupFailed': 'The update was not installed because the safety backup failed. Check the backup folder in Settings, then try again.',
-  // TODO(WS-H-7): translate to Arabic.
-  'update.loginRequired': 'Sign in before installing an update.',
+  'update.downloading': '\u062c\u0627\u0631\u064d \u062a\u0646\u0632\u064a\u0644 \u0627\u0644\u062a\u062d\u062f\u064a\u062b\u2026',
+  'update.backingUp': '\u062c\u0627\u0631\u064d \u062d\u0641\u0638 \u0646\u0633\u062e\u0629 \u0623\u0645\u0627\u0646 \u0642\u0628\u0644 \u0627\u0644\u062a\u062d\u062f\u064a\u062b\u2026 \u0642\u062f \u064a\u0633\u062a\u063a\u0631\u0642 \u0630\u0644\u0643 \u062f\u0642\u064a\u0642\u0629 \u0623\u0648 \u062f\u0642\u064a\u0642\u062a\u064a\u0646.',
+  'update.backupFailed': '\u0644\u0645 \u064a\u062a\u0645 \u062a\u062b\u0628\u064a\u062a \u0627\u0644\u062a\u062d\u062f\u064a\u062b \u0644\u0623\u0646 \u0646\u0633\u062e\u0629 \u0627\u0644\u0623\u0645\u0627\u0646 \u0641\u0634\u0644\u062a. \u062a\u062d\u0642\u0642 \u0645\u0646 \u0645\u062c\u0644\u062f \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0641\u064a \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a \u062b\u0645 \u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629.',
+  'update.loginRequired': '\u0633\u062c\u0651\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u0642\u0628\u0644 \u062a\u062b\u0628\u064a\u062a \u0627\u0644\u062a\u062d\u062f\u064a\u062b.',
   'backend.unavailable.notConfigured.title': '\u0644\u0645 \u064a\u062a\u0645 \u0627\u0644\u0625\u0639\u062f\u0627\u062f \u0628\u0639\u062f',
   'backend.unavailable.notConfigured.body': '\u0644\u0645 \u064a\u062a\u0645 \u0628\u0639\u062f \u062a\u0632\u0648\u064a\u062f Stockiha \u0628\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0627\u062a\u0635\u0627\u0644 \u0628\u0642\u0627\u0639\u062f\u0629 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0645\u062d\u0644. \u0625\u0630\u0627 \u0643\u0627\u0646 \u0627\u0644\u0645\u0648\u0631\u0651\u062f \u0628\u0635\u062f\u062f \u0625\u0639\u062f\u0627\u062f \u0627\u0644\u062a\u0637\u0628\u064a\u0642\u060c \u0641\u0627\u0637\u0644\u0628 \u0645\u0646\u0647 \u0625\u062a\u0645\u0627\u0645 \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u060c \u062b\u0645 \u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629.',
   'backend.unavailable.invalidConfiguration.title': '\u0645\u0634\u0643\u0644\u0629 \u0641\u064a \u0645\u0644\u0641 \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a',
@@ -1132,20 +1128,13 @@ const ar: Record<MessageKey, string> = {
   'errors.backupBundleOutsideRoot': 'مجلد النسخة الاحتياطية هذا يقع خارج وجهة النسخ الاحتياطي المُهيأة. اختر مجلدًا أنشأه "إنشاء نسخة احتياطية" داخل هذه الوجهة.',
   'errors.recoveryOperationInProgress': 'هناك عملية نسخ احتياطي أو استرجاع أخرى قيد التنفيذ بالفعل. انتظر حتى تنتهي.',
   // WS-H-3 (plan §5.7).
-  // TODO(WS-H-7)
-  'errors.recoveryUnavailable': "Backup and restore are not available on this computer's setup. Contact your supplier.",
-  // TODO(WS-H-7)
-  'errors.backupDestinationUnavailable': 'The backup folder is not available. Plug in the drive or choose another folder.',
-  // TODO(WS-H-7)
-  'errors.backupNotRestorable': 'This backup cannot be restored by this version of Stockiha.',
-  // TODO(WS-H-7)
-  'errors.restoreTestFailed': 'The backup could not be restored in the safe test. Your data was not changed.',
-  // TODO(WS-H-7)
-  'errors.freshRestoreNotAllowed': 'Restoring here is only possible on a new installation with no user accounts.',
-  // TODO(WS-H-7)
-  'errors.backupCopyFailed': 'The backup could not be copied. Nothing was left behind in the target folder.',
-  // TODO(WS-H-7)
-  'errors.insufficientDiskSpace': 'There is not enough free disk space for this operation.',
+  'errors.recoveryUnavailable': 'النسخ الاحتياطي والاسترجاع غير متاحين على إعداد هذا الحاسوب. تواصل مع المورّد.',
+  'errors.backupDestinationUnavailable': 'مجلد النسخ الاحتياطية غير متاح. وصّل القرص أو اختر مجلدًا آخر.',
+  'errors.backupNotRestorable': 'لا يمكن استرجاع هذه النسخة الاحتياطية بهذا الإصدار من Stockiha.',
+  'errors.restoreTestFailed': 'تعذر استرجاع النسخة الاحتياطية في الاختبار الآمن. لم تتغيّر بياناتك.',
+  'errors.freshRestoreNotAllowed': 'الاسترجاع هنا ممكن فقط على تثبيت جديد لا يحتوي على أي حسابات مستخدمين.',
+  'errors.backupCopyFailed': 'تعذر نسخ النسخة الاحتياطية. لم يُترك أي شيء في المجلد الهدف.',
+  'errors.insufficientDiskSpace': 'لا توجد مساحة تخزين كافية لإجراء هذه العملية.',
   'inventory.zeroQtyWarning.title': 'تحذير مخزون منعدم',
   'inventory.zeroQtyWarning.message': '"{variant}" يملك مخزونًا مؤكدًا منعدمًا ولا يملك متوسط تكلفة موازنًا سابقًا مسجلاً. تتطلب الزيادة قاعدة تكلفة معتمدة.',
   'errors.unknown': '\u062d\u062f\u062b \u062e\u0637\u0623 \u063a\u064a\u0631 \u0645\u062a\u0648\u0642\u0639. \u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629.',
@@ -1220,71 +1209,42 @@ const ar: Record<MessageKey, string> = {
   'recovery.destinationNotSet': '\u063a\u064a\u0631 \u0645\u062d\u062f\u062f \u2014 \u064a\u064f\u0633\u062a\u062e\u062f\u0645 \u0645\u0648\u0642\u0639 \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a \u0627\u0644\u0627\u0641\u062a\u0631\u0627\u0636\u064a',
   'recovery.destinationChange': '\u062a\u063a\u064a\u064a\u0631 \u0627\u0644\u0648\u062c\u0647\u0629\u2026',
   'recovery.destinationUpdated': '\u062a\u0645 \u062a\u062d\u062f\u064a\u062b \u0648\u062c\u0647\u0629 \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a.',
-  // TODO(WS-H-7)
-  'recovery.destinationDefaultHelp': 'Default folder on this computer. For real protection choose a USB drive or another disk.',
-  // TODO(WS-H-7)
-  'recovery.sameDriveWarning': 'This folder is on the same disk as your data. If the disk fails, the backups are lost too.',
+  'recovery.destinationDefaultHelp': 'المجلد الافتراضي على هذا الحاسوب. للحماية الفعلية اختر قرصًا خارجيًا أو قرصًا آخر.',
+  'recovery.sameDriveWarning': 'هذا المجلد على نفس القرص الذي يحتوي بياناتك. إذا تعطّل القرص ستُفقد النسخ الاحتياطية أيضًا.',
   'recovery.browseDestinationTitle': '\u0627\u062e\u062a\u0631 \u0645\u062c\u0644\u062f \u0648\u062c\u0647\u0629 \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a',
   'recovery.browseTitle': '\u0627\u062e\u062a\u0631 \u0645\u062c\u0644\u062f GestStock-Backup',
-  // TODO(WS-H-7)
-  'recovery.openOtherFolder': 'Open a backup from another folder\u2026',
-  // TODO(WS-H-7)
-  'recovery.selectedBackup': 'Selected backup',
-  // TODO(WS-H-7)
-  'recovery.listTitle': 'Your backups',
-  // TODO(WS-H-7)
-  'recovery.listEmpty': 'No backups in this folder yet.',
-  // TODO(WS-H-7)
-  'recovery.colDate': 'Date',
-  // TODO(WS-H-7)
-  'recovery.colType': 'Type',
-  // TODO(WS-H-7)
-  'recovery.colSize': 'Size',
-  // TODO(WS-H-7)
-  'recovery.colVersion': 'Version status',
-  // TODO(WS-H-7)
-  'recovery.colActions': 'Actions',
-  // TODO(WS-H-7)
-  'recovery.verdictSame': 'Current',
-  // TODO(WS-H-7)
-  'recovery.verdictOlder': 'Older \u2014 will be updated',
-  // TODO(WS-H-7)
-  'recovery.verdictNewer': 'Newer \u2014 needs a newer Stockiha',
-  // TODO(WS-H-7)
-  'recovery.verdictUnknown': 'Unknown',
-  // TODO(WS-H-7)
-  'recovery.actionCheck': 'Check',
-  // TODO(WS-H-7)
-  'recovery.actionTest': 'Test',
-  // TODO(WS-H-7)
-  'recovery.actionCopyTo': 'Copy to\u2026',
-  // TODO(WS-H-7)
-  'recovery.copyTargetTitle': 'Select a folder to copy this backup into',
-  // TODO(WS-H-7)
-  'recovery.ariaCheckOf': 'Check backup of {date}',
-  // TODO(WS-H-7)
-  'recovery.ariaTestOf': 'Test backup of {date}',
-  // TODO(WS-H-7)
-  'recovery.ariaCopyOf': 'Copy backup of {date}',
-  // TODO(WS-H-7)
-  'recovery.testDisabledNote': 'Backup testing is turned off in Advanced.',
-  // TODO(WS-H-7)
-  'recovery.advancedTitle': 'Advanced',
+  'recovery.openOtherFolder': '\u0641\u062a\u062d \u0646\u0633\u062e\u0629 \u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0645\u0646 \u0645\u062c\u0644\u062f \u0622\u062e\u0631\u2026',
+  'recovery.selectedBackup': '\u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0627\u0644\u0645\u062d\u062f\u062f\u0629',
+  'recovery.listTitle': '\u0646\u0633\u062e\u0643 \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629',
+  'recovery.listEmpty': '\u0644\u0627 \u062a\u0648\u062c\u062f \u0646\u0633\u062e \u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0641\u064a \u0647\u0630\u0627 \u0627\u0644\u0645\u062c\u0644\u062f \u0628\u0639\u062f.',
+  'recovery.colDate': '\u0627\u0644\u062a\u0627\u0631\u064a\u062e',
+  'recovery.colType': '\u0627\u0644\u0646\u0648\u0639',
+  'recovery.colSize': '\u0627\u0644\u062d\u062c\u0645',
+  'recovery.colVersion': '\u062d\u0627\u0644\u0629 \u0627\u0644\u0625\u0635\u062f\u0627\u0631',
+  'recovery.colActions': '\u0627\u0644\u0625\u062c\u0631\u0627\u0621\u0627\u062a',
+  'recovery.verdictSame': '\u0645\u062d\u062f\u0651\u062b\u0629',
+  'recovery.verdictOlder': '\u0642\u062f\u064a\u0645\u0629 \u2014 \u0633\u064a\u062a\u0645 \u062a\u062d\u062f\u064a\u062b\u0647\u0627',
+  'recovery.verdictNewer': '\u0623\u062d\u062f\u062b \u2014 \u064a\u062a\u0637\u0644\u0628 \u0625\u0635\u062f\u0627\u0631\u064b\u0627 \u0623\u062d\u062f\u062b \u0645\u0646 Stockiha',
+  'recovery.verdictUnknown': '\u063a\u064a\u0631 \u0645\u0639\u0631\u0648\u0641\u0629',
+  'recovery.actionCheck': '\u0641\u062d\u0635',
+  'recovery.actionTest': '\u0627\u062e\u062a\u0628\u0627\u0631',
+  'recovery.actionCopyTo': '\u0646\u0633\u062e \u0625\u0644\u0649\u2026',
+  'recovery.copyTargetTitle': '\u0627\u062e\u062a\u0631 \u0645\u062c\u0644\u062f\u064b\u0627 \u0644\u0646\u0633\u062e \u0647\u0630\u0647 \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0625\u0644\u064a\u0647',
+  'recovery.ariaCheckOf': '\u0641\u062d\u0635 \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0628\u062a\u0627\u0631\u064a\u062e {date}',
+  'recovery.ariaTestOf': '\u0627\u062e\u062a\u0628\u0627\u0631 \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0628\u062a\u0627\u0631\u064a\u062e {date}',
+  'recovery.ariaCopyOf': '\u0646\u0633\u062e \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0628\u062a\u0627\u0631\u064a\u062e {date}',
+  'recovery.testDisabledNote': '\u0627\u062e\u062a\u0628\u0627\u0631 \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0645\u0639\u0637\u0651\u0644 \u0641\u064a \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u0645\u062a\u0642\u062f\u0645\u0629.',
+  'recovery.advancedTitle': '\u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0645\u062a\u0642\u062f\u0645\u0629',
   'recovery.recoveryBoundary': '\u0627\u062e\u062a\u0628\u0627\u0631 \u0627\u0644\u0627\u0633\u062a\u0631\u062c\u0627\u0639 \u064a\u0633\u062a\u0639\u0645\u0644 \u0642\u0627\u0639\u062f\u0629 \u0645\u0624\u0642\u062a\u0629 \u064a\u062a\u0645 \u0625\u0646\u0634\u0627\u0624\u0647\u0627 \u062a\u0644\u0642\u0627\u0626\u064a\u0627\u064b \u0641\u0642\u0637. \u0644\u0627 \u064a\u0633\u062a\u0628\u062f\u0644 \u0648\u0644\u0627 \u064a\u0639\u062f\u0651\u0644 \u0642\u0627\u0639\u062f\u0629 Stockiha \u0627\u0644\u062d\u0627\u0644\u064a\u0629.',
-  // TODO(WS-H-7)
-  'recovery.testDialogTitle': 'Test this backup?',
-  // TODO(WS-H-7)
-  'recovery.testDialogBody': 'Stockiha will start a temporary database, load this backup into it, check it, and delete it. Your live data is not touched. This can take a few minutes.',
-  // TODO(WS-H-7)
-  'recovery.testDialogConfirm': 'Start test',
+  'recovery.testDialogTitle': 'اختبار هذه النسخة الاحتياطية؟',
+  'recovery.testDialogBody': 'سيقوم Stockiha بتشغيل قاعدة بيانات مؤقتة وتحميل هذه النسخة فيها وفحصها ثم حذفها. لن تُمس بياناتك الحالية. قد يستغرق ذلك بضع دقائق.',
+  'recovery.testDialogConfirm': 'بدء الاختبار',
   'recovery.restored': '\u062a\u0645 \u0627\u0633\u062a\u0631\u062c\u0627\u0639 \u0627\u0644\u0646\u0633\u062e\u0629 \u0648\u0645\u0637\u0627\u0628\u0642\u0629 \u0627\u0644\u0623\u0631\u0635\u062f\u0629 \u0628\u0646\u062c\u0627\u062d \u062f\u0627\u062e\u0644 \u0642\u0627\u0639\u062f\u0629 \u0645\u0624\u0642\u062a\u0629.',
   'recovery.restoreFailed': '\u0641\u0634\u0644 \u0627\u062e\u062a\u0628\u0627\u0631 \u0627\u0644\u0627\u0633\u062a\u0631\u062c\u0627\u0639 \u0627\u0644\u0645\u0624\u0642\u062a. \u0644\u0645 \u064a\u062a\u0645 \u0627\u0633\u062a\u0628\u062f\u0627\u0644 \u0642\u0627\u0639\u062f\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u062d\u0627\u0644\u064a\u0629.',
   'recovery.valid': '\u062a\u0645 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u0633\u0644\u0627\u0645\u0629 \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629.',
   'recovery.invalid': '\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629. \u0644\u0645 \u064a\u062a\u0645 \u062a\u0639\u062f\u064a\u0644\u0647\u0627 \u0623\u0648 \u0625\u0635\u0644\u0627\u062d\u0647\u0627.',
-  // TODO(WS-H-7)
-  'recovery.copySuccess': 'Backup copied to {path}',
-  // TODO(WS-H-7)
-  'recovery.copyFailed': 'The backup could not be copied.',
+  'recovery.copySuccess': 'تم نسخ النسخة الاحتياطية إلى {path}',
+  'recovery.copyFailed': 'تعذر نسخ النسخة الاحتياطية.',
   'recovery.bundle': '\u0627\u0644\u0646\u0633\u062e\u0629',
   'recovery.application': '\u0625\u0635\u062f\u0627\u0631 \u0627\u0644\u062a\u0637\u0628\u064a\u0642',
   'recovery.schema': '\u0625\u0635\u062f\u0627\u0631 \u0627\u0644\u0645\u062e\u0637\u0637',
@@ -1293,27 +1253,17 @@ const ar: Record<MessageKey, string> = {
   'recovery.bytes': '\u0627\u0644\u062d\u062c\u0645 \u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a',
   'recovery.compatible': '\u0645\u062a\u0648\u0627\u0641\u0642',
   'recovery.incompatible': '\u0625\u0635\u062f\u0627\u0631 \u0645\u062e\u062a\u0644\u0641',
-  // TODO(WS-H-7)
-  'recovery.kind': 'Backup type',
-  // TODO(WS-H-7)
-  'recovery.kindManual': 'Manual',
-  // TODO(WS-H-7)
-  'recovery.kindDaily': 'Daily automatic',
-  // TODO(WS-H-7)
-  'recovery.kindPreUpdate': 'Before update',
-  // TODO(WS-H-7)
-  'recovery.kindPreRestore': 'Before restore',
-  // TODO(WS-H-7)
-  'recovery.kindUnknown': 'Unknown',
-  // TODO(WS-H-7)
-  'recovery.restorable': 'Can be restored by this version',
-  // TODO(WS-H-7)
-  'recovery.serverStopped': 'Temporary database stopped',
+  'recovery.kind': 'نوع النسخة الاحتياطية',
+  'recovery.kindManual': 'يدوية',
+  'recovery.kindDaily': 'تلقائية يومية',
+  'recovery.kindPreUpdate': 'قبل التحديث',
+  'recovery.kindPreRestore': 'قبل الاسترجاع',
+  'recovery.kindUnknown': 'غير معروفة',
+  'recovery.restorable': 'يمكن استرجاعها بهذا الإصدار',
+  'recovery.serverStopped': 'تم إيقاف قاعدة البيانات المؤقتة',
   'recovery.journalBalance': '\u062a\u0648\u0627\u0632\u0646 \u0627\u0644\u0642\u064a\u0648\u062f',
-  // TODO(WS-H-7)
-  'recovery.updatedToCurrent': 'Updated to current version',
-  // TODO(WS-H-7)
-  'recovery.cleanupPendingNote': 'A temporary folder could not be removed yet; Stockiha will remove it at next start.',
+  'recovery.updatedToCurrent': 'تم التحديث إلى الإصدار الحالي',
+  'recovery.cleanupPendingNote': 'تعذر حذف مجلد مؤقت حتى الآن؛ سيقوم Stockiha بحذفه عند بدء التشغيل التالي.',
   'recovery.yes': '\u0646\u0639\u0645',
   'recovery.no': '\u0644\u0627',
   'recovery.balanced': '\u0645\u062a\u0648\u0627\u0632\u0646',
@@ -1333,88 +1283,47 @@ const ar: Record<MessageKey, string> = {
   'recovery.customerExposure': '\u062f\u064a\u0648\u0646 \u0627\u0644\u0632\u0628\u0627\u0626\u0646',
   'recovery.supplierOutstanding': '\u062f\u064a\u0648\u0646 \u0627\u0644\u0645\u0648\u0631\u062f\u064a\u0646',
   'recovery.openingApplications': '\u0627\u0644\u0648\u0636\u0639\u064a\u0627\u062a \u0627\u0644\u0627\u0641\u062a\u062a\u0627\u062d\u064a\u0629 \u0627\u0644\u0645\u0637\u0628\u0642\u0629',
-  // TODO(WS-H-7)
-  'recovery.lastBackup': 'Last successful backup: {date}',
-  // TODO(WS-H-7)
-  'recovery.noBackupYet': 'No backup has been made yet.',
-  // TODO(WS-H-7)
-  'recovery.lastBackupFailed': 'The last backup attempt failed.',
-  // TODO(WS-H-7)
-  'recovery.restoreConfirmTitle': 'Replace your data with this backup?',
-  // TODO(WS-H-7)
-  'recovery.restoreConfirmWarning': 'Everything recorded in Stockiha after {date} will be removed: sales, purchases, stock changes, customers, users. Before anything changes, Stockiha tests this backup and saves a safety copy of today’s data. Stockiha will restart at the end.',
-  // TODO(WS-H-7)
-  'recovery.restoreConfirmOlderNote': 'This backup is from an older version; it will be updated automatically.',
-  // TODO(WS-H-7)
-  'recovery.restoreConfirmCheckbox': 'I understand that recent data will be removed.',
-  // TODO(WS-H-7)
-  'recovery.restoreConfirmWordLabel': 'Type RESTORE to confirm',
-  // TODO(WS-H-7)
-  'recovery.restoreConfirmButton': 'Restore now',
-  // TODO(WS-H-7)
-  'recovery.restoreConfirmCashSessionOpen': 'Close the open cash session before restoring.',
-  // TODO(WS-H-7)
-  'recovery.actionRestore': 'Restore…',
-  // TODO(WS-H-7)
-  'recovery.ariaRestoreOf': 'Restore backup of {date}',
-  // TODO(WS-H-7)
-  'recovery.takeoverDidNotStart': 'The restore did not start. Your data was not changed.',
-  // TODO(WS-H-7)
-  'recovery.restartButton': 'Restart Stockiha',
-  // TODO(WS-H-7)
-  'recovery.takeoverSucceeded': 'Restore complete. Stockiha is restarting…',
-  // TODO(WS-H-7)
-  'recovery.takeoverSucceededMigrated': ' It was updated to the current version.',
-  // TODO(WS-H-7)
-  'recovery.takeoverAbortedTitle': 'The restore was stopped before anything changed. Your data is exactly as it was.',
-  // TODO(WS-H-7)
-  'recovery.takeoverRolledBackTitle': 'The restore failed and your data was put back exactly as it was before.',
-  // TODO(WS-H-7)
-  'recovery.takeoverRolledBackSafety': 'A safety copy is kept in your backups list: {id}.',
-  // TODO(WS-H-7)
-  'recovery.takeoverRollbackFailedTitle': 'The restore failed and Stockiha could not put your data back automatically. Do not use Stockiha. Contact your supplier now and give them this information:',
-  // TODO(WS-H-7)
-  'recovery.stepNotNeeded': 'Not needed',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.validateBackup': 'Checking the backup',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.preflight': 'Preliminary checks',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.testRestore': 'Testing the restore',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.safetyBackup': 'Safety copy',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.stopConnections': 'Closing connections',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.replaceData': 'Replacing data',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.updateSchema': 'Updating the schema',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.verify': 'Verifying',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.restoreFiles': 'Restoring files',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.record': 'Recording',
-  // TODO(WS-H-7)
-  'recovery.restoreStep.rollback': 'Rolling back',
-  // TODO(WS-H-7)
-  'recovery.freshInstallTitle': 'Restore from a backup',
-  // TODO(WS-H-7)
-  'recovery.freshInstallBody': 'Use this if Stockiha was used on another computer. Choose the backup folder (for example on a USB stick). Your user accounts and all data will come from the backup.',
-  // TODO(WS-H-7)
-  'recovery.freshInstallChoose': 'Choose backup folder…',
-  // TODO(WS-H-7)
-  'recovery.freshInstallCheckbox': 'I understand this installation will use the data from this backup.',
-  // TODO(WS-H-7)
-  'recovery.freshInstallRestoreButton': 'Restore',
-  // TODO(WS-H-7)
-  'recovery.back': 'Back',
-  // TODO(WS-H-7)
-  'recovery.restoreFromBackupInstead': 'Restore from a backup instead',
-  // TODO(WS-H-7): translate to Arabic.
-  'recovery.overdueWarning': 'No backup has been made in the last 7 days.',
-  // TODO(WS-H-7): translate to Arabic.
-  'recovery.overdueAction': 'Open backup settings',
+  'recovery.lastBackup': 'آخر نسخة احتياطية ناجحة: {date}',
+  'recovery.noBackupYet': 'لم يتم إنشاء أي نسخة احتياطية بعد.',
+  'recovery.lastBackupFailed': 'فشلت آخر محاولة لإنشاء نسخة احتياطية.',
+  'recovery.restoreConfirmTitle': 'استبدال بياناتك بهذه النسخة الاحتياطية؟',
+  'recovery.restoreConfirmWarning': 'سيتم حذف كل ما سُجّل في Stockiha بعد {date}: المبيعات والمشتريات وحركات المخزون والزبائن والمستخدمين. قبل أي تغيير، يقوم Stockiha باختبار هذه النسخة الاحتياطية وحفظ نسخة أمان من بيانات اليوم. سيُعيد Stockiha تشغيل نفسه في النهاية.',
+  'recovery.restoreConfirmOlderNote': 'هذه النسخة الاحتياطية من إصدار أقدم؛ سيتم تحديثها تلقائيًا.',
+  'recovery.restoreConfirmCheckbox': 'أفهم أنه سيتم حذف البيانات الحديثة.',
+  'recovery.restoreConfirmWordLabel': 'اكتب RESTORE للتأكيد',
+  'recovery.restoreConfirmButton': 'استرجاع الآن',
+  'recovery.restoreConfirmCashSessionOpen': 'أغلق جلسة الصندوق المفتوحة قبل الاسترجاع.',
+  'recovery.actionRestore': 'استرجاع…',
+  'recovery.ariaRestoreOf': 'استرجاع النسخة الاحتياطية بتاريخ {date}',
+  'recovery.takeoverDidNotStart': 'لم تبدأ عملية الاسترجاع. لم تتغيّر بياناتك.',
+  'recovery.restartButton': 'إعادة تشغيل Stockiha',
+  'recovery.takeoverSucceeded': 'تم الاسترجاع. جارٍ إعادة تشغيل Stockiha…',
+  'recovery.takeoverSucceededMigrated': ' تم تحديثها إلى الإصدار الحالي.',
+  'recovery.takeoverAbortedTitle': 'تم إيقاف الاسترجاع قبل تغيير أي شيء. بياناتك كما كانت تمامًا.',
+  'recovery.takeoverRolledBackTitle': 'فشل الاسترجاع وتمت إعادة بياناتك كما كانت تمامًا.',
+  'recovery.takeoverRolledBackSafety': 'تم الاحتفاظ بنسخة أمان في قائمة نسخك الاحتياطية: {id}.',
+  'recovery.takeoverRollbackFailedTitle': 'فشل الاسترجاع ولم يتمكن Stockiha من إعادة بياناتك تلقائيًا. لا تستخدم Stockiha. اتصل بالمورّد الآن وأعطه هذه المعلومات:',
+  'recovery.stepNotNeeded': 'غير مطلوب',
+  'recovery.restoreStep.validateBackup': 'فحص النسخة الاحتياطية',
+  'recovery.restoreStep.preflight': 'فحوصات أولية',
+  'recovery.restoreStep.testRestore': 'اختبار الاسترجاع',
+  'recovery.restoreStep.safetyBackup': 'نسخة أمان',
+  'recovery.restoreStep.stopConnections': 'إغلاق الاتصالات',
+  'recovery.restoreStep.replaceData': 'استبدال البيانات',
+  'recovery.restoreStep.updateSchema': 'تحديث المخطط',
+  'recovery.restoreStep.verify': 'التحقق',
+  'recovery.restoreStep.restoreFiles': 'استرجاع الملفات',
+  'recovery.restoreStep.record': 'التسجيل',
+  'recovery.restoreStep.rollback': 'التراجع',
+  'recovery.freshInstallTitle': 'الاسترجاع من نسخة احتياطية',
+  'recovery.freshInstallBody': 'استخدم هذا إذا كان Stockiha مستخدمًا على حاسوب آخر. اختر مجلد النسخة الاحتياطية (على قرص خارجي مثلًا). ستأتي حسابات المستخدمين وكل البيانات من النسخة الاحتياطية.',
+  'recovery.freshInstallChoose': 'اختيار مجلد النسخة الاحتياطية…',
+  'recovery.freshInstallCheckbox': 'أفهم أن هذا التثبيت سيستخدم بيانات هذه النسخة الاحتياطية.',
+  'recovery.freshInstallRestoreButton': 'استرجاع',
+  'recovery.back': 'رجوع',
+  'recovery.restoreFromBackupInstead': 'الاسترجاع من نسخة احتياطية بدلًا من ذلك',
+  'recovery.overdueWarning': 'لم يتم إنشاء أي نسخة احتياطية خلال آخر 7 أيام.',
+  'recovery.overdueAction': 'فتح إعدادات النسخ الاحتياطية',
 };
 
 const en: Record<MessageKey, string> = {

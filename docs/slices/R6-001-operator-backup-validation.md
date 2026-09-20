@@ -1,5 +1,7 @@
 # R6-001 — Operator Backup Creation and Bundle Validation
 
+> Installed (embedded) builds: superseded by WS-H-3 to WS-H-7. This document now describes only the developer (run.bat) path.
+
 ## Status
 
 Implementation remains on draft PR #13. Exact-head automated verification and one clean Windows/Tauri acceptance run are required before the PR may leave draft state.

@@ -145,12 +145,17 @@ Roadmap execution is structured into twelve dedicated workstreams (**WS-A** thro
 ### WS-H — Backup & Recovery
 - **Objective:** Reliable data protection and disaster recovery for desktop deployment.
 - **Scope:**
-  - Current status: Not yet trusted; requires substantial automated and manual testing.
-  - MVP Requirements:
-    - Manual backup bundle creation (`pg_dump` with checksum validation).
-    - Database restore capability (`pg_restore` into temporary validation target).
-    - Backup integrity and database health/consistency verification.
-  - Future Enhancements: Automated cloud sync, off-device retention, and scheduled encrypted backups.
+  - Current status: repaired and completed for embedded installs (WS-H-3 to WS-H-7).
+  - MVP (now shipped):
+    - Manual backup bundles with checksum validation.
+    - Backup list.
+    - Copy to an external drive.
+    - Isolated restore test in a throwaway database.
+    - In-app restore with an automatic safety copy and rollback.
+    - Restore on a new PC.
+    - Automatic backup before every update.
+    - Daily local automatic backup with retention.
+  - Future: off-device/cloud copies, encryption at rest, user-chosen backup schedules.
 
 ### WS-I — Reporting & Analytics
 - **Objective:** Operational insights and official financial statements.

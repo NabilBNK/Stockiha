@@ -1,5 +1,7 @@
 # R6-002 — Controlled Temporary Restore Verification
 
+> Installed (embedded) builds: superseded by WS-H-3 to WS-H-7. This document now describes only the developer (run.bat) path.
+
 ## Purpose
 
 Prove that a Stockiha operator backup can actually be restored and reconciled before the pilot relies on it.
