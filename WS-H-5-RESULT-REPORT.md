@@ -195,10 +195,11 @@ None outstanding. The installer signing blocker reported earlier in this session
 
 **Note on key handling:** the Owner pasted the private key and its password directly into chat to unblock this build. `WS-K-6-SIGNING-KEYS.md` records that the first key was rotated specifically because it had been shown in a chat transcript once before; this session's transcript now contains the current key the same way, so the Owner was told and may want to rotate again the same way.
 
-## Final build (superseded — built from `85ce300`, before the restart-loop fix)
+## Final build history
 
-**Do not use this build for manual testing.** It predates commit `979c906` above. A fresh signed build from the current head is pending the Owner supplying the signing credentials again (see the next report update).
+**Build 1 (superseded)** — from `85ce300`, before the restart-loop fix. Not for manual testing; superseded by Build 2 below.
 
+**Build 2 (current) — from `d4cdfc1` (fix `979c906` included):**
 ```
 Running makensis to produce ...\target\release\bundle\nsis\Stockiha_0.5.0_x64-setup.exe
 Finished 1 bundle at: ...\target\release\bundle\nsis\Stockiha_0.5.0_x64-setup.exe
@@ -206,10 +207,11 @@ Finished 1 updater signature at: ...\target\release\bundle\nsis\Stockiha_0.5.0_x
 installer: src-tauri\target\release\bundle\nsis\Stockiha_WS-H-5.0-setup.exe
 ```
 - **Path:** `C:\Users\Perfetto\Desktop\Stockiha-Part02-Test\src-tauri\target\release\bundle\nsis\Stockiha_WS-H-5.0-setup.exe`
-- **Size:** 50,927,817 bytes (≈48.6 MB)
+- **Size:** 50,949,249 bytes (≈48.6 MB)
+- **Built from:** commit `d4cdfc1` — includes the `979c906` restart-loop fix.
 - **Version:** application version `0.5.0` (`app.package_info().version`, unchanged by this sub-plan per ruling R5); build marker `WS-H-5.0` (`APP_VERSION_MARKER`), confirmed by the rename step reading it from `src/shared/version.ts`.
 - **Signed:** yes — a valid updater signature (`Stockiha_0.5.0_x64-setup.exe.sig`) was produced in the same bundle step, before the marker-based rename; the `.sig` file's own name still carries the pre-rename `0.5.0` filename (cosmetic only — Tauri's updater matches by content hash, not filename).
-- The two signing environment variables were cleared from the shell immediately after this build completed.
+- The two signing environment variables were cleared from the shell immediately after each build completed.
 
 ## Pending manual checks (PART 14 §M5)
 
