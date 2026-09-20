@@ -9,6 +9,7 @@
 import { ErrorBoundary } from './shared/components/ErrorBoundary';
 import { I18nProvider } from './shared/i18n';
 import { SessionProvider } from './shared/session/SessionContext';
+import { RecoveryTakeoverProvider } from './features/settings/recovery/RecoveryTakeoverContext';
 import { AppRouter } from './app/AppRouter';
 import './App.css';
 import './styles/global.css';
@@ -21,7 +22,9 @@ function App() {
     <ErrorBoundary>
       <I18nProvider>
         <SessionProvider>
-          <AppRouter />
+          <RecoveryTakeoverProvider>
+            <AppRouter />
+          </RecoveryTakeoverProvider>
         </SessionProvider>
       </I18nProvider>
     </ErrorBoundary>

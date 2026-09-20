@@ -168,3 +168,80 @@ export interface CopyBackupToResult {
   copiedPath: string;
   totalBytes: number;
 }
+
+// ---------------------------------------------------------------------------
+// WS-H-5: real restore and new-PC restore (plan §H5, §5.9).
+// ---------------------------------------------------------------------------
+
+export interface RestoreBackupLiveRequest {
+  requestId: string;
+  bundlePath: string;
+  confirmationText: string;
+}
+
+export interface RestoreStarted {
+  started: boolean;
+}
+
+export interface InspectBackupForFreshInstallRequest {
+  bundlePath: string;
+}
+
+export interface RestoreBackupFreshInstallRequest {
+  bundlePath: string;
+}
+
+/** Mirrors `restore_flow::RestoreStep`, in the fixed order the backend
+ * always reports them in. `ROLLBACK` and `RESTART` only ever progress past
+ * `pending` on the paths that reach them. */
+export type RestoreStep =
+  | 'VALIDATE_BACKUP'
+  | 'PREFLIGHT'
+  | 'TEST_RESTORE'
+  | 'SAFETY_BACKUP'
+  | 'STOP_CONNECTIONS'
+  | 'REPLACE_DATA'
+  | 'UPDATE_SCHEMA'
+  | 'VERIFY'
+  | 'RESTORE_FILES'
+  | 'RECORD'
+  | 'ROLLBACK'
+  | 'RESTART';
+
+export const RESTORE_STEPS: RestoreStep[] = [
+  'VALIDATE_BACKUP',
+  'PREFLIGHT',
+  'TEST_RESTORE',
+  'SAFETY_BACKUP',
+  'STOP_CONNECTIONS',
+  'REPLACE_DATA',
+  'UPDATE_SCHEMA',
+  'VERIFY',
+  'RESTORE_FILES',
+  'RECORD',
+  'ROLLBACK',
+  'RESTART',
+];
+
+export type RestoreStepStatus = 'RUNNING' | 'DONE' | 'FAILED' | 'SKIPPED';
+
+export interface RestoreProgress {
+  step: RestoreStep;
+  status: RestoreStepStatus;
+  detailCode: string | null;
+}
+
+export const RECOVERY_RESTORE_PROGRESS_EVENT = 'recovery-restore-progress';
+
+export type RestoreOutcomeEvent =
+  | { outcome: 'SUCCEEDED'; bundleIdentifier: string; migratedForward: boolean }
+  | { outcome: 'ABORTED_BEFORE_CHANGE'; errorCode: string; restartRequired: boolean }
+  | { outcome: 'ROLLED_BACK'; errorCode: string; safetyBundleIdentifier: string | null }
+  | {
+      outcome: 'ROLLBACK_FAILED';
+      errorCode: string;
+      safetyBundlePath: string | null;
+      logPath: string;
+    };
+
+export const RECOVERY_RESTORE_OUTCOME_EVENT = 'recovery-restore-outcome';

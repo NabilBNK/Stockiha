@@ -663,6 +663,149 @@ fn worker_failed() -> AppError {
     EngineError::new(codes::BACKUP_STAGE_FAILED, "blocking worker failed").to_app_error()
 }
 
+// ---------------------------------------------------------------------------
+// WS-H-5: real restore orchestration (plan H5-04).
+// ---------------------------------------------------------------------------
+
+/// Mirrors `application::recovery`'s private `RecoveryAttemptEnvelope` (not
+/// reused directly: this file's plan scope for H5-04 does not list
+/// `application/recovery.rs`, and the shape is tiny).
+#[derive(serde::Deserialize)]
+struct LiveAttemptEnvelope {
+    attempt_id: i64,
+    is_replay: bool,
+    status: String,
+}
+
+pub(crate) struct LiveRestorePrepared {
+    pub(crate) attempt_id: i64,
+    pub(crate) actor_username: Option<String>,
+    pub(crate) workstation_id: Option<String>,
+    pub(crate) safety_destination: std::path::PathBuf,
+}
+
+/// Begins the `RESTORE_LIVE` audit attempt and resolves everything the
+/// worker thread needs but cannot resolve for itself: the actor's identity
+/// (readable only through `operations.recovery_attempts` ⨝ `iam.users`, off
+/// limits to the runtime role) and where the safety backup goes. A live
+/// restore request id is never replayed (plan H5-04 step 6).
+pub(crate) async fn begin_live_restore(
+    pool: &PgPool,
+    session_token: &str,
+    request_id: &str,
+    bundle_identifier: &str,
+    ctx: &EmbeddedRecoveryContext,
+) -> Result<LiveRestorePrepared, AppError> {
+    let value: JsonValue =
+        query_scalar("SELECT operations.begin_recovery_attempt($1, $2, 'RESTORE_LIVE', $3)")
+            .bind(session_token)
+            .bind(request_id)
+            .bind(bundle_identifier)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+    let envelope: LiveAttemptEnvelope = serde_json::from_value(value).map_err(|error| {
+        AppError::internal(format!(
+            "failed to parse recovery attempt envelope: {error}"
+        ))
+    })?;
+    match envelope.status.as_str() {
+        "STARTED" if envelope.is_replay => {
+            return Err(AppError::RecoveryOperationInProgress {
+                diagnostic: "a live restore for this request is already running".to_string(),
+            });
+        }
+        "STARTED" => {}
+        _ => {
+            return Err(AppError::ValidationError {
+                diagnostic: "a live restore request id is never replayed".to_string(),
+            });
+        }
+    }
+
+    let Some(info) =
+        crate::infrastructure::local_config::load_migrator_connection_info(&ctx.app_data_dir)
+    else {
+        return Err(EngineError::new(
+            codes::BACKUP_SCHEMA_VERSION_UNREADABLE,
+            "no migrator credential",
+        )
+        .to_app_error());
+    };
+    let mut conn = crate::infrastructure::recovery_engine::live::migrator_connection(&info)
+        .await
+        .map_err(|e| e.to_app_error())?;
+
+    let identity: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT u.username, a.workstation_id FROM operations.recovery_attempts a \
+         JOIN iam.users u ON u.id = a.actor_id WHERE a.id = $1",
+    )
+    .bind(envelope.attempt_id)
+    .fetch_optional(&mut conn)
+    .await
+    .map_err(|e| AppError::internal(format!("could not resolve restore actor: {e}")))?;
+    let (actor_username, workstation_id) = identity.unzip();
+    let workstation_id = workstation_id.flatten();
+
+    let stored: Option<String> = sqlx::query_scalar(
+        "SELECT backup_destination_path FROM operations.recovery_settings WHERE singleton",
+    )
+    .fetch_optional(&mut conn)
+    .await
+    .map_err(|e| AppError::internal(format!("could not read backup destination: {e}")))?
+    .flatten();
+    let _ = sqlx::Connection::close(conn).await;
+
+    let resolved = destination::resolve(stored.as_deref(), ctx, DestinationPurpose::Automatic)
+        .map_err(|e| e.to_app_error())?;
+
+    Ok(LiveRestorePrepared {
+        attempt_id: envelope.attempt_id,
+        actor_username,
+        workstation_id,
+        safety_destination: resolved.path,
+    })
+}
+
+/// Completes the `RESTORE_LIVE` audit row after a live restore attempt that
+/// did not succeed (an outcome where the row still exists — `Succeeded`
+/// drops it along with the rest of `operations`, per plan R16). Runs on a
+/// fresh migrator connection because the app's own pool may already be
+/// closed by the time this is called (`STOP_CONNECTIONS` closes it before
+/// any step that could fail this way).
+pub(crate) async fn complete_live_restore_attempt(
+    ctx: &EmbeddedRecoveryContext,
+    session_token: &str,
+    attempt_id: i64,
+    error_code: &str,
+) -> Result<(), AppError> {
+    let Some(info) =
+        crate::infrastructure::local_config::load_migrator_connection_info(&ctx.app_data_dir)
+    else {
+        return Err(EngineError::new(
+            codes::BACKUP_SCHEMA_VERSION_UNREADABLE,
+            "no migrator credential",
+        )
+        .to_app_error());
+    };
+    let mut conn = crate::infrastructure::recovery_engine::live::migrator_connection(&info)
+        .await
+        .map_err(|e| e.to_app_error())?;
+    sqlx::raw_sql("SET ROLE stockiha_owner")
+        .execute(&mut conn)
+        .await
+        .map_err(|e| AppError::internal(format!("could not assume stockiha_owner: {e}")))?;
+    sqlx::query("SELECT operations.complete_recovery_attempt($1, $2, false, $3, NULL)")
+        .bind(session_token)
+        .bind(attempt_id)
+        .bind(error_code)
+        .execute(&mut conn)
+        .await
+        .map_err(|e| AppError::internal(format!("could not complete recovery attempt: {e}")))?;
+    let _ = sqlx::Connection::close(conn).await;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

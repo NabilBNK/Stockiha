@@ -544,7 +544,7 @@ async fn perform_rollback(
 /// (never explicitly created by `pg_dump` — it is treated as always
 /// pre-existing) back to the same owned-by-`stockiha_owner`,
 /// granted-to-`stockiha_migrator` shape first-run setup itself establishes.
-async fn reset_all_schemas(conn: &mut PgConnection) -> Result<(), String> {
+pub(crate) async fn reset_all_schemas(conn: &mut PgConnection) -> Result<(), String> {
     let schemas: Vec<String> = sqlx::query_scalar(
         "SELECT nspname FROM pg_namespace \
          WHERE nspname NOT IN ('public', 'pg_catalog', 'information_schema') \

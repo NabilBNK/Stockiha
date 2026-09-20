@@ -3,7 +3,7 @@ import { useI18n } from '../../../shared/i18n';
 import type { BackupListItem } from '../../../shared/ipc/recoveryDto';
 import { formatBytes, formatDateTime, kindLabel, verdictLabel } from './recoveryCopy';
 
-export type BackupRowAction = 'check' | 'test' | 'copy';
+export type BackupRowAction = 'check' | 'test' | 'copy' | 'restore';
 
 export interface BackupListBusy {
   bundleIdentifier: string;
@@ -19,10 +19,12 @@ interface Props {
   canTest: boolean;
   testPolicyEnabled: boolean;
   canCopy: boolean;
+  canRestoreLive?: boolean;
   busy: BackupListBusy | null;
   onCheck: (item: BackupListItem) => void;
   onTest: (item: BackupListItem) => void;
   onCopy: (item: BackupListItem) => void;
+  onRestore?: (item: BackupListItem) => void;
   emptyLabel?: string;
   testId?: string;
 }
@@ -36,10 +38,12 @@ export function BackupList({
   canTest,
   testPolicyEnabled,
   canCopy,
+  canRestoreLive = false,
   busy,
   onCheck,
   onTest,
   onCopy,
+  onRestore,
   emptyLabel,
   testId,
 }: Props) {
@@ -121,6 +125,18 @@ export function BackupList({
                           onClick={() => onCopy(item)}
                         >
                           {t('recovery.actionCopyTo')}
+                        </Button>
+                      ) : null}
+                      {canRestoreLive && item.restorable && onRestore ? (
+                        <Button
+                          type="button"
+                          variant="danger"
+                          loading={rowBusy === 'restore'}
+                          disabled={disableRow}
+                          aria-label={t('recovery.ariaRestoreOf', { date: dateLabel })}
+                          onClick={() => onRestore(item)}
+                        >
+                          {t('recovery.actionRestore')}
                         </Button>
                       ) : null}
                     </div>

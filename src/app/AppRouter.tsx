@@ -16,6 +16,8 @@ import type { OpeningStateOnboardingStatusResult } from '../shared/ipc/openingSt
 import { getCustomerCapabilities } from '../shared/ipc/customerGateway';
 import type { CustomerCapabilities } from '../shared/ipc/customerDto';
 import { AppDataProvider, useAppData } from './AppDataContext';
+import { LiveRestoreScreen } from '../features/settings/recovery/LiveRestoreScreen';
+import { useRecoveryTakeover } from '../features/settings/recovery/RecoveryTakeoverContext';
 import { AppShell, type AppView } from './AppShell';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
@@ -88,6 +90,7 @@ const OPENING_SETUP_COPY: Record<Locale, OpeningSetupCopy> = {
 
 export function AppRouter() {
   const { user } = useSession();
+  const takeover = useRecoveryTakeover();
   const [route, setRoute] = useState<RouteState>('loading');
   // Credential-free reason for the unavailable state, so the screen can name
   // the real cause instead of showing a generic message for every failure.
@@ -114,6 +117,14 @@ export function AppRouter() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // WS-H-5: a real restore or new-PC restore takes over the whole window —
+  // no navigation, no logout, nothing else — until the app restarts or the
+  // operator explicitly restarts it. Checked after every hook above and
+  // before every other route.
+  if (takeover.request) {
+    return <LiveRestoreScreen request={takeover.request} />;
+  }
 
   if (route === 'loading') {
     return (

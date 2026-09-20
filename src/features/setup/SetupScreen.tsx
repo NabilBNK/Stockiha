@@ -3,7 +3,7 @@
  * the one-time opening-state decision. Opening state is optional: the first
  * administrator may enter it now, defer it, or explicitly decline it.
  */
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 import { WORKSTATION_ID } from '../../app/config';
 import { Banner, Button, TextField } from '../../shared/components';
@@ -15,7 +15,9 @@ import {
   getOpeningStateOnboardingStatus,
   setOpeningStateOnboardingChoice,
 } from '../../shared/ipc/openingStateLifecycleGateway';
+import { getRecoveryMode } from '../../shared/ipc/recoveryGateway';
 import { OpeningStateScreen } from '../onboarding/OpeningStateScreen';
+import { FreshInstallRestoreScreen } from '../settings/recovery/FreshInstallRestoreScreen';
 
 type SetupStep = 'account' | 'opening-choice' | 'opening-entry';
 
@@ -98,6 +100,22 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
   const [setupSessionToken, setSetupSessionToken] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [embeddedMode, setEmbeddedMode] = useState(false);
+  const [restoreMode, setRestoreMode] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void getRecoveryMode()
+      .then((mode) => {
+        if (active) setEmbeddedMode(mode.mode === 'EMBEDDED');
+      })
+      .catch(() => {
+        if (active) setEmbeddedMode(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function field(key: keyof typeof form) {
     return {
@@ -154,6 +172,10 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (restoreMode) {
+    return <FreshInstallRestoreScreen onBack={() => setRestoreMode(false)} />;
   }
 
   if (step === 'opening-choice') {
@@ -246,6 +268,11 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
         <Button type="submit" loading={submitting}>
           {t('setup.submit')}
         </Button>
+        {embeddedMode ? (
+          <Button type="button" variant="secondary" onClick={() => setRestoreMode(true)}>
+            {t('recovery.restoreFromBackupInstead')}
+          </Button>
+        ) : null}
       </form>
     </div>
   );

@@ -30,7 +30,11 @@ pub(crate) mod drill;
 pub(crate) mod drill_cluster;
 pub(crate) mod errors;
 pub(crate) mod log;
+// WS-H-5: live-restore primitives (safety backup, reset+restore, forward
+// migration, verification, asset swap, audit row) and the restore worker.
+pub(crate) mod live;
 pub(crate) mod mode;
+pub(crate) mod restore_flow;
 pub(crate) mod schema;
 // WS-H-4 (H4-08): removes drill clusters abandoned by a crashed process.
 pub(crate) mod sweep;

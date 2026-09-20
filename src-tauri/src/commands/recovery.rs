@@ -2,22 +2,29 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::Value as JsonValue;
 use sqlx::query_scalar;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::application::recovery::{self, RestoreVerificationAttempt, ValidationAttempt};
 use crate::application::recovery_creation::{self, CreationAttempt};
 use crate::application::recovery_embedded;
 use crate::domain::recovery::{
     BackupDestinationSetting, BackupStatus, CopyBackupToRequest, CopyBackupToResult,
-    CreateOperatorBackupRequest, ListBackupsResponse, OperatorBackupCreationResult,
-    OperatorBackupValidationResult, OperatorRestoreVerificationResult, RecoveryCapabilities,
-    RecoveryModeResponse, UpdateBackupDestinationRequest, UpdateBackupDestinationResult,
-    ValidateOperatorBackupRequest, VerifyOperatorBackupRestoreRequest,
+    CreateOperatorBackupRequest, InspectBackupForFreshInstallRequest, ListBackupsResponse,
+    OperatorBackupCreationResult, OperatorBackupValidationResult,
+    OperatorRestoreVerificationResult, RecoveryCapabilities, RecoveryModeResponse,
+    RestoreBackupFreshInstallRequest, RestoreBackupLiveRequest, RestoreStarted,
+    UpdateBackupDestinationRequest, UpdateBackupDestinationResult, ValidateOperatorBackupRequest,
+    VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
+use crate::infrastructure::recovery_engine::bundle;
 use crate::infrastructure::recovery_engine::catalog;
-use crate::infrastructure::recovery_engine::mode::{self, RecoveryMode};
+use crate::infrastructure::recovery_engine::live::RestoreFaults;
+use crate::infrastructure::recovery_engine::mode::{self, EmbeddedRecoveryContext, RecoveryMode};
+use crate::infrastructure::recovery_engine::restore_flow::{
+    self, RestoreKind, RestoreOutcome, RestoreProgress,
+};
 use crate::infrastructure::{local_config, pg_process};
 
 /// WS-H-2: at most one recovery operation may run at a time, process-wide.
@@ -37,10 +44,10 @@ static RECOVERY_OPERATION_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// RAII lease over [`RECOVERY_OPERATION_ACTIVE`]. Released in `Drop`, so the
 /// flag cannot be left stuck on by an early return, a `?`, or a panic — a
 /// stuck flag would disable backups for the rest of the session.
-struct RecoveryOperationLease;
+pub(crate) struct RecoveryOperationLease;
 
 impl RecoveryOperationLease {
-    fn acquire() -> Result<Self, AppError> {
+    pub(crate) fn acquire() -> Result<Self, AppError> {
         RECOVERY_OPERATION_ACTIVE
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map(|_| RecoveryOperationLease)
@@ -675,6 +682,400 @@ pub(crate) async fn copy_backup_to(
     )
     .await
     .map_err(IpcError::from)
+}
+
+// ---------------------------------------------------------------------------
+// Real restore (H5-03/H5-04) — EMBEDDED only, the highest-risk path in the
+// whole recovery feature. Every failure after `STOP_CONNECTIONS` is followed
+// by an automatic rollback in `restore_flow::run_restore`; this command's
+// job is validation, mode/permission/lease gating, resolving what the
+// worker thread cannot resolve for itself, and — on success — stopping the
+// embedded server before restarting the app (WS-K-4.7 orphan bug).
+// ---------------------------------------------------------------------------
+
+pub const RECOVERY_RESTORE_PROGRESS_EVENT: &str = "recovery-restore-progress";
+pub const RECOVERY_RESTORE_OUTCOME_EVENT: &str = "recovery-restore-outcome";
+
+#[derive(Clone, serde::Serialize)]
+#[serde(tag = "outcome", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all_fields = "camelCase")]
+enum RestoreOutcomeEvent {
+    Succeeded {
+        bundle_identifier: String,
+        migrated_forward: bool,
+    },
+    AbortedBeforeChange {
+        error_code: String,
+        restart_required: bool,
+    },
+    RolledBack {
+        error_code: String,
+        safety_bundle_identifier: Option<String>,
+    },
+    RollbackFailed {
+        error_code: String,
+        safety_bundle_path: Option<String>,
+        log_path: String,
+    },
+}
+
+impl From<RestoreOutcome> for RestoreOutcomeEvent {
+    fn from(outcome: RestoreOutcome) -> Self {
+        match outcome {
+            RestoreOutcome::Succeeded {
+                bundle_identifier,
+                migrated_forward,
+            } => RestoreOutcomeEvent::Succeeded {
+                bundle_identifier,
+                migrated_forward,
+            },
+            RestoreOutcome::AbortedBeforeChange {
+                error_code,
+                restart_required,
+            } => RestoreOutcomeEvent::AbortedBeforeChange {
+                error_code,
+                restart_required,
+            },
+            RestoreOutcome::RolledBack {
+                error_code,
+                safety_bundle_identifier,
+            } => RestoreOutcomeEvent::RolledBack {
+                error_code,
+                safety_bundle_identifier,
+            },
+            RestoreOutcome::RollbackFailed {
+                error_code,
+                safety_bundle_path,
+                log_path,
+            } => RestoreOutcomeEvent::RollbackFailed {
+                error_code,
+                safety_bundle_path,
+                log_path,
+            },
+        }
+    }
+}
+
+fn stop_embedded_server_before_restart(
+    pg_handle: &std::sync::Arc<std::sync::Mutex<pg_process::EmbeddedPostgresHandle>>,
+) {
+    if let Err(err) = pg_process::stop_embedded_postgres_if_running(
+        pg_handle,
+        crate::infrastructure::embedded_setup::STOP_GRACEFUL_TIMEOUT,
+    ) {
+        tracing::error!("could not stop the embedded server before restart: {err}");
+    }
+}
+
+#[tauri::command]
+pub(crate) fn restore_backup_live(
+    app: AppHandle,
+    state: State<'_, DatabaseState>,
+    pg_handle: State<'_, std::sync::Arc<std::sync::Mutex<pg_process::EmbeddedPostgresHandle>>>,
+    session_token: String,
+    request: RestoreBackupLiveRequest,
+) -> Result<RestoreStarted, IpcError> {
+    request
+        .validate()
+        .map_err(|diagnostic| IpcError::from(AppError::ValidationError { diagnostic }))?;
+    let ctx = match resolve_recovery_mode(&app) {
+        RecoveryMode::Embedded(ctx) => ctx,
+        RecoveryMode::External => return Err(embedded_only()),
+        RecoveryMode::Unavailable(reason) => return Err(recovery_unavailable(reason)),
+    };
+    let lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
+    let pool = db::pool_or_unavailable(state.inner())
+        .map_err(IpcError::from)?
+        .clone();
+    let (path, name) = bundle::canonical_bundle_anywhere(&request.bundle_path)
+        .map_err(|error| IpcError::from(error.to_app_error()))?;
+
+    let prepared = tauri::async_runtime::block_on(recovery_embedded::begin_live_restore(
+        &pool,
+        &session_token,
+        request.request_id.trim(),
+        &name,
+        &ctx,
+    ))
+    .map_err(IpcError::from)?;
+
+    let pg_handle_arc = pg_handle.inner().clone();
+    let emit_app = app.clone();
+    let restore_ctx = ctx.clone();
+    let session_token_for_worker = session_token.clone();
+
+    std::thread::spawn(move || {
+        let _lease = lease;
+        let emit_progress = emit_app.clone();
+        let emit = move |progress: RestoreProgress| {
+            let _ = emit_progress.emit(RECOVERY_RESTORE_PROGRESS_EVENT, &progress);
+        };
+        let pool_for_close = pool.clone();
+        let close_app_pool =
+            move || -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+                Box::pin(async move {
+                    pool_for_close.close().await;
+                })
+            };
+
+        let outcome = tauri::async_runtime::block_on(restore_flow::run_restore(
+            &restore_ctx,
+            &path,
+            RestoreKind::Live {
+                safety_destination: prepared.safety_destination.clone(),
+                actor_username: prepared.actor_username.clone(),
+                workstation_id: prepared.workstation_id.clone(),
+            },
+            close_app_pool,
+            RestoreFaults::default(),
+            emit,
+        ));
+
+        match &outcome {
+            RestoreOutcome::Succeeded { .. } => {
+                let _ = emit_app.emit(
+                    RECOVERY_RESTORE_PROGRESS_EVENT,
+                    &RestoreProgress {
+                        step: restore_flow::RestoreStep::Restart,
+                        status: restore_flow::RestoreStepStatus::Running,
+                        detail_code: None,
+                    },
+                );
+                let _ = emit_app.emit(
+                    RECOVERY_RESTORE_OUTCOME_EVENT,
+                    &RestoreOutcomeEvent::from(clone_outcome(&outcome)),
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+                stop_embedded_server_before_restart(&pg_handle_arc);
+                tauri::process::restart(&emit_app.env());
+            }
+            RestoreOutcome::AbortedBeforeChange { error_code, .. }
+            | RestoreOutcome::RolledBack { error_code, .. } => {
+                let code = error_code.clone();
+                let ctx_for_complete = restore_ctx.clone();
+                let token_for_complete = session_token_for_worker.clone();
+                let complete_result = tauri::async_runtime::block_on(
+                    recovery_embedded::complete_live_restore_attempt(
+                        &ctx_for_complete,
+                        &token_for_complete,
+                        prepared.attempt_id,
+                        &code,
+                    ),
+                );
+                if let Err(err) = complete_result {
+                    tracing::error!("could not complete the RESTORE_LIVE audit row: {err:?}");
+                }
+                let _ = emit_app.emit(
+                    RECOVERY_RESTORE_OUTCOME_EVENT,
+                    &RestoreOutcomeEvent::from(clone_outcome(&outcome)),
+                );
+            }
+            RestoreOutcome::RollbackFailed { .. } => {
+                tracing::error!(
+                    "restore rollback failed; the audit row is intentionally left untouched"
+                );
+                let _ = emit_app.emit(
+                    RECOVERY_RESTORE_OUTCOME_EVENT,
+                    &RestoreOutcomeEvent::from(clone_outcome(&outcome)),
+                );
+            }
+        }
+    });
+
+    Ok(RestoreStarted { started: true })
+}
+
+/// `RestoreOutcome` holds owned `String`/`PathBuf` fields and is
+/// deliberately not `Clone` in the engine (it is consumed exactly once by
+/// its caller in every other context); the command layer needs to both
+/// branch on it and serialize it, so this makes the one extra copy that
+/// needs.
+fn clone_outcome(outcome: &RestoreOutcome) -> RestoreOutcome {
+    match outcome {
+        RestoreOutcome::Succeeded {
+            bundle_identifier,
+            migrated_forward,
+        } => RestoreOutcome::Succeeded {
+            bundle_identifier: bundle_identifier.clone(),
+            migrated_forward: *migrated_forward,
+        },
+        RestoreOutcome::AbortedBeforeChange {
+            error_code,
+            restart_required,
+        } => RestoreOutcome::AbortedBeforeChange {
+            error_code: error_code.clone(),
+            restart_required: *restart_required,
+        },
+        RestoreOutcome::RolledBack {
+            error_code,
+            safety_bundle_identifier,
+        } => RestoreOutcome::RolledBack {
+            error_code: error_code.clone(),
+            safety_bundle_identifier: safety_bundle_identifier.clone(),
+        },
+        RestoreOutcome::RollbackFailed {
+            error_code,
+            safety_bundle_path,
+            log_path,
+        } => RestoreOutcome::RollbackFailed {
+            error_code: error_code.clone(),
+            safety_bundle_path: safety_bundle_path.clone(),
+            log_path: log_path.clone(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn inspect_backup_for_fresh_install(
+    app: AppHandle,
+    state: State<'_, DatabaseState>,
+    request: InspectBackupForFreshInstallRequest,
+) -> Result<crate::infrastructure::recovery_engine::catalog::BackupListItemDto, IpcError> {
+    request
+        .validate()
+        .map_err(|diagnostic| IpcError::from(AppError::ValidationError { diagnostic }))?;
+    let ctx = match resolve_recovery_mode(&app) {
+        RecoveryMode::Embedded(ctx) => ctx,
+        RecoveryMode::External => return Err(embedded_only()),
+        RecoveryMode::Unavailable(reason) => return Err(recovery_unavailable(reason)),
+    };
+    let _lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    tauri::async_runtime::block_on(ensure_no_users_exist(pool, &ctx))?;
+
+    let (path, _name) = bundle::canonical_bundle_anywhere(&request.bundle_path)
+        .map_err(|error| IpcError::from(error.to_app_error()))?;
+    let summary = crate::infrastructure::recovery_engine::bundle::inspect_bundle(&path, true)
+        .map_err(|error| IpcError::from(error.to_app_error()))?;
+
+    Ok(
+        crate::infrastructure::recovery_engine::catalog::BackupListItemDto {
+            bundle_identifier: summary
+                .validated
+                .bundle_dir
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            path: summary.validated.bundle_dir.to_string_lossy().into_owned(),
+            created_at_utc: summary.created_at_utc.clone(),
+            backup_kind: summary.backup_kind().to_string(),
+            format_version: Some(summary.validated.bundle_format_version),
+            schema_version: Some(summary.validated.schema_version.clone()),
+            schema_verdict: summary.verdict.as_str().to_string(),
+            restorable: summary.restorable,
+            total_bytes: summary.total_bytes,
+            manifest_readable: true,
+        },
+    )
+}
+
+async fn ensure_no_users_exist(
+    pool: &sqlx::PgPool,
+    ctx: &EmbeddedRecoveryContext,
+) -> Result<(), IpcError> {
+    let Some(info) = local_config::load_migrator_connection_info(&ctx.app_data_dir) else {
+        return Err(IpcError::from(AppError::internal("no migrator credential")));
+    };
+    let _ = pool;
+    let mut conn = crate::infrastructure::recovery_engine::live::migrator_connection(&info)
+        .await
+        .map_err(|error| IpcError::from(error.to_app_error()))?;
+    let users = crate::infrastructure::recovery_engine::live::count_users(&mut conn)
+        .await
+        .map_err(|error| IpcError::from(error.to_app_error()))?;
+    let _ = sqlx::Connection::close(conn).await;
+    if users != 0 {
+        return Err(IpcError::from(AppError::FreshRestoreNotAllowed {
+            diagnostic: "iam.users is not empty".to_string(),
+        }));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn restore_backup_fresh_install(
+    app: AppHandle,
+    state: State<'_, DatabaseState>,
+    pg_handle: State<'_, std::sync::Arc<std::sync::Mutex<pg_process::EmbeddedPostgresHandle>>>,
+    request: RestoreBackupFreshInstallRequest,
+) -> Result<RestoreStarted, IpcError> {
+    request
+        .validate()
+        .map_err(|diagnostic| IpcError::from(AppError::ValidationError { diagnostic }))?;
+    let ctx = match resolve_recovery_mode(&app) {
+        RecoveryMode::Embedded(ctx) => ctx,
+        RecoveryMode::External => return Err(embedded_only()),
+        RecoveryMode::Unavailable(reason) => return Err(recovery_unavailable(reason)),
+    };
+    let lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    tauri::async_runtime::block_on(ensure_no_users_exist(pool, &ctx))?;
+    let pool = pool.clone();
+
+    let (path, _name) = bundle::canonical_bundle_anywhere(&request.bundle_path)
+        .map_err(|error| IpcError::from(error.to_app_error()))?;
+
+    let pg_handle_arc = pg_handle.inner().clone();
+    let emit_app = app.clone();
+    let restore_ctx = ctx.clone();
+
+    std::thread::spawn(move || {
+        let _lease = lease;
+        let emit_progress = emit_app.clone();
+        let emit = move |progress: RestoreProgress| {
+            let _ = emit_progress.emit(RECOVERY_RESTORE_PROGRESS_EVENT, &progress);
+        };
+        let pool_for_close = pool.clone();
+        let close_app_pool =
+            move || -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+                Box::pin(async move {
+                    pool_for_close.close().await;
+                })
+            };
+
+        let outcome = tauri::async_runtime::block_on(restore_flow::run_restore(
+            &restore_ctx,
+            &path,
+            RestoreKind::FreshInstall,
+            close_app_pool,
+            RestoreFaults::default(),
+            emit,
+        ));
+
+        if let RestoreOutcome::Succeeded { .. } = &outcome {
+            let _ = emit_app.emit(
+                RECOVERY_RESTORE_PROGRESS_EVENT,
+                &RestoreProgress {
+                    step: restore_flow::RestoreStep::Restart,
+                    status: restore_flow::RestoreStepStatus::Running,
+                    detail_code: None,
+                },
+            );
+            let _ = emit_app.emit(
+                RECOVERY_RESTORE_OUTCOME_EVENT,
+                &RestoreOutcomeEvent::from(clone_outcome(&outcome)),
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            stop_embedded_server_before_restart(&pg_handle_arc);
+            tauri::process::restart(&emit_app.env());
+        } else {
+            let _ = emit_app.emit(
+                RECOVERY_RESTORE_OUTCOME_EVENT,
+                &RestoreOutcomeEvent::from(clone_outcome(&outcome)),
+            );
+        }
+    });
+
+    Ok(RestoreStarted { started: true })
+}
+
+#[tauri::command]
+pub(crate) fn restart_after_recovery(
+    app: AppHandle,
+    pg_handle: State<'_, std::sync::Arc<std::sync::Mutex<pg_process::EmbeddedPostgresHandle>>>,
+) -> Result<(), IpcError> {
+    stop_embedded_server_before_restart(pg_handle.inner());
+    tauri::process::restart(&app.env());
 }
 
 #[cfg(test)]

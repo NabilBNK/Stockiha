@@ -6,7 +6,9 @@ type Translate = (key: MessageKey) => string;
 
 let requestSequence = 0;
 
-export function nextRequestId(operation: 'create' | 'validate' | 'restore' | 'copy'): string {
+export function nextRequestId(
+  operation: 'create' | 'validate' | 'restore' | 'copy' | 'live-restore',
+): string {
   requestSequence += 1;
   return `backup-${operation}-${Date.now()}-${requestSequence}`;
 }

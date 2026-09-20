@@ -306,6 +306,63 @@ pub(crate) struct CopyBackupToResult {
     pub(crate) total_bytes: u64,
 }
 
+// ---------------------------------------------------------------------------
+// WS-H-5: real restore and new-PC restore (plan H5-04).
+// ---------------------------------------------------------------------------
+
+/// The exact confirmation word, case-sensitive, checked after trimming
+/// surrounding whitespace (plan R15 / H5-04 step 1).
+const RESTORE_CONFIRMATION_WORD: &str = "RESTORE";
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RestoreBackupLiveRequest {
+    pub(crate) request_id: String,
+    pub(crate) bundle_path: String,
+    pub(crate) confirmation_text: String,
+}
+
+impl RestoreBackupLiveRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_request_id(&self.request_id)?;
+        validate_path_field(&self.bundle_path, "bundlePath")?;
+        if self.confirmation_text.trim() != RESTORE_CONFIRMATION_WORD {
+            return Err("RESTORE_CONFIRMATION_INVALID".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RestoreStarted {
+    pub(crate) started: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InspectBackupForFreshInstallRequest {
+    pub(crate) bundle_path: String,
+}
+
+impl InspectBackupForFreshInstallRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_path_field(&self.bundle_path, "bundlePath")
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RestoreBackupFreshInstallRequest {
+    pub(crate) bundle_path: String,
+}
+
+impl RestoreBackupFreshInstallRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_path_field(&self.bundle_path, "bundlePath")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -588,5 +645,61 @@ mod tests {
         let value = serde_json::to_value(&result).unwrap();
         assert_eq!(value["copiedPath"], r"D:\GestStock-Backup-20260919-101500");
         assert_eq!(value["totalBytes"], 4096);
+    }
+
+    fn valid_restore_request() -> RestoreBackupLiveRequest {
+        RestoreBackupLiveRequest {
+            request_id: "restore-request-0001".to_string(),
+            bundle_path: r"C:\backups\GestStock-Backup-20260919-101500".to_string(),
+            confirmation_text: "RESTORE".to_string(),
+        }
+    }
+
+    #[test]
+    fn accepts_the_exact_confirmation_word() {
+        assert!(valid_restore_request().validate().is_ok());
+    }
+
+    #[test]
+    fn trims_surrounding_whitespace_from_the_confirmation_word() {
+        let mut request = valid_restore_request();
+        request.confirmation_text = "  RESTORE  ".to_string();
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_a_lowercase_confirmation_word() {
+        let mut request = valid_restore_request();
+        request.confirmation_text = "restore".to_string();
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_any_text_other_than_the_exact_word() {
+        for text in ["Restore", "RESTORE!", "RESTOREs", "please restore", ""] {
+            let mut request = valid_restore_request();
+            request.confirmation_text = text.to_string();
+            assert!(request.validate().is_err(), "{text:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn rejects_a_short_request_id_for_live_restore() {
+        let mut request = valid_restore_request();
+        request.request_id = "x".to_string();
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_an_empty_bundle_path_for_live_restore() {
+        let mut request = valid_restore_request();
+        request.bundle_path = "".to_string();
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn restore_started_serializes_camel_case() {
+        let value = serde_json::to_value(RestoreStarted { started: true }).unwrap();
+        assert_eq!(value["started"], true);
     }
 }

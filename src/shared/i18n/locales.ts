@@ -622,6 +622,42 @@ const fr = {
   'recovery.lastBackup': 'Derni\u00e8re sauvegarde r\u00e9ussie : {date}',
   'recovery.noBackupYet': 'Aucune sauvegarde n\u2019a encore \u00e9t\u00e9 faite.',
   'recovery.lastBackupFailed': 'La derni\u00e8re tentative de sauvegarde a \u00e9chou\u00e9.',
+  'recovery.restoreConfirmTitle': 'Remplacer vos donn\u00e9es par cette sauvegarde ?',
+  'recovery.restoreConfirmWarning': 'Tout ce qui a \u00e9t\u00e9 enregistr\u00e9 dans Stockiha apr\u00e8s le {date} sera supprim\u00e9 : ventes, achats, mouvements de stock, clients, utilisateurs. Avant tout changement, Stockiha teste cette sauvegarde et enregistre une copie de s\u00e9curit\u00e9 des donn\u00e9es actuelles. Stockiha red\u00e9marrera \u00e0 la fin.',
+  'recovery.restoreConfirmOlderNote': 'Cette sauvegarde provient d\u2019une version plus ancienne ; elle sera mise \u00e0 jour automatiquement.',
+  'recovery.restoreConfirmCheckbox': 'Je comprends que les donn\u00e9es r\u00e9centes seront supprim\u00e9es.',
+  'recovery.restoreConfirmWordLabel': 'Tapez RESTORE pour confirmer',
+  'recovery.restoreConfirmButton': 'Restaurer maintenant',
+  'recovery.restoreConfirmCashSessionOpen': 'Fermez la session de caisse ouverte avant de restaurer.',
+  'recovery.actionRestore': 'Restaurer\u2026',
+  'recovery.ariaRestoreOf': 'Restaurer la sauvegarde du {date}',
+  'recovery.takeoverDidNotStart': 'La restauration n\u2019a pas d\u00e9marr\u00e9. Vos donn\u00e9es n\u2019ont pas \u00e9t\u00e9 modifi\u00e9es.',
+  'recovery.restartButton': 'Red\u00e9marrer Stockiha',
+  'recovery.takeoverSucceeded': 'Restauration termin\u00e9e. Stockiha red\u00e9marre\u2026',
+  'recovery.takeoverSucceededMigrated': ' Elle a \u00e9t\u00e9 mise \u00e0 jour vers la version actuelle.',
+  'recovery.takeoverAbortedTitle': 'La restauration a \u00e9t\u00e9 arr\u00eat\u00e9e avant tout changement. Vos donn\u00e9es sont exactement comme avant.',
+  'recovery.takeoverRolledBackTitle': 'La restauration a \u00e9chou\u00e9 et vos donn\u00e9es ont \u00e9t\u00e9 remises exactement comme avant.',
+  'recovery.takeoverRolledBackSafety': 'Une copie de s\u00e9curit\u00e9 est conserv\u00e9e dans vos sauvegardes : {id}.',
+  'recovery.takeoverRollbackFailedTitle': 'La restauration a \u00e9chou\u00e9 et Stockiha n\u2019a pas pu remettre vos donn\u00e9es automatiquement. N\u2019utilisez pas Stockiha. Contactez votre fournisseur maintenant et donnez-lui ces informations :',
+  'recovery.stepNotNeeded': 'Non n\u00e9cessaire',
+  'recovery.restoreStep.validateBackup': 'V\u00e9rification de la sauvegarde',
+  'recovery.restoreStep.preflight': 'V\u00e9rifications pr\u00e9alables',
+  'recovery.restoreStep.testRestore': 'Test de restauration',
+  'recovery.restoreStep.safetyBackup': 'Copie de s\u00e9curit\u00e9',
+  'recovery.restoreStep.stopConnections': 'Fermeture des connexions',
+  'recovery.restoreStep.replaceData': 'Remplacement des donn\u00e9es',
+  'recovery.restoreStep.updateSchema': 'Mise \u00e0 jour du sch\u00e9ma',
+  'recovery.restoreStep.verify': 'V\u00e9rification',
+  'recovery.restoreStep.restoreFiles': 'Restauration des fichiers',
+  'recovery.restoreStep.record': 'Enregistrement',
+  'recovery.restoreStep.rollback': 'Annulation',
+  'recovery.freshInstallTitle': 'Restaurer depuis une sauvegarde',
+  'recovery.freshInstallBody': 'Utilisez ceci si Stockiha \u00e9tait utilis\u00e9 sur un autre ordinateur. Choisissez le dossier de sauvegarde (par exemple sur une cl\u00e9 USB). Vos comptes utilisateurs et toutes les donn\u00e9es proviendront de la sauvegarde.',
+  'recovery.freshInstallChoose': 'Choisir le dossier de sauvegarde\u2026',
+  'recovery.freshInstallCheckbox': 'Je comprends que cette installation utilisera les donn\u00e9es de cette sauvegarde.',
+  'recovery.freshInstallRestoreButton': 'Restaurer',
+  'recovery.back': 'Retour',
+  'recovery.restoreFromBackupInstead': 'Restaurer depuis une sauvegarde',
 };
 
 export type MessageKey = keyof typeof fr;
@@ -1289,6 +1325,78 @@ const ar: Record<MessageKey, string> = {
   'recovery.noBackupYet': 'No backup has been made yet.',
   // TODO(WS-H-7)
   'recovery.lastBackupFailed': 'The last backup attempt failed.',
+  // TODO(WS-H-7)
+  'recovery.restoreConfirmTitle': 'Replace your data with this backup?',
+  // TODO(WS-H-7)
+  'recovery.restoreConfirmWarning': 'Everything recorded in Stockiha after {date} will be removed: sales, purchases, stock changes, customers, users. Before anything changes, Stockiha tests this backup and saves a safety copy of today’s data. Stockiha will restart at the end.',
+  // TODO(WS-H-7)
+  'recovery.restoreConfirmOlderNote': 'This backup is from an older version; it will be updated automatically.',
+  // TODO(WS-H-7)
+  'recovery.restoreConfirmCheckbox': 'I understand that recent data will be removed.',
+  // TODO(WS-H-7)
+  'recovery.restoreConfirmWordLabel': 'Type RESTORE to confirm',
+  // TODO(WS-H-7)
+  'recovery.restoreConfirmButton': 'Restore now',
+  // TODO(WS-H-7)
+  'recovery.restoreConfirmCashSessionOpen': 'Close the open cash session before restoring.',
+  // TODO(WS-H-7)
+  'recovery.actionRestore': 'Restore…',
+  // TODO(WS-H-7)
+  'recovery.ariaRestoreOf': 'Restore backup of {date}',
+  // TODO(WS-H-7)
+  'recovery.takeoverDidNotStart': 'The restore did not start. Your data was not changed.',
+  // TODO(WS-H-7)
+  'recovery.restartButton': 'Restart Stockiha',
+  // TODO(WS-H-7)
+  'recovery.takeoverSucceeded': 'Restore complete. Stockiha is restarting…',
+  // TODO(WS-H-7)
+  'recovery.takeoverSucceededMigrated': ' It was updated to the current version.',
+  // TODO(WS-H-7)
+  'recovery.takeoverAbortedTitle': 'The restore was stopped before anything changed. Your data is exactly as it was.',
+  // TODO(WS-H-7)
+  'recovery.takeoverRolledBackTitle': 'The restore failed and your data was put back exactly as it was before.',
+  // TODO(WS-H-7)
+  'recovery.takeoverRolledBackSafety': 'A safety copy is kept in your backups list: {id}.',
+  // TODO(WS-H-7)
+  'recovery.takeoverRollbackFailedTitle': 'The restore failed and Stockiha could not put your data back automatically. Do not use Stockiha. Contact your supplier now and give them this information:',
+  // TODO(WS-H-7)
+  'recovery.stepNotNeeded': 'Not needed',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.validateBackup': 'Checking the backup',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.preflight': 'Preliminary checks',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.testRestore': 'Testing the restore',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.safetyBackup': 'Safety copy',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.stopConnections': 'Closing connections',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.replaceData': 'Replacing data',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.updateSchema': 'Updating the schema',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.verify': 'Verifying',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.restoreFiles': 'Restoring files',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.record': 'Recording',
+  // TODO(WS-H-7)
+  'recovery.restoreStep.rollback': 'Rolling back',
+  // TODO(WS-H-7)
+  'recovery.freshInstallTitle': 'Restore from a backup',
+  // TODO(WS-H-7)
+  'recovery.freshInstallBody': 'Use this if Stockiha was used on another computer. Choose the backup folder (for example on a USB stick). Your user accounts and all data will come from the backup.',
+  // TODO(WS-H-7)
+  'recovery.freshInstallChoose': 'Choose backup folder…',
+  // TODO(WS-H-7)
+  'recovery.freshInstallCheckbox': 'I understand this installation will use the data from this backup.',
+  // TODO(WS-H-7)
+  'recovery.freshInstallRestoreButton': 'Restore',
+  // TODO(WS-H-7)
+  'recovery.back': 'Back',
+  // TODO(WS-H-7)
+  'recovery.restoreFromBackupInstead': 'Restore from a backup instead',
 };
 
 const en: Record<MessageKey, string> = {
@@ -1906,6 +2014,42 @@ const en: Record<MessageKey, string> = {
   'recovery.lastBackup': 'Last successful backup: {date}',
   'recovery.noBackupYet': 'No backup has been made yet.',
   'recovery.lastBackupFailed': 'The last backup attempt failed.',
+  'recovery.restoreConfirmTitle': 'Replace your data with this backup?',
+  'recovery.restoreConfirmWarning': 'Everything recorded in Stockiha after {date} will be removed: sales, purchases, stock changes, customers, users. Before anything changes, Stockiha tests this backup and saves a safety copy of today’s data. Stockiha will restart at the end.',
+  'recovery.restoreConfirmOlderNote': 'This backup is from an older version; it will be updated automatically.',
+  'recovery.restoreConfirmCheckbox': 'I understand that recent data will be removed.',
+  'recovery.restoreConfirmWordLabel': 'Type RESTORE to confirm',
+  'recovery.restoreConfirmButton': 'Restore now',
+  'recovery.restoreConfirmCashSessionOpen': 'Close the open cash session before restoring.',
+  'recovery.actionRestore': 'Restore…',
+  'recovery.ariaRestoreOf': 'Restore backup of {date}',
+  'recovery.takeoverDidNotStart': 'The restore did not start. Your data was not changed.',
+  'recovery.restartButton': 'Restart Stockiha',
+  'recovery.takeoverSucceeded': 'Restore complete. Stockiha is restarting…',
+  'recovery.takeoverSucceededMigrated': ' It was updated to the current version.',
+  'recovery.takeoverAbortedTitle': 'The restore was stopped before anything changed. Your data is exactly as it was.',
+  'recovery.takeoverRolledBackTitle': 'The restore failed and your data was put back exactly as it was before.',
+  'recovery.takeoverRolledBackSafety': 'A safety copy is kept in your backups list: {id}.',
+  'recovery.takeoverRollbackFailedTitle': 'The restore failed and Stockiha could not put your data back automatically. Do not use Stockiha. Contact your supplier now and give them this information:',
+  'recovery.stepNotNeeded': 'Not needed',
+  'recovery.restoreStep.validateBackup': 'Checking the backup',
+  'recovery.restoreStep.preflight': 'Preliminary checks',
+  'recovery.restoreStep.testRestore': 'Testing the restore',
+  'recovery.restoreStep.safetyBackup': 'Safety copy',
+  'recovery.restoreStep.stopConnections': 'Closing connections',
+  'recovery.restoreStep.replaceData': 'Replacing data',
+  'recovery.restoreStep.updateSchema': 'Updating the schema',
+  'recovery.restoreStep.verify': 'Verifying',
+  'recovery.restoreStep.restoreFiles': 'Restoring files',
+  'recovery.restoreStep.record': 'Recording',
+  'recovery.restoreStep.rollback': 'Rolling back',
+  'recovery.freshInstallTitle': 'Restore from a backup',
+  'recovery.freshInstallBody': 'Use this if Stockiha was used on another computer. Choose the backup folder (for example on a USB stick). Your user accounts and all data will come from the backup.',
+  'recovery.freshInstallChoose': 'Choose backup folder…',
+  'recovery.freshInstallCheckbox': 'I understand this installation will use the data from this backup.',
+  'recovery.freshInstallRestoreButton': 'Restore',
+  'recovery.back': 'Back',
+  'recovery.restoreFromBackupInstead': 'Restore from a backup instead',
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { fr, ar, en };

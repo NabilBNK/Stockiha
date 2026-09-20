@@ -3,16 +3,21 @@ import { invoke } from '@tauri-apps/api/core';
 import { COMMANDS } from './commands';
 import type {
   BackupDestinationSetting,
+  BackupListItem,
   BackupStatus,
   CopyBackupToRequest,
   CopyBackupToResult,
   CreateOperatorBackupRequest,
+  InspectBackupForFreshInstallRequest,
   ListBackupsResponse,
   OperatorBackupCreationResult,
   OperatorBackupValidationResult,
   OperatorRestoreVerificationResult,
   RecoveryCapabilities,
   RecoveryModeResponse,
+  RestoreBackupFreshInstallRequest,
+  RestoreBackupLiveRequest,
+  RestoreStarted,
   RestoreVerificationSetting,
   UpdateBackupDestinationRequest,
   UpdateBackupDestinationResult,
@@ -167,6 +172,64 @@ export async function copyBackupTo(
       sessionToken,
       request,
     });
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+// WS-H-5: real restore and new-PC restore.
+
+/**
+ * Starts a real, in-place live restore. Resolves once the command has been
+ * accepted and the restore worker thread is running — it does **not** wait
+ * for the restore to finish. Progress arrives via
+ * `RECOVERY_RESTORE_PROGRESS_EVENT`; on success the backend stops the
+ * embedded server and restarts the app process itself. On any other
+ * outcome the final state arrives via `RECOVERY_RESTORE_OUTCOME_EVENT`.
+ * Callers MUST subscribe to both events before calling this.
+ */
+export async function restoreBackupLive(
+  sessionToken: string,
+  request: RestoreBackupLiveRequest,
+): Promise<RestoreStarted> {
+  try {
+    return await invoke<RestoreStarted>(COMMANDS.RESTORE_BACKUP_LIVE, {
+      sessionToken,
+      request,
+    });
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+export async function inspectBackupForFreshInstall(
+  request: InspectBackupForFreshInstallRequest,
+): Promise<BackupListItem> {
+  try {
+    return await invoke<BackupListItem>(COMMANDS.INSPECT_BACKUP_FOR_FRESH_INSTALL, {
+      request,
+    });
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+/** Same subscribe-before-invoke contract as {@link restoreBackupLive}. */
+export async function restoreBackupFreshInstall(
+  request: RestoreBackupFreshInstallRequest,
+): Promise<RestoreStarted> {
+  try {
+    return await invoke<RestoreStarted>(COMMANDS.RESTORE_BACKUP_FRESH_INSTALL, {
+      request,
+    });
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+export async function restartAfterRecovery(): Promise<void> {
+  try {
+    return await invoke<void>(COMMANDS.RESTART_AFTER_RECOVERY);
   } catch (error: unknown) {
     throw new GatewayError(parseTauriError(error));
   }

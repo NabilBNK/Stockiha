@@ -8,6 +8,7 @@ const openDialogMock = vi.fn();
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: (...args: unknown[]) => openDialogMock(...args) }));
 
 import { RecoverySettingsScreen } from '../src/features/settings/RecoverySettingsScreen';
+import { RecoveryTakeoverProvider } from '../src/features/settings/recovery/RecoveryTakeoverContext';
 import { I18nProvider } from '../src/shared/i18n';
 
 const SAFE_RESULT = {
@@ -63,7 +64,9 @@ const EMPTY_LIST = { destination: DEFAULT_DESTINATION.effectivePath, items: [] }
 function renderScreen(locale: 'en' | 'ar' = 'en') {
   render(
     <I18nProvider initialLocale={locale}>
-      <RecoverySettingsScreen sessionToken="session-token" />
+      <RecoveryTakeoverProvider>
+        <RecoverySettingsScreen sessionToken="session-token" />
+      </RecoveryTakeoverProvider>
     </I18nProvider>,
   );
 }
@@ -201,7 +204,9 @@ describe('WS-H-3 capabilities, mode, destination and status', () => {
     mockSettingAnd(undefined, { capabilities: NO_CAPABILITIES });
     const { container } = render(
       <I18nProvider initialLocale="en">
-        <RecoverySettingsScreen sessionToken="session-token" />
+        <RecoveryTakeoverProvider>
+          <RecoverySettingsScreen sessionToken="session-token" />
+        </RecoveryTakeoverProvider>
       </I18nProvider>,
     );
     await waitFor(() =>
@@ -220,7 +225,9 @@ describe('WS-H-3 capabilities, mode, destination and status', () => {
     mockSettingAnd(undefined, { capabilities: new Error('SESSION_INVALID') });
     const { container } = render(
       <I18nProvider initialLocale="en">
-        <RecoverySettingsScreen sessionToken="session-token" />
+        <RecoveryTakeoverProvider>
+          <RecoverySettingsScreen sessionToken="session-token" />
+        </RecoveryTakeoverProvider>
       </I18nProvider>,
     );
     await waitFor(() => expect(invokeMock).toHaveBeenCalled());

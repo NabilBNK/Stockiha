@@ -29,6 +29,8 @@ import { BackupList, type BackupListBusy, type BackupRowAction } from './recover
 import { BackupResultGrid } from './recovery/BackupResultGrid';
 import { BackupStatusLine } from './recovery/BackupStatusLine';
 import { DestinationBox } from './recovery/DestinationBox';
+import { useRecoveryTakeover } from './recovery/RecoveryTakeoverContext';
+import { RestoreConfirmDialog } from './recovery/RestoreConfirmDialog';
 import { formatDateTime, nextRequestId } from './recovery/recoveryCopy';
 import { RestoreTestResultGrid } from './recovery/RestoreTestResultGrid';
 
@@ -44,6 +46,7 @@ type LastResult =
 export function RecoverySettingsScreen({ sessionToken }: Props) {
   const { locale, t } = useI18n();
   const errorText = useErrorText();
+  const takeover = useRecoveryTakeover();
 
   // `undefined` = still loading (render nothing); `null` = the user may not
   // see this screen at all (no capability, or the call failed) (WS-H-3).
@@ -68,6 +71,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   const [createResult, setCreateResult] = useState<OperatorBackupValidationResult | null>(null);
   const [lastResult, setLastResult] = useState<LastResult>(null);
   const [confirmingTest, setConfirmingTest] = useState<BackupListItem | null>(null);
+  const [confirmingRestore, setConfirmingRestore] = useState<BackupListItem | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -90,6 +94,7 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
   const canCreate = usable && capabilities.canCreateBackup;
   const canValidate = usable && capabilities.canValidateBackup;
   const canVerify = usable && capabilities.canVerifyRestore;
+  const canRestoreLive = usable && capabilities.canRestoreLive;
 
   useEffect(() => {
     if (!canVerify) return;
@@ -345,6 +350,20 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
     }
   }
 
+  function startLiveRestore(confirmationText: string) {
+    if (!confirmingRestore) return;
+    const item = confirmingRestore;
+    setConfirmingRestore(null);
+    takeover.begin({
+      kind: 'LIVE',
+      sessionToken,
+      bundlePath: item.path,
+      bundleIdentifier: item.bundleIdentifier,
+      requestId: nextRequestId('live-restore'),
+      confirmationText,
+    });
+  }
+
   // WS-H-3: nothing is rendered until the capabilities are known, and
   // nothing at all for a user without any recovery permission (cashier).
   if (capabilities === undefined) return null;
@@ -427,10 +446,12 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
             canTest={canVerify}
             testPolicyEnabled={restoreEnabled === true}
             canCopy={canCreate}
+            canRestoreLive={canRestoreLive}
             busy={rowBusy}
             onCheck={(item) => void checkItem(item)}
             onTest={(item) => setConfirmingTest(item)}
             onCopy={(item) => void copyItem(item)}
+            onRestore={(item) => setConfirmingRestore(item)}
           />
 
           <div className="sk-recovery-box">
@@ -455,10 +476,12 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
               canTest={canVerify}
               testPolicyEnabled={restoreEnabled === true}
               canCopy={canCreate}
+              canRestoreLive={canRestoreLive}
               busy={rowBusy}
               onCheck={(item) => void checkItem(item)}
               onTest={(item) => setConfirmingTest(item)}
               onCopy={(item) => void copyItem(item)}
+              onRestore={(item) => setConfirmingRestore(item)}
             />
           ) : null}
 
@@ -511,6 +534,14 @@ export function RecoverySettingsScreen({ sessionToken }: Props) {
           cancelLabel={t('common.cancel')}
           onConfirm={() => void runTest(confirmingTest)}
           onCancel={() => setConfirmingTest(null)}
+        />
+      ) : null}
+
+      {confirmingRestore ? (
+        <RestoreConfirmDialog
+          item={confirmingRestore}
+          onConfirm={startLiveRestore}
+          onCancel={() => setConfirmingRestore(null)}
         />
       ) : null}
     </section>
