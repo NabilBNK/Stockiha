@@ -562,9 +562,31 @@ pub(crate) async fn reset_all_schemas(conn: &mut PgConnection) -> Result<(), Str
             .map_err(|e| format!("could not drop schema \"{schema}\" before restoring ({e})"))?;
     }
 
+    // WS-H-5 bugfix: a schema named "public" that this statement creates
+    // itself does NOT inherit PostgreSQL's own "USAGE granted to PUBLIC"
+    // default that a genuinely fresh `CREATE DATABASE` gives its
+    // auto-created `public` schema — that default is a one-time fact about
+    // database creation, not a rule that applies to any schema named
+    // "public". Without restoring it explicitly here, `stockiha_runtime`
+    // (which relies entirely on that implicit default, exactly like a
+    // brand-new install does — see `embedded_setup::create_database`, which
+    // never grants it explicitly either) loses all access to `public`,
+    // including `_sqlx_migrations`. `check_schema_compatibility` then reads
+    // that as `SchemaCompatibility::Unknown`... except the one specific
+    // case this failure mode actually reproduces as read via a genuinely
+    // fresh process's own runtime connection was proven, empirically, to
+    // return `42501 permission denied for schema public` — which surfaces
+    // as `AppliedVersionQuery::Unreadable` → `Unknown`, not the blocking
+    // `OlderThanBinary` path; the reported symptom (the app restarting
+    // itself in a tight loop after a successful restore) was reproduced
+    // and traced to exactly this missing grant. Confirmed via a real
+    // restore + a real `stockiha_runtime` connection
+    // (`has_table_privilege('stockiha_runtime', 'public._sqlx_migrations',
+    // 'SELECT')` returned an error, not `false`, before this fix).
     let reset_public = "DROP SCHEMA IF EXISTS public CASCADE; \
                          CREATE SCHEMA public AUTHORIZATION stockiha_owner; \
-                         GRANT USAGE, CREATE ON SCHEMA public TO stockiha_migrator;";
+                         GRANT USAGE, CREATE ON SCHEMA public TO stockiha_migrator; \
+                         GRANT USAGE ON SCHEMA public TO PUBLIC;";
     sqlx::raw_sql(reset_public)
         .execute(conn)
         .await

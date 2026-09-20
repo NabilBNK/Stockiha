@@ -1581,4 +1581,95 @@ mod tests {
         test_support::stop_server(&bin_dir, &pgdata);
         let _ = std::fs::remove_dir_all(&app_data_dir);
     }
+
+    /// Regression test for a real manual-testing bug: the app restarting
+    /// itself in a tight loop after an otherwise-successful live restore.
+    /// Every other assertion in this file connects as migrator; this is the
+    /// only one that reconnects as `stockiha_runtime` — exactly the role a
+    /// freshly-restarted app process's own `get_setup_status` uses — and
+    /// checks the schema-compatibility view it actually sees. Traced to
+    /// `reset_all_schemas`'s `public` schema reset dropping the implicit
+    /// "USAGE granted to PUBLIC" default a genuinely fresh database has
+    /// (see the fix's own comment in `safe_upgrade.rs`), which left
+    /// `stockiha_runtime` unable to read `_sqlx_migrations` after a
+    /// restore-driven schema reset.
+    #[tokio::test]
+    #[ignore = "spawns real, disposable PostgreSQL instances; run explicitly with -- --ignored"]
+    async fn runtime_role_can_read_schema_state_after_live_restore() {
+        let app_data_dir = test_support::temp_app_data_dir_for_tests("restore-runtime-grant");
+        let (bin_dir, pgdata, port) =
+            test_support::provision_fresh_instance(&app_data_dir, 58830).await;
+        let context = ctx(&app_data_dir, bin_dir.clone(), pgdata.clone());
+        let backups_dir = destination::resolve(None, &context, DestinationPurpose::Manual)
+            .unwrap()
+            .path;
+        let safety_dir = app_data_dir.join("safety-backups");
+        std::fs::create_dir_all(&safety_dir).unwrap();
+
+        let bundle_dir = make_backup(
+            &context,
+            &backups_dir,
+            &bundle_name(time::OffsetDateTime::now_utc()),
+        )
+        .await;
+
+        let outcome = run_restore(
+            &context,
+            &bundle_dir,
+            RestoreKind::Live {
+                safety_destination: safety_dir,
+                actor_username: None,
+                workstation_id: None,
+            },
+            noop_close_pool,
+            RestoreFaults::default(),
+            no_progress,
+        )
+        .await;
+        match &outcome {
+            RestoreOutcome::Succeeded { .. } => {}
+            other => panic!("expected Succeeded, got {}", debug_outcome(other)),
+        }
+
+        // Exactly what a freshly-restarted app process's local_config::load
+        // would build: the RUNTIME role's own connection.
+        let runtime_outcome = crate::infrastructure::local_config::load(&app_data_dir);
+        let runtime_options = match runtime_outcome {
+            crate::infrastructure::local_config::LocalConfigOutcome::Loaded { options, .. } => {
+                *options
+            }
+            _ => panic!("database.json must still be loadable after a live restore"),
+        };
+        let mut runtime_conn = PgConnection::connect_with(&runtime_options)
+            .await
+            .expect("runtime role must still be able to connect after a live restore");
+
+        let has_select: bool = sqlx::query_scalar(
+            "SELECT has_table_privilege('stockiha_runtime', 'public._sqlx_migrations', 'SELECT')",
+        )
+        .fetch_one(&mut runtime_conn)
+        .await
+        .expect("has_table_privilege query must succeed");
+        println!("DEBUG: stockiha_runtime has SELECT on _sqlx_migrations = {has_select}");
+
+        let compat = schema_version::check_schema_compatibility(&mut runtime_conn).await;
+        println!("DEBUG: check_schema_compatibility via RUNTIME connection = {compat:?}");
+
+        let _ = runtime_conn.close().await;
+
+        assert!(
+            has_select,
+            "stockiha_runtime lost its SELECT grant on _sqlx_migrations after a live restore"
+        );
+        assert_eq!(
+            compat,
+            schema_version::SchemaCompatibility::UpToDate,
+            "the runtime role's own view of schema compatibility must be UpToDate after a live restore"
+        );
+
+        assert_no_drill_folders(&pgdata);
+        test_support::stop_server(&bin_dir, &pgdata);
+        let _ = std::fs::remove_dir_all(&app_data_dir);
+        let _ = port;
+    }
 }
