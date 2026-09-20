@@ -361,6 +361,7 @@ pub fn run() {
             commands::recovery::inspect_backup_for_fresh_install,
             commands::recovery::restore_backup_fresh_install,
             commands::recovery::restart_after_recovery,
+            commands::recovery::run_automatic_backup,
             commands::setup::get_setup_status,
             commands::setup::bootstrap_first_admin,
             commands::catalog::create_product,

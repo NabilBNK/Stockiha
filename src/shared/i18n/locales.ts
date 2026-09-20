@@ -89,6 +89,10 @@ const fr = {
   'update.installing': "Installation en cours... l'application va red\u00e9marrer.",
   'update.blockedByCashSession': "Fermez d'abord votre session de caisse pour installer la mise \u00e0 jour.",
   'update.failed': "La mise \u00e0 jour a \u00e9chou\u00e9. L'application continue de fonctionner normalement avec la version actuelle.",
+  'update.downloading': 'T\u00e9l\u00e9chargement de la mise \u00e0 jour\u2026',
+  'update.backingUp': 'Sauvegarde de s\u00e9curit\u00e9 avant la mise \u00e0 jour\u2026 cela peut prendre une ou deux minutes.',
+  'update.backupFailed': "La mise \u00e0 jour n\u2019a pas \u00e9t\u00e9 install\u00e9e car la sauvegarde de s\u00e9curit\u00e9 a \u00e9chou\u00e9. V\u00e9rifiez le dossier de sauvegarde dans les Param\u00e8tres, puis r\u00e9essayez.",
+  'update.loginRequired': 'Connectez-vous avant d\u2019installer une mise \u00e0 jour.',
   'backend.unavailable.notConfigured.title': 'Configuration non effectu\u00e9e',
   'backend.unavailable.notConfigured.body': "Stockiha n'a pas encore re\u00e7u les informations de connexion \u00e0 la base de donn\u00e9es de la boutique. Si votre fournisseur est en train de configurer l'application, demandez-lui de terminer la configuration, puis r\u00e9essayez.",
   'backend.unavailable.invalidConfiguration.title': 'Probl\u00e8me avec le fichier de configuration',
@@ -658,6 +662,8 @@ const fr = {
   'recovery.freshInstallRestoreButton': 'Restaurer',
   'recovery.back': 'Retour',
   'recovery.restoreFromBackupInstead': 'Restaurer depuis une sauvegarde',
+  'recovery.overdueWarning': 'Aucune sauvegarde n’a été effectuée depuis 7 jours.',
+  'recovery.overdueAction': 'Ouvrir les paramètres de sauvegarde',
 };
 
 export type MessageKey = keyof typeof fr;
@@ -744,6 +750,14 @@ const ar: Record<MessageKey, string> = {
   'update.installing': '\u062c\u0627\u0631\u064d \u0627\u0644\u062a\u062b\u0628\u064a\u062a... \u0633\u064a\u064f\u0639\u0627\u062f \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u062a\u0637\u0628\u064a\u0642.',
   'update.blockedByCashSession': '\u0623\u063a\u0644\u0642 \u062c\u0644\u0633\u0629 \u0627\u0644\u0635\u0646\u062f\u0648\u0642 \u0623\u0648\u0644\u0627\u064b \u0644\u062a\u062b\u0628\u064a\u062a \u0627\u0644\u062a\u062d\u062f\u064a\u062b.',
   'update.failed': '\u0641\u0634\u0644 \u0627\u0644\u062a\u062d\u062f\u064a\u062b. \u064a\u0633\u062a\u0645\u0631 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0641\u064a \u0627\u0644\u0639\u0645\u0644 \u0628\u0634\u0643\u0644 \u0637\u0628\u064a\u0639\u064a \u0628\u0627\u0644\u0625\u0635\u062f\u0627\u0631 \u0627\u0644\u062d\u0627\u0644\u064a.',
+  // TODO(WS-H-7): translate to Arabic.
+  'update.downloading': 'Downloading the update\u2026',
+  // TODO(WS-H-7): translate to Arabic.
+  'update.backingUp': 'Saving a safety backup before updating\u2026 this can take a minute or two.',
+  // TODO(WS-H-7): translate to Arabic.
+  'update.backupFailed': 'The update was not installed because the safety backup failed. Check the backup folder in Settings, then try again.',
+  // TODO(WS-H-7): translate to Arabic.
+  'update.loginRequired': 'Sign in before installing an update.',
   'backend.unavailable.notConfigured.title': '\u0644\u0645 \u064a\u062a\u0645 \u0627\u0644\u0625\u0639\u062f\u0627\u062f \u0628\u0639\u062f',
   'backend.unavailable.notConfigured.body': '\u0644\u0645 \u064a\u062a\u0645 \u0628\u0639\u062f \u062a\u0632\u0648\u064a\u062f Stockiha \u0628\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0627\u062a\u0635\u0627\u0644 \u0628\u0642\u0627\u0639\u062f\u0629 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0645\u062d\u0644. \u0625\u0630\u0627 \u0643\u0627\u0646 \u0627\u0644\u0645\u0648\u0631\u0651\u062f \u0628\u0635\u062f\u062f \u0625\u0639\u062f\u0627\u062f \u0627\u0644\u062a\u0637\u0628\u064a\u0642\u060c \u0641\u0627\u0637\u0644\u0628 \u0645\u0646\u0647 \u0625\u062a\u0645\u0627\u0645 \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u060c \u062b\u0645 \u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629.',
   'backend.unavailable.invalidConfiguration.title': '\u0645\u0634\u0643\u0644\u0629 \u0641\u064a \u0645\u0644\u0641 \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a',
@@ -1397,6 +1411,10 @@ const ar: Record<MessageKey, string> = {
   'recovery.back': 'Back',
   // TODO(WS-H-7)
   'recovery.restoreFromBackupInstead': 'Restore from a backup instead',
+  // TODO(WS-H-7): translate to Arabic.
+  'recovery.overdueWarning': 'No backup has been made in the last 7 days.',
+  // TODO(WS-H-7): translate to Arabic.
+  'recovery.overdueAction': 'Open backup settings',
 };
 
 const en: Record<MessageKey, string> = {
@@ -1481,6 +1499,10 @@ const en: Record<MessageKey, string> = {
   'update.installing': 'Installing... the app will restart.',
   'update.blockedByCashSession': 'Close your cash session first to install the update.',
   'update.failed': 'The update failed. The app keeps working normally on the current version.',
+  'update.downloading': 'Downloading the update…',
+  'update.backingUp': 'Saving a safety backup before updating… this can take a minute or two.',
+  'update.backupFailed': 'The update was not installed because the safety backup failed. Check the backup folder in Settings, then try again.',
+  'update.loginRequired': 'Sign in before installing an update.',
   'backend.unavailable.notConfigured.title': 'Not set up yet',
   'backend.unavailable.notConfigured.body': "Stockiha has not been given the shop's database connection details yet. If your supplier is setting this up, ask them to finish configuration, then retry.",
   'backend.unavailable.invalidConfiguration.title': 'Settings file problem',
@@ -2050,6 +2072,8 @@ const en: Record<MessageKey, string> = {
   'recovery.freshInstallRestoreButton': 'Restore',
   'recovery.back': 'Back',
   'recovery.restoreFromBackupInstead': 'Restore from a backup instead',
+  'recovery.overdueWarning': 'No backup has been made in the last 7 days.',
+  'recovery.overdueAction': 'Open backup settings',
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { fr, ar, en };

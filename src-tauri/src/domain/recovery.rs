@@ -269,6 +269,48 @@ pub(crate) struct BackupStatus {
     pub(crate) last_restore_bundle: Option<String>,
 }
 
+/// Raw shape of `operations.get_backup_status` (plan §5.6 step 8), whose
+/// `jsonb_build_object` keys are the SQL function's own snake_case column
+/// names, not the wire's camelCase. WS-H-6 bugfix: deserializing the SQL
+/// result directly into [`BackupStatus`] (which carries
+/// `#[serde(rename_all = "camelCase")]` for the *outgoing* IPC shape) always
+/// silently produced every field as `None` via `#[serde(default)]` — no
+/// deserialize error, just quietly wrong data — because `lastSuccessAt`
+/// never matched the SQL's actual `last_success_at` key. That made "Last
+/// successful backup" permanently read "never" in the UI since WS-H-3, and
+/// made WS-H-6's own `DAILY` due-check always treat a backup as due, since
+/// its skip path is guarded by `Some(last_success_at)`, never reached
+/// against an always-`None` field. Same fix shape as [`RecoveryCapabilitiesRow`]
+/// (already correct there because it has no `rename_all` attribute at all).
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct BackupStatusRow {
+    #[serde(default)]
+    pub(crate) last_success_at: Option<String>,
+    #[serde(default)]
+    pub(crate) last_success_bundle: Option<String>,
+    #[serde(default)]
+    pub(crate) last_failure_at: Option<String>,
+    #[serde(default)]
+    pub(crate) last_failure_code: Option<String>,
+    #[serde(default)]
+    pub(crate) last_restore_at: Option<String>,
+    #[serde(default)]
+    pub(crate) last_restore_bundle: Option<String>,
+}
+
+impl From<BackupStatusRow> for BackupStatus {
+    fn from(row: BackupStatusRow) -> Self {
+        BackupStatus {
+            last_success_at: row.last_success_at,
+            last_success_bundle: row.last_success_bundle,
+            last_failure_at: row.last_failure_at,
+            last_failure_code: row.last_failure_code,
+            last_restore_at: row.last_restore_at,
+            last_restore_bundle: row.last_restore_bundle,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // WS-H-4: backup list and copy-to-folder (plan §5.8/§5.8.1).
 // ---------------------------------------------------------------------------
@@ -361,6 +403,42 @@ impl RestoreBackupFreshInstallRequest {
     pub(crate) fn validate(&self) -> Result<(), String> {
         validate_path_field(&self.bundle_path, "bundlePath")
     }
+}
+
+// ---------------------------------------------------------------------------
+// WS-H-6: automatic backups (plan H6-01/H6-03).
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RunAutomaticBackupRequest {
+    pub(crate) request_id: String,
+    /// `"DAILY"` or `"PRE_UPDATE"`, case-sensitive.
+    pub(crate) reason: String,
+}
+
+impl RunAutomaticBackupRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_request_id(&self.request_id)?;
+        match self.reason.trim() {
+            "DAILY" | "PRE_UPDATE" => Ok(()),
+            _ => Err("reason must be DAILY or PRE_UPDATE".to_string()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AutomaticBackupResponse {
+    /// `"CREATED"` or `"SKIPPED"`.
+    pub(crate) status: String,
+    /// `"MODE_UNSUPPORTED" | "NOT_DUE" | "BUSY"`, present only when skipped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) skip_reason: Option<String>,
+    /// Present only when `status == "CREATED"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) result: Option<OperatorBackupCreationResult>,
+    pub(crate) used_fallback_destination: bool,
 }
 
 #[cfg(test)]
@@ -510,6 +588,33 @@ mod tests {
         assert_eq!(empty, status);
         let json = serde_json::to_string(&status).unwrap();
         assert!(json.contains("\"lastSuccessAt\":null"));
+    }
+
+    /// WS-H-6 bugfix: `operations.get_backup_status`'s real SQL output has
+    /// snake_case keys (`jsonb_build_object('last_success_at', ...)`, not
+    /// `lastSuccessAt`) - deserializing that directly into `BackupStatus`
+    /// (camelCase-only) silently produced `None` for every field via
+    /// `#[serde(default)]`, with no error to catch it. `BackupStatusRow` has
+    /// no `rename_all`, so it matches the SQL's real keys, and converting it
+    /// into `BackupStatus` is what the application layer must do.
+    #[test]
+    fn backup_status_row_parses_the_sql_functions_real_snake_case_keys() {
+        let row: BackupStatusRow = serde_json::from_str(
+            r#"{"last_success_at":"2026-09-20T12:00:00Z","last_success_bundle":"GestStock-Backup-20260920-120000",
+                "last_failure_at":null,"last_failure_code":null,
+                "last_restore_at":null,"last_restore_bundle":null}"#,
+        )
+        .unwrap();
+        assert_eq!(row.last_success_at.as_deref(), Some("2026-09-20T12:00:00Z"));
+        let status: BackupStatus = row.into();
+        assert_eq!(
+            status.last_success_at.as_deref(),
+            Some("2026-09-20T12:00:00Z")
+        );
+        assert_eq!(
+            status.last_success_bundle.as_deref(),
+            Some("GestStock-Backup-20260920-120000")
+        );
     }
 
     #[test]
@@ -701,5 +806,81 @@ mod tests {
     fn restore_started_serializes_camel_case() {
         let value = serde_json::to_value(RestoreStarted { started: true }).unwrap();
         assert_eq!(value["started"], true);
+    }
+
+    // ---- WS-H-6: run_automatic_backup request validation -------------------
+
+    fn valid_automatic_backup_request(reason: &str) -> RunAutomaticBackupRequest {
+        RunAutomaticBackupRequest {
+            request_id: "auto-daily-20260920-0001".to_string(),
+            reason: reason.to_string(),
+        }
+    }
+
+    #[test]
+    fn accepts_daily_and_pre_update_reasons() {
+        assert!(valid_automatic_backup_request("DAILY").validate().is_ok());
+        assert!(valid_automatic_backup_request("PRE_UPDATE")
+            .validate()
+            .is_ok());
+    }
+
+    #[test]
+    fn rejects_a_lowercase_reason() {
+        assert!(valid_automatic_backup_request("daily").validate().is_err());
+    }
+
+    #[test]
+    fn rejects_an_empty_reason() {
+        assert!(valid_automatic_backup_request("").validate().is_err());
+    }
+
+    #[test]
+    fn rejects_an_unknown_reason() {
+        assert!(valid_automatic_backup_request("WEEKLY").validate().is_err());
+    }
+
+    #[test]
+    fn rejects_a_seven_character_request_id() {
+        let mut request = valid_automatic_backup_request("DAILY");
+        request.request_id = "1234567".to_string();
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn accepts_a_128_character_request_id() {
+        let mut request = valid_automatic_backup_request("DAILY");
+        request.request_id = "a".repeat(128);
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_a_129_character_request_id() {
+        let mut request = valid_automatic_backup_request("DAILY");
+        request.request_id = "a".repeat(129);
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn automatic_backup_response_omits_absent_optional_fields() {
+        let created = AutomaticBackupResponse {
+            status: "CREATED".to_string(),
+            skip_reason: None,
+            result: None,
+            used_fallback_destination: true,
+        };
+        let json = serde_json::to_string(&created).unwrap();
+        assert!(!json.contains("skipReason"));
+        assert!(!json.contains("\"result\""));
+        assert!(json.contains("\"usedFallbackDestination\":true"));
+
+        let skipped = AutomaticBackupResponse {
+            status: "SKIPPED".to_string(),
+            skip_reason: Some("NOT_DUE".to_string()),
+            result: None,
+            used_fallback_destination: false,
+        };
+        let value = serde_json::to_value(&skipped).unwrap();
+        assert_eq!(value["skipReason"], "NOT_DUE");
     }
 }

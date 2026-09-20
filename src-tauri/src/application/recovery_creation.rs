@@ -21,15 +21,19 @@ use super::recovery::BACKUP_ROOT_ENV;
 
 static STAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// WS-H-6 (H6-01): shared with `application::recovery_embedded`'s automatic
+/// backup flow, which parses the identically shaped envelope returned by
+/// `operations.begin_automatic_backup_attempt` — widened to `pub(crate)`
+/// (fields included) without changing this struct's body.
 #[derive(Deserialize)]
-struct CreationAttemptEnvelope {
-    attempt_id: i64,
-    is_replay: bool,
-    status: String,
-    bundle_identifier: String,
-    error_code: Option<String>,
-    result: Option<JsonValue>,
-    current_schema_version: String,
+pub(crate) struct CreationAttemptEnvelope {
+    pub(crate) attempt_id: i64,
+    pub(crate) is_replay: bool,
+    pub(crate) status: String,
+    pub(crate) bundle_identifier: String,
+    pub(crate) error_code: Option<String>,
+    pub(crate) result: Option<JsonValue>,
+    pub(crate) current_schema_version: String,
 }
 
 pub(crate) enum CreationAttempt {

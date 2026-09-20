@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 import { COMMANDS } from './commands';
 import type {
+  AutomaticBackupResponse,
   BackupDestinationSetting,
   BackupListItem,
   BackupStatus,
@@ -19,6 +20,7 @@ import type {
   RestoreBackupLiveRequest,
   RestoreStarted,
   RestoreVerificationSetting,
+  RunAutomaticBackupRequest,
   UpdateBackupDestinationRequest,
   UpdateBackupDestinationResult,
   ValidateOperatorBackupRequest,
@@ -230,6 +232,22 @@ export async function restoreBackupFreshInstall(
 export async function restartAfterRecovery(): Promise<void> {
   try {
     return await invoke<void>(COMMANDS.RESTART_AFTER_RECOVERY);
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+// WS-H-6: automatic backups (daily, pre-update).
+
+export async function runAutomaticBackup(
+  sessionToken: string,
+  request: RunAutomaticBackupRequest,
+): Promise<AutomaticBackupResponse> {
+  try {
+    return await invoke<AutomaticBackupResponse>(COMMANDS.RUN_AUTOMATIC_BACKUP, {
+      sessionToken,
+      request,
+    });
   } catch (error: unknown) {
     throw new GatewayError(parseTauriError(error));
   }

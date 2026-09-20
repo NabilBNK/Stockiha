@@ -10,16 +10,30 @@ import { useState } from 'react';
 
 import { Banner, Button } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
+import { useSession } from '../../shared/session/SessionContext';
 import { useAppUpdate } from './useAppUpdate';
 
 export interface UpdateBannerProps {
   cashSessionOpen: boolean;
 }
 
+const PHASE_TEXT_KEY = {
+  downloading: 'update.downloading',
+  backing_up: 'update.backingUp',
+  installing: 'update.installing',
+} as const;
+
+const PHASE_TEST_ID = {
+  downloading: 'update-banner-downloading',
+  backing_up: 'update-banner-backing-up',
+  installing: 'update-banner-installing',
+} as const;
+
 export function UpdateBanner({ cashSessionOpen }: UpdateBannerProps) {
   const { t } = useI18n();
-  const { available, mode, installing, error, canInstallNow, performUpdate, dismiss } =
-    useAppUpdate({ cashSessionOpen });
+  const { user } = useSession();
+  const { available, mode, phase, errorKind, error, canInstallNow, performUpdate, dismiss } =
+    useAppUpdate({ cashSessionOpen, sessionToken: user?.token ?? null });
   const [dismissedForSession, setDismissedForSession] = useState(false);
 
   if (!available) return null;
@@ -37,8 +51,8 @@ export function UpdateBanner({ cashSessionOpen }: UpdateBannerProps) {
           ? t('update.forcedBody', { version })
           : t('update.optionalBody', { version })}
       </p>
-      {installing ? (
-        <p data-testid="update-banner-installing">{t('update.installing')}</p>
+      {phase !== 'idle' ? (
+        <p data-testid={PHASE_TEST_ID[phase]}>{t(PHASE_TEXT_KEY[phase])}</p>
       ) : (
         <div className="sk-modal__actions">
           <Button
@@ -67,7 +81,21 @@ export function UpdateBanner({ cashSessionOpen }: UpdateBannerProps) {
           {t('update.blockedByCashSession')}
         </p>
       ) : null}
-      {error ? (
+      {errorKind === 'backup' ? (
+        <Banner tone="error" testId="update-banner-backup-failed">
+          <p>{t('update.backupFailed')}</p>
+          <Button type="button" variant="secondary" onClick={dismiss} data-testid="update-banner-error-dismiss">
+            {t('common.retry')}
+          </Button>
+        </Banner>
+      ) : errorKind === 'login_required' ? (
+        <Banner tone="error" testId="update-banner-login-required">
+          <p>{t('update.loginRequired')}</p>
+          <Button type="button" variant="secondary" onClick={dismiss} data-testid="update-banner-error-dismiss">
+            {t('common.retry')}
+          </Button>
+        </Banner>
+      ) : error ? (
         <Banner tone="error" testId="update-banner-error">
           <p>{t('update.failed')}</p>
           <Button type="button" variant="secondary" onClick={dismiss} data-testid="update-banner-error-dismiss">

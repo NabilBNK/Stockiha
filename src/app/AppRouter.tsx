@@ -18,6 +18,11 @@ import type { CustomerCapabilities } from '../shared/ipc/customerDto';
 import { AppDataProvider, useAppData } from './AppDataContext';
 import { LiveRestoreScreen } from '../features/settings/recovery/LiveRestoreScreen';
 import { useRecoveryTakeover } from '../features/settings/recovery/RecoveryTakeoverContext';
+import {
+  getBackupStatus,
+  getRecoveryCapabilities,
+  runAutomaticBackup,
+} from '../shared/ipc/recoveryGateway';
 import { AppShell, type AppView } from './AppShell';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
@@ -87,6 +92,13 @@ const OPENING_SETUP_COPY: Record<Locale, OpeningSetupCopy> = {
     applicationAction: 'مراجعة وتطبيق الوضعية',
   },
 };
+
+// WS-H-6: the daily automatic backup fires at most once per app process, 60
+// seconds after the first login of that process — module-level, not
+// component state, so remounting `AuthenticatedApp` (e.g. a settings view
+// re-render elsewhere in the tree) never re-arms it or fires it twice.
+let dailyBackupTimer: number | null = null;
+let dailyBackupDone = false;
 
 export function AppRouter() {
   const { user } = useSession();
@@ -205,6 +217,11 @@ function AuthenticatedApp() {
    * failure here must never affect the authenticated app in any way.
    */
   const [configWarning, setConfigWarning] = useState<ipc.ConfigWarning | null>(null);
+  // WS-H-6: shown when this admin's install has no successful backup in the
+  // last 7 days (or none at all). `false` whenever the current session
+  // cannot even create a backup, or the check itself fails — never surfaced
+  // as an error.
+  const [backupOverdue, setBackupOverdue] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -220,6 +237,63 @@ function AuthenticatedApp() {
       active = false;
     };
   }, []);
+
+  const refreshBackupOverdueWarning = useCallback(async () => {
+    const token = user?.token;
+    if (!token) {
+      setBackupOverdue(false);
+      return;
+    }
+    try {
+      const capabilities = await getRecoveryCapabilities(token);
+      if (!capabilities.canCreateBackup) {
+        setBackupOverdue(false);
+        return;
+      }
+      const status = await getBackupStatus(token);
+      if (!status.lastSuccessAt) {
+        setBackupOverdue(true);
+        return;
+      }
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+      setBackupOverdue(Date.now() - new Date(status.lastSuccessAt).getTime() > sevenDaysMs);
+    } catch {
+      // Any IPC error here renders no banner - never a raw error.
+      setBackupOverdue(false);
+    }
+  }, [user?.token]);
+
+  useEffect(() => {
+    void refreshBackupOverdueWarning();
+  }, [refreshBackupOverdueWarning]);
+
+  // WS-H-6: the daily automatic backup, 60 seconds after the first login of
+  // this app process, at most once regardless of remounts (module-level
+  // `dailyBackupDone`/`dailyBackupTimer`, not component state).
+  useEffect(() => {
+    const token = user?.token;
+    if (!token || dailyBackupDone || dailyBackupTimer !== null) {
+      return;
+    }
+    dailyBackupTimer = window.setTimeout(() => {
+      dailyBackupDone = true;
+      dailyBackupTimer = null;
+      void runAutomaticBackup(token, {
+        requestId: `auto-daily-${Date.now()}`,
+        reason: 'DAILY',
+      })
+        .catch(() => {
+          // Swallowed - never a popup, never blocks the UI.
+        })
+        .finally(() => void refreshBackupOverdueWarning());
+    }, 60_000);
+    return () => {
+      if (dailyBackupTimer !== null) {
+        window.clearTimeout(dailyBackupTimer);
+        dailyBackupTimer = null;
+      }
+    };
+  }, [user?.token, refreshBackupOverdueWarning]);
 
   const refreshOpeningStateStatus = useCallback(async () => {
     const token = user?.token;
@@ -412,6 +486,14 @@ function AuthenticatedApp() {
       {configWarning === 'INSECURE_PERMISSIONS' ? (
         <Banner tone="warning" testId="db-config-permission-warning">
           {t('backend.configWarning.insecurePermissions')}
+        </Banner>
+      ) : null}
+      {backupOverdue ? (
+        <Banner tone="warning" testId="backup-overdue-warning">
+          <p>{t('recovery.overdueWarning')}</p>
+          <Button type="button" onClick={() => setView('settings')}>
+            {t('recovery.overdueAction')}
+          </Button>
         </Banner>
       ) : null}
       {view === 'dashboard' && <DashboardScreen />}

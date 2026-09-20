@@ -15,11 +15,11 @@ use serde_json::Value as JsonValue;
 use sqlx::{query_scalar, PgPool};
 
 use crate::domain::recovery::{
-    BackupDestinationSetting, BackupStatus, CopyBackupToResult, CreateOperatorBackupRequest,
-    ListBackupsResponse, OperatorBackupCreationResult, OperatorBackupValidationResult,
-    OperatorRestoreVerificationResult, RecoveryCapabilities, RecoveryCapabilitiesRow,
-    UpdateBackupDestinationResult, ValidateOperatorBackupRequest,
-    VerifyOperatorBackupRestoreRequest,
+    AutomaticBackupResponse, BackupDestinationSetting, BackupStatus, CopyBackupToResult,
+    CreateOperatorBackupRequest, ListBackupsResponse, OperatorBackupCreationResult,
+    OperatorBackupValidationResult, OperatorRestoreVerificationResult, RecoveryCapabilities,
+    RecoveryCapabilitiesRow, RunAutomaticBackupRequest, UpdateBackupDestinationResult,
+    ValidateOperatorBackupRequest, VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::AppError;
 use crate::infrastructure::backup_proof;
@@ -30,11 +30,13 @@ use crate::infrastructure::recovery_engine::copy;
 use crate::infrastructure::recovery_engine::destination::{self, DestinationPurpose};
 use crate::infrastructure::recovery_engine::drill;
 use crate::infrastructure::recovery_engine::errors::{codes, EngineError};
+use crate::infrastructure::recovery_engine::live;
 use crate::infrastructure::recovery_engine::log;
 use crate::infrastructure::recovery_engine::mode::EmbeddedRecoveryContext;
+use crate::infrastructure::recovery_engine::retention;
 
 use super::recovery::{self, RestoreVerificationAttempt, ValidationAttempt};
-use super::recovery_creation::{self, CreationAttempt};
+use super::recovery_creation::{self, CreationAttempt, CreationAttemptEnvelope};
 
 /// Two backups started in the same second collide on the clock-based bundle
 /// name (unique index + folder check). Retry with the next second, at most
@@ -76,8 +78,12 @@ pub(crate) async fn fetch_backup_status(
         .fetch_one(pool)
         .await
         .map_err(AppError::from_posting_error)?;
-    serde_json::from_value(value)
-        .map_err(|error| AppError::internal(format!("failed to parse backup status: {error}")))
+    // See `BackupStatusRow`'s doc comment: the SQL result's keys are
+    // snake_case, `BackupStatus` itself is camelCase-only (the outgoing IPC
+    // shape) - deserializing straight into it silently drops every field.
+    let row: crate::domain::recovery::BackupStatusRow = serde_json::from_value(value)
+        .map_err(|error| AppError::internal(format!("failed to parse backup status: {error}")))?;
+    Ok(row.into())
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +276,240 @@ pub(crate) async fn create_manual_backup(
                 &error,
             )
             .await;
+            Err(error)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Automatic backup (EMBEDDED) — plan H6-01, §5.10 F6/F7.
+// ---------------------------------------------------------------------------
+
+/// How long since the last successful backup before a `DAILY` automatic
+/// backup is due (ruling R12).
+const DAILY_DUE_AFTER_HOURS: i64 = 20;
+
+pub(crate) async fn run_automatic_backup(
+    pool: &PgPool,
+    session_token: &str,
+    ctx: &EmbeddedRecoveryContext,
+    request: RunAutomaticBackupRequest,
+) -> Result<AutomaticBackupResponse, AppError> {
+    request
+        .validate()
+        .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
+    let kind = match request.reason.trim() {
+        "DAILY" => BackupKind::Daily,
+        "PRE_UPDATE" => BackupKind::PreUpdate,
+        other => {
+            return Err(AppError::ValidationError {
+                diagnostic: format!("unknown automatic backup reason '{other}'"),
+            })
+        }
+    };
+
+    // Due check: DAILY only, PRE_UPDATE always proceeds.
+    if kind == BackupKind::Daily {
+        let status = fetch_backup_status(pool, session_token).await?;
+        if let Some(last_success_at) = status.last_success_at.as_deref() {
+            match time::OffsetDateTime::parse(
+                last_success_at,
+                &time::format_description::well_known::Rfc3339,
+            ) {
+                Ok(last_success) => {
+                    let age = time::OffsetDateTime::now_utc() - last_success;
+                    // A negative age (clock moved backwards) always falls
+                    // through as due; only a non-negative age under the
+                    // threshold is skipped.
+                    if !age.is_negative() && age < time::Duration::hours(DAILY_DUE_AFTER_HOURS) {
+                        return Ok(AutomaticBackupResponse {
+                            status: "SKIPPED".to_string(),
+                            skip_reason: Some("NOT_DUE".to_string()),
+                            result: None,
+                            used_fallback_destination: false,
+                        });
+                    }
+                }
+                Err(parse_error) => {
+                    log::append(
+                        &ctx.app_data_dir,
+                        "AUTO_BACKUP",
+                        &format!(
+                            "parse of last_success_at failed (value={last_success_at:?}, error={parse_error}) - treating as due"
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    // Begin the audit attempt, with same-second collision retry.
+    let mut attempts = 0;
+    let (attempt_id, bundle_identifier) = loop {
+        attempts += 1;
+        let candidate = backup_proof::bundle_directory_name(time::OffsetDateTime::now_utc());
+        let value: JsonValue =
+            match query_scalar("SELECT operations.begin_automatic_backup_attempt($1, $2, $3)")
+                .bind(session_token)
+                .bind(request.request_id.trim())
+                .bind(&candidate)
+                .fetch_one(pool)
+                .await
+            {
+                Ok(value) => value,
+                Err(error) => match AppError::from_posting_error(error) {
+                    AppError::IdempotencyConflict { .. }
+                        if attempts < IDENTIFIER_COLLISION_ATTEMPTS =>
+                    {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        continue;
+                    }
+                    AppError::IdempotencyConflict { .. } => {
+                        return Err(AppError::BackupCreationFailed {
+                            diagnostic: codes::BACKUP_IDENTIFIER_COLLISION.to_string(),
+                        });
+                    }
+                    other => return Err(other),
+                },
+            };
+        let envelope: CreationAttemptEnvelope = serde_json::from_value(value).map_err(|error| {
+            AppError::internal(format!("failed to parse automatic backup attempt: {error}"))
+        })?;
+        match envelope.status.as_str() {
+            "SUCCEEDED" => {
+                let result = envelope.result.ok_or_else(|| {
+                    AppError::internal("completed automatic backup attempt has no result metadata")
+                })?;
+                let parsed: OperatorBackupCreationResult =
+                    serde_json::from_value(result).map_err(|error| {
+                        AppError::internal(format!(
+                            "failed to parse completed automatic backup result: {error}"
+                        ))
+                    })?;
+                return Ok(AutomaticBackupResponse {
+                    status: "CREATED".to_string(),
+                    skip_reason: None,
+                    result: Some(parsed),
+                    used_fallback_destination: false,
+                });
+            }
+            "FAILED" => {
+                return Err(AppError::BackupCreationFailed {
+                    diagnostic: envelope
+                        .error_code
+                        .unwrap_or_else(|| "BACKUP_CREATION_FAILED".to_string()),
+                })
+            }
+            "STARTED" => break (envelope.attempt_id, envelope.bundle_identifier),
+            other => {
+                return Err(AppError::internal(format!(
+                    "unknown automatic backup attempt status: {other}"
+                )))
+            }
+        }
+    };
+
+    // Resolve the destination without the permissioned SQL function: a
+    // cashier's session may be the one running this (clicking Install), and
+    // `operations.get_backup_destination_setting` requires
+    // CREATE_BACKUP_BUNDLE. Read the stored path through a migrator
+    // connection instead (WS-H-5 already added this helper's connection
+    // shape in `begin_live_restore`).
+    let outcome = async {
+        let Some(info) =
+            crate::infrastructure::local_config::load_migrator_connection_info(&ctx.app_data_dir)
+        else {
+            return Err(EngineError::new(
+                codes::BACKUP_SCHEMA_VERSION_UNREADABLE,
+                "no migrator credential",
+            )
+            .to_app_error());
+        };
+        let mut conn = live::migrator_connection(&info)
+            .await
+            .map_err(|e| e.to_app_error())?;
+        let stored: Option<String> = sqlx::query_scalar(
+            "SELECT backup_destination_path FROM operations.recovery_settings WHERE singleton",
+        )
+        .fetch_optional(&mut conn)
+        .await
+        .map_err(|e| AppError::internal(format!("could not read backup destination: {e}")))?
+        .flatten();
+        let _ = sqlx::Connection::close(conn).await;
+
+        let resolved = destination::resolve(stored.as_deref(), ctx, DestinationPurpose::Automatic)
+            .map_err(|error| error.to_app_error())?;
+
+        let created = backup::create_bundle(CreateBundleInput {
+            ctx,
+            destination: &resolved.path,
+            bundle_name: &bundle_identifier,
+            kind,
+            stage_tag: &attempt_id.to_string(),
+        })
+        .await
+        .map_err(|error| error.to_app_error())?;
+
+        Ok::<_, AppError>((
+            result_from_summary(
+                request.request_id.trim().to_string(),
+                bundle_identifier.clone(),
+                &created.summary,
+                resolved.used_fallback,
+            ),
+            created.path,
+            resolved.used_fallback,
+        ))
+    }
+    .await;
+
+    match outcome {
+        Ok((result, created_path, used_fallback)) => {
+            let result_json = serde_json::to_value(&result).map_err(|error| {
+                AppError::internal(format!(
+                    "failed to serialize automatic backup result: {error}"
+                ))
+            })?;
+            let _: JsonValue = query_scalar(
+                "SELECT operations.complete_automatic_backup_attempt($1, $2, true, NULL, $3)",
+            )
+            .bind(session_token)
+            .bind(attempt_id)
+            .bind(result_json)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+            let deleted = retention::apply(
+                created_path.parent().unwrap_or(&created_path),
+                kind,
+                &created_path,
+                &ctx.app_data_dir,
+            );
+            log::append(
+                &ctx.app_data_dir,
+                "RETENTION",
+                &format!("automatic backup retention removed {deleted} folder(s)"),
+            );
+
+            Ok(AutomaticBackupResponse {
+                status: "CREATED".to_string(),
+                skip_reason: None,
+                result: Some(result),
+                used_fallback_destination: used_fallback,
+            })
+        }
+        Err(error) => {
+            let stable_code = recovery_creation::creation_audit_error_code(&error);
+            let _: JsonValue = query_scalar(
+                "SELECT operations.complete_automatic_backup_attempt($1, $2, false, $3, NULL)",
+            )
+            .bind(session_token)
+            .bind(attempt_id)
+            .bind(stable_code)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
             Err(error)
         }
     }
@@ -861,5 +1101,319 @@ mod tests {
         assert!(!newer.schema_compatible);
         assert_eq!(newer.restorable, Some(false));
         assert_eq!(newer.format_version, Some(1));
+    }
+
+    // =======================================================================
+    // WS-H-6 (H6-09): real-embedded-instance integration tests for automatic
+    // backups. Reuses `safe_upgrade::test_support` (provisioning) exactly as
+    // every other WS-H ignored test does, and `application::test_fixtures`
+    // (bootstrap + login + create_user) for real sessions — both already
+    // reach the database only through sanctioned paths, so these fixtures
+    // work unmodified against the embedded fixture's own freshly-migrated
+    // database.
+    // =======================================================================
+
+    use crate::application::test_fixtures;
+    use crate::domain::recovery::RunAutomaticBackupRequest;
+    use crate::infrastructure::recovery_engine::backup::CreateBundleInput;
+    use crate::infrastructure::safe_upgrade::test_support;
+    use sqlx::PgPool;
+
+    async fn runtime_pool_for_tests(app_data_dir: &std::path::Path) -> PgPool {
+        let outcome = crate::infrastructure::local_config::load(app_data_dir);
+        let options = match outcome {
+            crate::infrastructure::local_config::LocalConfigOutcome::Loaded { options, .. } => {
+                *options
+            }
+            _ => panic!("database.json must be loadable after setup"),
+        };
+        PgPool::connect_with(options)
+            .await
+            .expect("connect the runtime pool for tests")
+    }
+
+    fn ctx_for_tests(
+        app_data_dir: &std::path::Path,
+        bin_dir: std::path::PathBuf,
+        pgdata: std::path::PathBuf,
+    ) -> EmbeddedRecoveryContext {
+        EmbeddedRecoveryContext {
+            app_data_dir: app_data_dir.to_path_buf(),
+            resource_dir: dunce::simplified(&test_support::bundled_resource_dir_for_tests())
+                .to_path_buf(),
+            bin_dir,
+            pgdata,
+            app_version: "0.5.0-test".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
+    async fn automatic_daily_backup_skips_when_recent() {
+        let app_data_dir = test_support::temp_app_data_dir_for_tests("auto-daily-recent");
+        let (bin_dir, pgdata, _port) =
+            test_support::provision_fresh_instance(&app_data_dir, 58620).await;
+        let ctx = ctx_for_tests(&app_data_dir, bin_dir.clone(), pgdata.clone());
+        let runtime_pool = runtime_pool_for_tests(&app_data_dir).await;
+        let (_admin_id, admin_token) = test_fixtures::root_admin_session(&runtime_pool).await;
+
+        let manual = create_manual_backup(
+            &runtime_pool,
+            &admin_token,
+            &ctx,
+            CreateOperatorBackupRequest {
+                request_id: "manual-before-daily-0001".to_string(),
+            },
+        )
+        .await
+        .expect("manual backup must succeed");
+
+        let response = run_automatic_backup(
+            &runtime_pool,
+            &admin_token,
+            &ctx,
+            RunAutomaticBackupRequest {
+                request_id: "auto-daily-skip-0001".to_string(),
+                reason: "DAILY".to_string(),
+            },
+        )
+        .await
+        .expect("automatic backup call must not error");
+
+        assert_eq!(response.status, "SKIPPED");
+        assert_eq!(response.skip_reason.as_deref(), Some("NOT_DUE"));
+        assert!(response.result.is_none());
+
+        let destination = destination::resolve(None, &ctx, DestinationPurpose::Manual)
+            .unwrap()
+            .path;
+        let items = catalog::list_bundles_uncapped(&destination, true);
+        assert_eq!(items.len(), 1, "no second bundle folder must appear");
+        assert_eq!(items[0].bundle_identifier, manual.bundle_identifier);
+
+        runtime_pool.close().await;
+        test_support::stop_server(&bin_dir, &pgdata);
+        let _ = std::fs::remove_dir_all(&app_data_dir);
+    }
+
+    #[tokio::test]
+    #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
+    async fn automatic_daily_backup_runs_when_due() {
+        let app_data_dir = test_support::temp_app_data_dir_for_tests("auto-daily-due");
+        let (bin_dir, pgdata, _port) =
+            test_support::provision_fresh_instance(&app_data_dir, 58630).await;
+        let ctx = ctx_for_tests(&app_data_dir, bin_dir.clone(), pgdata.clone());
+        let runtime_pool = runtime_pool_for_tests(&app_data_dir).await;
+        let (_admin_id, admin_token) = test_fixtures::root_admin_session(&runtime_pool).await;
+
+        let response = run_automatic_backup(
+            &runtime_pool,
+            &admin_token,
+            &ctx,
+            RunAutomaticBackupRequest {
+                request_id: "auto-daily-due-0001".to_string(),
+                reason: "DAILY".to_string(),
+            },
+        )
+        .await
+        .expect("automatic backup call must not error");
+
+        assert_eq!(response.status, "CREATED");
+        let result = response
+            .result
+            .expect("a created backup must carry its result");
+        assert_eq!(result.backup_kind.as_deref(), Some("DAILY"));
+        assert_eq!(result.restorable, Some(true));
+
+        let destination = destination::resolve(None, &ctx, DestinationPurpose::Manual)
+            .unwrap()
+            .path;
+        assert!(
+            backup_proof::validate_bundle(&destination.join(&result.bundle_identifier)).is_ok()
+        );
+
+        runtime_pool.close().await;
+        test_support::stop_server(&bin_dir, &pgdata);
+        let _ = std::fs::remove_dir_all(&app_data_dir);
+    }
+
+    #[tokio::test]
+    #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
+    async fn automatic_backup_works_for_a_cashier_session() {
+        let app_data_dir = test_support::temp_app_data_dir_for_tests("auto-cashier");
+        let (bin_dir, pgdata, _port) =
+            test_support::provision_fresh_instance(&app_data_dir, 58640).await;
+        let ctx = ctx_for_tests(&app_data_dir, bin_dir.clone(), pgdata.clone());
+        let runtime_pool = runtime_pool_for_tests(&app_data_dir).await;
+        let (_admin_id, admin_token) = test_fixtures::root_admin_session(&runtime_pool).await;
+        let (_cashier_id, cashier_token) = test_fixtures::seed_user_via_admin(
+            &runtime_pool,
+            &admin_token,
+            "ws_h6_auto_backup_cashier",
+            "CASHIER",
+        )
+        .await;
+
+        let response = run_automatic_backup(
+            &runtime_pool,
+            &cashier_token,
+            &ctx,
+            RunAutomaticBackupRequest {
+                request_id: "auto-preupdate-cashier-0001".to_string(),
+                reason: "PRE_UPDATE".to_string(),
+            },
+        )
+        .await
+        .expect("a cashier session must be able to run an automatic backup");
+        assert_eq!(response.status, "CREATED");
+
+        // `operations.recovery_attempts` is off limits to `stockiha_runtime`
+        // (privacy of the audit trail) - read it through the migrator
+        // connection, exactly as the engine itself does.
+        let info =
+            crate::infrastructure::local_config::load_migrator_connection_info(&app_data_dir)
+                .expect("migrator.json must exist");
+        let mut migrator_conn = live::migrator_connection(&info).await.unwrap();
+        let row: (String, String) = sqlx::query_as(
+            "SELECT operation_code, status FROM operations.recovery_attempts \
+             WHERE request_id = $1",
+        )
+        .bind("auto-preupdate-cashier-0001")
+        .fetch_one(&mut migrator_conn)
+        .await
+        .expect("the audit row must exist");
+        assert_eq!(row.0, "AUTO_BACKUP");
+        assert_eq!(row.1, "SUCCEEDED");
+        let _ = sqlx::Connection::close(migrator_conn).await;
+
+        runtime_pool.close().await;
+        test_support::stop_server(&bin_dir, &pgdata);
+        let _ = std::fs::remove_dir_all(&app_data_dir);
+    }
+
+    #[tokio::test]
+    #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
+    async fn retention_keeps_fourteen_daily_backups() {
+        let app_data_dir = test_support::temp_app_data_dir_for_tests("auto-retention-14");
+        let (bin_dir, pgdata, _port) =
+            test_support::provision_fresh_instance(&app_data_dir, 58650).await;
+        let ctx = ctx_for_tests(&app_data_dir, bin_dir.clone(), pgdata.clone());
+        let runtime_pool = runtime_pool_for_tests(&app_data_dir).await;
+        let (_admin_id, admin_token) = test_fixtures::root_admin_session(&runtime_pool).await;
+
+        let destination = destination::resolve(None, &ctx, DestinationPurpose::Manual)
+            .unwrap()
+            .path;
+
+        // 15 real, syntactically valid DAILY bundles with distinct
+        // timestamps, spread across different days so every canonical name
+        // stays unique, plus one MANUAL bundle that must never be touched.
+        for day in 1..=15u32 {
+            let name = format!("GestStock-Backup-202609{day:02}-030000");
+            backup::create_bundle(CreateBundleInput {
+                ctx: &ctx,
+                destination: &destination,
+                bundle_name: &name,
+                kind: BackupKind::Daily,
+                stage_tag: &format!("seed-{day}"),
+            })
+            .await
+            .unwrap_or_else(|e| panic!("seed DAILY bundle {name} failed: {e}"));
+        }
+        let manual_name = "GestStock-Backup-20260901-020000";
+        backup::create_bundle(CreateBundleInput {
+            ctx: &ctx,
+            destination: &destination,
+            bundle_name: manual_name,
+            kind: BackupKind::Manual,
+            stage_tag: "seed-manual",
+        })
+        .await
+        .expect("seed MANUAL bundle");
+
+        let response = run_automatic_backup(
+            &runtime_pool,
+            &admin_token,
+            &ctx,
+            RunAutomaticBackupRequest {
+                request_id: "auto-daily-retention-0001".to_string(),
+                reason: "DAILY".to_string(),
+            },
+        )
+        .await
+        .expect("automatic backup call must not error");
+        assert_eq!(response.status, "CREATED");
+
+        let items = catalog::list_bundles_uncapped(&destination, true);
+        let daily_count = items.iter().filter(|i| i.backup_kind == "DAILY").count();
+        let manual_count = items.iter().filter(|i| i.backup_kind == "MANUAL").count();
+        assert_eq!(
+            daily_count, 14,
+            "16 DAILY bundles existed (15 seeded + 1 new); exactly 14 must remain"
+        );
+        assert_eq!(manual_count, 1, "the MANUAL bundle must never be deleted");
+        assert!(
+            items.iter().any(|i| i.bundle_identifier == manual_name),
+            "the specific MANUAL bundle must still be present"
+        );
+
+        runtime_pool.close().await;
+        test_support::stop_server(&bin_dir, &pgdata);
+        let _ = std::fs::remove_dir_all(&app_data_dir);
+    }
+
+    #[tokio::test]
+    #[ignore = "spawns a real, disposable PostgreSQL instance; run explicitly with -- --ignored"]
+    async fn automatic_backup_falls_back_when_the_destination_is_missing() {
+        let app_data_dir = test_support::temp_app_data_dir_for_tests("auto-fallback");
+        let (bin_dir, pgdata, _port) =
+            test_support::provision_fresh_instance(&app_data_dir, 58660).await;
+        let ctx = ctx_for_tests(&app_data_dir, bin_dir.clone(), pgdata.clone());
+        let runtime_pool = runtime_pool_for_tests(&app_data_dir).await;
+        let (_admin_id, admin_token) = test_fixtures::root_admin_session(&runtime_pool).await;
+
+        // A destination that WAS valid when saved (a since-unplugged drive,
+        // say) - written directly through the migrator connection, since the
+        // normal setter validates and creates the folder at save time, which
+        // a nonexistent drive letter can never pass.
+        let info =
+            crate::infrastructure::local_config::load_migrator_connection_info(&app_data_dir)
+                .expect("migrator.json must exist");
+        let mut migrator_conn = live::migrator_connection(&info).await.unwrap();
+        sqlx::query(
+            "UPDATE operations.recovery_settings SET backup_destination_path = $1 WHERE singleton",
+        )
+        .bind(r"Z:\nope\backups")
+        .execute(&mut migrator_conn)
+        .await
+        .expect("seed the unreachable destination");
+        let _ = sqlx::Connection::close(migrator_conn).await;
+
+        let response = run_automatic_backup(
+            &runtime_pool,
+            &admin_token,
+            &ctx,
+            RunAutomaticBackupRequest {
+                request_id: "auto-daily-fallback-0001".to_string(),
+                reason: "DAILY".to_string(),
+            },
+        )
+        .await
+        .expect("automatic backup call must not error");
+
+        assert_eq!(response.status, "CREATED");
+        assert!(response.used_fallback_destination);
+        let result = response
+            .result
+            .expect("a created backup must carry its result");
+        let default_destination = ctx.app_data_dir.join("operator-backups");
+        assert!(
+            default_destination.join(&result.bundle_identifier).is_dir(),
+            "the bundle must land in the default folder, not the unreachable one"
+        );
+
+        runtime_pool.close().await;
+        test_support::stop_server(&bin_dir, &pgdata);
+        let _ = std::fs::remove_dir_all(&app_data_dir);
     }
 }

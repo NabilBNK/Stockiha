@@ -42,3 +42,13 @@ Before each round: build the installer yourself (`npm run tauri:build`), install
 10. **New-PC restore:** on a second PC (or after uninstalling and reinstalling Stockiha on the same one, wiping its data folder first), run the installer, and on the very first screen click "Restore from a backup instead" below the setup form. Choose a backup folder from a USB stick — a preview shows its date, type, and size. Check "I understand this installation will use the data from this backup," click "Restore," and wait through the same progress screen. Stockiha restarts to the **login screen** (not the setup form) — log in with the old admin username and password from the original PC; the products, customers, and balances should match what was on the original PC when that backup was made.
 11. On that same first-run screen, confirm "Restore from a backup instead" only appears when running the installed embedded build — it should not appear if somehow pointed at a developer database.
 12. If you deliberately unplug the USB drive or kill Stockiha mid-restore (only do this once you're prepared to contact support if something goes wrong): the screen should show one of "stopped before anything changed," "restored to the same state as before," or — worst case — a red screen naming an error code, a safety-backup path, and a log path, with a "Copy details" button. If you ever see that red screen, follow its instructions and contact your supplier with the copied text rather than trying to fix it yourself.
+
+## §M6 — after WS-H-6 (automatic backups)
+
+1. Installing an update from the banner shows "Saving a safety backup before updating…" before it installs, and after the restart a "Before update" backup is in the list.
+2. With the backup folder set to an unplugged USB drive, an update still installs and the new "Before update" backup is in the default folder.
+3. If the backup cannot be made at all, the update is NOT installed and the banner explains why; the app keeps working.
+4. About a minute after the first login of the day, a "Daily automatic" backup appears in the list.
+5. Logging out and in again the same day does not create a second daily backup.
+6. After more than 14 daily backups exist, only the newest 14 remain; manual backups are never removed.
+7. An admin with no backup for 7 days sees the warning banner with a working button to the backup settings.

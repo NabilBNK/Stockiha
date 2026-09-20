@@ -245,3 +245,21 @@ export type RestoreOutcomeEvent =
     };
 
 export const RECOVERY_RESTORE_OUTCOME_EVENT = 'recovery-restore-outcome';
+
+// ---------------------------------------------------------------------------
+// WS-H-6: automatic backups (plan §H6-01/H6-03).
+// ---------------------------------------------------------------------------
+
+export type AutomaticBackupReason = 'DAILY' | 'PRE_UPDATE';
+
+export interface RunAutomaticBackupRequest {
+  requestId: string;
+  reason: AutomaticBackupReason;
+}
+
+export interface AutomaticBackupResponse {
+  status: 'CREATED' | 'SKIPPED';
+  skipReason?: 'MODE_UNSUPPORTED' | 'NOT_DUE' | 'BUSY';
+  result?: OperatorBackupCreationResult;
+  usedFallbackDestination: boolean;
+}

@@ -8,13 +8,13 @@ use crate::application::recovery::{self, RestoreVerificationAttempt, ValidationA
 use crate::application::recovery_creation::{self, CreationAttempt};
 use crate::application::recovery_embedded;
 use crate::domain::recovery::{
-    BackupDestinationSetting, BackupStatus, CopyBackupToRequest, CopyBackupToResult,
-    CreateOperatorBackupRequest, InspectBackupForFreshInstallRequest, ListBackupsResponse,
-    OperatorBackupCreationResult, OperatorBackupValidationResult,
+    AutomaticBackupResponse, BackupDestinationSetting, BackupStatus, CopyBackupToRequest,
+    CopyBackupToResult, CreateOperatorBackupRequest, InspectBackupForFreshInstallRequest,
+    ListBackupsResponse, OperatorBackupCreationResult, OperatorBackupValidationResult,
     OperatorRestoreVerificationResult, RecoveryCapabilities, RecoveryModeResponse,
     RestoreBackupFreshInstallRequest, RestoreBackupLiveRequest, RestoreStarted,
-    UpdateBackupDestinationRequest, UpdateBackupDestinationResult, ValidateOperatorBackupRequest,
-    VerifyOperatorBackupRestoreRequest,
+    RunAutomaticBackupRequest, UpdateBackupDestinationRequest, UpdateBackupDestinationResult,
+    ValidateOperatorBackupRequest, VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
@@ -1076,6 +1076,73 @@ pub(crate) fn restart_after_recovery(
 ) -> Result<(), IpcError> {
     stop_embedded_server_before_restart(pg_handle.inner());
     tauri::process::restart(&app.env());
+}
+
+// ---------------------------------------------------------------------------
+// Automatic backups (H6-03/H6-04) — a daily backup and a mandatory backup
+// before every update install. Any valid session may run one (system-
+// initiated, not an operator-permissioned action); a developer/EXTERNAL
+// machine reports MODE_UNSUPPORTED for both reasons rather than failing.
+// ---------------------------------------------------------------------------
+
+fn automatic_backup_skipped(reason: &str) -> AutomaticBackupResponse {
+    AutomaticBackupResponse {
+        status: "SKIPPED".to_string(),
+        skip_reason: Some(reason.to_string()),
+        result: None,
+        used_fallback_destination: false,
+    }
+}
+
+// Plain `fn` + `tauri::async_runtime::block_on`, not `async fn`: reaching
+// `recovery_embedded::run_automatic_backup`'s migrator connection (opened,
+// queried sequentially, and closed within one function) directly from an
+// `async fn` Tauri command hits the same rustc HRTB "Send/Executor is not
+// general enough" limitation as the WS-H-5 restore commands — confirmed by
+// `cargo check` on this exact command before this fix. No background thread
+// is needed here (unlike the restore commands): this call is expected to
+// finish in well under the request's normal timeout, and the caller needs
+// the real `AutomaticBackupResponse`, not a fire-and-forget `{started:true}`.
+#[tauri::command]
+pub(crate) fn run_automatic_backup(
+    app: AppHandle,
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: RunAutomaticBackupRequest,
+) -> Result<AutomaticBackupResponse, IpcError> {
+    request
+        .validate()
+        .map_err(|diagnostic| IpcError::from(AppError::ValidationError { diagnostic }))?;
+    let is_pre_update = request.reason.trim() == "PRE_UPDATE";
+
+    let ctx = match resolve_recovery_mode(&app) {
+        RecoveryMode::Embedded(ctx) => ctx,
+        RecoveryMode::External => return Ok(automatic_backup_skipped("MODE_UNSUPPORTED")),
+        RecoveryMode::Unavailable(reason) => {
+            if is_pre_update {
+                // A client machine that cannot back up must not update
+                // silently (Owner ruling).
+                return Err(recovery_unavailable(reason));
+            }
+            return Ok(automatic_backup_skipped("MODE_UNSUPPORTED"));
+        }
+    };
+
+    let lease = match RecoveryOperationLease::acquire() {
+        Ok(lease) => lease,
+        Err(_) if !is_pre_update => return Ok(automatic_backup_skipped("BUSY")),
+        Err(error) => return Err(IpcError::from(error)),
+    };
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let result = tauri::async_runtime::block_on(recovery_embedded::run_automatic_backup(
+        pool,
+        &session_token,
+        &ctx,
+        request,
+    ))
+    .map_err(IpcError::from);
+    drop(lease);
+    result
 }
 
 #[cfg(test)]

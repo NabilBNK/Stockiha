@@ -36,6 +36,8 @@ pub(crate) mod live;
 pub(crate) mod mode;
 pub(crate) mod restore_flow;
 pub(crate) mod schema;
+// WS-H-6: automatic-backup retention (daily/pre-update/pre-restore).
+pub(crate) mod retention;
 // WS-H-4 (H4-08): removes drill clusters abandoned by a crashed process.
 pub(crate) mod sweep;
 pub(crate) mod tools;

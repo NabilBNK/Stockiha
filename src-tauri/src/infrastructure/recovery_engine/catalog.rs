@@ -93,7 +93,6 @@ pub(crate) fn list_bundles(root: &Path, embedded_mode: bool) -> Vec<BackupListIt
 
 /// Same as [`list_bundles`] but uncapped — used by retention (WS-H-6), which
 /// must see every bundle of a given kind, not just the newest 200.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn list_bundles_uncapped(root: &Path, embedded_mode: bool) -> Vec<BackupListItemDto> {
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,

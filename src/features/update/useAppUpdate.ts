@@ -51,21 +51,38 @@
  * the database was already stopped, `resume_after_failed_update_install`
  * restarts it — the shop must never end up with neither the update nor a
  * working database.
+ *
+ * WS-H-6 — a full backup before every update install (Owner ruling): between
+ * `download()` and `prepare_for_update_install`, `performUpdate` now takes a
+ * mandatory `PRE_UPDATE` automatic backup via `runAutomaticBackup`. If it
+ * cannot be taken (any outcome other than `CREATED`, or `SKIPPED` for a
+ * reason other than a developer machine's `MODE_UNSUPPORTED`), the update is
+ * NOT installed — `prepare_for_update_install` and `install()` are never
+ * called — and the banner explains why. This requires a signed-in session
+ * (the backup is recorded against an actor), so `performUpdate` also refuses
+ * to proceed at all when no session token is available yet.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 
 import { getUpdatePolicy } from '../../shared/ipc/gateway';
+import { runAutomaticBackup } from '../../shared/ipc/recoveryGateway';
 import { COMMANDS } from '../../shared/ipc/commands';
 
 export type UpdateMode = 'optional' | 'forced';
+export type UpdatePhase = 'idle' | 'downloading' | 'backing_up' | 'installing';
+export type UpdateErrorKind = 'download' | 'backup' | 'install' | 'login_required' | null;
 
 export interface AppUpdateState {
   /** `null` until a check has completed at least once. */
   available: Update | null;
   mode: UpdateMode;
+  phase: UpdatePhase;
+  /** Kept for callers that only cared whether *something* is in flight;
+   * always equals `phase !== 'idle'`. */
   installing: boolean;
+  errorKind: UpdateErrorKind;
   /** Credential-free, user-facing-safe: never the raw thrown value. */
   error: string | null;
 }
@@ -78,7 +95,9 @@ const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const INITIAL_STATE: AppUpdateState = {
   available: null,
   mode: 'optional',
+  phase: 'idle',
   installing: false,
+  errorKind: null,
   error: null,
 };
 
@@ -87,19 +106,26 @@ export interface UseAppUpdateOptions {
    * module doc comment, a sale might be mid-flight) — from
    * `useSession().activeCashSession`. */
   cashSessionOpen: boolean;
+  /** The signed-in session token, or `null` before login. WS-H-6's mandatory
+   * pre-update backup is recorded against an actor, so `performUpdate`
+   * refuses to proceed without one. */
+  sessionToken: string | null;
   /** Set to false to stop the periodic re-check (e.g. before the login/
    * setup/upgrade screens, where this hook is not mounted at all in
    * practice, but kept as an explicit guard rather than an implicit one). */
   enabled?: boolean;
 }
 
-export function useAppUpdate({ cashSessionOpen, enabled = true }: UseAppUpdateOptions) {
+export function useAppUpdate({ cashSessionOpen, sessionToken, enabled = true }: UseAppUpdateOptions) {
   const [state, setState] = useState<AppUpdateState>(INITIAL_STATE);
   // Re-checked synchronously inside performUpdate via a ref, so a stale
   // closure from when the interval/effect last ran can never let a
-  // just-opened cash session slip through.
+  // just-opened cash session (or a since-cleared session token) slip
+  // through.
   const cashSessionOpenRef = useRef(cashSessionOpen);
   cashSessionOpenRef.current = cashSessionOpen;
+  const sessionTokenRef = useRef(sessionToken);
+  sessionTokenRef.current = sessionToken;
 
   const runCheck = useCallback(async () => {
     if (!enabled) return;
@@ -142,18 +168,52 @@ export function useAppUpdate({ cashSessionOpen, enabled = true }: UseAppUpdateOp
     const update = state.available;
     if (!update) return;
 
-    setState((prev) => ({ ...prev, installing: true, error: null }));
+    const token = sessionTokenRef.current;
+    if (!token) {
+      // WS-H-6: the mandatory pre-update backup is recorded against an
+      // actor, so an update cannot proceed at all without one. Nothing is
+      // called - not even download() - so a signed-out session never even
+      // starts a partial update.
+      setState((prev) => ({ ...prev, phase: 'idle', errorKind: 'login_required', error: null }));
+      return;
+    }
+
+    setState((prev) => ({ ...prev, phase: 'downloading', installing: true, errorKind: null, error: null }));
     let stoppedDatabase = false;
+    // Tracks which step a thrown error belongs to - `stoppedDatabase` alone
+    // cannot distinguish a `download()` throw from a `runAutomaticBackup()`
+    // throw, since neither has touched the database yet.
+    let failedPhase: 'download' | 'backup' | 'install' = 'download';
     try {
       // Nothing has been touched yet at this point - a failure here (a
       // dropped connection, a broken release) leaves the app exactly as it
       // was before the click.
       await update.download();
 
+      // WS-H-6: a full safety backup before any database change. Any
+      // outcome other than a genuine success (or a developer machine, which
+      // has nothing to back up) stops here - prepare_for_update_install and
+      // install() are never called, and nothing has been touched yet.
+      failedPhase = 'backup';
+      setState((prev) => ({ ...prev, phase: 'backing_up' }));
+      const backup = await runAutomaticBackup(token, {
+        requestId: `auto-update-${Date.now()}`,
+        reason: 'PRE_UPDATE',
+      });
+      const backupOk =
+        backup.status === 'CREATED'
+        || (backup.status === 'SKIPPED' && backup.skipReason === 'MODE_UNSUPPORTED');
+      if (!backupOk) {
+        setState((prev) => ({ ...prev, phase: 'idle', installing: false, errorKind: 'backup' }));
+        return;
+      }
+
       // Only from here on does anything change: stop the database and
       // confirm its files are writable again BEFORE ever calling install().
       // See the module doc comment for why this ordering - not a race
       // against the plugin's own internal exit call - is the actual fix.
+      failedPhase = 'install';
+      setState((prev) => ({ ...prev, phase: 'installing' }));
       await invoke(COMMANDS.PREPARE_FOR_UPDATE_INSTALL);
       stoppedDatabase = true;
 
@@ -163,8 +223,9 @@ export function useAppUpdate({ cashSessionOpen, enabled = true }: UseAppUpdateOp
       // Rust-side Cargo.toml note). Reaching here at all means installation
       // did not actually happen, so it is treated the same as any other
       // failure - the UI must not claim success.
-      setState((prev) => ({ ...prev, installing: false }));
+      setState((prev) => ({ ...prev, phase: 'idle', installing: false }));
     } catch (err) {
+      const errorKind: UpdateErrorKind = failedPhase;
       if (stoppedDatabase) {
         // install() itself failed after we already stopped the database
         // (or prepare_for_update_install stopped it but then refused to
@@ -183,7 +244,9 @@ export function useAppUpdate({ cashSessionOpen, enabled = true }: UseAppUpdateOp
       // leaves every other screen exactly as usable as before the click.
       setState((prev) => ({
         ...prev,
+        phase: 'idle',
         installing: false,
+        errorKind,
         error: err instanceof Error ? err.message : 'update failed',
       }));
     }
@@ -196,7 +259,7 @@ export function useAppUpdate({ cashSessionOpen, enabled = true }: UseAppUpdateOp
     // update (2a): dismiss on a forced notice only collapses it visually,
     // it does not clear `available`, so the caller's own re-render logic
     // (see UpdateBanner) can choose to bring it back.
-    setState((prev) => ({ ...prev, error: null }));
+    setState((prev) => ({ ...prev, error: null, errorKind: null }));
   }, []);
 
   return {

@@ -109,6 +109,8 @@ export const COMMANDS = {
   INSPECT_BACKUP_FOR_FRESH_INSTALL: 'inspect_backup_for_fresh_install',
   RESTORE_BACKUP_FRESH_INSTALL: 'restore_backup_fresh_install',
   RESTART_AFTER_RECOVERY: 'restart_after_recovery',
+  // WS-H-6: automatic backups (daily, pre-update).
+  RUN_AUTOMATIC_BACKUP: 'run_automatic_backup',
   CONFIRM_CASH_SALE: 'confirm_cash_sale',
   GET_SALE_DOCUMENT: 'get_sale_document',
   LIST_SALE_LINES: 'list_sale_lines',

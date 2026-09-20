@@ -18,6 +18,7 @@ use super::errors::{codes, EngineError};
 use super::live::{self, AssetSwap, RestoreEventRow, RestoreFaults};
 use super::log;
 use super::mode::EmbeddedRecoveryContext;
+use super::retention;
 use super::schema::SchemaVerdict;
 use crate::infrastructure::local_config::MigratorConnectionInfo;
 use crate::infrastructure::pg_process;
@@ -326,6 +327,7 @@ where
     // 4. SAFETY_BACKUP
     let mut safety_dump_path: Option<PathBuf> = None;
     let mut safety_bundle_identifier: Option<String> = None;
+    let mut safety_bundle_path: Option<PathBuf> = None;
     if let RestoreKind::Live {
         safety_destination, ..
     } = &kind
@@ -338,6 +340,7 @@ where
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned());
                 safety_dump_path = Some(created.summary.validated.dump_path.clone());
+                safety_bundle_path = Some(created.path.clone());
                 c.step(RestoreStep::SafetyBackup, RestoreStepStatus::Done, None);
             }
             Err(error) => {
@@ -567,6 +570,31 @@ where
         );
     }
     live::discard_previous_assets(&swap);
+
+    // WS-H-6 (H6-03): retention for the PRE_RESTORE safety copy just taken.
+    // Never affects the outcome — `retention::apply` swallows every failure
+    // internally — and only runs for a live restore (a fresh-install restore
+    // takes no safety backup at all, see SAFETY_BACKUP's SKIPPED branch).
+    if let (
+        RestoreKind::Live {
+            safety_destination, ..
+        },
+        Some(safety_path),
+    ) = (&kind, &safety_bundle_path)
+    {
+        let deleted = retention::apply(
+            safety_destination,
+            BackupKind::PreRestore,
+            safety_path,
+            &ctx.app_data_dir,
+        );
+        log::append(
+            &ctx.app_data_dir,
+            LOG_OPERATION,
+            &format!("RETENTION removed {deleted} PRE_RESTORE folder(s)"),
+        );
+    }
+
     c.step(RestoreStep::Record, RestoreStepStatus::Done, None);
     log::append(&ctx.app_data_dir, LOG_OPERATION, "SUCCEEDED");
 

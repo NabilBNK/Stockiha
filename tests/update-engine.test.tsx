@@ -24,6 +24,11 @@
  * stopped then fails. The Rust-side stop/restart logic itself is proven in
  * `src-tauri` (`pg_process`'s own tests); what is testable here is that
  * THIS code invokes it at the right moments, in the right order.
+ *
+ * WS-H-6 adds a mandatory `PRE_UPDATE` automatic backup between `download()`
+ * and `prepare_for_update_install`: a failed/skipped-for-a-real-reason
+ * backup must stop the update before either of those Rust calls, and the
+ * backup itself must never run without a signed-in session.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -36,6 +41,17 @@ const downloadMock = vi.fn();
 const installMock = vi.fn();
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: (...args: unknown[]) => checkMock(...args),
+}));
+
+// WS-H-6: `UpdateBanner` now reads the session itself via `useSession()`
+// rather than taking a token prop. Mocked here (not a real `SessionProvider`)
+// so every test controls the signed-in token directly, including the "no
+// session" case the new login-required guard exists for.
+let mockSessionToken: string | null = 'test-session-token';
+vi.mock('../src/shared/session/SessionContext', () => ({
+  useSession: () => ({
+    user: mockSessionToken ? { username: 'tester', token: mockSessionToken } : null,
+  }),
 }));
 
 import { UpdateBanner } from '../src/features/update/UpdateBanner';
@@ -60,10 +76,11 @@ function renderBanner(cashSessionOpen: boolean) {
 }
 
 /**
- * Wires `invoke()` for the policy fetch plus both update-shutdown commands.
- * `prepare_for_update_install`/`resume_after_failed_update_install` resolve
- * successfully by default — individual tests override via `invokeMock`
- * directly when they need one to fail.
+ * Wires `invoke()` for the policy fetch plus both update-shutdown commands,
+ * and (WS-H-6) `run_automatic_backup`, which by default resolves as a
+ * successful backup so every pre-existing test's install flow still
+ * completes. Individual tests override via `invokeMock` directly when they
+ * need one of these to behave differently.
  */
 function wirePolicy(mode: 'optional' | 'forced' | null) {
   invokeMock.mockImplementation((command: string) => {
@@ -71,9 +88,12 @@ function wirePolicy(mode: 'optional' | 'forced' | null) {
       if (mode === null) return Promise.reject(new Error('offline'));
       return Promise.resolve({ mode, fetched: true });
     }
+    if (command === COMMANDS.RUN_AUTOMATIC_BACKUP) {
+      return Promise.resolve({ status: 'CREATED', usedFallbackDestination: false });
+    }
     if (
-      command === COMMANDS.PREPARE_FOR_UPDATE_INSTALL ||
-      command === COMMANDS.RESUME_AFTER_FAILED_UPDATE_INSTALL
+      command === COMMANDS.PREPARE_FOR_UPDATE_INSTALL
+      || command === COMMANDS.RESUME_AFTER_FAILED_UPDATE_INSTALL
     ) {
       return Promise.resolve();
     }
@@ -86,6 +106,7 @@ beforeEach(() => {
   checkMock.mockReset();
   downloadMock.mockReset();
   installMock.mockReset();
+  mockSessionToken = 'test-session-token';
   cleanup();
 });
 
@@ -175,7 +196,7 @@ describe('WS-K-6 update engine', () => {
     expect(invokeMock).not.toHaveBeenCalledWith(COMMANDS.PREPARE_FOR_UPDATE_INSTALL);
   });
 
-  it('stops the database (prepare_for_update_install) strictly between download() and install(), never before download or instead of it', async () => {
+  it('stops the database (prepare_for_update_install) strictly between the backup and install(), never before download or instead of it', async () => {
     wirePolicy('optional');
     checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
     const callOrder: string[] = [];
@@ -189,6 +210,10 @@ describe('WS-K-6 update engine', () => {
       if (command === COMMANDS.GET_UPDATE_POLICY) {
         return Promise.resolve({ mode: 'optional', fetched: true });
       }
+      if (command === COMMANDS.RUN_AUTOMATIC_BACKUP) {
+        callOrder.push('backup');
+        return Promise.resolve({ status: 'CREATED', usedFallbackDestination: false });
+      }
       if (command === COMMANDS.PREPARE_FOR_UPDATE_INSTALL) {
         callOrder.push('prepare');
         return Promise.resolve();
@@ -200,7 +225,7 @@ describe('WS-K-6 update engine', () => {
     const installButton = await screen.findByTestId('update-banner-install');
     fireEvent.click(installButton);
 
-    await waitFor(() => expect(callOrder).toEqual(['download', 'prepare', 'install']));
+    await waitFor(() => expect(callOrder).toEqual(['download', 'backup', 'prepare', 'install']));
   });
 
   it('restarts the database (resume_after_failed_update_install) when install() fails after the database was already stopped', async () => {
@@ -212,6 +237,9 @@ describe('WS-K-6 update engine', () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === COMMANDS.GET_UPDATE_POLICY) {
         return Promise.resolve({ mode: 'optional', fetched: true });
+      }
+      if (command === COMMANDS.RUN_AUTOMATIC_BACKUP) {
+        return Promise.resolve({ status: 'CREATED', usedFallbackDestination: false });
       }
       if (command === COMMANDS.PREPARE_FOR_UPDATE_INSTALL) {
         return Promise.resolve();
@@ -251,5 +279,127 @@ describe('WS-K-6 update engine', () => {
 
     await screen.findByTestId('update-banner-error');
     expect(resumeMock).not.toHaveBeenCalled();
+  });
+
+  // ---- WS-H-6: mandatory pre-update backup --------------------------------
+
+  describe('WS-H-6 pre-update backup', () => {
+    it('a thrown backup error stops the update before prepare/install and shows the backup-failed message', async () => {
+      wirePolicy('optional');
+      checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
+      downloadMock.mockResolvedValue(undefined);
+      invokeMock.mockImplementation((command: string) => {
+        if (command === COMMANDS.GET_UPDATE_POLICY) {
+          return Promise.resolve({ mode: 'optional', fetched: true });
+        }
+        if (command === COMMANDS.RUN_AUTOMATIC_BACKUP) {
+          return Promise.reject(new Error('disk full'));
+        }
+        return Promise.reject(new Error(`unexpected command ${command}`));
+      });
+
+      renderBanner(false);
+      const installButton = await screen.findByTestId('update-banner-install');
+      fireEvent.click(installButton);
+
+      expect(await screen.findByTestId('update-banner-backup-failed')).toBeInTheDocument();
+      expect(invokeMock).not.toHaveBeenCalledWith(COMMANDS.PREPARE_FOR_UPDATE_INSTALL);
+      expect(installMock).not.toHaveBeenCalled();
+    });
+
+    it('SKIPPED/MODE_UNSUPPORTED (a developer machine) still proceeds to install', async () => {
+      wirePolicy('optional');
+      checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
+      downloadMock.mockResolvedValue(undefined);
+      installMock.mockResolvedValue(undefined);
+      invokeMock.mockImplementation((command: string) => {
+        if (command === COMMANDS.GET_UPDATE_POLICY) {
+          return Promise.resolve({ mode: 'optional', fetched: true });
+        }
+        if (command === COMMANDS.RUN_AUTOMATIC_BACKUP) {
+          return Promise.resolve({ status: 'SKIPPED', skipReason: 'MODE_UNSUPPORTED', usedFallbackDestination: false });
+        }
+        if (command === COMMANDS.PREPARE_FOR_UPDATE_INSTALL) {
+          return Promise.resolve();
+        }
+        return Promise.reject(new Error(`unexpected command ${command}`));
+      });
+
+      renderBanner(false);
+      const installButton = await screen.findByTestId('update-banner-install');
+      fireEvent.click(installButton);
+
+      await waitFor(() => expect(installMock).toHaveBeenCalledTimes(1));
+      expect(screen.queryByTestId('update-banner-backup-failed')).not.toBeInTheDocument();
+    });
+
+    it('SKIPPED/BUSY stops the update with the backup-failed message', async () => {
+      wirePolicy('optional');
+      checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
+      downloadMock.mockResolvedValue(undefined);
+      invokeMock.mockImplementation((command: string) => {
+        if (command === COMMANDS.GET_UPDATE_POLICY) {
+          return Promise.resolve({ mode: 'optional', fetched: true });
+        }
+        if (command === COMMANDS.RUN_AUTOMATIC_BACKUP) {
+          return Promise.resolve({ status: 'SKIPPED', skipReason: 'BUSY', usedFallbackDestination: false });
+        }
+        return Promise.reject(new Error(`unexpected command ${command}`));
+      });
+
+      renderBanner(false);
+      const installButton = await screen.findByTestId('update-banner-install');
+      fireEvent.click(installButton);
+
+      expect(await screen.findByTestId('update-banner-backup-failed')).toBeInTheDocument();
+      expect(invokeMock).not.toHaveBeenCalledWith(COMMANDS.PREPARE_FOR_UPDATE_INSTALL);
+    });
+
+    it('shows "sign in required" and calls nothing at all when there is no session token', async () => {
+      mockSessionToken = null;
+      wirePolicy('optional');
+      checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
+
+      renderBanner(false);
+      const installButton = await screen.findByTestId('update-banner-install');
+      fireEvent.click(installButton);
+
+      expect(await screen.findByTestId('update-banner-login-required')).toBeInTheDocument();
+      expect(downloadMock).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalledWith(COMMANDS.RUN_AUTOMATIC_BACKUP);
+      expect(invokeMock).not.toHaveBeenCalledWith(COMMANDS.PREPARE_FOR_UPDATE_INSTALL);
+    });
+
+    it('shows "saving a safety backup" while the backup step runs', async () => {
+      wirePolicy('optional');
+      checkMock.mockResolvedValue(fakeUpdate('5.1.0'));
+      downloadMock.mockResolvedValue(undefined);
+      let resolveBackup: (() => void) | undefined;
+      invokeMock.mockImplementation((command: string) => {
+        if (command === COMMANDS.GET_UPDATE_POLICY) {
+          return Promise.resolve({ mode: 'optional', fetched: true });
+        }
+        if (command === COMMANDS.RUN_AUTOMATIC_BACKUP) {
+          return new Promise((resolve) => {
+            resolveBackup = () =>
+              resolve({ status: 'CREATED', usedFallbackDestination: false });
+          });
+        }
+        if (command === COMMANDS.PREPARE_FOR_UPDATE_INSTALL) {
+          return Promise.resolve();
+        }
+        return Promise.reject(new Error(`unexpected command ${command}`));
+      });
+
+      renderBanner(false);
+      const installButton = await screen.findByTestId('update-banner-install');
+      fireEvent.click(installButton);
+
+      expect(await screen.findByTestId('update-banner-backing-up')).toBeInTheDocument();
+      resolveBackup?.();
+      await waitFor(() =>
+        expect(screen.queryByTestId('update-banner-backing-up')).not.toBeInTheDocument(),
+      );
+    });
   });
 });
