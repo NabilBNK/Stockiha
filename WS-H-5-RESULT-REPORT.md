@@ -168,24 +168,27 @@ Test Files  55 passed (55)
 
 ## Blockers / questions for the Architect
 
-**The installer could not be built and signed in this environment — this is the one incomplete deliverable.** `npm run tauri:build` compiles, links, and produces the NSIS bundle successfully:
+None outstanding. The installer signing blocker reported earlier in this session was resolved once the Owner supplied `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` directly (see Final build below); `tauri.conf.json` was never modified and the updater was never disabled.
+
+**Note on key handling:** the Owner pasted the private key and its password directly into chat to unblock this build. `WS-K-6-SIGNING-KEYS.md` records that the first key was rotated specifically because it had been shown in a chat transcript once before; this session's transcript now contains the current key the same way, so the Owner was told and may want to rotate again the same way.
+
+## Final build
+
 ```
 Running makensis to produce ...\target\release\bundle\nsis\Stockiha_0.5.0_x64-setup.exe
 Finished 1 bundle at: ...\target\release\bundle\nsis\Stockiha_0.5.0_x64-setup.exe
-A public key has been found, but no private key. Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.
-Error A public key has been found, but no private key. Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.
+Finished 1 updater signature at: ...\target\release\bundle\nsis\Stockiha_0.5.0_x64-setup.exe.sig
+installer: src-tauri\target\release\bundle\nsis\Stockiha_WS-H-5.0-setup.exe
 ```
-`tauri.conf.json`'s `plugins.updater.pubkey` is set (from WS-K-6), so `tauri build` always attempts to sign the update artifact. Per instruction, `tauri.conf.json` was not modified, the updater was not disabled, and no unsigned installer was renamed/delivered as a substitute.
-
-**What the Owner must set, exactly:**
-- `TAURI_SIGNING_PRIVATE_KEY` — the private key content (or a path to the key file, per Tauri's updater-signing docs), retrieved from the Bitwarden item `Stockiha — update signing PRIVATE KEY` (per `WS-K-6-SIGNING-KEYS.md`).
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the key's password, from the separate Bitwarden item `Stockiha — update signing key PASSWORD` (kept apart from the key itself, per the same document). Tauri needs this whenever the key was generated with a password, which `WS-K-6-SIGNING-KEYS.md`'s own instructions imply it was.
-
-Set both in the same shell that runs `npm run tauri:build`, then re-run it; no other change is needed. The unsigned bundle produced by this attempt (`target\release\bundle\nsis\Stockiha_0.5.0_x64-setup.exe`) was left in place, unrenamed, exactly as this run produced it — not represented as a deliverable.
+- **Path:** `C:\Users\Perfetto\Desktop\Stockiha-Part02-Test\src-tauri\target\release\bundle\nsis\Stockiha_WS-H-5.0-setup.exe`
+- **Size:** 50,927,817 bytes (≈48.6 MB)
+- **Version:** application version `0.5.0` (`app.package_info().version`, unchanged by this sub-plan per ruling R5); build marker `WS-H-5.0` (`APP_VERSION_MARKER`), confirmed by the rename step reading it from `src/shared/version.ts`.
+- **Signed:** yes — a valid updater signature (`Stockiha_0.5.0_x64-setup.exe.sig`) was produced in the same bundle step, before the marker-based rename; the `.sig` file's own name still carries the pre-rename `0.5.0` filename (cosmetic only — Tauri's updater matches by content hash, not filename).
+- The two signing environment variables were cleared from the shell immediately after this build completed.
 
 ## Pending manual checks (PART 14 §M5)
 
-All 12 items of §M5 (appended to `WS-H-MANUAL-VERIFICATION.md`) are pending real Windows/installer acceptance — none were run in this session (no installer was built and signed):
+A signed installer now exists (see Final build above), but all 12 items of §M5 (appended to `WS-H-MANUAL-VERIFICATION.md`) are still pending real Windows manual acceptance — this session built the installer but did not install or run it:
 1. "Restore…" appears on backup rows.
 2. Confirm dialog: date/type shown, warning banner, restart notice.
 3. Confirm button gating: disabled until checkbox + exact `RESTORE`; lowercase rejected.
