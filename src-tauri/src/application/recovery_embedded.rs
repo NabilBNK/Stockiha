@@ -8,26 +8,32 @@
 //! code paths in `recovery` / `recovery_creation` — it only reuses their
 //! audit helpers, which do exactly what the plan's step 1 requires.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::Value as JsonValue;
 use sqlx::{query_scalar, PgPool};
 
 use crate::domain::recovery::{
-    BackupDestinationSetting, BackupStatus, CreateOperatorBackupRequest,
-    OperatorBackupCreationResult, OperatorBackupValidationResult, RecoveryCapabilities,
-    RecoveryCapabilitiesRow, UpdateBackupDestinationResult, ValidateOperatorBackupRequest,
+    BackupDestinationSetting, BackupStatus, CopyBackupToResult, CreateOperatorBackupRequest,
+    ListBackupsResponse, OperatorBackupCreationResult, OperatorBackupValidationResult,
+    OperatorRestoreVerificationResult, RecoveryCapabilities, RecoveryCapabilitiesRow,
+    UpdateBackupDestinationResult, ValidateOperatorBackupRequest,
+    VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::AppError;
 use crate::infrastructure::backup_proof;
 use crate::infrastructure::recovery_engine::backup::{self, CreateBundleInput};
 use crate::infrastructure::recovery_engine::bundle::{self, BackupKind, BundleSummary};
+use crate::infrastructure::recovery_engine::catalog;
+use crate::infrastructure::recovery_engine::copy;
 use crate::infrastructure::recovery_engine::destination::{self, DestinationPurpose};
+use crate::infrastructure::recovery_engine::drill;
 use crate::infrastructure::recovery_engine::errors::{codes, EngineError};
 use crate::infrastructure::recovery_engine::log;
 use crate::infrastructure::recovery_engine::mode::EmbeddedRecoveryContext;
 
-use super::recovery::{self, ValidationAttempt};
+use super::recovery::{self, RestoreVerificationAttempt, ValidationAttempt};
 use super::recovery_creation::{self, CreationAttempt};
 
 /// Two backups started in the same second collide on the clock-based bundle
@@ -355,6 +361,252 @@ pub(crate) async fn validate_backup(
         }
         Err(error) => {
             let _ = recovery::complete_operator_backup_validation_failure(
+                pool,
+                session_token,
+                attempt_id,
+                &error,
+            )
+            .await;
+            Err(error)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Backup list (EMBEDDED) — plan H4-05.
+// ---------------------------------------------------------------------------
+
+/// Resolve the destination exactly as a manual backup would, then scan it.
+/// An unusable stored destination is not an error here — the plan wants the
+/// stored path echoed back with an empty list, so the operator sees *why*
+/// nothing is listed instead of a bare error banner.
+pub(crate) async fn list_backups(
+    pool: &PgPool,
+    session_token: &str,
+    ctx: &EmbeddedRecoveryContext,
+) -> Result<ListBackupsResponse, AppError> {
+    let stored = recovery::get_backup_destination(pool, session_token)
+        .await?
+        .path;
+    let root = match destination::resolve(stored.as_deref(), ctx, DestinationPurpose::Manual) {
+        Ok(resolved) => resolved.path,
+        Err(error) if error.code == codes::BACKUP_DESTINATION_UNAVAILABLE => {
+            return Ok(ListBackupsResponse {
+                destination: stored,
+                items: Vec::new(),
+            });
+        }
+        Err(error) => return Err(error.to_app_error()),
+    };
+    let destination_string = root.to_string_lossy().into_owned();
+    let items = tokio::task::spawn_blocking(move || catalog::list_bundles(&root, true))
+        .await
+        .map_err(|_| worker_failed())?;
+    Ok(ListBackupsResponse {
+        destination: Some(destination_string),
+        items,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Copy to another folder — plan H4-05. Mode-independent: the copy itself
+// never touches the database, so the same code path serves EMBEDDED and
+// EXTERNAL. `app_data_dir` is `None` when it could not be resolved (or the
+// caller chose not to log), in which case logging is silently skipped.
+// ---------------------------------------------------------------------------
+
+pub(crate) async fn copy_backup(
+    bundle_path: &str,
+    target_directory: &str,
+    app_data_dir: Option<PathBuf>,
+) -> Result<CopyBackupToResult, AppError> {
+    let (source, _name) = bundle::canonical_bundle_anywhere(bundle_path).map_err(|error| {
+        if let Some(dir) = &app_data_dir {
+            log::append(
+                dir,
+                "COPY",
+                &format!("REFUSED: {} - {}", error.code, error.log_detail),
+            );
+        }
+        error.to_app_error()
+    })?;
+    let target = PathBuf::from(target_directory.trim());
+
+    let result = tokio::task::spawn_blocking(move || copy::copy_bundle(&source, &target))
+        .await
+        .map_err(|_| worker_failed())?;
+
+    match result {
+        Ok((copied_path, total_bytes)) => {
+            if let Some(dir) = &app_data_dir {
+                log::append(
+                    dir,
+                    "COPY",
+                    &format!("SUCCEEDED: {}", copied_path.display()),
+                );
+            }
+            Ok(CopyBackupToResult {
+                copied_path: copied_path.to_string_lossy().into_owned(),
+                total_bytes,
+            })
+        }
+        Err(error) => {
+            if let Some(dir) = &app_data_dir {
+                log::append(
+                    dir,
+                    "COPY",
+                    &format!("FAILED: {} - {}", error.code, error.log_detail),
+                );
+            }
+            Err(error.to_app_error())
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Isolated restore test (EMBEDDED) — plan H4-05, §5.10 F3.
+// ---------------------------------------------------------------------------
+
+/// `DrillCluster::start` provisions the throwaway cluster's roles through
+/// `embedded_setup::create_roles`/`create_database`, which — like the old
+/// shape of `collect_restore_control_totals` — reuse one `&mut PgConnection`
+/// across several sequential awaited calls. That combination, reached
+/// directly from a `#[tauri::command]` (which needs the whole command's
+/// future to be `Send` for a fully generalized lifetime), hits a known,
+/// longstanding rustc HRTB limitation: "implementation of `Send`/`Executor`
+/// is not general enough" — confirmed by bisection to originate inside
+/// `DrillCluster::start` itself, not in this function's own shape. Running
+/// the whole isolated-test body on a blocking-pool thread via its own
+/// `tokio::runtime::Handle::block_on` (the same "sync boundary calls into
+/// async work" idiom `commands/safe_upgrade.rs` uses for the equally heavy
+/// safe-upgrade flow) sidesteps it entirely: `block_on`'s own bound is just
+/// `F: Future`, with no `Send`-for-any-lifetime proof involved. Deliberately
+/// `tokio::` rather than `tauri::async_runtime::`: `application::*` modules
+/// have no compile-time dependency on `tauri` (see `application::mod`'s own
+/// doc comment), and `tokio` alone is enough here.
+pub(crate) async fn test_backup(
+    pool: PgPool,
+    session_token: String,
+    ctx: EmbeddedRecoveryContext,
+    request: VerifyOperatorBackupRestoreRequest,
+) -> Result<OperatorRestoreVerificationResult, AppError> {
+    let runtime_handle = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || {
+        runtime_handle.block_on(test_backup_on_blocking_thread(
+            pool,
+            session_token,
+            ctx,
+            request,
+        ))
+    })
+    .await
+    .map_err(|_| worker_failed())?
+}
+
+async fn test_backup_on_blocking_thread(
+    pool: PgPool,
+    session_token: String,
+    ctx: EmbeddedRecoveryContext,
+    request: VerifyOperatorBackupRestoreRequest,
+) -> Result<OperatorRestoreVerificationResult, AppError> {
+    let pool = &pool;
+    let session_token = session_token.as_str();
+    let ctx = &ctx;
+    request
+        .validate()
+        .map_err(|diagnostic| AppError::ValidationError { diagnostic })?;
+    let (canonical_path, _name) =
+        bundle::canonical_bundle_anywhere(&request.bundle_path).map_err(|error| {
+            log::append(
+                &ctx.app_data_dir,
+                "TEST",
+                &format!("REFUSED: {} - {}", error.code, error.log_detail),
+            );
+            error.to_app_error()
+        })?;
+
+    let attempt =
+        recovery::begin_operator_restore_verification(pool, session_token, request).await?;
+    let (attempt_id, request_id, bundle_identifier) = match attempt {
+        RestoreVerificationAttempt::Replay(result) => return Ok(result),
+        RestoreVerificationAttempt::Run {
+            attempt_id,
+            request_id,
+            bundle_identifier,
+            ..
+        } => (attempt_id, request_id, bundle_identifier),
+    };
+
+    let outcome: Result<OperatorRestoreVerificationResult, AppError> = async {
+        let summary = bundle::inspect_bundle(&canonical_path, true).map_err(|error| {
+            log::append(
+                &ctx.app_data_dir,
+                "TEST",
+                &format!(
+                    "FAILED: {} - {} ({})",
+                    error.code,
+                    error.log_detail,
+                    canonical_path.display()
+                ),
+            );
+            error.to_app_error()
+        })?;
+
+        let report = drill::run_isolated_drill(ctx, &summary).await.map_err(|error| {
+            log::append(
+                &ctx.app_data_dir,
+                "TEST",
+                &format!(
+                    "FAILED: {} - {} ({})",
+                    error.code,
+                    error.log_detail,
+                    canonical_path.display()
+                ),
+            );
+            error.to_app_error()
+        })?;
+
+        log::append(
+            &ctx.app_data_dir,
+            "TEST",
+            &format!(
+                "SUCCEEDED: {} verdict={} migrated_forward={} journal_balanced={} cleanup_pending={}",
+                canonical_path.display(),
+                report.verdict.as_str(),
+                report.migrated_forward,
+                report.journal_balanced,
+                report.cleanup_pending
+            ),
+        );
+
+        Ok(OperatorRestoreVerificationResult {
+            request_id: request_id.clone(),
+            bundle_identifier: bundle_identifier.clone(),
+            schema_version: summary.validated.schema_version.clone(),
+            postgres_major_version: summary.validated.postgres_major_version,
+            temporary_database_cleaned: report.server_stopped,
+            journal_balanced: report.journal_balanced,
+            control_totals: report.totals,
+            schema_verdict: Some(report.verdict.as_str().to_string()),
+            migrated_forward: Some(report.migrated_forward),
+            cleanup_pending: Some(report.cleanup_pending),
+        })
+    }
+    .await;
+
+    match outcome {
+        Ok(result) => {
+            recovery::complete_operator_restore_verification_success(
+                pool,
+                session_token,
+                attempt_id,
+                &result,
+            )
+            .await?;
+            Ok(result)
+        }
+        Err(error) => {
+            let _ = recovery::complete_operator_restore_verification_failure(
                 pool,
                 session_token,
                 attempt_id,

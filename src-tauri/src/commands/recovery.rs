@@ -8,14 +8,15 @@ use crate::application::recovery::{self, RestoreVerificationAttempt, ValidationA
 use crate::application::recovery_creation::{self, CreationAttempt};
 use crate::application::recovery_embedded;
 use crate::domain::recovery::{
-    BackupDestinationSetting, BackupStatus, CreateOperatorBackupRequest,
-    OperatorBackupCreationResult, OperatorBackupValidationResult,
-    OperatorRestoreVerificationResult, RecoveryCapabilities, RecoveryModeResponse,
-    UpdateBackupDestinationRequest, UpdateBackupDestinationResult, ValidateOperatorBackupRequest,
-    VerifyOperatorBackupRestoreRequest,
+    BackupDestinationSetting, BackupStatus, CopyBackupToRequest, CopyBackupToResult,
+    CreateOperatorBackupRequest, ListBackupsResponse, OperatorBackupCreationResult,
+    OperatorBackupValidationResult, OperatorRestoreVerificationResult, RecoveryCapabilities,
+    RecoveryModeResponse, UpdateBackupDestinationRequest, UpdateBackupDestinationResult,
+    ValidateOperatorBackupRequest, VerifyOperatorBackupRestoreRequest,
 };
 use crate::error::{AppError, IpcError};
 use crate::infrastructure::db::{self, DatabaseState};
+use crate::infrastructure::recovery_engine::catalog;
 use crate::infrastructure::recovery_engine::mode::{self, RecoveryMode};
 use crate::infrastructure::{local_config, pg_process};
 
@@ -490,9 +491,12 @@ pub(crate) async fn verify_operator_backup_restore(
         RecoveryMode::External => {
             verify_operator_backup_restore_external(state, session_token, request).await
         }
-        // WS-H-4 implements the isolated-cluster test; until then an
-        // installed build answers RECOVERY_UNAVAILABLE here (plan H3-06).
-        RecoveryMode::Embedded(_ctx) => Err(embedded_only()),
+        RecoveryMode::Embedded(ctx) => {
+            let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+            recovery_embedded::test_backup(pool.clone(), session_token, ctx, request)
+                .await
+                .map_err(IpcError::from)
+        }
         RecoveryMode::Unavailable(reason) => Err(recovery_unavailable(reason)),
     }
 }
@@ -572,6 +576,105 @@ async fn verify_operator_backup_restore_external(
             Err(IpcError::from(error))
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Backup list (H4-01/H4-05) — read-only, works in both modes.
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub(crate) async fn list_backups(
+    app: AppHandle,
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<ListBackupsResponse, IpcError> {
+    let mode = resolve_recovery_mode(&app);
+    if let RecoveryMode::Unavailable(reason) = mode {
+        return Err(recovery_unavailable(reason));
+    }
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let capabilities = recovery_embedded::fetch_capabilities(pool, &session_token, mode.as_str())
+        .await
+        .map_err(IpcError::from)?;
+    if !capabilities.can_validate_backup {
+        return Err(IpcError::from(AppError::PermissionDenied {
+            diagnostic: "VALIDATE_BACKUP_BUNDLE required".to_string(),
+        }));
+    }
+
+    match mode {
+        RecoveryMode::Embedded(ctx) => recovery_embedded::list_backups(pool, &session_token, &ctx)
+            .await
+            .map_err(IpcError::from),
+        RecoveryMode::External => list_backups_external(pool, &session_token).await,
+        RecoveryMode::Unavailable(_) => unreachable!("handled above"),
+    }
+}
+
+/// EXTERNAL mode: the same read-only scan of the existing `run.bat` backup
+/// root; nothing in it is ever restorable (ruling R10, enforced by
+/// `catalog::list_bundles`'s own `embedded_mode` parameter).
+async fn list_backups_external(
+    pool: &sqlx::PgPool,
+    session_token: &str,
+) -> Result<ListBackupsResponse, IpcError> {
+    let root = match recovery_creation::resolve_backup_root(pool, session_token).await {
+        Ok(path) => path,
+        Err(_) => {
+            return Ok(ListBackupsResponse {
+                destination: None,
+                items: Vec::new(),
+            });
+        }
+    };
+    let destination = root.to_string_lossy().into_owned();
+    let items = tauri::async_runtime::spawn_blocking(move || catalog::list_bundles(&root, false))
+        .await
+        .map_err(|_| IpcError::from(AppError::internal("list backups worker failed")))?;
+    Ok(ListBackupsResponse {
+        destination: Some(destination),
+        items,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Copy to another folder (H4-02/H4-05) — mode-independent.
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub(crate) async fn copy_backup_to(
+    app: AppHandle,
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    request: CopyBackupToRequest,
+) -> Result<CopyBackupToResult, IpcError> {
+    request
+        .validate()
+        .map_err(|diagnostic| IpcError::from(AppError::ValidationError { diagnostic }))?;
+    let mode = resolve_recovery_mode(&app);
+    if let RecoveryMode::Unavailable(reason) = mode {
+        return Err(recovery_unavailable(reason));
+    }
+    // Held for the whole operation; released on every exit path by `Drop`.
+    let _lease = RecoveryOperationLease::acquire().map_err(IpcError::from)?;
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let capabilities = recovery_embedded::fetch_capabilities(pool, &session_token, mode.as_str())
+        .await
+        .map_err(IpcError::from)?;
+    if !capabilities.can_create_backup {
+        return Err(IpcError::from(AppError::PermissionDenied {
+            diagnostic: "CREATE_BACKUP_BUNDLE required".to_string(),
+        }));
+    }
+
+    let app_data_dir = app.path().app_data_dir().ok();
+    recovery_embedded::copy_backup(
+        &request.bundle_path,
+        &request.target_directory,
+        app_data_dir,
+    )
+    .await
+    .map_err(IpcError::from)
 }
 
 #[cfg(test)]

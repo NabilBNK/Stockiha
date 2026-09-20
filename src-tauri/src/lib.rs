@@ -184,6 +184,40 @@ pub fn run() {
                 )
                 .await;
 
+                // WS-H-4 (H4-08): remove drill clusters abandoned by a crash
+                // (e.g. Stockiha killed from Task Manager mid-"Test"). Runs
+                // on its own thread — never `.await`ed — so a slow or
+                // stuck stop-attempt on an old orphan can never delay the
+                // window. EMBEDDED only: the developer (`run.bat`) cluster
+                // never creates drill clusters of its own.
+                let embedded_mode = std::env::var(infrastructure::db::DATABASE_URL_ENV)
+                    .map(|v| v.trim().is_empty())
+                    .unwrap_or(true);
+                if embedded_mode {
+                    if let (Some(sweep_app_data_dir), Some(sweep_resource_dir)) =
+                        (app_data_dir.clone(), resource_dir.clone())
+                    {
+                        let sweep_bin_dir =
+                            infrastructure::pg_process::bundled_bin_dir(&sweep_resource_dir);
+                        let sweep_pgdata =
+                            infrastructure::pg_process::resolve_pgdata_dir(&sweep_app_data_dir);
+                        std::thread::spawn(move || {
+                            let removed =
+                                infrastructure::recovery_engine::sweep::sweep_abandoned_drills(
+                                    &sweep_pgdata,
+                                    &sweep_bin_dir,
+                                );
+                            if !removed.is_empty() {
+                                infrastructure::recovery_engine::log::append(
+                                    &sweep_app_data_dir,
+                                    "SWEEP",
+                                    &format!("removed {}", removed.join(", ")),
+                                );
+                            }
+                        });
+                    }
+                }
+
                 // WS-K-4.9 applied a pending embedded-database migration
                 // right here, synchronously, before the window's event loop
                 // ever started pumping — unattended, with no backup, no
@@ -321,6 +355,8 @@ pub fn run() {
             commands::recovery::get_recovery_mode,
             commands::recovery::get_recovery_capabilities,
             commands::recovery::get_backup_status,
+            commands::recovery::list_backups,
+            commands::recovery::copy_backup_to,
             commands::setup::get_setup_status,
             commands::setup::bootstrap_first_admin,
             commands::catalog::create_product,

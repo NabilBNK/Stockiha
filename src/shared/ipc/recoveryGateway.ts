@@ -4,7 +4,10 @@ import { COMMANDS } from './commands';
 import type {
   BackupDestinationSetting,
   BackupStatus,
+  CopyBackupToRequest,
+  CopyBackupToResult,
   CreateOperatorBackupRequest,
+  ListBackupsResponse,
   OperatorBackupCreationResult,
   OperatorBackupValidationResult,
   OperatorRestoreVerificationResult,
@@ -140,6 +143,30 @@ export async function getRecoveryCapabilities(
 export async function getBackupStatus(sessionToken: string): Promise<BackupStatus> {
   try {
     return await invoke<BackupStatus>(COMMANDS.GET_BACKUP_STATUS, { sessionToken });
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+// WS-H-4: backup list and copy-to-folder.
+
+export async function listBackups(sessionToken: string): Promise<ListBackupsResponse> {
+  try {
+    return await invoke<ListBackupsResponse>(COMMANDS.LIST_BACKUPS, { sessionToken });
+  } catch (error: unknown) {
+    throw new GatewayError(parseTauriError(error));
+  }
+}
+
+export async function copyBackupTo(
+  sessionToken: string,
+  request: CopyBackupToRequest,
+): Promise<CopyBackupToResult> {
+  try {
+    return await invoke<CopyBackupToResult>(COMMANDS.COPY_BACKUP_TO, {
+      sessionToken,
+      request,
+    });
   } catch (error: unknown) {
     throw new GatewayError(parseTauriError(error));
   }

@@ -20,12 +20,19 @@ fn validate_request_id(request_id: &str) -> Result<(), String> {
 }
 
 fn validate_bundle_path(bundle_path: &str) -> Result<(), String> {
-    let bundle_path = bundle_path.trim();
-    if bundle_path.is_empty() || bundle_path.len() > PATH_MAX_LEN {
-        return Err("bundlePath is empty or too long".to_string());
+    validate_path_field(bundle_path, "bundlePath")
+}
+
+/// Shared by every request that carries a plain filesystem path (a bundle
+/// folder, or — WS-H-4 — a copy target directory): non-empty, within the
+/// length budget, no NUL. Never itself resolves or canonicalizes anything.
+fn validate_path_field(value: &str, field_name: &str) -> Result<(), String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > PATH_MAX_LEN {
+        return Err(format!("{field_name} is empty or too long"));
     }
-    if bundle_path.contains('\0') {
-        return Err("bundlePath contains a NUL character".to_string());
+    if trimmed.contains('\0') {
+        return Err(format!("{field_name} contains a NUL character"));
     }
     Ok(())
 }
@@ -262,6 +269,43 @@ pub(crate) struct BackupStatus {
     pub(crate) last_restore_bundle: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// WS-H-4: backup list and copy-to-folder (plan §5.8/§5.8.1).
+// ---------------------------------------------------------------------------
+
+/// `{ destination: string | null, items: BackupListItem[] }`. `destination`
+/// is the resolved folder that was scanned, or `None` when nothing could be
+/// resolved at all (never an error by itself — see `list_bundles`).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ListBackupsResponse {
+    pub(crate) destination: Option<String>,
+    pub(crate) items: Vec<crate::infrastructure::recovery_engine::catalog::BackupListItemDto>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CopyBackupToRequest {
+    pub(crate) request_id: String,
+    pub(crate) bundle_path: String,
+    pub(crate) target_directory: String,
+}
+
+impl CopyBackupToRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_request_id(&self.request_id)?;
+        validate_path_field(&self.bundle_path, "bundlePath")?;
+        validate_path_field(&self.target_directory, "targetDirectory")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CopyBackupToResult {
+    pub(crate) copied_path: String,
+    pub(crate) total_bytes: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,5 +519,74 @@ mod tests {
         assert!(value.get("databaseUrl").is_none());
         assert!(value.get("credential").is_none());
         assert!(value.get("schemaVerdict").is_none());
+    }
+
+    // ---- WS-H-4: copy_backup_to request validation --------------------------
+
+    fn valid_copy_request() -> CopyBackupToRequest {
+        CopyBackupToRequest {
+            request_id: "copy-20260919-001".to_string(),
+            bundle_path: r"C:\Stockiha Backups\GestStock-Backup-20260919-101500".to_string(),
+            target_directory: r"D:\USB Backups".to_string(),
+        }
+    }
+
+    #[test]
+    fn accepts_a_well_formed_copy_request() {
+        assert!(valid_copy_request().validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_a_short_request_id_for_copy() {
+        let mut request = valid_copy_request();
+        request.request_id = "short".to_string();
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_an_empty_bundle_path_for_copy() {
+        let mut request = valid_copy_request();
+        request.bundle_path = "   ".to_string();
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_an_empty_or_nul_target_directory_for_copy() {
+        let mut request = valid_copy_request();
+        request.target_directory = "".to_string();
+        assert!(request.validate().is_err());
+
+        let mut request = valid_copy_request();
+        request.target_directory = "D:\\has\0nul".to_string();
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_an_overlong_target_directory_for_copy() {
+        let mut request = valid_copy_request();
+        request.target_directory = "D:\\".to_string() + &"x".repeat(PATH_MAX_LEN);
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn list_backups_response_serializes_camel_case() {
+        let response = ListBackupsResponse {
+            destination: Some(r"C:\backups".to_string()),
+            items: Vec::new(),
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"destination\""));
+        assert!(json.contains("\"items\""));
+    }
+
+    #[test]
+    fn copy_backup_to_result_serializes_camel_case() {
+        let result = CopyBackupToResult {
+            copied_path: r"D:\GestStock-Backup-20260919-101500".to_string(),
+            total_bytes: 4096,
+        };
+        let value = serde_json::to_value(&result).unwrap();
+        assert_eq!(value["copiedPath"], r"D:\GestStock-Backup-20260919-101500");
+        assert_eq!(value["totalBytes"], 4096);
     }
 }

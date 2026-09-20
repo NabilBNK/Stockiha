@@ -101,6 +101,9 @@ export const COMMANDS = {
   GET_RECOVERY_MODE: 'get_recovery_mode',
   GET_RECOVERY_CAPABILITIES: 'get_recovery_capabilities',
   GET_BACKUP_STATUS: 'get_backup_status',
+  // WS-H-4: backup list and copy-to-folder.
+  LIST_BACKUPS: 'list_backups',
+  COPY_BACKUP_TO: 'copy_backup_to',
   CONFIRM_CASH_SALE: 'confirm_cash_sale',
   GET_SALE_DOCUMENT: 'get_sale_document',
   LIST_SALE_LINES: 'list_sale_lines',

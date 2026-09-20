@@ -29,7 +29,7 @@ use crate::infrastructure::{local_config, pg_process, schema_version};
 
 /// Fixed database name for the embedded, single-shop deployment. Matches
 /// `Provision-StockihaPostgres.ps1`'s own default.
-const DATABASE_NAME: &str = "stockiha_shop";
+pub(crate) const DATABASE_NAME: &str = "stockiha_shop";
 
 /// How long to wait for a graceful `pg_ctl stop -m fast` before escalating.
 pub const STOP_GRACEFUL_TIMEOUT: Duration = Duration::from_secs(20);
@@ -113,7 +113,7 @@ impl std::fmt::Display for SetupError {
 /// cryptographically random password with no new dependency: `getrandom` is
 /// already pinned for `argon2`'s CSPRNG needs, and hex avoids pulling in a
 /// base64 crate for a value that is never displayed to a human anyway.
-fn generate_password() -> String {
+pub(crate) fn generate_password() -> String {
     let mut bytes = [0u8; 32];
     getrandom::getrandom(&mut bytes).expect("OS CSPRNG must be available");
     let mut hex = String::with_capacity(64);
@@ -148,9 +148,9 @@ async fn exec_sql(conn: &mut PgConnection, sql: String) -> Result<(), sqlx::Erro
 }
 
 #[derive(Default)]
-struct RolePasswords {
-    runtime: Option<String>,
-    migrator: Option<String>,
+pub(crate) struct RolePasswords {
+    pub(crate) runtime: Option<String>,
+    pub(crate) migrator: Option<String>,
 }
 
 /// Run the full first-run setup flow, depositing the spawned child process
@@ -460,7 +460,11 @@ pub async fn run_setup(
     })
 }
 
-fn run_initdb(bin_dir: &Path, pgdata: &Path, admin_password: &str) -> Result<(), String> {
+pub(crate) fn run_initdb(
+    bin_dir: &Path,
+    pgdata: &Path,
+    admin_password: &str,
+) -> Result<(), String> {
     let initdb_exe = bin_dir.join("initdb.exe");
     let pwfile =
         std::env::temp_dir().join(format!("stockiha-initdb-pw-{}.tmp", std::process::id()));
@@ -522,7 +526,7 @@ fn run_initdb(bin_dir: &Path, pgdata: &Path, admin_password: &str) -> Result<(),
     }
 }
 
-fn write_server_config(pgdata: &Path, port: u16) -> Result<(), String> {
+pub(crate) fn write_server_config(pgdata: &Path, port: u16) -> Result<(), String> {
     use std::io::Write;
     let conf_path = pgdata.join("postgresql.conf");
     let mut file = std::fs::OpenOptions::new()
@@ -555,7 +559,10 @@ fn write_server_config(pgdata: &Path, port: u16) -> Result<(), String> {
 /// instead of surfacing it as a setup failure on the first unlucky attempt.
 const ADMIN_CONNECT_RETRY_TIMEOUT: Duration = Duration::from_secs(15);
 
-async fn connect_as_admin(port: u16, admin_password: String) -> Result<PgConnection, String> {
+pub(crate) async fn connect_as_admin(
+    port: u16,
+    admin_password: String,
+) -> Result<PgConnection, String> {
     let options = PgConnectOptions::new()
         .host("127.0.0.1")
         .port(port)
@@ -581,7 +588,10 @@ async fn connect_as_admin(port: u16, admin_password: String) -> Result<PgConnect
     }
 }
 
-async fn create_roles(port: u16, admin_password: String) -> Result<RolePasswords, String> {
+pub(crate) async fn create_roles(
+    port: u16,
+    admin_password: String,
+) -> Result<RolePasswords, String> {
     let mut conn = connect_as_admin(port, admin_password).await?;
 
     let roles = [
@@ -628,7 +638,7 @@ async fn create_roles(port: u16, admin_password: String) -> Result<RolePasswords
     })
 }
 
-async fn create_database(port: u16, admin_password: String) -> Result<(), String> {
+pub(crate) async fn create_database(port: u16, admin_password: String) -> Result<(), String> {
     let mut conn = connect_as_admin(port, admin_password.clone()).await?;
 
     let exists_sql = format!("SELECT 1 FROM pg_database WHERE datname = '{DATABASE_NAME}'");

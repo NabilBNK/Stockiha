@@ -25,32 +25,6 @@ const SAFE_RESULT = {
   totalBytes: 4096,
 };
 
-const SAFE_RESTORE_RESULT = {
-  requestId: 'backup-restore-1',
-  bundleIdentifier: 'GestStock-Backup-20260805-150500',
-  schemaVersion: '20260805151000',
-  postgresMajorVersion: 18,
-  temporaryDatabaseCleaned: true,
-  journalBalanced: true,
-  controlTotals: {
-    schemaCount: 12,
-    tableCount: 42,
-    userCount: 3,
-    productCount: 8,
-    customerCount: 4,
-    supplierCount: 2,
-    inventoryPositionCount: 6,
-    inventoryMovementCount: 14,
-    cashSaleCount: 5,
-    journalCount: 9,
-    journalDebitTotal: '42000',
-    journalCreditTotal: '42000',
-    customerExposureTotal: '7000',
-    supplierOutstandingTotal: '8000',
-    openingStateApplicationCount: 1,
-  },
-};
-
 const ADMIN_CAPABILITIES = {
   mode: 'EMBEDDED',
   canCreateBackup: true,
@@ -84,6 +58,8 @@ const EMPTY_STATUS = {
   lastRestoreBundle: null,
 };
 
+const EMPTY_LIST = { destination: DEFAULT_DESTINATION.effectivePath, items: [] };
+
 function renderScreen(locale: 'en' | 'ar' = 'en') {
   render(
     <I18nProvider initialLocale={locale}>
@@ -97,11 +73,12 @@ interface MockOptions {
   capabilities?: Record<string, unknown> | Error;
   destination?: Record<string, unknown>;
   status?: Record<string, unknown> | (() => Record<string, unknown>);
+  list?: Record<string, unknown>;
 }
 
 /**
  * Routes the read-only setup calls the screen makes on mount; `action`
- * answers everything else (create / validate / verify / update).
+ * answers everything else (create / list_backups / etc.).
  */
 function mockSettingAnd(
   action?: (command: string, args: Record<string, unknown>) => unknown,
@@ -112,6 +89,7 @@ function mockSettingAnd(
     capabilities = ADMIN_CAPABILITIES,
     destination = DEFAULT_DESTINATION,
     status = EMPTY_STATUS,
+    list = EMPTY_LIST,
   } = options;
   invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
     if (command === 'get_recovery_capabilities') {
@@ -128,15 +106,12 @@ function mockSettingAnd(
     if (command === 'get_backup_destination_setting') {
       return Promise.resolve(destination);
     }
+    if (command === 'list_backups') {
+      return Promise.resolve(list);
+    }
     if (action) return action(command, args);
     throw new Error(`Unexpected command: ${command}`);
   });
-}
-
-async function pickBundlePath(path: string) {
-  openDialogMock.mockResolvedValueOnce(path);
-  fireEvent.click(screen.getByRole('button', { name: 'Browse…' }));
-  await waitFor(() => expect(screen.getByLabelText('Existing backup folder path')).toHaveValue(path));
 }
 
 beforeEach(() => {
@@ -147,7 +122,7 @@ beforeEach(() => {
   document.documentElement.setAttribute('lang', 'en');
 });
 
-describe('R6 backup and recovery settings', () => {
+describe('R6/WS-H-4 backup and recovery settings', () => {
   it('loads a default-on restore setting and submits a request-id-only backup payload', async () => {
     let capturedArgs: Record<string, unknown> | null = null;
     mockSettingAnd((command, args) => {
@@ -181,18 +156,18 @@ describe('R6 backup and recovery settings', () => {
     expect(args.request).not.toHaveProperty('role');
   });
 
-  it('disables only new restore drills when the administrator turns the policy off', async () => {
+  it('disables the restore-verification policy independently of backup creation', async () => {
     const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
     invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
       calls.push({ command, args });
       if (command === 'get_recovery_capabilities') return Promise.resolve(ADMIN_CAPABILITIES);
       if (command === 'get_backup_status') return Promise.resolve(EMPTY_STATUS);
       if (command === 'get_backup_destination_setting') return Promise.resolve(DEFAULT_DESTINATION);
+      if (command === 'list_backups') return Promise.resolve(EMPTY_LIST);
       if (command === 'get_restore_verification_setting') return Promise.resolve({ enabled: true });
       if (command === 'update_restore_verification_setting') {
         return Promise.resolve({ enabled: false });
       }
-      if (command === 'validate_operator_backup') return Promise.resolve(SAFE_RESULT);
       throw new Error(`Unexpected command: ${command}`);
     });
 
@@ -206,88 +181,7 @@ describe('R6 backup and recovery settings', () => {
 
     const updateCall = calls.find((call) => call.command === 'update_restore_verification_setting');
     expect(updateCall?.args).toEqual({ sessionToken: 'session-token', enabled: false });
-
-    const path = String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`;
-    await pickBundlePath(path);
     expect(screen.getByRole('button', { name: 'Create backup' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Validate backup' })).toBeEnabled();
-    expect(screen.getByRole('checkbox', {
-      name: /temporarily creates and then deletes a PostgreSQL database/,
-    })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Verify temporary restore' })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Validate backup' }));
-    expect(await screen.findByText('Backup integrity verified.')).toBeInTheDocument();
-  });
-
-  it('submits a typed read-only validation request', async () => {
-    let capturedArgs: Record<string, unknown> | null = null;
-    mockSettingAnd((command, args) => {
-      expect(command).toBe('validate_operator_backup');
-      capturedArgs = args;
-      return Promise.resolve(SAFE_RESULT);
-    });
-
-    renderScreen();
-    await screen.findByRole('checkbox', { name: 'Temporary restore verification enabled' });
-    const path = String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`;
-    await pickBundlePath(path);
-    fireEvent.click(screen.getByRole('button', { name: 'Validate backup' }));
-
-    expect(await screen.findByText('Backup integrity verified.')).toBeInTheDocument();
-    await waitFor(() => expect(capturedArgs).not.toBeNull());
-    const args = capturedArgs as unknown as {
-      request: { requestId: string; bundlePath: string };
-    };
-    expect(args.request.bundlePath).toBe(path);
-    expect(args.request.requestId).toMatch(/^backup-validate-\d+-\d+$/);
-    expect(args.request).not.toHaveProperty('password');
-    expect(args.request).not.toHaveProperty('databaseUrl');
-  });
-
-  it('requires acknowledgement and verifies recovery only in a temporary database', async () => {
-    let capturedArgs: Record<string, unknown> | null = null;
-    mockSettingAnd((command, args) => {
-      expect(command).toBe('verify_operator_backup_restore');
-      capturedArgs = args;
-      return Promise.resolve(SAFE_RESTORE_RESULT);
-    });
-
-    renderScreen();
-    await screen.findByRole('checkbox', { name: 'Temporary restore verification enabled' });
-    const path = String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`;
-    await pickBundlePath(path);
-
-    const restoreButton = screen.getByRole('button', { name: 'Verify temporary restore' });
-    expect(restoreButton).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', {
-      name: /temporarily creates and then deletes a PostgreSQL database/,
-    }));
-    expect(restoreButton).toBeEnabled();
-    fireEvent.click(restoreButton);
-
-    expect(await screen.findByText(
-      'Backup restored and reconciled successfully in a temporary database.',
-    )).toBeInTheDocument();
-    const result = screen.getByTestId('restore-result');
-    expect(result).toHaveTextContent('Yes');
-    expect(result).toHaveTextContent('Balanced');
-    expect(result).toHaveTextContent('42000');
-    expect(result).toHaveTextContent('7000');
-    expect(result).toHaveTextContent('8000');
-
-    await waitFor(() => expect(capturedArgs).not.toBeNull());
-    const args = capturedArgs as unknown as {
-      sessionToken: string;
-      request: Record<string, unknown>;
-    };
-    expect(args.sessionToken).toBe('session-token');
-    expect(args.request).toMatchObject({ bundlePath: path, confirmed: true });
-    expect(args.request.requestId).toMatch(/^backup-restore-\d+-\d+$/);
-    expect(Object.keys(args.request).sort()).toEqual(['bundlePath', 'confirmed', 'requestId']);
-    expect(args.request).not.toHaveProperty('password');
-    expect(args.request).not.toHaveProperty('databaseUrl');
-    expect(args.request).not.toHaveProperty('targetDatabase');
   });
 
   it('shows fixed Arabic copy under RTL direction', async () => {
@@ -298,28 +192,7 @@ describe('R6 backup and recovery settings', () => {
       expect(screen.getByRole('checkbox', { name: 'تفعيل اختبار الاسترجاع المؤقت' })).toBeChecked(),
     );
     expect(screen.getByRole('button', { name: 'إنشاء نسخة احتياطية' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'اختبار الاسترجاع المؤقت' })).toBeDisabled();
     expect(document.documentElement).toHaveAttribute('dir', 'rtl');
-  });
-
-  it('uses fixed safe copy for restore failures', async () => {
-    mockSettingAnd(() => Promise.reject({
-      code: 'BACKUP_VALIDATION_FAILED',
-      details: 'DO_NOT_EXPOSE_DIAGNOSTIC',
-    }));
-
-    renderScreen();
-    await screen.findByRole('checkbox', { name: 'Temporary restore verification enabled' });
-    await pickBundlePath(String.raw`C:\Stockiha Backups\GestStock-Backup-20260805-150500`);
-    fireEvent.click(screen.getByRole('checkbox', {
-      name: /temporarily creates and then deletes a PostgreSQL database/,
-    }));
-    fireEvent.click(screen.getByRole('button', { name: 'Verify temporary restore' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The temporary restore verification failed. The live database was not replaced.',
-    );
-    expect(screen.queryByText('DO_NOT_EXPOSE_DIAGNOSTIC')).not.toBeInTheDocument();
   });
 });
 
@@ -363,7 +236,6 @@ describe('WS-H-3 capabilities, mode, destination and status', () => {
       "Backup and restore are not available on this computer's setup. Contact your supplier.",
     );
     expect(screen.queryByRole('button', { name: 'Create backup' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Browse…' })).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
@@ -418,6 +290,7 @@ describe('WS-H-3 capabilities, mode, destination and status', () => {
       if (command === 'get_recovery_capabilities') return Promise.resolve(ADMIN_CAPABILITIES);
       if (command === 'get_backup_status') return Promise.resolve(EMPTY_STATUS);
       if (command === 'get_restore_verification_setting') return Promise.resolve({ enabled: true });
+      if (command === 'list_backups') return Promise.resolve(EMPTY_LIST);
       if (command === 'get_backup_destination_setting') {
         destinationReads += 1;
         return Promise.resolve(
@@ -505,16 +378,15 @@ describe('WS-H-3 capabilities, mode, destination and status', () => {
     expect(screen.queryByText(/E:\\secret/)).not.toBeInTheDocument();
   });
 
-  it('shows only the validate box for a validate-only user', async () => {
+  it('shows only the backup list for a validate-only user', async () => {
     mockSettingAnd(undefined, {
       capabilities: { ...NO_CAPABILITIES, canValidateBackup: true },
     });
     renderScreen();
-    expect(await screen.findByRole('button', { name: 'Browse…' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Open a backup from another folder…' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create backup' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Backup destination')).not.toBeInTheDocument();
     expect(screen.queryByTestId('backup-status-line')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Verify temporary restore' })).not.toBeInTheDocument();
     expect(invokeMock).not.toHaveBeenCalledWith('get_backup_destination_setting', expect.anything());
     expect(invokeMock).not.toHaveBeenCalledWith('get_restore_verification_setting', expect.anything());
   });

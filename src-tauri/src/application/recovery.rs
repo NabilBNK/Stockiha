@@ -511,59 +511,46 @@ pub(crate) async fn verify_operator_backup_restore_runtime(
 pub(crate) async fn collect_restore_control_totals(
     connection: &mut PgConnection,
 ) -> Result<(RestoreControlTotals, bool), AppError> {
-    async fn count(connection: &mut PgConnection, sql: &str) -> Result<i64, AppError> {
-        query_scalar(sql)
-            .fetch_one(&mut *connection)
-            .await
-            .map_err(|_| AppError::BackupValidationFailed {
-                diagnostic: "RESTORE_VERIFICATION_RECONCILIATION_FAILED".to_string(),
-            })
+    // WS-H-4 deviation (plan says "body unchanged"): the previous shape was
+    // a nested `async fn count(connection: &mut PgConnection, sql: &str)` —
+    // two independently elided reference lifetimes. That is a known rustc
+    // HRTB limitation trigger ("implementation of `Send` is not general
+    // enough") once this function is reached, via `run_isolated_drill`,
+    // from a `#[tauri::command]` (which needs the whole command future to
+    // be `Send` for a fully generalized lifetime); it already compiled for
+    // the pre-existing EXTERNAL-mode caller alone, but not once WS-H-4's
+    // EMBEDDED drill path also reaches it. A local macro produces the exact
+    // same query/error/behavior at each call site without introducing a
+    // second function boundary, which resolves it. No SQL, error code, or
+    // return value changed.
+    macro_rules! count {
+        ($sql:expr) => {
+            query_scalar($sql)
+                .fetch_one(&mut *connection)
+                .await
+                .map_err(|_| AppError::BackupValidationFailed {
+                    diagnostic: "RESTORE_VERIFICATION_RECONCILIATION_FAILED".to_string(),
+                })?
+        };
     }
 
-    let schema_count = count(
-        connection,
-        "SELECT count(*)::bigint FROM information_schema.schemata WHERE schema_name NOT LIKE 'pg_%' AND schema_name <> 'information_schema'",
-    )
-    .await?;
-    let table_count = count(
-        connection,
-        "SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema NOT LIKE 'pg_%' AND table_schema <> 'information_schema' AND table_type = 'BASE TABLE'",
-    )
-    .await?;
-    let user_count = count(connection, "SELECT count(*)::bigint FROM iam.users").await?;
-    let product_count = count(connection, "SELECT count(*)::bigint FROM catalog.products").await?;
-    let customer_count = count(
-        connection,
-        "SELECT count(*)::bigint FROM receivables.customers",
-    )
-    .await?;
-    let supplier_count = count(
-        connection,
-        "SELECT count(*)::bigint FROM procurement.suppliers",
-    )
-    .await?;
-    let inventory_position_count = count(
-        connection,
-        "SELECT count(*)::bigint FROM inventory.positions",
-    )
-    .await?;
-    let inventory_movement_count = count(
-        connection,
-        "SELECT count(*)::bigint FROM inventory.movements",
-    )
-    .await?;
-    let cash_sale_count =
-        count(connection, "SELECT count(*)::bigint FROM sales.cash_sales").await?;
-    let journal_count = count(
-        connection,
-        "SELECT count(*)::bigint FROM finance.journal_entries",
-    )
-    .await?;
-    let opening_state_application_count = count(
-        connection,
-        "SELECT count(*)::bigint FROM onboarding.opening_state_applications WHERE status = 'APPLIED'",
-    )
-    .await?;
+    let schema_count: i64 = count!(
+        "SELECT count(*)::bigint FROM information_schema.schemata WHERE schema_name NOT LIKE 'pg_%' AND schema_name <> 'information_schema'"
+    );
+    let table_count: i64 = count!(
+        "SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema NOT LIKE 'pg_%' AND table_schema <> 'information_schema' AND table_type = 'BASE TABLE'"
+    );
+    let user_count: i64 = count!("SELECT count(*)::bigint FROM iam.users");
+    let product_count: i64 = count!("SELECT count(*)::bigint FROM catalog.products");
+    let customer_count: i64 = count!("SELECT count(*)::bigint FROM receivables.customers");
+    let supplier_count: i64 = count!("SELECT count(*)::bigint FROM procurement.suppliers");
+    let inventory_position_count: i64 = count!("SELECT count(*)::bigint FROM inventory.positions");
+    let inventory_movement_count: i64 = count!("SELECT count(*)::bigint FROM inventory.movements");
+    let cash_sale_count: i64 = count!("SELECT count(*)::bigint FROM sales.cash_sales");
+    let journal_count: i64 = count!("SELECT count(*)::bigint FROM finance.journal_entries");
+    let opening_state_application_count: i64 = count!(
+        "SELECT count(*)::bigint FROM onboarding.opening_state_applications WHERE status = 'APPLIED'"
+    );
 
     let (journal_debit_total, journal_credit_total, journal_balanced): (String, String, bool) =
         sqlx::query_as(

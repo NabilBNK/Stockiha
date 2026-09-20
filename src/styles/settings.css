@@ -431,6 +431,13 @@
   min-height: 40px;
 }
 
+/* WS-H-4: per-row action buttons (Check / Test / Copy to…) in the backup list. */
+.sk-recovery-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* Accessible Screen Reader Only Utility */
 .sk-sr-only {
   position: absolute;

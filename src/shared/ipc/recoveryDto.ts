@@ -134,3 +134,37 @@ export interface BackupStatus {
   lastRestoreAt: string | null;
   lastRestoreBundle: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// WS-H-4: backup list and copy-to-folder (plan §H4-01, H4-02, H4-05).
+// ---------------------------------------------------------------------------
+
+export interface BackupListItem {
+  bundleIdentifier: string;
+  path: string;
+  /** RFC3339, or null when the manifest could not be read. */
+  createdAtUtc: string | null;
+  backupKind: string;
+  formatVersion: number | null;
+  schemaVersion: string | null;
+  schemaVerdict: SchemaVerdict | string;
+  restorable: boolean;
+  totalBytes: number;
+  manifestReadable: boolean;
+}
+
+export interface ListBackupsResponse {
+  destination: string | null;
+  items: BackupListItem[];
+}
+
+export interface CopyBackupToRequest {
+  requestId: string;
+  bundlePath: string;
+  targetDirectory: string;
+}
+
+export interface CopyBackupToResult {
+  copiedPath: string;
+  totalBytes: number;
+}

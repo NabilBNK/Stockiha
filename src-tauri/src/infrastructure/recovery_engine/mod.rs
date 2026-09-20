@@ -21,11 +21,19 @@
 
 pub(crate) mod backup;
 pub(crate) mod bundle;
+// WS-H-4: read-only backup list, folder-to-folder copy, and the isolated
+// restore test (throwaway cluster + drill).
+pub(crate) mod catalog;
+pub(crate) mod copy;
 pub(crate) mod destination;
+pub(crate) mod drill;
+pub(crate) mod drill_cluster;
 pub(crate) mod errors;
 pub(crate) mod log;
 pub(crate) mod mode;
 pub(crate) mod schema;
+// WS-H-4 (H4-08): removes drill clusters abandoned by a crashed process.
+pub(crate) mod sweep;
 pub(crate) mod tools;
 
 /// Windows reparse points (junctions, symlinks, mount points) are never

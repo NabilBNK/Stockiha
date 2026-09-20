@@ -10,7 +10,6 @@
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use sqlx::postgres::PgConnectOptions;
 use sqlx::{Connection, PgConnection};
@@ -153,13 +152,14 @@ pub(crate) async fn create_bundle(
     }
 
     // 7. Stage root inside the destination (same volume as the final path,
-    //    so the publish step is a rename).
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
+    //    so the publish step is a rename). No timestamp suffix: `stage_tag`
+    //    is the attempt id, a `GENERATED ALWAYS AS IDENTITY` bigint that is
+    //    never reused, so it alone is enough to make this name unique —
+    //    appending nanoseconds only cost ~20 characters of Windows'
+    //    MAX_PATH budget for the staged dump file three directory levels
+    //    down, with no uniqueness benefit (WS-H-4, Architect ruling).
     let stage_root = input.destination.join(format!(
-        ".{}.staging-{}-{nanos}",
+        ".{}.staging-{}",
         input.bundle_name, input.stage_tag
     ));
     std::fs::create_dir(&stage_root).map_err(|e| {
@@ -338,11 +338,14 @@ mod tests {
         use crate::infrastructure::safe_upgrade::test_support;
         use std::process::{Command, Stdio};
 
-        // Short label on purpose: the staged dump path nests two temp levels
-        // under the destination and `pg_dump` (a plain Win32 program) cannot
-        // open paths beyond MAX_PATH (260); the long default label pushed it
-        // to 267 characters.
-        let app_data_dir = test_support::temp_app_data_dir_for_tests("re");
+        // WS-H-4 (Architect ruling): the staging folder name no longer
+        // carries a nanosecond suffix (the attempt id / stage_tag is already
+        // unique), which bought back ~20 characters of Windows' MAX_PATH
+        // (260) budget for the staged dump path three directory levels
+        // under this temp app-data dir. A moderately short, still-readable
+        // label keeps a comfortable margin (~240/260 chars worst case here)
+        // without needing the WS-H-3 fixture's cryptic two-letter label.
+        let app_data_dir = test_support::temp_app_data_dir_for_tests("recovery-backup");
         let (bin_dir, pgdata, _port) =
             test_support::provision_fresh_instance(&app_data_dir, 58560).await;
         let resource_dir = test_support::bundled_resource_dir_for_tests();
