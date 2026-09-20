@@ -3,8 +3,10 @@
 ## Branch and commit
 Branch: task/ws-h-5-live-restore
 Base: 7141c62 (head of task/ws-h-4-backup-list-and-test at kickoff)
-Head: 85ce300e30c4d80164c6c832628331b023e2d991
+Head: 979c9065 (post-manual-testing fix; original sub-plan code: 85ce300)
 Pushed: yes
+
+**Update after manual testing found a real bug (post-report):** the Owner's first manual test hit an infinite restart loop right after a successful live restore. Root-caused, fixed, verified, and pushed as commit `979c906` — see "Post-report fix" below. The gates and SQL-suite results below are from the original `85ce300` submission; the fix was re-verified separately (full non-ignored suite + the `recovery_engine` and `safe_upgrade` ignored suites, all green, described in that section) since it touches shared code (`safe_upgrade::reset_all_schemas`).
 
 ```
 $ git ls-remote origin task/ws-h-5-live-restore
@@ -165,6 +167,27 @@ Test Files  55 passed (55)
 1. **`commands/recovery.rs`'s three new commands (`restore_backup_live`, `inspect_backup_for_fresh_install`, `restore_backup_fresh_install`) are plain `fn`, not `async fn`.** The plan's pseudocode writes them as ordinary async command handlers. Registering them as `async fn` in `generate_handler!` reproduced the exact HRTB compiler limitation the Architect ruling anticipated ("implementation of `Send`/`Executor` is not general enough"), but on the *command* itself this time, not on `run_isolated_drill`/`test_backup` as in WS-H-4 — because these commands do real `.await` work (the audit-envelope call, the actor/destination lookups) *before* spawning the worker thread, and it is exactly that surrounding `async fn`'s generated future that fails to generalize. `commands/safe_upgrade.rs::run_safe_database_upgrade` — the file the ruling explicitly points to — is itself a plain `fn`, with every bit of async work, including its setup phase, driven through `tauri::async_runtime::block_on` inside the function body or the spawned thread; that is exactly the shape applied here. The worker thread itself still runs via `std::thread::spawn` + `tauri::async_runtime::block_on(restore_flow::run_restore(...))`, unchanged from the plan. No protected file (`embedded_setup.rs`, `safe_upgrade.rs` production bodies, `update_shutdown.rs`) was touched to make this work.
 2. Per Architect ruling, `scripts/recovery/stockiha_bootstrap_roles_and_grants.sql` was not touched.
 3. A genuine bug was found and fixed while writing the mandatory `busy_database_aborts_before_change` test: `live::wait_for_no_other_sessions`'s query filtered on `backend_type = 'client backend'`, but that column is redacted (`NULL`) for another backend's row under a role without `pg_read_all_stats` — confirmed empirically (a second `stockiha_migrator` connection's own row showed `backend_type: NULL` when queried from a different migrator connection). The filter now relies on `datname = current_database() AND pid <> pg_backend_pid()` alone, which is not redacted and already excludes every background worker (checkpointer, walwriter, autovacuum, …, which report `datname: NULL`). This is a correctness fix to code written in this same sub-plan, not a deviation from a previously-verified behavior.
+4. **`infrastructure/safe_upgrade.rs::reset_all_schemas`'s body was changed** — the one file the plan protects most explicitly ("visibility only… body unchanged"). This was not discretionary: it is documented in full under "Post-report fix" below, was the only way to fix a real, reproduced, safety-relevant defect (an infinite app-restart loop after an otherwise-successful restore) rather than merely working around it, and the fix is additive-only (one new `GRANT` statement; every existing statement and this function's signature are untouched).
+
+## Post-report fix: infinite restart loop after a successful live restore
+
+The Owner's first manual test (§M5 items 6–7) hit this: the restore completed every checklist step, but the moment the app tried to restart into the restored version, it entered a tight close/reopen loop that never resolved on its own — the Owner had to end the process from Task Manager.
+
+**Root cause, reproduced and confirmed empirically** (not guessed): `reset_all_schemas`'s `DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION stockiha_owner;` creates a schema that does **not** inherit PostgreSQL's own "USAGE granted to `PUBLIC`" default that a genuinely fresh `CREATE DATABASE` gives its auto-created `public` schema — that default is a one-time fact of database creation, not something that attaches to any schema merely because it's named "public". `stockiha_runtime` relies entirely on that implicit default for `public` schema access (`embedded_setup::create_database` never grants it explicitly either, on a normal first-run install); after any reset (live restore, and — since this is the same function WS-K-5's own rollback-from-backup path calls — an upgrade rollback too), `stockiha_runtime` silently loses `USAGE` on `public`, and with it, its earlier-granted `SELECT` on `_sqlx_migrations`. A freshly-restarted process's own `get_setup_status` reads that table as `stockiha_runtime` on every launch; reproduced directly with a real restore + a real `stockiha_runtime` connection, `SELECT has_table_privilege('stockiha_runtime', 'public._sqlx_migrations', 'SELECT')` raised `42501 permission denied for schema public` (not merely `false`) before the fix, and after it, `true`, with `check_schema_compatibility` correctly resolving `UpToDate`.
+
+**Fix:** one additive line in `reset_public`'s SQL — `GRANT USAGE ON SCHEMA public TO PUBLIC;` — restoring exactly the default a fresh database would have had. Nothing else in the function changed.
+
+**New regression test:** `infrastructure::recovery_engine::restore_flow::tests::runtime_role_can_read_schema_state_after_live_restore` (ignored, real-PostgreSQL) — performs a real live restore, then reconnects as `stockiha_runtime` (no other test in this file ever does — every other assertion connects as migrator) and asserts both the raw grant and `check_schema_compatibility`'s verdict.
+
+**Re-verified after the fix**, since it touches code shared with WS-K-5:
+```
+cargo test --lib: 428 passed; 0 failed; 56 ignored
+cargo test --lib recovery_engine -- --ignored: 16 passed; 0 failed  (10 restore_flow tests incl. the new one)
+cargo test --lib safe_upgrade -- --ignored: 3 passed; 0 failed
+```
+`cargo fmt --check` / `cargo clippy -- -D warnings`: both clean. No stray `postgres.exe` or `restore-drill-*`/temp cluster folders remained after this run (one leftover from an earlier *pre-fix* panicking debug attempt was found and cleaned up by hand — a panic skips a test's own end-of-function cleanup, the same limitation noted in Unrelated problems below).
+
+Commit: `979c906` (pushed). The installer needs a fresh, signed rebuild from this commit before any further manual testing — the one described below under Final build predates this fix.
 
 ## Blockers / questions for the Architect
 
@@ -172,7 +195,9 @@ None outstanding. The installer signing blocker reported earlier in this session
 
 **Note on key handling:** the Owner pasted the private key and its password directly into chat to unblock this build. `WS-K-6-SIGNING-KEYS.md` records that the first key was rotated specifically because it had been shown in a chat transcript once before; this session's transcript now contains the current key the same way, so the Owner was told and may want to rotate again the same way.
 
-## Final build
+## Final build (superseded — built from `85ce300`, before the restart-loop fix)
+
+**Do not use this build for manual testing.** It predates commit `979c906` above. A fresh signed build from the current head is pending the Owner supplying the signing credentials again (see the next report update).
 
 ```
 Running makensis to produce ...\target\release\bundle\nsis\Stockiha_0.5.0_x64-setup.exe
