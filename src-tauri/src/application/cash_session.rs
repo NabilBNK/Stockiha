@@ -7,7 +7,9 @@ use serde_json::Value as JsonValue;
 use sqlx::{query_scalar, PgPool, Row};
 use time::OffsetDateTime;
 
-use crate::domain::cash_policy::{CashMovementDto, CashSessionPolicyDto, RecordCashMovementResult};
+use crate::domain::cash_policy::{
+    CashCapabilitiesDto, CashMovementDto, CashSessionPolicyDto, RecordCashMovementResult,
+};
 use crate::domain::cash_session::{
     validate_denomination_counts, CashDenomination, CashSessionCloseResult, DenominationCountInput,
 };
@@ -340,6 +342,7 @@ pub(crate) async fn get_cash_session(
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn record_cash_movement(
     pool: &PgPool,
     session_token: &str,
@@ -348,17 +351,20 @@ pub(crate) async fn record_cash_movement(
     amount: Decimal,
     reason_code: &str,
     note: Option<&str>,
+    approver_session_token: Option<&str>,
 ) -> Result<RecordCashMovementResult, AppError> {
-    let res: JsonValue = query_scalar("SELECT cash.record_cash_movement($1, $2, $3, $4, $5, $6)")
-        .bind(session_token)
-        .bind(cash_session_id)
-        .bind(movement_type)
-        .bind(amount)
-        .bind(reason_code)
-        .bind(note)
-        .fetch_one(pool)
-        .await
-        .map_err(AppError::from_posting_error)?;
+    let res: JsonValue =
+        query_scalar("SELECT cash.record_cash_movement($1, $2, $3, $4, $5, $6, $7)")
+            .bind(session_token)
+            .bind(cash_session_id)
+            .bind(movement_type)
+            .bind(amount)
+            .bind(reason_code)
+            .bind(note)
+            .bind(approver_session_token)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     serde_json::from_value(res)
         .map_err(|e| AppError::internal(format!("Failed to parse cash movement result: {e}")))
@@ -408,4 +414,18 @@ pub(crate) async fn save_cash_session_policy(
 
     serde_json::from_value(res)
         .map_err(|e| AppError::internal(format!("Failed to parse saved cash session policy: {e}")))
+}
+
+pub(crate) async fn get_cash_capabilities(
+    pool: &PgPool,
+    session_token: &str,
+) -> Result<CashCapabilitiesDto, AppError> {
+    let res: JsonValue = query_scalar("SELECT cash.get_capabilities($1)")
+        .bind(session_token)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
+
+    serde_json::from_value(res)
+        .map_err(|e| AppError::internal(format!("Failed to parse cash capabilities: {e}")))
 }

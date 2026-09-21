@@ -45,7 +45,6 @@ import { HistoricalFinanceScreen } from '../features/onboarding/HistoricalFinanc
 import { OpeningStateScreen } from '../features/onboarding/OpeningStateScreen';
 import { OpeningStateApplicationScreen } from '../features/onboarding/OpeningStateApplicationScreen';
 import { DrawerPolicySettingsScreen } from '../features/settings/DrawerPolicySettingsScreen';
-import { CashPolicySettingsScreen } from '../features/settings/CashPolicySettingsScreen';
 import { RecoverySettingsScreen } from '../features/settings/RecoverySettingsScreen';
 import { InventoryCorrectionsSettingsScreen } from '../features/settings/InventoryCorrectionsSettingsScreen';
 import { UserManagementSettingsScreen } from '../features/settings/UserManagementSettingsScreen';
@@ -536,7 +535,6 @@ function AuthenticatedApp() {
             </section>
           ) : null}
           <DrawerPolicySettingsScreen sessionToken={user?.token ?? ''} />
-          <CashPolicySettingsScreen sessionToken={user?.token ?? ''} />
           <InventoryCorrectionsSettingsScreen sessionToken={user?.token ?? ''} />
           <RecoverySettingsScreen sessionToken={user?.token ?? ''} />
           <UserManagementSettingsScreen sessionToken={user?.token ?? ''} />

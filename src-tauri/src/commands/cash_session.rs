@@ -6,7 +6,9 @@ use tauri::State;
 use time::OffsetDateTime;
 
 use crate::application::cash_session;
-use crate::domain::cash_policy::{CashMovementDto, CashSessionPolicyDto, RecordCashMovementResult};
+use crate::domain::cash_policy::{
+    CashCapabilitiesDto, CashMovementDto, CashSessionPolicyDto, RecordCashMovementResult,
+};
 use crate::domain::cash_session::{
     CashDenomination, CashSessionCloseResult, DenominationCountInput,
 };
@@ -228,6 +230,7 @@ pub(crate) async fn get_cash_session(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn record_cash_movement(
     state: State<'_, DatabaseState>,
     session_token: String,
@@ -236,6 +239,7 @@ pub(crate) async fn record_cash_movement(
     amount: String,
     reason_code: String,
     note: Option<String>,
+    approver_session_token: Option<String>,
 ) -> Result<RecordCashMovementResult, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     let parsed_amount: Decimal = amount.parse().map_err(|_| AppError::ValidationError {
@@ -249,6 +253,7 @@ pub(crate) async fn record_cash_movement(
         parsed_amount,
         &reason_code,
         note.as_deref(),
+        approver_session_token.as_deref(),
     )
     .await
     .map_err(IpcError::from)
@@ -291,6 +296,17 @@ pub(crate) async fn save_cash_session_policy(
                 diagnostic: "Invalid material variance threshold".to_string(),
             })?;
     cash_session::save_cash_session_policy(pool, &session_token, threshold)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_cash_capabilities(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<CashCapabilitiesDto, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::get_cash_capabilities(pool, &session_token)
         .await
         .map_err(IpcError::from)
 }

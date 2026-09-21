@@ -73,9 +73,15 @@ export interface RecordCashMovementResult {
   amount: string;
   reason_code: CashMovementReason;
   journal_document_id: number;
+  approved_by_user_id: number | null;
 }
 
 export interface CashSessionPolicy {
   material_variance_threshold: string;
   updated_at: string;
+}
+
+export interface CashCapabilities {
+  can_record_cash_movement: boolean;
+  can_approve_cash_out: boolean;
 }

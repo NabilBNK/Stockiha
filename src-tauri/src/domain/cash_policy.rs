@@ -20,10 +20,18 @@ pub struct RecordCashMovementResult {
     pub amount: String,
     pub reason_code: String,
     pub journal_document_id: i64,
+    #[serde(default)]
+    pub approved_by_user_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CashSessionPolicyDto {
     pub material_variance_threshold: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CashCapabilitiesDto {
+    pub can_record_cash_movement: bool,
+    pub can_approve_cash_out: bool,
 }

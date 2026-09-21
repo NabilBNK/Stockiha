@@ -103,6 +103,7 @@ describe('S4-003 drawer eligibility settings', () => {
     expect(await screen.findByRole('heading', { name: 'Settings' })).toBeInTheDocument();
     expect(screen.getByText('Cash sale')).toBeInTheDocument();
     expect(screen.getByText('Customer cash refund')).toBeInTheDocument();
+    expect(screen.queryByTestId('cash-tolerance-input')).not.toBeInTheDocument();
 
     const refundToggle = screen.getByRole('checkbox', { name: /Customer cash refund/ });
     expect(refundToggle).toBeChecked();

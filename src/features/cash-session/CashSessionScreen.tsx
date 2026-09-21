@@ -8,6 +8,7 @@ import { useAppData } from '../../app/AppDataContext';
 import * as ipc from '../../shared/ipc/gateway';
 import * as cashIpc from '../../shared/ipc/cashSessionGateway';
 import type {
+  CashCapabilities,
   CashDenomination,
   CashMovement,
   CashMovementDirection,
@@ -46,11 +47,18 @@ const COPY: Record<Locale, Record<string, string>> = {
     reasonChange: 'Change float',
     reasonCorrection: 'Correction',
     reasonOther: 'Other',
+    reasonCustom: 'Custom reason',
+    customDescription: 'Describe the reason (required)',
+    customDescriptionRequired: 'Describe the reason before recording.',
+    noteTooLong: 'The note can be at most 200 characters.',
+    cashOutApprovalTitle: 'Manager approval required',
+    cashOutApprovalHelp: 'Money taken out of the drawer must be approved by a manager on this computer.',
+    cashOutApproverRequired: 'Enter the manager’s username and password.',
     reasonTag_EXPENSE: 'Expense',
     reasonTag_SUPPLIER_PAYMENT: 'Supplier',
     reasonTag_CHANGE_FLOAT: 'Change',
     reasonTag_CORRECTION: 'Correction',
-    reasonTag_OTHER: 'Other',
+    reasonTag_OTHER: 'Custom',
     note: 'Note',
     recordMovement: 'Record',
     movementRecorded: 'Cash movement recorded',
@@ -80,11 +88,18 @@ const COPY: Record<Locale, Record<string, string>> = {
     reasonChange: 'Appoint de monnaie',
     reasonCorrection: 'Correction',
     reasonOther: 'Autre',
+    reasonCustom: 'Motif personnalisé',
+    customDescription: 'Décrivez le motif (obligatoire)',
+    customDescriptionRequired: 'Décrivez le motif avant d’enregistrer.',
+    noteTooLong: 'La note peut contenir au maximum 200 caractères.',
+    cashOutApprovalTitle: 'Validation d’un responsable requise',
+    cashOutApprovalHelp: 'Toute sortie d’argent de la caisse doit être validée par un responsable sur cet ordinateur.',
+    cashOutApproverRequired: 'Saisissez l’identifiant et le mot de passe du responsable.',
     reasonTag_EXPENSE: 'Dépense',
     reasonTag_SUPPLIER_PAYMENT: 'Fournisseur',
     reasonTag_CHANGE_FLOAT: 'Monnaie',
     reasonTag_CORRECTION: 'Correction',
-    reasonTag_OTHER: 'Autre',
+    reasonTag_OTHER: 'Personnalisé',
     note: 'Note',
     recordMovement: 'Enregistrer',
     movementRecorded: 'Mouvement de caisse enregistré',
@@ -114,11 +129,18 @@ const COPY: Record<Locale, Record<string, string>> = {
     reasonChange: 'صرف عملة',
     reasonCorrection: 'تصحيح',
     reasonOther: 'أخرى',
+    reasonCustom: 'سبب مخصص',
+    customDescription: 'اكتب وصف السبب (إلزامي)',
+    customDescriptionRequired: 'اكتب وصف السبب قبل التسجيل.',
+    noteTooLong: 'يمكن أن تحتوي الملاحظة على 200 حرف كحد أقصى.',
+    cashOutApprovalTitle: 'مطلوب موافقة المسؤول',
+    cashOutApprovalHelp: 'يجب أن يوافق مسؤول على هذا الحاسوب على أي مبلغ يُسحب من الصندوق.',
+    cashOutApproverRequired: 'أدخل اسم مستخدم المسؤول وكلمة مروره.',
     reasonTag_EXPENSE: 'مصروف',
     reasonTag_SUPPLIER_PAYMENT: 'مورد',
     reasonTag_CHANGE_FLOAT: 'عملة',
     reasonTag_CORRECTION: 'تصحيح',
-    reasonTag_OTHER: 'أخرى',
+    reasonTag_OTHER: 'مخصص',
     note: 'ملاحظة',
     recordMovement: 'تسجيل',
     movementRecorded: 'تم تسجيل حركة النقد',
@@ -157,6 +179,9 @@ export function CashSessionScreen() {
   const [movementAmount, setMovementAmount] = useState('');
   const [movementReason, setMovementReason] = useState<CashMovementReason>('EXPENSE');
   const [movementNote, setMovementNote] = useState('');
+  const [cashCapabilities, setCashCapabilities] = useState<CashCapabilities | null>(null);
+  const [approverUsername, setApproverUsername] = useState('');
+  const [approverPassword, setApproverPassword] = useState('');
 
   const refreshLifecycle = useCallback(async () => {
     if (!token) {
@@ -181,6 +206,7 @@ export function CashSessionScreen() {
         setDenominations(rows);
         setCounts(initialCounts(rows));
       }),
+      cashIpc.getCashCapabilities(token).then(setCashCapabilities).catch(() => setCashCapabilities(null)),
     ]).catch((err) => setError(errorText(err)));
   }, [token, refreshLifecycle, errorText]);
 
@@ -188,6 +214,9 @@ export function CashSessionScreen() {
     () => denominations.length > 0 && denominations.every((d) => INTEGER_RE.test(counts[d.id] ?? '')),
     [denominations, counts],
   );
+
+  const needsCashOutApproval =
+    movementDirection === 'CASH_OUT' && !(cashCapabilities?.can_approve_cash_out ?? false);
 
   async function sync() {
     await Promise.all([refreshLifecycle(), refreshActiveCashSession()]);
@@ -214,18 +243,45 @@ export function CashSessionScreen() {
       setError(text.movementAmountInvalid);
       return;
     }
+    const note = movementNote.trim();
+    if (movementReason === 'OTHER' && note === '') {
+      setError(text.customDescriptionRequired);
+      return;
+    }
+    if (note.length > 200) {
+      setError(text.noteTooLong);
+      return;
+    }
+    if (needsCashOutApproval && (!approverUsername.trim() || !approverPassword)) {
+      setError(text.cashOutApproverRequired);
+      return;
+    }
+
     await run(async () => {
-      await cashIpc.recordCashMovement(
-        token,
-        current.id,
-        movementDirection,
-        movementAmount,
-        movementReason,
-        movementNote.trim() || null,
-      );
-      setMovementAmount('');
-      setMovementNote('');
-      setInfo(text.movementRecorded);
+      let approverToken: string | null = null;
+      try {
+        if (needsCashOutApproval) {
+          const approver = await ipc.login(approverUsername.trim(), approverPassword, workstationId);
+          approverToken = approver.session_token;
+        }
+        await cashIpc.recordCashMovement(
+          token,
+          current.id,
+          movementDirection,
+          movementAmount,
+          movementReason,
+          note === '' ? null : note,
+          approverToken,
+        );
+        setMovementAmount('');
+        setMovementNote('');
+        setApproverUsername('');
+        setApproverPassword('');
+        setInfo(text.movementRecorded);
+      } finally {
+        if (approverToken) await ipc.logout(approverToken).catch(() => undefined);
+        setApproverPassword('');
+      }
       await sync();
     });
   }
@@ -424,16 +480,36 @@ export function CashSessionScreen() {
                 <option value="SUPPLIER_PAYMENT">{text.reasonSupplier}</option>
                 <option value="CHANGE_FLOAT">{text.reasonChange}</option>
                 <option value="CORRECTION">{text.reasonCorrection}</option>
-                <option value="OTHER">{text.reasonOther}</option>
+                <option value="OTHER">{text.reasonCustom}</option>
               </select>
             </label>
 
             <TextField
-              label={text.note}
+              label={movementReason === 'OTHER' ? text.customDescription : text.note}
               value={movementNote}
               onChange={(e) => setMovementNote(e.target.value)}
               data-testid="cash-movement-note"
             />
+
+            {needsCashOutApproval ? (
+              <div data-testid="cash-out-approval">
+                <h4>{text.cashOutApprovalTitle}</h4>
+                <p>{text.cashOutApprovalHelp}</p>
+                <TextField
+                  label={text.managerUsername}
+                  value={approverUsername}
+                  onChange={(event) => setApproverUsername(event.target.value)}
+                  data-testid="cash-out-approver-username"
+                />
+                <TextField
+                  label={text.managerPassword}
+                  type="password"
+                  value={approverPassword}
+                  onChange={(event) => setApproverPassword(event.target.value)}
+                  data-testid="cash-out-approver-password"
+                />
+              </div>
+            ) : null}
 
             <Button type="submit" disabled={busy} data-testid="cash-movement-submit">
               {text.recordMovement}
@@ -443,7 +519,7 @@ export function CashSessionScreen() {
           <table data-testid="cash-movement-list">
             <tbody>
               {movements
-                .filter((m) => m.movement_type !== 'SALE')
+                .filter((m) => m.movement_type === 'CASH_IN' || m.movement_type === 'CASH_OUT')
                 .map((m) => (
                   <tr key={m.movement_id} data-testid={`cash-movement-${m.movement_id}`}>
                     <td>{m.movement_type === 'CASH_OUT' ? text.cashOut : text.cashIn}</td>

@@ -4,6 +4,7 @@ import { parseTauriError } from '../utils/tauriError';
 import type { AppErrorCode } from '../types/errors';
 import { COMMANDS } from './commands';
 import type {
+  CashCapabilities,
   CashDenomination,
   CashMovement,
   CashMovementDirection,
@@ -114,6 +115,7 @@ export function recordCashMovement(
   amount: string,
   reasonCode: CashMovementReason,
   note: string | null,
+  approverSessionToken: string | null,
 ): Promise<RecordCashMovementResult> {
   return call<RecordCashMovementResult>(COMMANDS.RECORD_CASH_MOVEMENT, {
     sessionToken,
@@ -122,6 +124,7 @@ export function recordCashMovement(
     amount,
     reasonCode,
     note,
+    approverSessionToken,
   });
 }
 
@@ -151,4 +154,8 @@ export function saveCashSessionPolicy(
     sessionToken,
     materialVarianceThreshold,
   });
+}
+
+export function getCashCapabilities(sessionToken: string): Promise<CashCapabilities> {
+  return call<CashCapabilities>(COMMANDS.GET_CASH_CAPABILITIES, { sessionToken });
 }

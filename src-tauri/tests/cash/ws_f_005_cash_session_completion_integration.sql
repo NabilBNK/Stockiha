@@ -102,7 +102,7 @@ BEGIN
 
     -- 1. Open a session with opening float of 2,000. Record cash-out of 500 for reason EXPENSE.
     v_session1 := sales.open_cash_session(v_cashier_token, v_warehouse_id, v_workstation, 2000.00);
-    v_res := cash.record_cash_movement(v_cashier_token, v_session1, 'CASH_OUT', 500.00, 'EXPENSE', 'Delivery payment');
+    v_res := cash.record_cash_movement(v_cashier_token, v_session1, 'CASH_OUT', 500.00, 'EXPENSE', 'Delivery payment', v_manager_token);
 
     SELECT amount, movement_type, journal_document_id
     INTO v_amount, v_mov_type, v_journal_id
@@ -128,7 +128,7 @@ BEGIN
     END IF;
 
     -- 3. Record a cash-in of 300 for reason CHANGE_FLOAT. Journal debits CASH_DESK 300 and credits CASH_TRANSIT 300.
-    v_res := cash.record_cash_movement(v_cashier_token, v_session1, 'CASH_IN', 300.00, 'CHANGE_FLOAT', 'Extra coin roll');
+    v_res := cash.record_cash_movement(v_cashier_token, v_session1, 'CASH_IN', 300.00, 'CHANGE_FLOAT', 'Extra coin roll', NULL);
     v_journal_id := (v_res->>'journal_document_id')::bigint;
 
     SELECT count(*),
@@ -342,7 +342,7 @@ BEGIN
     -- 9. A cash movement is refused on a session that is not OPEN.
     v_blocked := false;
     BEGIN
-        PERFORM cash.record_cash_movement(v_cashier_token, v_session4, 'CASH_OUT', 100.00, 'EXPENSE', 'Refused on closed');
+        PERFORM cash.record_cash_movement(v_cashier_token, v_session4, 'CASH_OUT', 100.00, 'EXPENSE', 'Refused on closed', NULL);
     EXCEPTION WHEN SQLSTATE '55000' THEN
         v_blocked := true;
     END;
@@ -354,7 +354,7 @@ BEGIN
     v_session5 := sales.open_cash_session(v_cashier_token, v_warehouse_id, v_workstation, 1000.00);
     v_blocked := false;
     BEGIN
-        PERFORM cash.record_cash_movement(v_cashier2_token, v_session5, 'CASH_OUT', 100.00, 'EXPENSE', 'Refused for other user');
+        PERFORM cash.record_cash_movement(v_cashier2_token, v_session5, 'CASH_OUT', 100.00, 'EXPENSE', 'Refused for other user', NULL);
     EXCEPTION WHEN SQLSTATE '42501' THEN
         v_blocked := true;
     END;
@@ -365,28 +365,28 @@ BEGIN
     -- 11. Movement with negative amount, zero amount, three-decimal amount, and unsupported reason each refused
     v_blocked := false;
     BEGIN
-        PERFORM cash.record_cash_movement(v_cashier_token, v_session5, 'CASH_OUT', -50.00, 'EXPENSE', 'Negative');
+        PERFORM cash.record_cash_movement(v_cashier_token, v_session5, 'CASH_OUT', -50.00, 'EXPENSE', 'Negative', NULL);
     EXCEPTION WHEN SQLSTATE '22023' THEN v_blocked := true;
     END;
     IF NOT v_blocked THEN RAISE EXCEPTION 'Assertion failed (11a): negative amount allowed'; END IF;
 
     v_blocked := false;
     BEGIN
-        PERFORM cash.record_cash_movement(v_cashier_token, v_session5, 'CASH_OUT', 0.00, 'EXPENSE', 'Zero');
+        PERFORM cash.record_cash_movement(v_cashier_token, v_session5, 'CASH_OUT', 0.00, 'EXPENSE', 'Zero', NULL);
     EXCEPTION WHEN SQLSTATE '22023' THEN v_blocked := true;
     END;
     IF NOT v_blocked THEN RAISE EXCEPTION 'Assertion failed (11b): zero amount allowed'; END IF;
 
     v_blocked := false;
     BEGIN
-        PERFORM cash.record_cash_movement(v_cashier_token, v_session5, 'CASH_OUT', 12.345, 'EXPENSE', 'Three decimals');
+        PERFORM cash.record_cash_movement(v_cashier_token, v_session5, 'CASH_OUT', 12.345, 'EXPENSE', 'Three decimals', NULL);
     EXCEPTION WHEN SQLSTATE '22023' THEN v_blocked := true;
     END;
     IF NOT v_blocked THEN RAISE EXCEPTION 'Assertion failed (11c): three decimals allowed'; END IF;
 
     v_blocked := false;
     BEGIN
-        PERFORM cash.record_cash_movement(v_cashier_token, v_session5, 'CASH_OUT', 50.00, 'UNSUPPORTED_REASON', 'Bad reason');
+        PERFORM cash.record_cash_movement(v_cashier_token, v_session5, 'CASH_OUT', 50.00, 'UNSUPPORTED_REASON', 'Bad reason', NULL);
     EXCEPTION WHEN SQLSTATE '22023' THEN v_blocked := true;
     END;
     IF NOT v_blocked THEN RAISE EXCEPTION 'Assertion failed (11d): unsupported reason allowed'; END IF;
