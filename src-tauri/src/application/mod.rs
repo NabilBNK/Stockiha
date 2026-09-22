@@ -39,6 +39,7 @@ pub(crate) mod recovery;
 pub(crate) mod recovery_creation;
 // WS-H-3: EMBEDDED-mode recovery orchestration (installed builds).
 pub(crate) mod recovery_embedded;
+pub(crate) mod sale_void;
 pub(crate) mod setup;
 pub(crate) mod stock_adjustment;
 pub(crate) mod stock_receipt;

@@ -25,6 +25,7 @@ pub(crate) mod receivables;
 pub(crate) mod recovery;
 pub(crate) mod residual;
 mod sale;
+pub mod sale_void;
 pub(crate) mod stock;
 pub(crate) mod supplier;
 mod warehouse;

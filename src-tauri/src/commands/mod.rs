@@ -22,6 +22,7 @@ pub mod receivables;
 pub mod recovery;
 pub mod reference;
 pub mod safe_upgrade;
+pub mod sale_void;
 pub mod setup;
 pub mod stock_adjustment;
 pub mod stock_receipt;

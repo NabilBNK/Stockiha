@@ -92,6 +92,7 @@ export function humanDocumentType(type: string | null | undefined, locale: Local
     STOCK_RECEIPT: { en: 'Stock Receipt', fr: 'Entrée de stock', ar: 'وصل استلام مخزون' },
     STOCK_ADJUSTMENT: { en: 'Inventory Correction', fr: 'Correction d’inventaire', ar: 'تصحيح المخزون' },
     JOURNAL_ENTRY: { en: 'Journal Entry', fr: 'Écriture comptable', ar: 'قيد محاسبي' },
+    SALE_VOID: { en: 'Sale Cancellation', fr: 'Annulation de vente', ar: 'إلغاء بيع' },
   };
 
   return LABELS[type]?.[locale] ?? type;
@@ -106,7 +107,7 @@ export function humanStatus(status: string | null | undefined, locale: Locale = 
   const STATUS_LABELS: Record<string, Record<Locale, string>> = {
     POSTED: { en: 'Posted', fr: 'Validé', ar: 'مرحل' },
     DRAFT: { en: 'Draft', fr: 'Brouillon', ar: 'مسودة' },
-    REVERSED: { en: 'Reversed', fr: 'Annulé', ar: 'معكوس' },
+    REVERSED: { en: 'Reversed', fr: 'Annulé', ar: 'ملغى' },
     CANCELLED: { en: 'Cancelled', fr: 'Annulé', ar: 'ملغى' },
     COMPLETED: { en: 'Completed', fr: 'Terminé', ar: 'مكتمل' },
     BALANCED: { en: 'Balanced', fr: 'Équilibré', ar: 'متوازن' },

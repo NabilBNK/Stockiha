@@ -312,6 +312,8 @@ pub fn run() {
             commands::cash_session::get_cash_session_policy,
             commands::cash_session::save_cash_session_policy,
             commands::cash_session::get_cash_capabilities,
+            commands::sale_void::void_sale,
+            commands::sale_void::list_session_sales,
             commands::drawer::list_drawer_operation_policy,
             commands::drawer::update_drawer_operation_policy,
             commands::onboarding::get_historical_finance_setting,

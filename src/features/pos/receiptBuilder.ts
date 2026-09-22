@@ -108,7 +108,7 @@ export function sanitizeForPrinter(text: string): string {
  * Maps a string to single-byte values. Characters above U+00FF that cannot be
  * represented in the printer's single-byte code page become '?'.
  */
-function toPrinterBytes(text: string): number[] {
+export function toPrinterBytes(text: string): number[] {
   const sanitized = sanitizeForPrinter(text);
   const bytes: number[] = [];
   for (const char of sanitized) {
@@ -118,11 +118,11 @@ function toPrinterBytes(text: string): number[] {
   return bytes;
 }
 
-function padEnd(text: string, width: number): string {
+export function padEnd(text: string, width: number): string {
   return text.length >= width ? text.slice(0, width) : text + ' '.repeat(width - text.length);
 }
 
-function padStart(text: string, width: number): string {
+export function padStart(text: string, width: number): string {
   return text.length >= width ? text.slice(text.length - width) : ' '.repeat(width - text.length) + text;
 }
 

@@ -7,6 +7,7 @@ import { useSession } from '../../shared/session/SessionContext';
 import { useAppData } from '../../app/AppDataContext';
 import * as ipc from '../../shared/ipc/gateway';
 import * as cashIpc from '../../shared/ipc/cashSessionGateway';
+import { SessionSalesPanel } from './SessionSalesPanel';
 import type {
   CashCapabilities,
   CashDenomination,
@@ -531,6 +532,10 @@ export function CashSessionScreen() {
             </tbody>
           </table>
         </section>
+      ) : null}
+
+      {current && current.status === 'OPEN' ? (
+        <SessionSalesPanel token={token} cashSessionId={current.id} onChanged={() => void sync()} />
       ) : null}
 
       {current?.status === 'OPEN' ? (

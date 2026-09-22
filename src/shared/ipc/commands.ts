@@ -51,6 +51,8 @@ export const COMMANDS = {
   GET_CASH_SESSION_POLICY: 'get_cash_session_policy',
   SAVE_CASH_SESSION_POLICY: 'save_cash_session_policy',
   GET_CASH_CAPABILITIES: 'get_cash_capabilities',
+  VOID_SALE: 'void_sale',
+  LIST_SESSION_SALES: 'list_session_sales',
   LIST_DRAWER_OPERATION_POLICY: 'list_drawer_operation_policy',
   UPDATE_DRAWER_OPERATION_POLICY: 'update_drawer_operation_policy',
   GET_INVENTORY_CORRECTIONS_SETTING: 'get_inventory_corrections_setting',
