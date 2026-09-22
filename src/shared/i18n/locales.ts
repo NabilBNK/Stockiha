@@ -474,6 +474,10 @@ const fr = {
   'errors.freshRestoreNotAllowed': "La restauration ici n’est possible que sur une nouvelle installation sans compte utilisateur.",
   'errors.backupCopyFailed': "La sauvegarde n’a pas pu être copiée. Rien n’a été laissé dans le dossier cible.",
   'errors.insufficientDiskSpace': "Il n’y a pas assez d’espace disque libre pour cette opération.",
+  // WS-M-1: logo upload validation.
+  'errors.logoTooLarge': 'Ce fichier dépasse la taille maximale de 2 Mo pour le logo.',
+  'errors.logoNotAFile': "Ce fichier n'est pas accessible. Choisissez-en un autre.",
+  'errors.logoUnsupportedType': 'Format non pris en charge. Utilisez une image PNG, JPEG ou WebP.',
   // S2-003: Zero-quantity safeguards
   'inventory.zeroQtyWarning.title': 'Attention : stock z\u00e9ro',
   'inventory.zeroQtyWarning.message': '"{variant}" a un stock confirm\u00e9 de z\u00e9ro et aucun co\u00fbt moyen pond\u00e9r\u00e9 ant\u00e9rieur enregistr\u00e9. Une augmentation positive n\u00e9cessite une base de co\u00fbts approuv\u00e9e.',
@@ -531,6 +535,34 @@ const fr = {
   'printing.footer': 'Message de pied de ticket',
   'printing.test': "Test d'impression",
   'printing.saved': "Paramètres d'impression enregistrés",
+  // WS-M-1: shop identity, logo and A4 print display toggles.
+  'printing.identityTitle': 'Identité du magasin sur les documents imprimés',
+  'printing.identityFieldsHint': 'Le nom, l’adresse et le téléphone ci-dessus sont utilisés à la fois sur le ticket et sur les documents A4.',
+  'printing.logo': 'Logo',
+  'printing.logoNone': 'Aucun logo',
+  'printing.logoChoose': 'Choisir un logo…',
+  'printing.logoRemove': 'Supprimer le logo',
+  'printing.legalName': 'Raison sociale',
+  'printing.email': 'E-mail',
+  'printing.website': 'Site web',
+  'printing.nif': 'NIF',
+  'printing.nis': 'NIS',
+  'printing.rc': 'RC',
+  'printing.ai': 'AI',
+  'printing.rib': 'RIB',
+  'printing.footerNote': 'Note de pied de page A4',
+  'printing.showLogo': 'Afficher le logo',
+  'printing.showEmail': "Afficher l'e-mail",
+  'printing.showWebsite': 'Afficher le site web',
+  'printing.showRib': 'Afficher le RIB',
+  'printing.amountInWords': 'Afficher le montant en lettres',
+  'printing.printLanguage': "Langue d'impression",
+  'printing.printLanguageFollowApp': "Suivre la langue de l'application",
+  'printing.printLanguageFr': 'Français',
+  'printing.printLanguageAr': 'العربية',
+  'printing.printLanguageEn': 'English',
+  'printing.invalidEmail': 'Adresse e-mail invalide.',
+  'printing.tooLong': '{field} est trop long (maximum {max} caractères).',
   'cashPolicy.title': "Tol\u00e9rance d'\u00e9cart de caisse",
   'cashPolicy.threshold': "Accepter les \u00e9carts jusqu'\u00e0 (DZD)",
   'cashPolicy.help': "Un \u00e9cart de cl\u00f4ture inf\u00e9rieur ou \u00e9gal \u00e0 ce montant cl\u00f4ture la session automatiquement. Au-del\u00e0, un responsable est requis.",
@@ -1135,6 +1167,12 @@ const ar: Record<MessageKey, string> = {
   'errors.freshRestoreNotAllowed': 'الاسترجاع هنا ممكن فقط على تثبيت جديد لا يحتوي على أي حسابات مستخدمين.',
   'errors.backupCopyFailed': 'تعذر نسخ النسخة الاحتياطية. لم يُترك أي شيء في المجلد الهدف.',
   'errors.insufficientDiskSpace': 'لا توجد مساحة تخزين كافية لإجراء هذه العملية.',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'errors.logoTooLarge': 'This file exceeds the 2 MB logo size limit.',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'errors.logoNotAFile': 'This file could not be read. Choose another one.',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'errors.logoUnsupportedType': 'Unsupported format. Use a PNG, JPEG or WebP image.',
   'inventory.zeroQtyWarning.title': 'تحذير مخزون منعدم',
   'inventory.zeroQtyWarning.message': '"{variant}" يملك مخزونًا مؤكدًا منعدمًا ولا يملك متوسط تكلفة موازنًا سابقًا مسجلاً. تتطلب الزيادة قاعدة تكلفة معتمدة.',
   'errors.unknown': '\u062d\u062f\u062b \u062e\u0637\u0623 \u063a\u064a\u0631 \u0645\u062a\u0648\u0642\u0639. \u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629.',
@@ -1191,6 +1229,60 @@ const ar: Record<MessageKey, string> = {
   'printing.footer': '\u0631\u0633\u0627\u0644\u0629 \u0623\u0633\u0641\u0644 \u0627\u0644\u0648\u0635\u0644',
   'printing.test': '\u062a\u062c\u0631\u0628\u0629 \u0627\u0644\u0637\u0628\u0639',
   'printing.saved': '\u062a\u0645 \u062d\u0641\u0638 \u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u0637\u0628\u0627\u0639\u0629',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.identityTitle': 'Shop identity on printed documents',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.identityFieldsHint': 'The name, address and phone above are used on both the receipt and A4.',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.logo': 'Logo',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.logoNone': 'No logo',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.logoChoose': 'Choose logo\u2026',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.logoRemove': 'Remove logo',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.legalName': 'Legal name',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.email': 'E-mail',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.website': 'Website',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.nif': 'NIF',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.nis': 'NIS',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.rc': 'RC',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.ai': 'AI',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.rib': 'RIB',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.footerNote': 'A4 footer note',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.showLogo': 'Show the logo',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.showEmail': 'Show the e-mail',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.showWebsite': 'Show the website',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.showRib': 'Show the RIB',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.amountInWords': 'Show the amount in words',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.printLanguage': 'Print language',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.printLanguageFollowApp': 'Follow the app language',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.printLanguageFr': 'Fran\u00e7ais',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.printLanguageAr': '\u0627\u0644\u0639\u0631\u0628\u064a\u0629',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.printLanguageEn': 'English',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.invalidEmail': 'Invalid e-mail address.',
+  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.tooLong': '{field} is too long (maximum {max} characters).',
   'cashPolicy.title': '\u062d\u062f \u0627\u0644\u062a\u0633\u0627\u0645\u062d \u0641\u064a \u0641\u0631\u0642 \u0627\u0644\u0635\u0646\u062f\u0648\u0642',
   'cashPolicy.threshold': '\u0642\u0628\u0648\u0644 \u0627\u0644\u0641\u0631\u0648\u0642 \u062d\u062a\u0649 (\u062f\u062c)',
   'cashPolicy.help': '\u0623\u064a \u0641\u0631\u0642 \u0639\u0646\u062f \u0627\u0644\u0625\u063a\u0644\u0627\u0642 \u0644\u0627 \u064a\u062a\u062c\u0627\u0648\u0632 \u0647\u0630\u0627 \u0627\u0644\u0645\u0628\u0644\u063a \u064a\u063a\u0644\u0642 \u0627\u0644\u062c\u0644\u0633\u0629 \u062a\u0644\u0642\u0627\u0626\u064a\u0627\u064b. \u0648\u0645\u0627 \u0632\u0627\u062f \u0639\u0646\u0647 \u064a\u062a\u0637\u0644\u0628 \u0645\u0648\u0627\u0641\u0642\u0629 \u0645\u0633\u0624\u0648\u0644.',
@@ -1793,6 +1885,9 @@ const en: Record<MessageKey, string> = {
   'errors.freshRestoreNotAllowed': 'Restoring here is only possible on a new installation with no user accounts.',
   'errors.backupCopyFailed': 'The backup could not be copied. Nothing was left behind in the target folder.',
   'errors.insufficientDiskSpace': 'There is not enough free disk space for this operation.',
+  'errors.logoTooLarge': 'This file exceeds the 2 MB logo size limit.',
+  'errors.logoNotAFile': 'This file could not be read. Choose another one.',
+  'errors.logoUnsupportedType': 'Unsupported format. Use a PNG, JPEG or WebP image.',
   // S2-003: Zero-quantity safeguards
   'inventory.zeroQtyWarning.title': 'Warning: Zero Quantity',
   'inventory.zeroQtyWarning.message': '"{variant}" has zero confirmed stock and no prior weighted-average cost on record. A positive adjustment requires an approved cost basis.',
@@ -1850,6 +1945,33 @@ const en: Record<MessageKey, string> = {
   'printing.footer': 'Footer message',
   'printing.test': 'Test print',
   'printing.saved': 'Printing settings saved',
+  'printing.identityTitle': 'Shop identity on printed documents',
+  'printing.identityFieldsHint': 'The name, address and phone above are used on both the receipt and A4.',
+  'printing.logo': 'Logo',
+  'printing.logoNone': 'No logo',
+  'printing.logoChoose': 'Choose logo…',
+  'printing.logoRemove': 'Remove logo',
+  'printing.legalName': 'Legal name',
+  'printing.email': 'E-mail',
+  'printing.website': 'Website',
+  'printing.nif': 'NIF',
+  'printing.nis': 'NIS',
+  'printing.rc': 'RC',
+  'printing.ai': 'AI',
+  'printing.rib': 'RIB',
+  'printing.footerNote': 'A4 footer note',
+  'printing.showLogo': 'Show the logo',
+  'printing.showEmail': 'Show the e-mail',
+  'printing.showWebsite': 'Show the website',
+  'printing.showRib': 'Show the RIB',
+  'printing.amountInWords': 'Show the amount in words',
+  'printing.printLanguage': 'Print language',
+  'printing.printLanguageFollowApp': 'Follow the app language',
+  'printing.printLanguageFr': 'Français',
+  'printing.printLanguageAr': 'العربية',
+  'printing.printLanguageEn': 'English',
+  'printing.invalidEmail': 'Invalid e-mail address.',
+  'printing.tooLong': '{field} is too long (maximum {max} characters).',
   'cashPolicy.title': 'Cash variance tolerance',
   'cashPolicy.threshold': 'Accept differences up to (DZD)',
   'cashPolicy.help': 'A closing difference at or below this amount closes the session automatically. Anything larger needs a manager.',

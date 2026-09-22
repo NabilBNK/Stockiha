@@ -236,6 +236,11 @@ export const COMMANDS = {
   GET_PRINTING_SETTINGS: 'get_printing_settings',
   SAVE_PRINTING_SETTINGS: 'save_printing_settings',
   PRINT_RAW_RECEIPT: 'print_raw_receipt',
+
+  // WS-M-1 Shop identity, print settings and logo
+  SET_COMPANY_LOGO: 'set_company_logo',
+  GET_COMPANY_LOGO: 'get_company_logo',
+  CLEAR_COMPANY_LOGO: 'clear_company_logo',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

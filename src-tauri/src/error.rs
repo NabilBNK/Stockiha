@@ -70,6 +70,14 @@ pub enum ErrorCode {
     BackupCopyFailed,
     /// WS-H-3: a free-space preflight refused the operation.
     InsufficientDiskSpace,
+    /// WS-M-1: the chosen logo file exceeds the 2 MiB limit.
+    LogoTooLarge,
+    /// WS-M-1: the chosen logo path does not resolve to a real file (missing,
+    /// a directory, or a symlink/reparse point).
+    LogoNotAFile,
+    /// WS-M-1: the chosen file's extension or magic bytes are not one of
+    /// PNG, JPEG or WebP.
+    LogoUnsupportedType,
 }
 
 pub enum AppError {
@@ -164,6 +172,18 @@ pub enum AppError {
         diagnostic: String,
     },
     InsufficientDiskSpace {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    LogoTooLarge {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    LogoNotAFile {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    LogoUnsupportedType {
         #[cfg_attr(not(test), allow(dead_code))]
         diagnostic: String,
     },
@@ -334,6 +354,11 @@ impl fmt::Debug for AppError {
             AppError::InsufficientDiskSpace { .. } => {
                 f.write_str("AppError::InsufficientDiskSpace(<redacted>)")
             }
+            AppError::LogoTooLarge { .. } => f.write_str("AppError::LogoTooLarge(<redacted>)"),
+            AppError::LogoNotAFile { .. } => f.write_str("AppError::LogoNotAFile(<redacted>)"),
+            AppError::LogoUnsupportedType { .. } => {
+                f.write_str("AppError::LogoUnsupportedType(<redacted>)")
+            }
         }
     }
 }
@@ -388,6 +413,9 @@ impl fmt::Display for AppError {
             }
             AppError::BackupCopyFailed { .. } => f.write_str("the backup could not be copied"),
             AppError::InsufficientDiskSpace { .. } => f.write_str("not enough free disk space"),
+            AppError::LogoTooLarge { .. } => f.write_str("logo file is too large"),
+            AppError::LogoNotAFile { .. } => f.write_str("logo path is not a usable file"),
+            AppError::LogoUnsupportedType { .. } => f.write_str("logo file type is not supported"),
         }
     }
 }
@@ -455,6 +483,9 @@ impl From<AppError> for IpcError {
             AppError::InsufficientDiskSpace { .. } => {
                 IpcError::new(ErrorCode::InsufficientDiskSpace)
             }
+            AppError::LogoTooLarge { .. } => IpcError::new(ErrorCode::LogoTooLarge),
+            AppError::LogoNotAFile { .. } => IpcError::new(ErrorCode::LogoNotAFile),
+            AppError::LogoUnsupportedType { .. } => IpcError::new(ErrorCode::LogoUnsupportedType),
         }
     }
 }
@@ -541,6 +572,41 @@ mod tests {
                     diagnostic: SENTINEL.to_owned(),
                 },
                 "INSUFFICIENT_DISK_SPACE",
+            ),
+        ];
+        for (error, expected) in cases {
+            assert!(!format!("{error:?}").contains(SENTINEL));
+            assert!(format!("{error:?}").ends_with("(<redacted>)"));
+            let ipc: IpcError = error.into();
+            assert_eq!(
+                serde_json::to_string(&ipc).unwrap(),
+                format!(r#"{{"code":"{expected}"}}"#)
+            );
+        }
+    }
+
+    /// WS-M-1: the three logo-validation codes serialize to the exact
+    /// strings the frontend allowlist (`BACKEND_ERROR_CODES`) carries.
+    #[test]
+    fn ws_m_1_logo_error_codes_serialize_to_the_planned_strings() {
+        let cases = [
+            (
+                AppError::LogoTooLarge {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "LOGO_TOO_LARGE",
+            ),
+            (
+                AppError::LogoNotAFile {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "LOGO_NOT_A_FILE",
+            ),
+            (
+                AppError::LogoUnsupportedType {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "LOGO_UNSUPPORTED_TYPE",
             ),
         ];
         for (error, expected) in cases {

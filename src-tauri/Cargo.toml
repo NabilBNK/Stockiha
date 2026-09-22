@@ -213,6 +213,15 @@ time = { version = "=0.3.53", default-features = false, features = [
 # rather than hand-parsing.
 serde_json = "=1.0.150"
 
+# WS-M-1: the shop logo is embedded into the print HTML and the Settings
+# preview as a `data:` URL (WebView2 blocks local `file://` URLs inside the
+# print iframe). `base64` is promoted here from `[dev-dependencies]` (added
+# in WS-K-6 for a test-only signature-decode assertion) to a normal
+# dependency, pinned to the exact version already resolved for
+# `stockiha-backend` in the existing `Cargo.lock` (no version change, no
+# lock churn) — it is now needed at runtime, not just in tests.
+base64 = "=0.22.1"
+
 # S0-005: Windows Credential Manager access (Win32 generic credentials).
 # S0-008: adds `Win32_Graphics_Printing` (OpenPrinterW/StartDocPrinterW/
 # StartPagePrinter/WritePrinter/EndPagePrinter/EndDocPrinter/AbortPrinter/
@@ -257,9 +266,3 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # version already resolved transitively via `tauri-plugin-updater`
 # (confirmed in Cargo.lock), so this adds zero new package versions.
 minisign-verify = "=0.2.5"
-# WS-K-6: the manifest/config layer of base64 `tauri-plugin-updater` wraps
-# around the plain minisign text before `minisign-verify` ever sees it (see
-# that plugin's `verify_signature`) - needed here only to reproduce that
-# exact real decode order in the test. Pinned to the version already
-# resolved transitively, zero new package versions.
-base64 = "=0.22.1"

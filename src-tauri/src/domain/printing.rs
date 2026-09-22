@@ -1,14 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PrintingSettingsDto {
-    pub receipt_printing_enabled: bool,
-    pub receipt_target: String,
-    pub thermal_printer_name: Option<String>,
-    pub thermal_columns: i16,
-    pub shop_name: Option<String>,
-    pub shop_address: Option<String>,
-    pub shop_phone: Option<String>,
-    pub receipt_footer: Option<String>,
-    pub updated_at: String,
-}
+//! Printing settings travel as raw `jsonb` end to end (WS-M-1): PostgreSQL is
+//! the only place that knows the field list, so a new identity column never
+//! needs a matching Rust struct. `serde_json::Value` is the wire type for
+//! both `get_printing_settings` and `save_printing_settings`.

@@ -727,6 +727,9 @@ pub(crate) fn stable_error_code(error: &AppError) -> &'static str {
         AppError::FreshRestoreNotAllowed { .. } => "FRESH_RESTORE_NOT_ALLOWED",
         AppError::BackupCopyFailed { .. } => "BACKUP_COPY_FAILED",
         AppError::InsufficientDiskSpace { .. } => "INSUFFICIENT_DISK_SPACE",
+        AppError::LogoTooLarge { .. } => "LOGO_TOO_LARGE",
+        AppError::LogoNotAFile { .. } => "LOGO_NOT_A_FILE",
+        AppError::LogoUnsupportedType { .. } => "LOGO_UNSUPPORTED_TYPE",
     }
 }
 

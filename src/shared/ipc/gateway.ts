@@ -1066,19 +1066,34 @@ export function savePrintingSettings(
 ): Promise<import('./dto').PrintingSettingsDto> {
   return call<import('./dto').PrintingSettingsDto>(COMMANDS.SAVE_PRINTING_SETTINGS, {
     sessionToken,
-    receiptPrintingEnabled: payload.receipt_printing_enabled,
-    receiptTarget: payload.receipt_target,
-    thermalPrinterName: payload.thermal_printer_name,
-    thermalColumns: payload.thermal_columns,
-    shopName: payload.shop_name,
-    shopAddress: payload.shop_address,
-    shopPhone: payload.shop_phone,
-    receiptFooter: payload.receipt_footer,
+    settings: payload,
   });
 }
 
 export function printRawReceipt(printerName: string, payload: number[]): Promise<number> {
   return call<number>(COMMANDS.PRINT_RAW_RECEIPT, { printerName, payload });
+}
+
+export function setCompanyLogo(
+  sessionToken: string,
+  sourcePath: string
+): Promise<import('./dto').PrintingSettingsDto> {
+  return call<import('./dto').PrintingSettingsDto>(COMMANDS.SET_COMPANY_LOGO, {
+    sessionToken,
+    sourcePath,
+  });
+}
+
+export function getCompanyLogo(sessionToken: string): Promise<string | null> {
+  return call<string | null>(COMMANDS.GET_COMPANY_LOGO, { sessionToken });
+}
+
+export function clearCompanyLogo(
+  sessionToken: string
+): Promise<import('./dto').PrintingSettingsDto> {
+  return call<import('./dto').PrintingSettingsDto>(COMMANDS.CLEAR_COMPANY_LOGO, {
+    sessionToken,
+  });
 }
 
 

@@ -1,17 +1,38 @@
 import { useEffect, useState } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 
 import { Banner, Button, Spinner } from '../../shared/components';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useI18n } from '../../shared/i18n';
-import type { PrintingSettingsDto, ReceiptTarget } from '../../shared/ipc/dto';
-import { getPrintingSettings, savePrintingSettings } from '../../shared/ipc/gateway';
+import type { PrintingSettingsDto, PrintLanguage, ReceiptTarget } from '../../shared/ipc/dto';
+import {
+  clearCompanyLogo,
+  getCompanyLogo,
+  getPrintingSettings,
+  savePrintingSettings,
+  setCompanyLogo,
+} from '../../shared/ipc/gateway';
 import { printSaleReceipt } from '../pos/printReceipt';
 
 interface Props {
   sessionToken: string;
 }
 
-type BusyAction = 'save' | 'test' | null;
+type BusyAction = 'save' | 'test' | 'logo' | null;
+
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+$/;
+
+const LENGTH_LIMITS: Record<string, number> = {
+  shop_legal_name: 120,
+  shop_email: 120,
+  shop_website: 120,
+  tax_id_nif: 40,
+  tax_id_nis: 40,
+  trade_register_rc: 60,
+  article_imposition_ai: 40,
+  bank_account_rib: 60,
+  a4_footer_note: 200,
+};
 
 export function PrintingSettingsScreen({ sessionToken }: Props) {
   const { t } = useI18n();
@@ -31,20 +52,32 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
   const [shopPhone, setShopPhone] = useState('');
   const [receiptFooter, setReceiptFooter] = useState('');
 
+  // WS-M-1: shop identity, logo and A4 print display toggles.
+  const [shopLegalName, setShopLegalName] = useState('');
+  const [shopEmail, setShopEmail] = useState('');
+  const [shopWebsite, setShopWebsite] = useState('');
+  const [taxNif, setTaxNif] = useState('');
+  const [taxNis, setTaxNis] = useState('');
+  const [tradeRc, setTradeRc] = useState('');
+  const [articleAi, setArticleAi] = useState('');
+  const [bankRib, setBankRib] = useState('');
+  const [a4FooterNote, setA4FooterNote] = useState('');
+  const [printLanguage, setPrintLanguage] = useState<PrintLanguage>('FOLLOW_APP');
+  const [showLogo, setShowLogo] = useState(true);
+  const [showEmail, setShowEmail] = useState(true);
+  const [showWebsite, setShowWebsite] = useState(false);
+  const [showRib, setShowRib] = useState(false);
+  const [amountInWords, setAmountInWords] = useState(true);
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+
   useEffect(() => {
     let active = true;
     setLoading(true);
-    getPrintingSettings(sessionToken)
-      .then((settings) => {
+    Promise.all([getPrintingSettings(sessionToken), getCompanyLogo(sessionToken)])
+      .then(([settings, logo]) => {
         if (!active) return;
-        setReceiptPrintingEnabled(settings.receipt_printing_enabled);
-        setReceiptTarget(settings.receipt_target);
-        setThermalPrinterName(settings.thermal_printer_name ?? '');
-        setThermalColumns(settings.thermal_columns);
-        setShopName(settings.shop_name ?? '');
-        setShopAddress(settings.shop_address ?? '');
-        setShopPhone(settings.shop_phone ?? '');
-        setReceiptFooter(settings.receipt_footer ?? '');
+        applySettings(settings);
+        setLogoDataUrl(logo);
       })
       .catch((err) => {
         if (!active) return;
@@ -59,12 +92,71 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
     };
   }, [sessionToken, errorText]);
 
+  function applySettings(settings: PrintingSettingsDto) {
+    setReceiptPrintingEnabled(settings.receipt_printing_enabled);
+    setReceiptTarget(settings.receipt_target);
+    setThermalPrinterName(settings.thermal_printer_name ?? '');
+    setThermalColumns(settings.thermal_columns);
+    setShopName(settings.shop_name ?? '');
+    setShopAddress(settings.shop_address ?? '');
+    setShopPhone(settings.shop_phone ?? '');
+    setReceiptFooter(settings.receipt_footer ?? '');
+    setShopLegalName(settings.shop_legal_name ?? '');
+    setShopEmail(settings.shop_email ?? '');
+    setShopWebsite(settings.shop_website ?? '');
+    setTaxNif(settings.tax_id_nif ?? '');
+    setTaxNis(settings.tax_id_nis ?? '');
+    setTradeRc(settings.trade_register_rc ?? '');
+    setArticleAi(settings.article_imposition_ai ?? '');
+    setBankRib(settings.bank_account_rib ?? '');
+    setA4FooterNote(settings.a4_footer_note ?? '');
+    setPrintLanguage(settings.print_language);
+    setShowLogo(settings.show_logo);
+    setShowEmail(settings.show_email);
+    setShowWebsite(settings.show_website);
+    setShowRib(settings.show_rib);
+    setAmountInWords(settings.amount_in_words);
+  }
+
+  /** Returns the first validation message, or null when everything is valid. */
+  function validate(): string | null {
+    const trimmedEmail = shopEmail.trim();
+    if (trimmedEmail && !EMAIL_PATTERN.test(trimmedEmail)) {
+      return t('printing.invalidEmail');
+    }
+
+    const fields: Array<[string, string, string]> = [
+      [t('printing.legalName'), 'shop_legal_name', shopLegalName],
+      [t('printing.email'), 'shop_email', shopEmail],
+      [t('printing.website'), 'shop_website', shopWebsite],
+      [t('printing.nif'), 'tax_id_nif', taxNif],
+      [t('printing.nis'), 'tax_id_nis', taxNis],
+      [t('printing.rc'), 'trade_register_rc', tradeRc],
+      [t('printing.ai'), 'article_imposition_ai', articleAi],
+      [t('printing.rib'), 'bank_account_rib', bankRib],
+      [t('printing.footerNote'), 'a4_footer_note', a4FooterNote],
+    ];
+    for (const [label, key, value] of fields) {
+      const max = LENGTH_LIMITS[key];
+      if (max && value.trim().length > max) {
+        return t('printing.tooLong', { field: label, max });
+      }
+    }
+    return null;
+  }
+
   async function handleSave() {
     if (busy) return;
-    setBusy('save');
     setError(null);
     setFeedback(null);
 
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setBusy('save');
     try {
       const saved = await savePrintingSettings(sessionToken, {
         receipt_printing_enabled: receiptPrintingEnabled,
@@ -75,15 +167,62 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
         shop_address: shopAddress.trim() || null,
         shop_phone: shopPhone.trim() || null,
         receipt_footer: receiptFooter.trim() || null,
+        shop_legal_name: shopLegalName.trim() || null,
+        shop_email: shopEmail.trim() || null,
+        shop_website: shopWebsite.trim() || null,
+        tax_id_nif: taxNif.trim() || null,
+        tax_id_nis: taxNis.trim() || null,
+        trade_register_rc: tradeRc.trim() || null,
+        article_imposition_ai: articleAi.trim() || null,
+        bank_account_rib: bankRib.trim() || null,
+        a4_footer_note: a4FooterNote.trim() || null,
+        print_language: printLanguage,
+        show_logo: showLogo,
+        show_email: showEmail,
+        show_website: showWebsite,
+        show_rib: showRib,
+        amount_in_words: amountInWords,
       });
-      setReceiptPrintingEnabled(saved.receipt_printing_enabled);
-      setReceiptTarget(saved.receipt_target);
-      setThermalPrinterName(saved.thermal_printer_name ?? '');
-      setThermalColumns(saved.thermal_columns);
-      setShopName(saved.shop_name ?? '');
-      setShopAddress(saved.shop_address ?? '');
-      setShopPhone(saved.shop_phone ?? '');
-      setReceiptFooter(saved.receipt_footer ?? '');
+      applySettings(saved);
+      setFeedback(t('printing.saved'));
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleChooseLogo() {
+    if (busy) return;
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    });
+    if (!selected || Array.isArray(selected)) return;
+
+    setBusy('logo');
+    setError(null);
+    setFeedback(null);
+    try {
+      await setCompanyLogo(sessionToken, selected);
+      const logo = await getCompanyLogo(sessionToken);
+      setLogoDataUrl(logo);
+      setFeedback(t('printing.saved'));
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRemoveLogo() {
+    if (busy) return;
+    setBusy('logo');
+    setError(null);
+    setFeedback(null);
+    try {
+      await clearCompanyLogo(sessionToken);
+      setLogoDataUrl(null);
       setFeedback(t('printing.saved'));
     } catch (err) {
       setError(errorText(err));
@@ -108,6 +247,23 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
       shop_phone: shopPhone.trim() || null,
       receipt_footer: receiptFooter.trim() || null,
       updated_at: new Date().toISOString(),
+      shop_legal_name: shopLegalName.trim() || null,
+      shop_email: shopEmail.trim() || null,
+      shop_website: shopWebsite.trim() || null,
+      tax_id_nif: taxNif.trim() || null,
+      tax_id_nis: taxNis.trim() || null,
+      trade_register_rc: tradeRc.trim() || null,
+      article_imposition_ai: articleAi.trim() || null,
+      bank_account_rib: bankRib.trim() || null,
+      logo_file_name: null,
+      logo_updated_at: null,
+      print_language: printLanguage,
+      show_logo: showLogo,
+      show_email: showEmail,
+      show_website: showWebsite,
+      show_rib: showRib,
+      amount_in_words: amountInWords,
+      a4_footer_note: a4FooterNote.trim() || null,
     };
 
     try {
@@ -253,6 +409,7 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
               value={shopPhone}
               onChange={(e) => setShopPhone(e.target.value)}
             />
+            <small className="sk-field-help">{t('printing.identityFieldsHint')}</small>
           </div>
 
           <div className="sk-field">
@@ -286,6 +443,237 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
             >
               {t('printing.test')}
             </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="sk-card">
+        <h3>{t('printing.identityTitle')}</h3>
+
+        <div className="sk-form">
+          <div className="sk-field">
+            <label>{t('printing.logo')}</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div
+                style={{
+                  width: 120,
+                  height: 80,
+                  border: '1px dashed #888',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                }}
+              >
+                {logoDataUrl ? (
+                  <img
+                    src={logoDataUrl}
+                    alt={t('printing.logo')}
+                    style={{ maxWidth: '100%', maxHeight: '100%' }}
+                  />
+                ) : (
+                  <span>{t('printing.logoNone')}</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  data-testid="logo-choose"
+                  onClick={() => void handleChooseLogo()}
+                  loading={busy === 'logo'}
+                  disabled={busy !== null}
+                >
+                  {t('printing.logoChoose')}
+                </Button>
+                {logoDataUrl ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    data-testid="logo-remove"
+                    onClick={() => void handleRemoveLogo()}
+                    loading={busy === 'logo'}
+                    disabled={busy !== null}
+                  >
+                    {t('printing.logoRemove')}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="shop-legal-name">{t('printing.legalName')}</label>
+            <input
+              id="shop-legal-name"
+              type="text"
+              data-testid="shop-legal-name"
+              value={shopLegalName}
+              onChange={(e) => setShopLegalName(e.target.value)}
+            />
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="shop-email">{t('printing.email')}</label>
+            <input
+              id="shop-email"
+              type="text"
+              data-testid="shop-email"
+              value={shopEmail}
+              onChange={(e) => setShopEmail(e.target.value)}
+            />
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="shop-website">{t('printing.website')}</label>
+            <input
+              id="shop-website"
+              type="text"
+              data-testid="shop-website"
+              value={shopWebsite}
+              onChange={(e) => setShopWebsite(e.target.value)}
+            />
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="tax-nif">{t('printing.nif')}</label>
+            <input
+              id="tax-nif"
+              type="text"
+              data-testid="tax-nif"
+              value={taxNif}
+              onChange={(e) => setTaxNif(e.target.value)}
+            />
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="tax-nis">{t('printing.nis')}</label>
+            <input
+              id="tax-nis"
+              type="text"
+              data-testid="tax-nis"
+              value={taxNis}
+              onChange={(e) => setTaxNis(e.target.value)}
+            />
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="trade-rc">{t('printing.rc')}</label>
+            <input
+              id="trade-rc"
+              type="text"
+              data-testid="trade-rc"
+              value={tradeRc}
+              onChange={(e) => setTradeRc(e.target.value)}
+            />
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="article-ai">{t('printing.ai')}</label>
+            <input
+              id="article-ai"
+              type="text"
+              data-testid="article-ai"
+              value={articleAi}
+              onChange={(e) => setArticleAi(e.target.value)}
+            />
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="bank-rib">{t('printing.rib')}</label>
+            <input
+              id="bank-rib"
+              type="text"
+              data-testid="bank-rib"
+              value={bankRib}
+              onChange={(e) => setBankRib(e.target.value)}
+            />
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="a4-footer-note">{t('printing.footerNote')}</label>
+            <input
+              id="a4-footer-note"
+              type="text"
+              data-testid="a4-footer-note"
+              value={a4FooterNote}
+              onChange={(e) => setA4FooterNote(e.target.value)}
+            />
+          </div>
+
+          <div className="sk-field">
+            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                data-testid="show-logo"
+                checked={showLogo}
+                onChange={(e) => setShowLogo(e.target.checked)}
+              />
+              <span>{t('printing.showLogo')}</span>
+            </label>
+          </div>
+
+          <div className="sk-field">
+            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                data-testid="show-email"
+                checked={showEmail}
+                onChange={(e) => setShowEmail(e.target.checked)}
+              />
+              <span>{t('printing.showEmail')}</span>
+            </label>
+          </div>
+
+          <div className="sk-field">
+            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                data-testid="show-website"
+                checked={showWebsite}
+                onChange={(e) => setShowWebsite(e.target.checked)}
+              />
+              <span>{t('printing.showWebsite')}</span>
+            </label>
+          </div>
+
+          <div className="sk-field">
+            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                data-testid="show-rib"
+                checked={showRib}
+                onChange={(e) => setShowRib(e.target.checked)}
+              />
+              <span>{t('printing.showRib')}</span>
+            </label>
+          </div>
+
+          <div className="sk-field">
+            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                data-testid="amount-in-words"
+                checked={amountInWords}
+                onChange={(e) => setAmountInWords(e.target.checked)}
+              />
+              <span>{t('printing.amountInWords')}</span>
+            </label>
+          </div>
+
+          <div className="sk-field">
+            <label htmlFor="print-language">{t('printing.printLanguage')}</label>
+            <select
+              id="print-language"
+              data-testid="print-language"
+              value={printLanguage}
+              onChange={(e) => setPrintLanguage(e.target.value as PrintLanguage)}
+            >
+              <option value="FOLLOW_APP">{t('printing.printLanguageFollowApp')}</option>
+              <option value="fr">{t('printing.printLanguageFr')}</option>
+              <option value="ar">{t('printing.printLanguageAr')}</option>
+              <option value="en">{t('printing.printLanguageEn')}</option>
+            </select>
           </div>
         </div>
       </div>

@@ -60,6 +60,9 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   FRESH_RESTORE_NOT_ALLOWED: 'Restoring here is only possible on a new installation with no user accounts.',
   BACKUP_COPY_FAILED: 'The backup could not be copied. Nothing was left behind in the target folder.',
   INSUFFICIENT_DISK_SPACE: 'There is not enough free disk space for this operation.',
+  LOGO_TOO_LARGE: 'This file exceeds the 2 MB logo size limit.',
+  LOGO_NOT_A_FILE: 'This file could not be read. Choose another one.',
+  LOGO_UNSUPPORTED_TYPE: 'Unsupported format. Use a PNG, JPEG or WebP image.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

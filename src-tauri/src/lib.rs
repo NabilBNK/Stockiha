@@ -479,6 +479,9 @@ pub fn run() {
             commands::printing::print_raw_receipt,
             commands::printing::get_printing_settings,
             commands::printing::save_printing_settings,
+            commands::printing::set_company_logo,
+            commands::printing::get_company_logo,
+            commands::printing::clear_company_logo,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

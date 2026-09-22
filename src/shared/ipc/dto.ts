@@ -995,6 +995,9 @@ export interface PurchaseReturnSummaryDto {
 
 export type ReceiptTarget = 'THERMAL' | 'A4';
 
+/** WS-M-1 (§5): FOLLOW_APP resolves to the current app locale at print time. */
+export type PrintLanguage = 'FOLLOW_APP' | 'fr' | 'ar' | 'en';
+
 export interface PrintingSettingsDto {
   receipt_printing_enabled: boolean;
   receipt_target: ReceiptTarget;
@@ -1005,16 +1008,33 @@ export interface PrintingSettingsDto {
   shop_phone: string | null;
   receipt_footer: string | null;
   updated_at: string;
+  // WS-M-1: shop identity, logo bookkeeping and A4 print display toggles.
+  shop_legal_name: string | null;
+  shop_email: string | null;
+  shop_website: string | null;
+  tax_id_nif: string | null;
+  tax_id_nis: string | null;
+  trade_register_rc: string | null;
+  article_imposition_ai: string | null;
+  bank_account_rib: string | null;
+  logo_file_name: string | null;
+  logo_updated_at: string | null;
+  print_language: PrintLanguage;
+  show_logo: boolean;
+  show_email: boolean;
+  show_website: boolean;
+  show_rib: boolean;
+  amount_in_words: boolean;
+  a4_footer_note: string | null;
 }
 
-export interface SavePrintingSettingsPayload {
-  receipt_printing_enabled: boolean;
-  receipt_target: ReceiptTarget;
-  thermal_printer_name: string | null;
-  thermal_columns: 32 | 42 | 48;
-  shop_name: string | null;
-  shop_address: string | null;
-  shop_phone: string | null;
-  receipt_footer: string | null;
-}
+/**
+ * Only the editable identity/settings fields — never `logo_file_name` or
+ * `logo_updated_at` (set only through the logo commands) or `updated_at`
+ * (server-assigned). A key omitted from a partial save keeps its current
+ * database value; the screen always sends every key in one payload.
+ */
+export type SavePrintingSettingsPayload = Partial<
+  Omit<PrintingSettingsDto, 'logo_file_name' | 'logo_updated_at' | 'updated_at'>
+>;
 

@@ -13,6 +13,23 @@ const SETTINGS: PrintingSettingsDto = {
   shop_phone: '021000000',
   receipt_footer: null,
   updated_at: '2026-09-22T00:00:00Z',
+  shop_legal_name: null,
+  shop_email: null,
+  shop_website: null,
+  tax_id_nif: null,
+  tax_id_nis: null,
+  trade_register_rc: null,
+  article_imposition_ai: null,
+  bank_account_rib: null,
+  logo_file_name: null,
+  logo_updated_at: null,
+  print_language: 'FOLLOW_APP',
+  show_logo: true,
+  show_email: true,
+  show_website: false,
+  show_rib: false,
+  amount_in_words: true,
+  a4_footer_note: null,
 };
 
 const BASE_INPUT: VoidSlipInput = {

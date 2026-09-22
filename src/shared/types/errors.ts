@@ -31,6 +31,10 @@ export const BACKEND_ERROR_CODES = [
   'FRESH_RESTORE_NOT_ALLOWED',
   'BACKUP_COPY_FAILED',
   'INSUFFICIENT_DISK_SPACE',
+  // WS-M-1: logo upload validation.
+  'LOGO_TOO_LARGE',
+  'LOGO_NOT_A_FILE',
+  'LOGO_UNSUPPORTED_TYPE',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -67,6 +71,9 @@ export const ERROR_MESSAGE_KEYS = {
   FRESH_RESTORE_NOT_ALLOWED: 'errors.freshRestoreNotAllowed',
   BACKUP_COPY_FAILED: 'errors.backupCopyFailed',
   INSUFFICIENT_DISK_SPACE: 'errors.insufficientDiskSpace',
+  LOGO_TOO_LARGE: 'errors.logoTooLarge',
+  LOGO_NOT_A_FILE: 'errors.logoNotAFile',
+  LOGO_UNSUPPORTED_TYPE: 'errors.logoUnsupportedType',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 

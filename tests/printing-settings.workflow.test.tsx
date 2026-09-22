@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 
 import { PrintingSettingsScreen } from '../src/features/settings/PrintingSettingsScreen';
 import { I18nProvider } from '../src/shared/i18n';
@@ -18,6 +19,23 @@ const MOCK_SETTINGS: PrintingSettingsDto = {
   shop_phone: '0550123456',
   receipt_footer: 'Merci de votre visite',
   updated_at: '2026-09-13T10:00:00Z',
+  shop_legal_name: null,
+  shop_email: null,
+  shop_website: null,
+  tax_id_nif: null,
+  tax_id_nis: null,
+  trade_register_rc: null,
+  article_imposition_ai: null,
+  bank_account_rib: null,
+  logo_file_name: null,
+  logo_updated_at: null,
+  print_language: 'FOLLOW_APP',
+  show_logo: true,
+  show_email: true,
+  show_website: false,
+  show_rib: false,
+  amount_in_words: true,
+  a4_footer_note: null,
 };
 
 function renderScreen(locale: 'en' | 'fr' | 'ar' = 'en') {
@@ -28,8 +46,10 @@ function renderScreen(locale: 'en' | 'fr' | 'ar' = 'en') {
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   invokeMock.mockReset();
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  vi.mocked(open).mockReset();
   cleanup();
 });
 
@@ -38,6 +58,9 @@ describe('WS-F-2 Printing Settings workflow', () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === 'get_printing_settings') {
         return Promise.resolve(MOCK_SETTINGS);
+      }
+      if (command === 'get_company_logo') {
+        return Promise.resolve(null);
       }
       throw new Error(`Unexpected command: ${command}`);
     });
@@ -74,6 +97,9 @@ describe('WS-F-2 Printing Settings workflow', () => {
       if (command === 'get_printing_settings') {
         return Promise.resolve(MOCK_SETTINGS);
       }
+      if (command === 'get_company_logo') {
+        return Promise.resolve(null);
+      }
       throw new Error(`Unexpected command: ${command}`);
     });
 
@@ -93,6 +119,9 @@ describe('WS-F-2 Printing Settings workflow', () => {
     invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
       if (command === 'get_printing_settings') {
         return Promise.resolve(MOCK_SETTINGS);
+      }
+      if (command === 'get_company_logo') {
+        return Promise.resolve(null);
       }
       if (command === 'save_printing_settings') {
         capturedArgs = args;
@@ -115,14 +144,142 @@ describe('WS-F-2 Printing Settings workflow', () => {
     await waitFor(() => expect(capturedArgs).not.toBeNull());
     expect(capturedArgs).toEqual({
       sessionToken: 'test-session-token',
-      receiptPrintingEnabled: true,
-      receiptTarget: 'THERMAL',
-      thermalPrinterName: 'Epson-TM-T20',
-      thermalColumns: 48,
-      shopName: 'Updated Store Name',
-      shopAddress: '10 Rue de la Paix',
-      shopPhone: '0550123456',
-      receiptFooter: 'Merci de votre visite',
+      settings: {
+        receipt_printing_enabled: true,
+        receipt_target: 'THERMAL',
+        thermal_printer_name: 'Epson-TM-T20',
+        thermal_columns: 48,
+        shop_name: 'Updated Store Name',
+        shop_address: '10 Rue de la Paix',
+        shop_phone: '0550123456',
+        receipt_footer: 'Merci de votre visite',
+        shop_legal_name: null,
+        shop_email: null,
+        shop_website: null,
+        tax_id_nif: null,
+        tax_id_nis: null,
+        trade_register_rc: null,
+        article_imposition_ai: null,
+        bank_account_rib: null,
+        a4_footer_note: null,
+        print_language: 'FOLLOW_APP',
+        show_logo: true,
+        show_email: true,
+        show_website: false,
+        show_rib: false,
+        amount_in_words: true,
+      },
     });
+  });
+
+  it('choosing a logo calls set_company_logo then refreshes the preview via get_company_logo', async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    vi.mocked(open).mockResolvedValueOnce('C:\\Users\\test\\logo.png');
+
+    let logoAfterUpload: string | null = null;
+    let setLogoCalls = 0;
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'get_printing_settings') {
+        return Promise.resolve(MOCK_SETTINGS);
+      }
+      if (command === 'get_company_logo') {
+        return Promise.resolve(logoAfterUpload);
+      }
+      if (command === 'set_company_logo') {
+        setLogoCalls += 1;
+        logoAfterUpload = 'data:image/png;base64,Zm9v';
+        return Promise.resolve({ ...MOCK_SETTINGS, logo_file_name: 'logo.png' });
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    renderScreen();
+
+    const chooseButton = await screen.findByTestId('logo-choose');
+    fireEvent.click(chooseButton);
+
+    await waitFor(() => expect(setLogoCalls).toBe(1));
+    await waitFor(() => expect(screen.getByAltText('Logo')).toBeInTheDocument());
+  });
+
+  it('removing the logo calls clear_company_logo and clears the preview', async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    vi.mocked(open).mockResolvedValue(null);
+
+    let logo: string | null = 'data:image/png;base64,Zm9v';
+    let clearCalls = 0;
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'get_printing_settings') {
+        return Promise.resolve({ ...MOCK_SETTINGS, logo_file_name: 'logo.png' });
+      }
+      if (command === 'get_company_logo') {
+        return Promise.resolve(logo);
+      }
+      if (command === 'clear_company_logo') {
+        clearCalls += 1;
+        logo = null;
+        return Promise.resolve(MOCK_SETTINGS);
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    renderScreen();
+
+    const removeButton = await screen.findByTestId('logo-remove');
+    fireEvent.click(removeButton);
+
+    await waitFor(() => expect(clearCalls).toBe(1));
+    await waitFor(() => expect(screen.queryByTestId('logo-remove')).not.toBeInTheDocument());
+  });
+
+  it('cancelling the logo picker calls no logo command', async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    vi.mocked(open).mockResolvedValueOnce(null);
+
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'get_printing_settings') {
+        return Promise.resolve(MOCK_SETTINGS);
+      }
+      if (command === 'get_company_logo') {
+        return Promise.resolve(null);
+      }
+      if (command === 'set_company_logo' || command === 'clear_company_logo') {
+        throw new Error(`${command} must not be called when the picker is cancelled`);
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    renderScreen();
+
+    const chooseButton = await screen.findByTestId('logo-choose');
+    fireEvent.click(chooseButton);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByTestId('logo-remove')).not.toBeInTheDocument();
+  });
+
+  it('an invalid e-mail blocks the save call', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'get_printing_settings') {
+        return Promise.resolve(MOCK_SETTINGS);
+      }
+      if (command === 'get_company_logo') {
+        return Promise.resolve(null);
+      }
+      if (command === 'save_printing_settings') {
+        throw new Error('save_printing_settings must not be called with an invalid email');
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    renderScreen();
+
+    const emailInput = (await screen.findByTestId('shop-email')) as HTMLInputElement;
+    fireEvent.change(emailInput, { target: { value: 'not-an-email' } });
+
+    const saveButton = screen.getByTestId('printing-save');
+    fireEvent.click(saveButton);
+
+    await screen.findByText('Invalid e-mail address.');
   });
 });
