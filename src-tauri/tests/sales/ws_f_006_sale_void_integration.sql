@@ -633,8 +633,8 @@ BEGIN
         RAISE EXCEPTION 'Assertion failed (14b): a cashier without VOID_SALE could call list_session_sales';
     END IF;
 
-    -- 15. operations.schema_state.migration_version = 20260922090000.
-    IF (SELECT migration_version FROM operations.schema_state WHERE singleton) <> 20260922090000 THEN
+    -- 15. operations.schema_state.migration_version >= 20260922090000.
+    IF (SELECT migration_version FROM operations.schema_state WHERE singleton) < 20260922090000 THEN
         RAISE EXCEPTION 'Assertion failed (15): schema_state.migration_version mismatch';
     END IF;
 

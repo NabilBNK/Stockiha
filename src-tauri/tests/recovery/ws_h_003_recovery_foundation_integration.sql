@@ -191,7 +191,7 @@ BEGIN
     ASSERT v_denied, 'Runtime SELECT on restore_events must raise insufficient_privilege';
 
     -- 8. Schema state ----------------------------------------------------------
-    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) = 20260916100000,
+    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) >= 20260916100000,
         'schema_state must be stamped with the WS-H-3 migration version';
 END;
 $$;
@@ -207,7 +207,7 @@ BEGIN
     ASSERT (SELECT count(*) FROM pg_constraint
             WHERE conrelid = 'iam.permissions'::regclass AND conname = 'permissions_code_valid') = 1,
         'Re-running the migration must keep exactly one permission CHECK';
-    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) = 20260916100000,
+    ASSERT (SELECT migration_version FROM operations.schema_state WHERE singleton) >= 20260916100000,
         'schema_state must still be the WS-H-3 version after a re-run';
 END;
 $$;

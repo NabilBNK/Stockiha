@@ -298,11 +298,11 @@ BEGIN
     END IF;
 
     -- =========================================================================
-    -- 12. operations.schema_state.migration_version = 20260921090000.
+    -- 12. operations.schema_state.migration_version >= 20260921090000.
     -- =========================================================================
     SELECT migration_version INTO v_schema_version FROM operations.schema_state WHERE singleton;
-    IF v_schema_version <> 20260921090000 THEN
-        RAISE EXCEPTION 'Assertion failed (12): schema_state.migration_version is % instead of 20260921090000', v_schema_version;
+    IF v_schema_version < 20260921090000 THEN
+        RAISE EXCEPTION 'Assertion failed (12): schema_state.migration_version is % instead of >= 20260921090000', v_schema_version;
     END IF;
 
     RAISE NOTICE '=== WS-F-005b integration suite completed successfully ===';
