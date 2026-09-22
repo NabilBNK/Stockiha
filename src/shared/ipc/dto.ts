@@ -766,11 +766,14 @@ export interface JournalSummary {
   source_type: string;
   source_id: number | null;
   source_document_number: string | null;
+  source_document_id?: number | null;
   description: string | null;
   total_debit: string;
   total_credit: string;
   is_balanced: boolean;
   created_at: string;
+  created_by_username?: string | null;
+  created_on_workstation_id?: string | null;
 }
 
 export interface JournalLineDto {
@@ -779,10 +782,29 @@ export interface JournalLineDto {
   account_name: string;
   debit: string;
   credit: string;
+  scf_code?: string | null;
+  name_fr?: string | null;
+  name_ar?: string | null;
+  name_en?: string | null;
 }
 
 export interface JournalDetail extends JournalSummary {
   lines: JournalLineDto[];
+}
+
+export interface JournalSearchFilter {
+  date_from?: string | null;
+  date_to?: string | null;
+  source_type?: string | null;
+  search?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface JournalSearchResult {
+  total_count: number;
+  rows: JournalSummary[];
+  available_source_types: string[];
 }
 
 // WS-D-2 — reference-data lifecycle, quick_create_product, list_products_v2,

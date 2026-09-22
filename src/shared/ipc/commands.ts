@@ -127,6 +127,8 @@ export const COMMANDS = {
   ENQUEUE_CUSTOMER_REPRINT: 'enqueue_customer_reprint',
   LIST_JOURNALS: 'list_journals',
   GET_JOURNAL_DETAIL: 'get_journal_detail',
+  SEARCH_JOURNALS: 'search_journals',
+  SEARCH_BUSINESS_DOCUMENTS: 'search_business_documents',
   SAVE_BINARY_FILE: 'save_binary_file',
   // Slice 2 — variant catalog
   ADD_VARIANT: 'add_variant',

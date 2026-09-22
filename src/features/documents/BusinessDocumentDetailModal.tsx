@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSession } from '../../shared/session/SessionContext';
-import { useI18n } from '../../shared/i18n';
+import { useI18n, type Locale } from '../../shared/i18n';
 import { getBusinessDocumentDetail } from '../../shared/ipc/documentGateway';
 import type { BusinessDocumentDetail } from '../../shared/ipc/documentDto';
 import { JournalDetailModal } from '../accounting/JournalsScreen';
@@ -120,7 +120,7 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
     getSubtypeString(sub, 'base_total_amount') ||
     getSubtypeString(sub, 'amount');
 
-  const copy = {
+  const copy: Record<string, string> = ({
     en: {
       overview: 'Overview',
       supplier: 'Supplier',
@@ -146,6 +146,17 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
       downloadPdf: 'Download PDF',
       downloading: 'Downloading...',
       exportXlsx: 'Export Excel (.xlsx)',
+      recordedBy: 'Recorded by',
+      workstation: 'Workstation',
+      discount: 'Discount',
+      reason: 'Reason',
+      note: 'Note',
+      cancelledBanner: 'This document was cancelled by {number}.',
+      reason_CUSTOMER_CHANGED_MIND: 'Customer changed mind',
+      reason_WRONG_ITEM: 'Wrong item',
+      reason_WRONG_PRICE: 'Wrong price',
+      reason_CASHIER_MISTAKE: 'Cashier mistake',
+      reason_OTHER: 'Custom reason',
     },
     fr: {
       overview: 'Aperçu',
@@ -172,6 +183,17 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
       downloadPdf: 'Télécharger PDF',
       downloading: 'Téléchargement...',
       exportXlsx: 'Exporter Excel (.xlsx)',
+      recordedBy: 'Saisi par',
+      workstation: 'Poste',
+      discount: 'Remise',
+      reason: 'Motif',
+      note: 'Note',
+      cancelledBanner: 'Ce document a été annulé par {number}.',
+      reason_CUSTOMER_CHANGED_MIND: 'Le client a changé d’avis',
+      reason_WRONG_ITEM: 'Mauvais article',
+      reason_WRONG_PRICE: 'Mauvais prix',
+      reason_CASHIER_MISTAKE: 'Erreur de caisse',
+      reason_OTHER: 'Motif personnalisé',
     },
     ar: {
       overview: 'نظرة عامة',
@@ -198,8 +220,19 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
       downloadPdf: 'تحميل PDF',
       downloading: 'جارٍ التحميل...',
       exportXlsx: 'تصدير إكسل (.xlsx)',
+      recordedBy: 'سجّله',
+      workstation: 'الجهاز',
+      discount: 'الخصم',
+      reason: 'السبب',
+      note: 'ملاحظة',
+      cancelledBanner: 'تم إلغاء هذا المستند بواسطة {number}.',
+      reason_CUSTOMER_CHANGED_MIND: 'غيّر العميل رأيه',
+      reason_WRONG_ITEM: 'منتج خاطئ',
+      reason_WRONG_PRICE: 'سعر خاطئ',
+      reason_CASHIER_MISTAKE: 'خطأ من أمين الصندوق',
+      reason_OTHER: 'سبب مخصص',
     },
-  }[locale];
+  } as Record<Locale, Record<string, string>>)[locale];
 
   const extDocNum = getSubtypeString(sub, 'external_supplier_document_number') || '';
   const payStatus = getSubtypeString(sub, 'payment_status') || 'POSTED';
@@ -212,6 +245,14 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
 
   const partyNameDisplay = supplierName || customerName || getSubtypeString(sub, 'party_name') || '';
   const partyLabelDisplay = supplierName ? copy.supplier : customerName ? copy.customer : 'Tiers / Partenaire';
+
+  const recordedByUsername = header?.created_by_username ?? null;
+  const recordedOnWorkstation = header?.created_on_workstation_id ?? null;
+  const cancellationRel = relationships.find((rel) => rel.document_type === 'SALE_VOID');
+  const discountAmount = getSubtypeString(sub, 'discount_amount');
+  const showDiscount = discountAmount != null && Number(discountAmount) !== 0;
+  const voidReasonCode = getSubtypeString(sub, 'reason_code');
+  const voidNote = getSubtypeString(sub, 'note');
 
   const handlePrintA4 = () => {
     if (!detail) return;
@@ -446,6 +487,12 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
 
           {error && <div className="sk-banner sk-banner--error">{error}</div>}
 
+          {!loading && !error && detail && docStatus === 'REVERSED' && (
+            <div className="sk-banner sk-banner--warning" style={{ marginBottom: '14px' }}>
+              {copy.cancelledBanner.replace('{number}', cancellationRel?.document_number ?? '—')}
+            </div>
+          )}
+
           {!loading && !error && detail && (
             <>
               {/* SECTION 1: OVERVIEW */}
@@ -498,6 +545,41 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
                       </span>
                     </div>
                   )}
+
+                  {showDiscount && (
+                    <div className="sk-detail-dialog__field">
+                      <span className="sk-detail-dialog__field-label">{copy.discount}</span>
+                      <span className="sk-detail-dialog__field-val">
+                        {formatDisplayAmount(discountAmount as string)}
+                      </span>
+                    </div>
+                  )}
+
+                  {docType === 'SALE_VOID' && (
+                    <div className="sk-detail-dialog__field">
+                      <span className="sk-detail-dialog__field-label">{copy.reason}</span>
+                      <span className="sk-detail-dialog__field-val">
+                        {voidReasonCode ? (copy[`reason_${voidReasonCode}`] ?? voidReasonCode) : '—'}
+                      </span>
+                    </div>
+                  )}
+
+                  {docType === 'SALE_VOID' && (
+                    <div className="sk-detail-dialog__field">
+                      <span className="sk-detail-dialog__field-label">{copy.note}</span>
+                      <span className="sk-detail-dialog__field-val">{voidNote ?? '—'}</span>
+                    </div>
+                  )}
+
+                  <div className="sk-detail-dialog__field">
+                    <span className="sk-detail-dialog__field-label">{copy.recordedBy}</span>
+                    <span className="sk-detail-dialog__field-val">{recordedByUsername ?? '—'}</span>
+                  </div>
+
+                  <div className="sk-detail-dialog__field">
+                    <span className="sk-detail-dialog__field-label">{copy.workstation}</span>
+                    <span className="sk-detail-dialog__field-val">{recordedOnWorkstation ?? '—'}</span>
+                  </div>
                 </div>
               </section>
 

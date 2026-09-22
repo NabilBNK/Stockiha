@@ -3,13 +3,22 @@ import { useCallback, useEffect, useState } from 'react';
 import { Banner, Button, Spinner } from '../../shared/components';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useI18n, type Locale } from '../../shared/i18n';
-import { getJournalDetail, listJournals } from '../../shared/ipc/gateway';
-import type { JournalDetail, JournalSummary } from '../../shared/ipc/dto';
+import { getJournalDetail, searchJournals } from '../../shared/ipc/gateway';
+import type { JournalDetail, JournalLineDto, JournalSearchResult } from '../../shared/ipc/dto';
+
+function accountLineLabel(line: JournalLineDto, locale: Locale): string {
+  const localized =
+    (locale === 'ar' ? line.name_ar : locale === 'en' ? line.name_en : line.name_fr) ||
+    line.name_fr ||
+    line.account_code;
+  return line.scf_code ? `${line.scf_code} · ${localized}` : line.account_code;
+}
 import { useSession } from '../../shared/session/SessionContext';
 import {
   formatDisplayAmount,
   formatDisplayDate,
   humanDocumentType,
+  journalSourceLabel,
 } from '../../shared/utils/formatters';
 import {
   printDocumentA4,
@@ -47,6 +56,18 @@ const COPY: Record<Locale, Record<string, string>> = {
     printA4: 'Print A4',
     downloadPdf: 'Download PDF',
     downloading: 'Downloading...',
+    dateFrom: 'From Date',
+    dateTo: 'To Date',
+    search: 'Search',
+    searchPlaceholder: 'Journal or source document number…',
+    reset: 'Clear Filters',
+    recordedBy: 'Recorded by',
+    showing: 'Showing {from}–{to} of {total}',
+    previous: 'Previous',
+    next: 'Next',
+    dateRangeInvalid: 'The start date is after the end date.',
+    errorTitle: 'Unable to load journals.',
+    retry: 'Retry',
   },
   fr: {
     title: 'Journaux comptables',
@@ -75,6 +96,18 @@ const COPY: Record<Locale, Record<string, string>> = {
     printA4: 'Imprimer A4',
     downloadPdf: 'Télécharger PDF',
     downloading: 'Téléchargement...',
+    dateFrom: 'Date de début',
+    dateTo: 'Date de fin',
+    search: 'Rechercher',
+    searchPlaceholder: 'N° journal ou document source…',
+    reset: 'Réinitialiser les filtres',
+    recordedBy: 'Saisi par',
+    showing: 'Affichage {from}–{to} sur {total}',
+    previous: 'Précédent',
+    next: 'Suivant',
+    dateRangeInvalid: 'La date de début est après la date de fin.',
+    errorTitle: 'Impossible de charger les journaux.',
+    retry: 'Réessayer',
   },
   ar: {
     title: 'اليومية المحاسبية',
@@ -103,6 +136,18 @@ const COPY: Record<Locale, Record<string, string>> = {
     printA4: 'طباعة A4',
     downloadPdf: 'تحميل PDF',
     downloading: 'جارٍ التحميل...',
+    dateFrom: 'من تاريخ',
+    dateTo: 'إلى تاريخ',
+    search: 'بحث',
+    searchPlaceholder: 'رقم القيد أو مستند المصدر…',
+    reset: 'مسح الفلاتر',
+    recordedBy: 'سجّله',
+    showing: 'عرض {from}–{to} من {total}',
+    previous: 'السابق',
+    next: 'التالي',
+    dateRangeInvalid: 'تاريخ البداية بعد تاريخ النهاية.',
+    errorTitle: 'تعذر تحميل اليومية.',
+    retry: 'إعادة المحاولة',
   },
 };
 
@@ -117,30 +162,75 @@ export function JournalsScreen({ initialJournalId }: Props) {
   const errorText = useErrorText();
   const token = user?.token ?? '';
 
-  const [journals, setJournals] = useState<JournalSummary[]>([]);
   const [selectedJournal, setSelectedJournal] = useState<JournalDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterSource, setFilterSource] = useState<string>('ALL');
 
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const daysAgoIso = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const [filters, setFilters] = useState<{ dateFrom: string; dateTo: string; search: string }>({
+    dateFrom: daysAgoIso(29),
+    dateTo: todayIso(),
+    search: '',
+  });
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [page, setPage] = useState<number>(0);
+  const [result, setResult] = useState<JournalSearchResult | null>(null);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setFilters((f) => (f.search === searchInput ? f : { ...f, search: searchInput }));
+      setPage(0);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
+  const dateRangeInvalid = !!filters.dateFrom && !!filters.dateTo && filters.dateFrom > filters.dateTo;
+
   const loadJournals = useCallback(async () => {
     if (!token) return;
+    if (dateRangeInvalid) {
+      setResult(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const data = await listJournals(token, 100, 0);
-      setJournals(data);
+      const data = await searchJournals(token, {
+        date_from: filters.dateFrom || null,
+        date_to: filters.dateTo || null,
+        source_type: filterSource === 'ALL' ? null : filterSource,
+        search: filters.search.trim() || null,
+        limit: 50,
+        offset: page * 50,
+      });
+      setResult(data);
     } catch (err) {
       setError(errorText(err));
     } finally {
       setLoading(false);
     }
-  }, [token, errorText]);
+  }, [token, errorText, filters, filterSource, page, dateRangeInvalid]);
 
   useEffect(() => {
     void loadJournals();
   }, [loadJournals]);
+
+  const resetFilters = () => {
+    setFilters({ dateFrom: daysAgoIso(29), dateTo: todayIso(), search: '' });
+    setSearchInput('');
+    setFilterSource('ALL');
+    setPage(0);
+  };
 
   const viewDetail = useCallback(async (journalDocId: number) => {
     if (!token) return;
@@ -161,12 +251,11 @@ export function JournalsScreen({ initialJournalId }: Props) {
     }
   }, [initialJournalId, viewDetail]);
 
-  const filteredJournals = journals.filter((item) => {
-    if (filterSource === 'ALL') return true;
-    return item.source_type === filterSource;
-  });
-
-  const sourceTypes = Array.from(new Set(journals.map((j) => j.source_type)));
+  const rows = result?.rows ?? [];
+  const total = result?.total_count ?? 0;
+  const from = page * 50 + 1;
+  const to = page * 50 + rows.length;
+  const sourceTypes = result?.available_source_types ?? [];
 
   return (
     <section className="sk-screen" data-testid="journals-screen">
@@ -182,27 +271,90 @@ export function JournalsScreen({ initialJournalId }: Props) {
         </div>
       </header>
 
-      {error ? <Banner tone="error">{error}</Banner> : null}
+      {error ? (
+        <Banner tone="error">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{error}</span>
+            <Button variant="secondary" onClick={() => void loadJournals()}>
+              {text.retry}
+            </Button>
+          </div>
+        </Banner>
+      ) : null}
 
-      <div className="sk-card sk-form-row">
-        <label>
-          {text.sourceType}
-          <select value={filterSource} onChange={(e) => setFilterSource(e.target.value)} data-testid="journal-source-filter">
-            <option value="ALL">{text.filterAll}</option>
-            {sourceTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="sk-reports-filter-card">
+        <div className="sk-reports-filter-grid">
+          <div className="sk-reports-filter-cell sk-reports-filter-cell--col-2">
+            <span className="sk-reports-filter-label">{text.dateFrom}</span>
+            <input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(e) => {
+                setFilters((f) => ({ ...f, dateFrom: e.target.value }));
+                setPage(0);
+              }}
+              className="sk-field__input"
+              data-testid="journal-filter-date-from"
+            />
+          </div>
+          <div className="sk-reports-filter-cell sk-reports-filter-cell--col-2">
+            <span className="sk-reports-filter-label">{text.dateTo}</span>
+            <input
+              type="date"
+              value={filters.dateTo}
+              onChange={(e) => {
+                setFilters((f) => ({ ...f, dateTo: e.target.value }));
+                setPage(0);
+              }}
+              className="sk-field__input"
+              data-testid="journal-filter-date-to"
+            />
+          </div>
+          <div className="sk-reports-filter-cell sk-reports-filter-cell--col-3">
+            <span className="sk-reports-filter-label">{text.sourceType}</span>
+            <select
+              value={filterSource}
+              onChange={(e) => {
+                setFilterSource(e.target.value);
+                setPage(0);
+              }}
+              className="sk-field__input"
+              data-testid="journal-source-filter"
+            >
+              <option value="ALL">{text.filterAll}</option>
+              {sourceTypes.map((type) => (
+                <option key={type} value={type}>
+                  {humanDocumentType(type, locale)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sk-reports-filter-cell sk-reports-filter-cell--col-12">
+            <span className="sk-reports-filter-label">{text.search}</span>
+            <input
+              type="text"
+              placeholder={text.searchPlaceholder}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="sk-field__input"
+              data-testid="journal-filter-search"
+            />
+          </div>
+        </div>
+        <div className="sk-reports-filter-actions">
+          <Button variant="secondary" onClick={resetFilters} data-testid="journal-filter-reset">
+            {text.reset}
+          </Button>
+        </div>
       </div>
+
+      {dateRangeInvalid && <Banner tone="error">{text.dateRangeInvalid}</Banner>}
 
       {loading ? (
         <Spinner />
-      ) : filteredJournals.length === 0 ? (
+      ) : !dateRangeInvalid && rows.length === 0 ? (
         <div className="sk-card sk-muted" data-testid="no-journals">{text.empty}</div>
-      ) : (
+      ) : !dateRangeInvalid ? (
         <div className="sk-card">
           <div className="sk-table-wrap">
             <table className="sk-table" data-testid="journals-table">
@@ -215,24 +367,31 @@ export function JournalsScreen({ initialJournalId }: Props) {
                   <th>{text.totalDebit}</th>
                   <th>{text.totalCredit}</th>
                   <th>{text.balanced}</th>
+                  <th>{text.recordedBy}</th>
                   <th>{text.actions}</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredJournals.map((j) => (
+                {rows.map((j) => (
                   <tr key={j.document_id}>
                     <td>
                       <strong>{j.document_number ?? `#${j.document_id}`}</strong>
                     </td>
-                    <td>{j.document_date}</td>
-                    <td><span className="sk-badge">{j.source_type}</span></td>
-                    <td>{j.source_document_number ?? (j.source_id ? `#${j.source_id}` : '—')}</td>
-                    <td><strong>{j.total_debit}</strong></td>
-                    <td><strong>{j.total_credit}</strong></td>
+                    <td>{formatDisplayDate(j.document_date, locale)}</td>
+                    <td><span className="sk-badge">{humanDocumentType(j.source_type, locale)}</span></td>
+                    <td>{journalSourceLabel(j.source_type, j.source_id, j.source_document_number, locale)}</td>
+                    <td className="sk-num"><strong>{formatDisplayAmount(j.total_debit)}</strong></td>
+                    <td className="sk-num"><strong>{formatDisplayAmount(j.total_credit)}</strong></td>
                     <td>
                       <span className={`sk-badge ${j.is_balanced ? 'sk-badge--success' : 'sk-badge--danger'}`}>
                         {j.is_balanced ? text.balanced : text.unbalanced}
                       </span>
+                    </td>
+                    <td>
+                      {j.created_by_username ?? '—'}
+                      {j.created_on_workstation_id ? (
+                        <div className="sk-muted sk-small">{j.created_on_workstation_id}</div>
+                      ) : null}
                     </td>
                     <td>
                       <Button
@@ -249,8 +408,37 @@ export function JournalsScreen({ initialJournalId }: Props) {
               </tbody>
             </table>
           </div>
+          <div
+            className="sk-form-row"
+            style={{ padding: '12px 16px', justifyContent: 'space-between', alignItems: 'center' }}
+          >
+            <span className="sk-muted sk-small">
+              {text.showing
+                .replace('{from}', String(rows.length ? from : 0))
+                .replace('{to}', String(to))
+                .replace('{total}', String(total))}
+            </span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button
+                variant="secondary"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                data-testid="journal-page-prev"
+              >
+                {text.previous}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={to >= total}
+                onClick={() => setPage((p) => p + 1)}
+                data-testid="journal-page-next"
+              >
+                {text.next}
+              </Button>
+            </div>
+          </div>
         </div>
-      )}
+      ) : null}
 
       {selectedJournal ? (
         <JournalDetailModal
@@ -462,7 +650,7 @@ export function JournalDetailModal({
             </h2>
             <div className="sk-detail-dialog__sub">
               {humanDocumentType(detail.source_type, locale)} ·{' '}
-              {detail.source_document_number ?? (detail.source_id ? `#${detail.source_id}` : '—')} ·{' '}
+              {journalSourceLabel(detail.source_type, detail.source_id, detail.source_document_number, locale)} ·{' '}
               {formatDisplayDate(detail.document_date, locale)}
             </div>
           </div>
@@ -499,7 +687,7 @@ export function JournalDetailModal({
             <div className="sk-detail-dialog__metric-card">
               <span className="sk-detail-dialog__metric-card-label">{text.sourceDocument}</span>
               <span className="sk-detail-dialog__metric-card-val" style={{ fontFamily: 'monospace' }}>
-                {detail.source_document_number ?? (detail.source_id ? `#${detail.source_id}` : '—')}
+                {journalSourceLabel(detail.source_type, detail.source_id, detail.source_document_number, locale)}
               </span>
             </div>
 
@@ -514,6 +702,16 @@ export function JournalDetailModal({
               <span className="sk-detail-dialog__metric-card-label">{text.totalCredit}</span>
               <span className="sk-detail-dialog__metric-card-val sk-detail-dialog__metric-card-val--money">
                 {formatDisplayAmount(detail.total_credit)}
+              </span>
+            </div>
+
+            <div className="sk-detail-dialog__metric-card">
+              <span className="sk-detail-dialog__metric-card-label">{text.recordedBy}</span>
+              <span className="sk-detail-dialog__metric-card-val">
+                {detail.created_by_username ?? '—'}
+                {detail.created_on_workstation_id ? (
+                  <div className="sk-muted sk-small">{detail.created_on_workstation_id}</div>
+                ) : null}
               </span>
             </div>
           </section>
@@ -538,7 +736,6 @@ export function JournalDetailModal({
                 <thead>
                   <tr>
                     <th>{text.line}</th>
-                    <th>{text.accountCode}</th>
                     <th>{text.accountName}</th>
                     <th className="sk-num">{text.debit}</th>
                     <th className="sk-num">{text.credit}</th>
@@ -552,10 +749,7 @@ export function JournalDetailModal({
                       <tr key={line.line_number}>
                         <td className="sk-muted">{line.line_number}</td>
                         <td>
-                          <code>{line.account_code}</code>
-                        </td>
-                        <td>
-                          <strong>{line.account_name}</strong>
+                          <strong>{accountLineLabel(line, locale)}</strong>
                         </td>
                         <td className="sk-num">
                           {hasDebit ? (

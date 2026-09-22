@@ -59,23 +59,29 @@ describe('S4-001 customer documents', () => {
     let reprintArgs: Record<string, unknown> | null = null;
     let generationCalls = 0;
     wireInvoke(baseHandlers({
-      list_business_documents: () => [
-        {
-          document_id: 700,
-          document_type: 'CREDIT_SALE',
-          document_number: 'CR-2026-000001',
-          document_date: '2026-07-31',
-          counterparty_name: 'Atlas Distribution',
-          total_amount: '1500.00',
-          currency_code: 'DZD',
-          status: 'POSTED',
-          generation_status: generated ? 'COMPLETED' : 'PENDING',
-          print_status: generated ? 'PENDING' : 'WAITING_FOR_GENERATION',
-          journal_document_id: 900,
-          journal_document_number: 'JE-900',
-          created_at: '2026-07-31T10:00:00Z',
-        },
-      ],
+      search_business_documents: () => ({
+        total_count: 1,
+        rows: [
+          {
+            document_id: 700,
+            document_type: 'CREDIT_SALE',
+            document_number: 'CR-2026-000001',
+            document_date: '2026-07-31',
+            status: 'POSTED',
+            posted_at: '2026-07-31T10:00:00Z',
+            party_name: 'Atlas Distribution',
+            amount: '1500.00',
+            linked_journal_id: 900,
+            linked_journal_number: 'JE-900',
+            created_by_username: 'admin',
+            created_on_workstation_id: 'TEST-STATION',
+            reverses_document_id: null,
+            reverses_document_number: null,
+            reversed_by_document_id: null,
+            reversed_by_document_number: null,
+          },
+        ],
+      }),
       list_printable_documents: () => [
         {
           document_id: 700,

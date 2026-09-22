@@ -100,6 +100,8 @@ export interface BusinessDocumentHeader {
   posted_at: string | null;
   created_at: string;
   updated_at: string;
+  created_by_username?: string | null;
+  created_on_workstation_id?: string | null;
 }
 
 export interface BusinessDocumentRelationship {
@@ -182,4 +184,38 @@ export interface BusinessDocumentReportRow {
 export interface BusinessDocumentReportResult {
   summary: BusinessDocumentReportSummary;
   rows: BusinessDocumentReportRow[];
+}
+
+export interface DocumentSearchFilter {
+  date_from?: string | null;
+  date_to?: string | null;
+  document_type?: string | null;
+  status?: 'DRAFT' | 'POSTED' | 'REVERSED' | null;
+  search?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DocumentSearchRow {
+  document_id: number;
+  document_number: string | null;
+  document_type: string;
+  document_date: string;
+  status: string;
+  posted_at: string | null;
+  party_name: string | null;
+  amount: string | null;
+  linked_journal_id: number | null;
+  linked_journal_number: string | null;
+  created_by_username: string | null;
+  created_on_workstation_id: string | null;
+  reverses_document_id: number | null;
+  reverses_document_number: string | null;
+  reversed_by_document_id: number | null;
+  reversed_by_document_number: string | null;
+}
+
+export interface DocumentSearchResult {
+  total_count: number;
+  rows: DocumentSearchRow[];
 }

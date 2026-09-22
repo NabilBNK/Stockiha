@@ -237,6 +237,27 @@ pub(crate) async fn get_business_document_detail(
         .map_err(IpcError::from)
 }
 
+pub(crate) fn parse_filter_date(s: &str) -> Result<time::Date, AppError> {
+    if let Ok(d) = time::Date::parse(s, &time::format_description::well_known::Rfc3339) {
+        return Ok(d);
+    }
+    let parts: Vec<&str> = s.split('T').next().unwrap_or(s).split('-').collect();
+    if parts.len() == 3 {
+        if let (Ok(y), Ok(m), Ok(d)) = (
+            parts[0].parse::<i32>(),
+            parts[1].parse::<u8>(),
+            parts[2].parse::<u8>(),
+        ) {
+            if let Ok(month) = time::Month::try_from(m) {
+                if let Ok(date) = time::Date::from_calendar_date(y, month, d) {
+                    return Ok(date);
+                }
+            }
+        }
+    }
+    Err(AppError::internal(format!("invalid date format: {}", s)))
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub(crate) async fn get_business_document_reports(
@@ -252,35 +273,14 @@ pub(crate) async fn get_business_document_reports(
     offset: Option<i32>,
 ) -> Result<Value, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    let parse_date = |s: &str| -> Result<time::Date, AppError> {
-        if let Ok(d) = time::Date::parse(s, &time::format_description::well_known::Rfc3339) {
-            return Ok(d);
-        }
-        let parts: Vec<&str> = s.split('T').next().unwrap_or(s).split('-').collect();
-        if parts.len() == 3 {
-            if let (Ok(y), Ok(m), Ok(d)) = (
-                parts[0].parse::<i32>(),
-                parts[1].parse::<u8>(),
-                parts[2].parse::<u8>(),
-            ) {
-                if let Ok(month) = time::Month::try_from(m) {
-                    if let Ok(date) = time::Date::from_calendar_date(y, month, d) {
-                        return Ok(date);
-                    }
-                }
-            }
-        }
-        Err(AppError::internal(format!("invalid date format: {}", s)))
-    };
-
     let df = date_from
         .as_deref()
-        .map(parse_date)
+        .map(parse_filter_date)
         .transpose()
         .map_err(IpcError::from)?;
     let dt = date_to
         .as_deref()
-        .map(parse_date)
+        .map(parse_filter_date)
         .transpose()
         .map_err(IpcError::from)?;
 
@@ -294,6 +294,48 @@ pub(crate) async fn get_business_document_reports(
             status: status.as_deref(),
             search: search.as_deref(),
             has_journal,
+            limit,
+            offset,
+        },
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub(crate) async fn search_business_documents(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    document_type: Option<String>,
+    status: Option<String>,
+    search: Option<String>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let df = date_from
+        .as_deref()
+        .map(parse_filter_date)
+        .transpose()
+        .map_err(IpcError::from)?;
+    let dt = date_to
+        .as_deref()
+        .map(parse_filter_date)
+        .transpose()
+        .map_err(IpcError::from)?;
+
+    documents::search_business_documents(
+        pool,
+        &session_token,
+        documents::BusinessDocumentSearchFilter {
+            date_from: df,
+            date_to: dt,
+            document_type: document_type.as_deref(),
+            status: status.as_deref(),
+            search: search.as_deref(),
             limit,
             offset,
         },

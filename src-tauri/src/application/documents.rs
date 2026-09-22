@@ -397,6 +397,37 @@ pub(crate) async fn get_business_document_reports(
     .map_err(AppError::from_posting_error)
 }
 
+pub(crate) struct BusinessDocumentSearchFilter<'a> {
+    pub date_from: Option<Date>,
+    pub date_to: Option<Date>,
+    pub document_type: Option<&'a str>,
+    pub status: Option<&'a str>,
+    pub search: Option<&'a str>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
+pub(crate) async fn search_business_documents(
+    pool: &PgPool,
+    session_token: &str,
+    filter: BusinessDocumentSearchFilter<'_>,
+) -> Result<Value, AppError> {
+    sqlx::query_scalar::<_, Value>(
+        "SELECT documents.search_business_documents($1, $2, $3, $4, $5, $6, $7, $8)",
+    )
+    .bind(session_token)
+    .bind(filter.date_from)
+    .bind(filter.date_to)
+    .bind(filter.document_type)
+    .bind(filter.status)
+    .bind(filter.search)
+    .bind(filter.limit)
+    .bind(filter.offset)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)
+}
+
 async fn complete_generation_failure(
     pool: &PgPool,
     job_id: i64,

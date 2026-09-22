@@ -953,6 +953,21 @@ export function getJournalDetail(
   });
 }
 
+export function searchJournals(
+  sessionToken: string,
+  filter: import('./dto').JournalSearchFilter = {},
+): Promise<import('./dto').JournalSearchResult> {
+  return call<import('./dto').JournalSearchResult>(COMMANDS.SEARCH_JOURNALS, {
+    sessionToken,
+    dateFrom: filter.date_from ?? null,
+    dateTo: filter.date_to ?? null,
+    sourceType: filter.source_type ?? null,
+    search: filter.search ?? null,
+    limit: filter.limit ?? 50,
+    offset: filter.offset ?? 0,
+  });
+}
+
 export function listBusinessDocuments(
   sessionToken: string,
   limit?: number,

@@ -5,40 +5,54 @@ import { DocumentsScreen } from '../src/features/documents/DocumentsScreen';
 import { I18nProvider } from '../src/shared/i18n';
 import { SessionContext } from '../src/shared/session/SessionContext';
 
-vi.mock('../src/shared/ipc/documentGateway', () => ({
-  listBusinessDocuments: vi.fn().mockResolvedValue([
-    {
-      document_id: 201,
-      document_type: 'PURCHASE_RECEIPT',
-      document_number: 'PR-2026-000050',
-      document_date: '2026-08-12',
-      counterparty_name: 'Main Supplier',
-      total_amount: '1000.00',
-      currency_code: 'DZD',
-      status: 'POSTED',
-      generation_status: 'NOT_APPLICABLE',
-      print_status: 'NOT_APPLICABLE',
-      journal_document_id: 101,
-      journal_document_number: 'JE-2026-000101',
-      created_at: '2026-08-12T10:00:00Z',
-    },
-    {
-      document_id: 202,
-      document_type: 'SALES_RECEIPT',
-      document_number: 'SR-2026-000012',
-      document_date: '2026-08-12',
-      counterparty_name: 'Walk-in Customer',
-      total_amount: '500.00',
-      currency_code: 'DZD',
-      status: 'POSTED',
-      generation_status: 'GENERATED',
-      print_status: 'PRINTED',
-      journal_document_id: 102,
-      journal_document_number: 'JE-2026-000102',
-      created_at: '2026-08-12T11:00:00Z',
-    },
-  ]),
-}));
+vi.mock('../src/shared/ipc/documentGateway', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/shared/ipc/documentGateway')>();
+  return {
+    ...actual,
+    searchBusinessDocuments: vi.fn().mockResolvedValue({
+      total_count: 2,
+      rows: [
+        {
+          document_id: 201,
+          document_type: 'PURCHASE_RECEIPT',
+          document_number: 'PR-2026-000050',
+          document_date: '2026-08-12',
+          status: 'POSTED',
+          posted_at: '2026-08-12T10:00:00Z',
+          party_name: 'Main Supplier',
+          amount: '1000.00',
+          linked_journal_id: 101,
+          linked_journal_number: 'JE-2026-000101',
+          created_by_username: 'admin',
+          created_on_workstation_id: 'TEST-STATION',
+          reverses_document_id: null,
+          reverses_document_number: null,
+          reversed_by_document_id: null,
+          reversed_by_document_number: null,
+        },
+        {
+          document_id: 202,
+          document_type: 'CASH_SALE',
+          document_number: 'VC-2026-000012',
+          document_date: '2026-08-12',
+          status: 'POSTED',
+          posted_at: '2026-08-12T11:00:00Z',
+          party_name: null,
+          amount: '500.00',
+          linked_journal_id: 102,
+          linked_journal_number: 'JE-2026-000102',
+          created_by_username: 'cashier1',
+          created_on_workstation_id: 'TEST-STATION',
+          reverses_document_id: null,
+          reverses_document_number: null,
+          reversed_by_document_id: null,
+          reversed_by_document_number: null,
+        },
+      ],
+    }),
+    getBusinessDocumentReports: vi.fn(),
+  };
+});
 
 const mockSession = {
   user: { username: 'admin', display_name: 'Admin', token: 'valid_token' },
@@ -62,7 +76,7 @@ function renderDocumentsScreen() {
 }
 
 describe('DocumentsScreen Workflow', () => {
-  it('renders business documents table with N/A badges for procurement and active status for sales', async () => {
+  it('renders business documents with party, amount, recorded-by and walk-in fallback, and no generation/print columns', async () => {
     renderDocumentsScreen();
 
     await waitFor(() => {
@@ -70,7 +84,12 @@ describe('DocumentsScreen Workflow', () => {
     });
 
     expect(screen.getByText('PR-2026-000050')).toBeInTheDocument();
-    expect(screen.getByText('SR-2026-000012')).toBeInTheDocument();
-    expect(screen.getAllByText(/Not applicable|N\/A/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('VC-2026-000012')).toBeInTheDocument();
+    expect(screen.getByText('Main Supplier')).toBeInTheDocument();
+    expect(screen.getByText('Walk-in customer')).toBeInTheDocument();
+    expect(screen.getByText('admin')).toBeInTheDocument();
+    expect(screen.getByText('cashier1')).toBeInTheDocument();
+    expect(screen.queryByText('Generation')).not.toBeInTheDocument();
+    expect(screen.queryByText('Print')).not.toBeInTheDocument();
   });
 });

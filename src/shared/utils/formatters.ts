@@ -93,9 +93,32 @@ export function humanDocumentType(type: string | null | undefined, locale: Local
     STOCK_ADJUSTMENT: { en: 'Inventory Correction', fr: 'Correction d’inventaire', ar: 'تصحيح المخزون' },
     JOURNAL_ENTRY: { en: 'Journal Entry', fr: 'Écriture comptable', ar: 'قيد محاسبي' },
     SALE_VOID: { en: 'Sale Cancellation', fr: 'Annulation de vente', ar: 'إلغاء بيع' },
+    CUSTOMER_REFUND: { en: 'Customer Refund', fr: 'Remboursement client', ar: 'استرداد للعميل' },
+    CASH_MOVEMENT: { en: 'Cash In / Out', fr: 'Entrée / sortie de caisse', ar: 'إدخال / إخراج نقد' },
+    CASH_SESSION: { en: 'Cash Session Closing', fr: 'Clôture de caisse', ar: 'إغلاق الصندوق' },
+    RESIDUAL_CLEARANCE: { en: 'Rounding Adjustment', fr: 'Ajustement d’arrondi', ar: 'تسوية التقريب' },
   };
 
   return LABELS[type]?.[locale] ?? type;
+}
+
+/**
+ * Where a journal's source points, for display: the linked document's own
+ * number when one exists, otherwise the cash session it belongs to.
+ */
+export function journalSourceLabel(
+  sourceType: string,
+  sourceId: number | null,
+  sourceDocumentNumber: string | null,
+  locale: Locale = 'en',
+): string {
+  if (sourceDocumentNumber) return sourceDocumentNumber;
+  if ((sourceType === 'CASH_MOVEMENT' || sourceType === 'CASH_SESSION') && sourceId != null) {
+    if (locale === 'fr') return `Session n°${sourceId}`;
+    if (locale === 'ar') return `الحصة رقم ${sourceId}`;
+    return `Session #${sourceId}`;
+  }
+  return '—';
 }
 
 /**

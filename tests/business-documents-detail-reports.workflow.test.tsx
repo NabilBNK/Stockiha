@@ -7,13 +7,13 @@ import { I18nProvider } from '../src/shared/i18n';
 import * as documentGateway from '../src/shared/ipc/documentGateway';
 
 import type {
-  BusinessDocument,
   BusinessDocumentDetail,
   BusinessDocumentReportResult,
+  DocumentSearchResult,
 } from '../src/shared/ipc/documentDto';
 
 vi.mock('../src/shared/ipc/documentGateway', () => ({
-  listBusinessDocuments: vi.fn(),
+  searchBusinessDocuments: vi.fn(),
   getBusinessDocumentDetail: vi.fn(),
   getBusinessDocumentReports: vi.fn(),
 }));
@@ -24,34 +24,47 @@ describe('Business Documents Detail & Reports Workflow', () => {
     token: 'test-token',
   };
 
-  const mockDocs: BusinessDocument[] = [
-    {
-      document_id: 101,
-      document_number: 'PO-2026-000001',
-      document_type: 'PURCHASE_ORDER',
-      document_date: '2026-08-12',
-      status: 'POSTED',
-      posted_at: '2026-08-12T10:00:00Z',
-      generation_status: 'NOT_APPLICABLE',
-      print_status: 'NOT_APPLICABLE',
-      linked_journal_id: null,
-      linked_journal_number: null,
-      detail_summary: 'Supplier A',
-    },
-    {
-      document_id: 102,
-      document_number: 'PR-2026-000001',
-      document_type: 'PURCHASE_RECEIPT',
-      document_date: '2026-08-12',
-      status: 'POSTED',
-      posted_at: '2026-08-12T10:15:00Z',
-      generation_status: 'NOT_APPLICABLE',
-      print_status: 'NOT_APPLICABLE',
-      linked_journal_id: 201,
-      linked_journal_number: 'JE-2026-000001',
-      detail_summary: 'Receipt for PO-2026-000001',
-    },
-  ];
+  const mockDocs: DocumentSearchResult = {
+    total_count: 2,
+    rows: [
+      {
+        document_id: 101,
+        document_number: 'PO-2026-000001',
+        document_type: 'PURCHASE_ORDER',
+        document_date: '2026-08-12',
+        status: 'POSTED',
+        posted_at: '2026-08-12T10:00:00Z',
+        party_name: 'Supplier A',
+        amount: '15000.00',
+        linked_journal_id: null,
+        linked_journal_number: null,
+        created_by_username: 'admin',
+        created_on_workstation_id: 'WS-MAIN',
+        reverses_document_id: null,
+        reverses_document_number: null,
+        reversed_by_document_id: null,
+        reversed_by_document_number: null,
+      },
+      {
+        document_id: 102,
+        document_number: 'PR-2026-000001',
+        document_type: 'PURCHASE_RECEIPT',
+        document_date: '2026-08-12',
+        status: 'POSTED',
+        posted_at: '2026-08-12T10:15:00Z',
+        party_name: 'Supplier A',
+        amount: '15000.00',
+        linked_journal_id: 201,
+        linked_journal_number: 'JE-2026-000001',
+        created_by_username: 'admin',
+        created_on_workstation_id: 'WS-MAIN',
+        reverses_document_id: null,
+        reverses_document_number: null,
+        reversed_by_document_id: null,
+        reversed_by_document_number: null,
+      },
+    ],
+  };
 
   const mockDetail: BusinessDocumentDetail = {
     header: {
@@ -126,7 +139,7 @@ describe('Business Documents Detail & Reports Workflow', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(documentGateway.listBusinessDocuments).mockResolvedValue(mockDocs);
+    vi.mocked(documentGateway.searchBusinessDocuments).mockResolvedValue(mockDocs);
     vi.mocked(documentGateway.getBusinessDocumentDetail).mockResolvedValue(mockDetail);
     vi.mocked(documentGateway.getBusinessDocumentReports).mockResolvedValue(mockReportsResult);
   });

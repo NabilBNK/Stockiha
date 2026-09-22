@@ -105,6 +105,22 @@ export function getBusinessDocumentReports(
   });
 }
 
+export function searchBusinessDocuments(
+  sessionToken: string,
+  filter: import('./documentDto').DocumentSearchFilter = {},
+): Promise<import('./documentDto').DocumentSearchResult> {
+  return call<import('./documentDto').DocumentSearchResult>(COMMANDS.SEARCH_BUSINESS_DOCUMENTS, {
+    sessionToken,
+    dateFrom: filter.date_from ?? null,
+    dateTo: filter.date_to ?? null,
+    documentType: filter.document_type ?? null,
+    status: filter.status ?? null,
+    search: filter.search ?? null,
+    limit: filter.limit ?? 50,
+    offset: filter.offset ?? 0,
+  });
+}
+
 export function saveBinaryFile(path: string, bytes: Uint8Array | number[]): Promise<void> {
   return call<void>(COMMANDS.SAVE_BINARY_FILE, {
     path,

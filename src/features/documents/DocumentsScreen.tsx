@@ -3,13 +3,14 @@ import { Button, Spinner } from '../../shared/components';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useI18n, type Locale } from '../../shared/i18n';
 import {
-  listBusinessDocuments,
   getBusinessDocumentReports,
+  searchBusinessDocuments,
 } from '../../shared/ipc/documentGateway';
 import type {
-  BusinessDocument,
   BusinessDocumentReportResult,
   DocumentReportFilter,
+  DocumentSearchFilter,
+  DocumentSearchResult,
   PrintableDocument,
 } from '../../shared/ipc/documentDto';
 import { useSession } from '../../shared/session/SessionContext';
@@ -31,7 +32,32 @@ import {
 import { generateGenericDocumentPdf } from '../../shared/documents/genericDocumentPdf';
 
 type ActiveTab = 'DOCUMENTS' | 'REPORTS';
-type CategoryFilter = 'ALL' | 'SALES' | 'PROCUREMENT';
+
+const DOC_TYPE_OPTIONS = [
+  'CASH_SALE',
+  'CREDIT_SALE',
+  'SALE_VOID',
+  'CUSTOMER_PAYMENT',
+  'CUSTOMER_REFUND',
+  'PURCHASE_TRANSACTION',
+  'PURCHASE_ORDER',
+  'PURCHASE_RECEIPT',
+  'SUPPLIER_INVOICE',
+  'SUPPLIER_PAYMENT',
+  'PURCHASE_RETURN',
+  'STOCK_RECEIPT',
+  'STOCK_ADJUSTMENT',
+];
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysAgoIso(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
@@ -61,7 +87,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     withJournal: 'With Journal',
     withoutJournal: 'Without Journal',
     search: 'Search',
-    searchPlaceholder: 'Search document number...',
+    searchPlaceholder: 'Number, customer or supplier…',
     reset: 'Clear Filters',
     totalDocs: 'Total Documents',
     postedDocs: 'Posted',
@@ -78,10 +104,22 @@ const COPY: Record<Locale, Record<string, string>> = {
     breakdown: 'Document Type Breakdown',
     count: 'Count',
     totalAmount: 'Total Amount',
-    party: 'Party / Counterparty',
+    party: 'Customer / Supplier',
     printReportA4: 'Print Report A4',
     downloadReportPdf: 'Download Report PDF',
     downloading: 'Downloading...',
+    amount: 'Amount',
+    recordedBy: 'Recorded by',
+    walkIn: 'Walk-in customer',
+    cancelledBy: 'Cancelled by',
+    cancels: 'Cancels',
+    statusFilter: 'Status',
+    allTypes: 'All types',
+    allStatuses: 'All statuses',
+    showing: 'Showing {from}–{to} of {total}',
+    previous: 'Previous',
+    next: 'Next',
+    dateRangeInvalid: 'The start date is after the end date.',
   },
   fr: {
     title: 'Documents Commerciaux',
@@ -110,7 +148,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     withJournal: 'Avec journal',
     withoutJournal: 'Sans journal',
     search: 'Rechercher',
-    searchPlaceholder: 'Rechercher n° document...',
+    searchPlaceholder: 'Numéro, client ou fournisseur…',
     reset: 'Réinitialiser les filtres',
     totalDocs: 'Total Documents',
     postedDocs: 'Validés',
@@ -127,10 +165,22 @@ const COPY: Record<Locale, Record<string, string>> = {
     breakdown: 'Répartition par type de document',
     count: 'Nombre',
     totalAmount: 'Montant total',
-    party: 'Tiers / Contrepartie',
+    party: 'Client / Fournisseur',
     printReportA4: 'Imprimer Rapport A4',
     downloadReportPdf: 'Télécharger Rapport PDF',
     downloading: 'Téléchargement...',
+    amount: 'Montant',
+    recordedBy: 'Saisi par',
+    walkIn: 'Client comptoir',
+    cancelledBy: 'Annulé par',
+    cancels: 'Annule',
+    statusFilter: 'Statut',
+    allTypes: 'Tous les types',
+    allStatuses: 'Tous les statuts',
+    showing: 'Affichage {from}–{to} sur {total}',
+    previous: 'Précédent',
+    next: 'Suivant',
+    dateRangeInvalid: 'La date de début est après la date de fin.',
   },
   ar: {
     title: 'المستندات التجارية',
@@ -159,7 +209,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     withJournal: 'مرتبط بقيد',
     withoutJournal: 'غير مرتبط بقيد',
     search: 'بحث',
-    searchPlaceholder: 'بحث برقم المستند...',
+    searchPlaceholder: 'الرقم أو العميل أو المورد…',
     reset: 'مسح الفلاتر',
     totalDocs: 'إجمالي المستندات',
     postedDocs: 'المرحّلة',
@@ -175,10 +225,22 @@ const COPY: Record<Locale, Record<string, string>> = {
     breakdown: 'تفصيل حسب نوع المستند',
     count: 'العدد',
     totalAmount: 'المبلغ الإجمالي',
-    party: 'الطرف / المتعامل',
+    party: 'العميل / المورد',
     printReportA4: 'طباعة التقرير A4',
     downloadReportPdf: 'تحميل التقرير PDF',
     downloading: 'جارٍ التحميل...',
+    amount: 'المبلغ',
+    recordedBy: 'سجّله',
+    walkIn: 'عميل عابر',
+    cancelledBy: 'أُلغي بواسطة',
+    cancels: 'يلغي',
+    statusFilter: 'الحالة',
+    allTypes: 'كل الأنواع',
+    allStatuses: 'كل الحالات',
+    showing: 'عرض {from}–{to} من {total}',
+    previous: 'السابق',
+    next: 'التالي',
+    dateRangeInvalid: 'تاريخ البداية بعد تاريخ النهاية.',
   },
 };
 
@@ -190,10 +252,18 @@ export const DocumentsScreen: React.FC = () => {
   const errorText = useErrorText();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('DOCUMENTS');
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('ALL');
 
   // Documents state
-  const [documents, setDocuments] = useState<BusinessDocument[]>([]);
+  const [docFilters, setDocFilters] = useState<{
+    dateFrom: string;
+    dateTo: string;
+    documentType: string;
+    status: string;
+    search: string;
+  }>({ dateFrom: daysAgoIso(29), dateTo: todayIso(), documentType: '', status: '', search: '' });
+  const [docSearchInput, setDocSearchInput] = useState<string>('');
+  const [docPage, setDocPage] = useState<number>(0);
+  const [docResult, setDocResult] = useState<DocumentSearchResult | null>(null);
   const [docLoading, setDocLoading] = useState<boolean>(true);
   const [docError, setDocError] = useState<string | null>(null);
 
@@ -209,20 +279,46 @@ export const DocumentsScreen: React.FC = () => {
   const [selectedPrintable, setSelectedPrintable] = useState<PrintableDocument | null>(null);
   const [selectedJournalDocId, setSelectedJournalDocId] = useState<number | null>(null);
 
-  // Load Documents Registry
+  // Debounce free-text search into the filter object (400ms).
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDocFilters((f) => (f.search === docSearchInput ? f : { ...f, search: docSearchInput }));
+      setDocPage(0);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [docSearchInput]);
+
+  const docDateRangeInvalid =
+    !!docFilters.dateFrom && !!docFilters.dateTo && docFilters.dateFrom > docFilters.dateTo;
+
+  // Load Documents Registry (server-side filters + pagination)
   const loadDocuments = useCallback(async () => {
     if (!token) return;
+    if (docDateRangeInvalid) {
+      setDocResult(null);
+      setDocError(null);
+      setDocLoading(false);
+      return;
+    }
     setDocLoading(true);
     setDocError(null);
     try {
-      const rows = await listBusinessDocuments(token, 100);
-      setDocuments(rows);
+      const res = await searchBusinessDocuments(token, {
+        date_from: docFilters.dateFrom || null,
+        date_to: docFilters.dateTo || null,
+        document_type: docFilters.documentType || null,
+        status: (docFilters.status || null) as DocumentSearchFilter['status'],
+        search: docFilters.search.trim() || null,
+        limit: 50,
+        offset: docPage * 50,
+      });
+      setDocResult(res);
     } catch (err) {
       setDocError(errorText(err));
     } finally {
       setDocLoading(false);
     }
-  }, [token, errorText]);
+  }, [token, errorText, docFilters, docPage, docDateRangeInvalid]);
 
   // Load Reports
   const loadReports = useCallback(async () => {
@@ -383,24 +479,16 @@ export const DocumentsScreen: React.FC = () => {
   };
 
 
-  const filteredDocuments = documents.filter((doc) => {
-    if (categoryFilter === 'SALES') {
-      return ['CASH_SALE', 'CREDIT_SALE', 'CUSTOMER_PAYMENT', 'CUSTOMER_REFUND'].includes(
-        doc.document_type
-      );
-    }
-    if (categoryFilter === 'PROCUREMENT') {
-      return [
-        'PURCHASE_ORDER',
-        'PURCHASE_RECEIPT',
-        'PURCHASE_TRANSACTION',
-        'SUPPLIER_INVOICE',
-        'PURCHASE_RETURN',
-        'SUPPLIER_PAYMENT',
-      ].includes(doc.document_type);
-    }
-    return true;
-  });
+  const docRows = docResult?.rows ?? [];
+  const docTotal = docResult?.total_count ?? 0;
+  const docFrom = docPage * 50 + 1;
+  const docTo = docPage * 50 + docRows.length;
+
+  const resetDocFilters = () => {
+    setDocFilters({ dateFrom: daysAgoIso(29), dateTo: todayIso(), documentType: '', status: '', search: '' });
+    setDocSearchInput('');
+    setDocPage(0);
+  };
 
   const summary = reportResult?.summary;
   const reportRows = reportResult?.rows || [];
@@ -455,35 +543,114 @@ export const DocumentsScreen: React.FC = () => {
       {/* TAB 1: DOCUMENTS REGISTRY */}
       {activeTab === 'DOCUMENTS' && (
         <div className="sk-screen__content">
-          <div className="sk-card sk-form-row" style={{ marginBottom: '18px' }}>
-            <label className="sk-field">
-              <span className="sk-field__label">{text.type}</span>
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
-                className="sk-field__input"
-                data-testid="document-category-filter"
-              >
-                <option value="ALL">{text.filterAll}</option>
-                <option value="SALES">{text.filterSales}</option>
-                <option value="PROCUREMENT">{text.filterProcurement}</option>
-              </select>
-            </label>
+          <div className="sk-reports-filter-card" style={{ marginBottom: '18px' }}>
+            <div className="sk-reports-filter-grid">
+              <div className="sk-reports-filter-cell sk-reports-filter-cell--col-2">
+                <span className="sk-reports-filter-label">{text.dateFrom}</span>
+                <input
+                  type="date"
+                  value={docFilters.dateFrom}
+                  onChange={(e) => {
+                    setDocFilters((f) => ({ ...f, dateFrom: e.target.value }));
+                    setDocPage(0);
+                  }}
+                  className="sk-field__input"
+                  data-testid="doc-filter-date-from"
+                />
+              </div>
+              <div className="sk-reports-filter-cell sk-reports-filter-cell--col-2">
+                <span className="sk-reports-filter-label">{text.dateTo}</span>
+                <input
+                  type="date"
+                  value={docFilters.dateTo}
+                  onChange={(e) => {
+                    setDocFilters((f) => ({ ...f, dateTo: e.target.value }));
+                    setDocPage(0);
+                  }}
+                  className="sk-field__input"
+                  data-testid="doc-filter-date-to"
+                />
+              </div>
+              <div className="sk-reports-filter-cell sk-reports-filter-cell--col-3">
+                <span className="sk-reports-filter-label">{text.type}</span>
+                <select
+                  value={docFilters.documentType}
+                  onChange={(e) => {
+                    setDocFilters((f) => ({ ...f, documentType: e.target.value }));
+                    setDocPage(0);
+                  }}
+                  className="sk-field__input"
+                  data-testid="doc-filter-type"
+                >
+                  <option value="">{text.allTypes}</option>
+                  {DOC_TYPE_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {humanDocumentType(t, locale)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sk-reports-filter-cell sk-reports-filter-cell--col-2">
+                <span className="sk-reports-filter-label">{text.statusFilter}</span>
+                <select
+                  value={docFilters.status}
+                  onChange={(e) => {
+                    setDocFilters((f) => ({ ...f, status: e.target.value }));
+                    setDocPage(0);
+                  }}
+                  className="sk-field__input"
+                  data-testid="doc-filter-status"
+                >
+                  <option value="">{text.allStatuses}</option>
+                  <option value="POSTED">{humanStatus('POSTED', locale)}</option>
+                  <option value="REVERSED">{humanStatus('REVERSED', locale)}</option>
+                  <option value="DRAFT">{humanStatus('DRAFT', locale)}</option>
+                </select>
+              </div>
+              <div className="sk-reports-filter-cell sk-reports-filter-cell--col-12">
+                <span className="sk-reports-filter-label">{text.search}</span>
+                <input
+                  type="text"
+                  placeholder={text.searchPlaceholder}
+                  value={docSearchInput}
+                  onChange={(e) => setDocSearchInput(e.target.value)}
+                  className="sk-field__input"
+                  data-testid="doc-filter-search"
+                />
+              </div>
+            </div>
+            <div className="sk-reports-filter-actions">
+              <Button variant="secondary" onClick={resetDocFilters} data-testid="doc-filter-reset">
+                {text.reset}
+              </Button>
+            </div>
           </div>
+
+          {docDateRangeInvalid && (
+            <div className="sk-banner sk-banner--error" style={{ marginBottom: '18px' }}>
+              {text.dateRangeInvalid}
+            </div>
+          )}
 
           {docError && (
             <div className="sk-banner sk-banner--error" style={{ marginBottom: '18px' }}>
-              {docError}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{docError}</span>
+                <Button variant="secondary" onClick={() => void loadDocuments()}>
+                  {text.retry}
+                </Button>
+              </div>
             </div>
           )}
 
           {docLoading ? (
             <Spinner />
-          ) : filteredDocuments.length === 0 ? (
+          ) : !docError && !docDateRangeInvalid && docRows.length === 0 ? (
             <div className="sk-empty-card">
-              <p className="sk-empty-card__title">{text.none}</p>
+              <h3 className="sk-empty-card__title">{text.emptyTitle}</h3>
+              <p className="sk-empty-card__sub">{text.emptySub}</p>
             </div>
-          ) : (
+          ) : !docError && !docDateRangeInvalid ? (
             <div className="sk-card">
               <div className="sk-table-wrap">
                 <table className="sk-table" data-testid="printable-documents-table">
@@ -492,24 +659,46 @@ export const DocumentsScreen: React.FC = () => {
                       <th>{text.number}</th>
                       <th>{text.type}</th>
                       <th>{text.date}</th>
+                      <th>{text.party}</th>
+                      <th className="sk-num">{text.amount}</th>
                       <th>{text.status}</th>
-                      <th>{text.generation}</th>
-                      <th>{text.print}</th>
+                      <th>{text.recordedBy}</th>
                       <th>{text.journal}</th>
                       <th>{text.action}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDocuments.map((doc) => (
+                    {docRows.map((doc) => (
                       <tr key={doc.document_id}>
                         <td>
                           <strong>{doc.document_number ?? `#${doc.document_id}`}</strong>
-                          {doc.detail_summary ? (
-                            <div className="sk-muted sk-small">{doc.detail_summary}</div>
+                          {doc.reversed_by_document_number ? (
+                            <div className="sk-muted sk-small">
+                              {text.cancelledBy} {doc.reversed_by_document_number}
+                            </div>
+                          ) : doc.reverses_document_number ? (
+                            <div className="sk-muted sk-small">
+                              {text.cancels} {doc.reverses_document_number}
+                            </div>
                           ) : null}
                         </td>
                         <td>{humanDocumentType(doc.document_type, locale)}</td>
-                        <td>{formatDisplayDate(doc.document_date, locale)}</td>
+                        <td>
+                          {formatDisplayDate(doc.document_date, locale)}
+                          {doc.posted_at ? (
+                            <span className="sk-muted sk-small">
+                              {' '}
+                              {new Date(doc.posted_at).toISOString().slice(11, 16)}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td>
+                          {doc.party_name ??
+                            (doc.document_type === 'CASH_SALE' ? text.walkIn : '—')}
+                        </td>
+                        <td className="sk-num">
+                          {doc.amount ? formatDisplayAmount(doc.amount) : '—'}
+                        </td>
                         <td>
                           <span
                             className={`sk-badge ${
@@ -524,14 +713,10 @@ export const DocumentsScreen: React.FC = () => {
                           </span>
                         </td>
                         <td>
-                          <span className="sk-badge sk-badge--secondary">
-                            {humanStatus(doc.generation_status, locale)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="sk-badge sk-badge--secondary">
-                            {humanStatus(doc.print_status, locale)}
-                          </span>
+                          {doc.created_by_username ?? '—'}
+                          {doc.created_on_workstation_id ? (
+                            <div className="sk-muted sk-small">{doc.created_on_workstation_id}</div>
+                          ) : null}
                         </td>
                         <td>
                           {doc.linked_journal_id ? (
@@ -557,7 +742,7 @@ export const DocumentsScreen: React.FC = () => {
                                   doc.document_type
                                 )
                               ) {
-                                setSelectedPrintable(doc as unknown as import('../../shared/ipc/documentDto').PrintableDocument);
+                                setSelectedPrintable(doc as unknown as PrintableDocument);
                               }
                             }}
                             data-testid={`view-doc-${doc.document_id}`}
@@ -570,8 +755,37 @@ export const DocumentsScreen: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+              <div
+                className="sk-form-row"
+                style={{ padding: '12px 16px', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <span className="sk-muted sk-small">
+                  {text.showing
+                    .replace('{from}', String(docRows.length ? docFrom : 0))
+                    .replace('{to}', String(docTo))
+                    .replace('{total}', String(docTotal))}
+                </span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <Button
+                    variant="secondary"
+                    disabled={docPage === 0}
+                    onClick={() => setDocPage((p) => Math.max(0, p - 1))}
+                    data-testid="doc-page-prev"
+                  >
+                    {text.previous}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={docTo >= docTotal}
+                    onClick={() => setDocPage((p) => p + 1)}
+                    data-testid="doc-page-next"
+                  >
+                    {text.next}
+                  </Button>
+                </div>
+              </div>
             </div>
-          )}
+          ) : null}
         </div>
       )}
 
