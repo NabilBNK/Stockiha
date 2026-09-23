@@ -1170,12 +1170,9 @@ const ar: Record<MessageKey, string> = {
   'errors.freshRestoreNotAllowed': 'الاسترجاع هنا ممكن فقط على تثبيت جديد لا يحتوي على أي حسابات مستخدمين.',
   'errors.backupCopyFailed': 'تعذر نسخ النسخة الاحتياطية. لم يُترك أي شيء في المجلد الهدف.',
   'errors.insufficientDiskSpace': 'لا توجد مساحة تخزين كافية لإجراء هذه العملية.',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'errors.logoTooLarge': 'This file exceeds the 2 MB logo size limit.',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'errors.logoNotAFile': 'This file could not be read. Choose another one.',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'errors.logoUnsupportedType': 'Unsupported format. Use a PNG, JPEG or WebP image.',
+  'errors.logoTooLarge': 'يتجاوز حجم هذا الملف الحد الأقصى للشعار البالغ 2 ميغابايت.',
+  'errors.logoNotAFile': 'تعذّرت قراءة هذا الملف. اختر ملفاً آخر.',
+  'errors.logoUnsupportedType': 'صيغة غير مدعومة. استخدم صورة بصيغة PNG أو JPEG أو WebP.',
   'inventory.zeroQtyWarning.title': 'تحذير مخزون منعدم',
   'inventory.zeroQtyWarning.message': '"{variant}" يملك مخزونًا مؤكدًا منعدمًا ولا يملك متوسط تكلفة موازنًا سابقًا مسجلاً. تتطلب الزيادة قاعدة تكلفة معتمدة.',
   'errors.unknown': '\u062d\u062f\u062b \u062e\u0637\u0623 \u063a\u064a\u0631 \u0645\u062a\u0648\u0642\u0639. \u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629.',
@@ -1232,62 +1229,34 @@ const ar: Record<MessageKey, string> = {
   'printing.footer': '\u0631\u0633\u0627\u0644\u0629 \u0623\u0633\u0641\u0644 \u0627\u0644\u0648\u0635\u0644',
   'printing.test': '\u062a\u062c\u0631\u0628\u0629 \u0627\u0644\u0637\u0628\u0639',
   'printing.saved': '\u062a\u0645 \u062d\u0641\u0638 \u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u0637\u0628\u0627\u0639\u0629',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.identityTitle': 'Shop identity on printed documents',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.identityFieldsHint': 'The name, address and phone above are used on both the receipt and A4.',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.logo': 'Logo',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.logoNone': 'No logo',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.logoChoose': 'Choose logo\u2026',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.logoRemove': 'Remove logo',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.legalName': 'Legal name',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.email': 'E-mail',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.website': 'Website',
-  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.identityTitle': '\u0647\u0648\u064a\u0629 \u0627\u0644\u0645\u062a\u062c\u0631 \u0639\u0644\u0649 \u0627\u0644\u0645\u0633\u062a\u0646\u062f\u0627\u062a \u0627\u0644\u0645\u0637\u0628\u0648\u0639\u0629',
+  'printing.identityFieldsHint': '\u064a\u064f\u0633\u062a\u062e\u062f\u0645 \u0627\u0644\u0627\u0633\u0645 \u0648\u0627\u0644\u0639\u0646\u0648\u0627\u0646 \u0648\u0627\u0644\u0647\u0627\u062a\u0641 \u0623\u0639\u0644\u0627\u0647 \u0641\u064a \u0643\u0644 \u0645\u0646 \u0627\u0644\u0648\u0635\u0644 \u0648\u0645\u0633\u062a\u0646\u062f\u0627\u062a A4.',
+  'printing.logo': '\u0627\u0644\u0634\u0639\u0627\u0631',
+  'printing.logoNone': '\u0644\u0627 \u064a\u0648\u062c\u062f \u0634\u0639\u0627\u0631',
+  'printing.logoChoose': '\u0627\u062e\u062a\u064a\u0627\u0631 \u0627\u0644\u0634\u0639\u0627\u0631\u2026',
+  'printing.logoRemove': '\u062d\u0630\u0641 \u0627\u0644\u0634\u0639\u0627\u0631',
+  'printing.legalName': '\u0627\u0644\u0627\u0633\u0645 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064a',
+  'printing.email': '\u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a',
+  'printing.website': '\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a',
   'printing.nif': 'NIF',
-  // TODO(WS-M-4): Arabic wording pending review.
   'printing.nis': 'NIS',
-  // TODO(WS-M-4): Arabic wording pending review.
   'printing.rc': 'RC',
-  // TODO(WS-M-4): Arabic wording pending review.
   'printing.ai': 'AI',
-  // TODO(WS-M-4): Arabic wording pending review.
   'printing.rib': 'RIB',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.footerNote': 'A4 footer note',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.showLogo': 'Show the logo',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.showEmail': 'Show the e-mail',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.showWebsite': 'Show the website',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.showRib': 'Show the RIB',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.amountInWords': 'Show the amount in words',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.printLanguage': 'Print language',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.printLanguageFollowApp': 'Follow the app language',
-  // TODO(WS-M-4): Arabic wording pending review.
+  'printing.footerNote': '\u0645\u0644\u0627\u062d\u0638\u0629 \u0623\u0633\u0641\u0644 \u0635\u0641\u062d\u0629 A4',
+  'printing.showLogo': '\u0625\u0638\u0647\u0627\u0631 \u0627\u0644\u0634\u0639\u0627\u0631',
+  'printing.showEmail': '\u0625\u0638\u0647\u0627\u0631 \u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a',
+  'printing.showWebsite': '\u0625\u0638\u0647\u0627\u0631 \u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a',
+  'printing.showRib': '\u0625\u0638\u0647\u0627\u0631 RIB',
+  'printing.amountInWords': '\u0625\u0638\u0647\u0627\u0631 \u0627\u0644\u0645\u0628\u0644\u063a \u0628\u0627\u0644\u062d\u0631\u0648\u0641',
+  'printing.printLanguage': '\u0644\u063a\u0629 \u0627\u0644\u0637\u0628\u0627\u0639\u0629',
+  'printing.printLanguageFollowApp': '\u0627\u062a\u0628\u0627\u0639 \u0644\u063a\u0629 \u0627\u0644\u062a\u0637\u0628\u064a\u0642',
   'printing.printLanguageFr': 'Fran\u00e7ais',
-  // TODO(WS-M-4): Arabic wording pending review.
   'printing.printLanguageAr': '\u0627\u0644\u0639\u0631\u0628\u064a\u0629',
-  // TODO(WS-M-4): Arabic wording pending review.
   'printing.printLanguageEn': 'English',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.invalidEmail': 'Invalid e-mail address.',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.tooLong': '{field} is too long (maximum {max} characters).',
-  // TODO(WS-M-4): Arabic wording pending review.
-  'printing.preview': 'Preview an invoice',
+  'printing.invalidEmail': '\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u063a\u064a\u0631 \u0635\u0627\u0644\u062d.',
+  'printing.tooLong': '{field} \u0637\u0648\u064a\u0644 \u062c\u062f\u0627\u064b (\u0627\u0644\u062d\u062f \u0627\u0644\u0623\u0642\u0635\u0649 {max} \u062d\u0631\u0641\u0627\u064b).',
+  'printing.preview': '\u0645\u0639\u0627\u064a\u0646\u0629 \u0641\u0627\u062a\u0648\u0631\u0629',
   'cashPolicy.title': '\u062d\u062f \u0627\u0644\u062a\u0633\u0627\u0645\u062d \u0641\u064a \u0641\u0631\u0642 \u0627\u0644\u0635\u0646\u062f\u0648\u0642',
   'cashPolicy.threshold': '\u0642\u0628\u0648\u0644 \u0627\u0644\u0641\u0631\u0648\u0642 \u062d\u062a\u0649 (\u062f\u062c)',
   'cashPolicy.help': '\u0623\u064a \u0641\u0631\u0642 \u0639\u0646\u062f \u0627\u0644\u0625\u063a\u0644\u0627\u0642 \u0644\u0627 \u064a\u062a\u062c\u0627\u0648\u0632 \u0647\u0630\u0627 \u0627\u0644\u0645\u0628\u0644\u063a \u064a\u063a\u0644\u0642 \u0627\u0644\u062c\u0644\u0633\u0629 \u062a\u0644\u0642\u0627\u0626\u064a\u0627\u064b. \u0648\u0645\u0627 \u0632\u0627\u062f \u0639\u0646\u0647 \u064a\u062a\u0637\u0644\u0628 \u0645\u0648\u0627\u0641\u0642\u0629 \u0645\u0633\u0624\u0648\u0644.',

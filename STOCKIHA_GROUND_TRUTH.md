@@ -73,7 +73,7 @@ flowchart TD
 
 ## 4. Formal Workstream Structure
 
-Roadmap execution is structured into twelve dedicated workstreams (**WS-A** through **WS-L**):
+Roadmap execution is structured into dedicated workstreams (**WS-A** through **WS-M**):
 
 ### WS-A — Foundation & Access
 - **Objective:** Secure desktop host, bootstrap, authenticated sessions, and robust User Management / RBAC.
@@ -184,6 +184,18 @@ Roadmap execution is structured into twelve dedicated workstreams (**WS-A** thro
 - **Execution Policy:**
   - Late-stage feature: Implemented toward the end after business workflows and entity schemas stabilize.
   - System activity log, permission change tracking, and immutable audit trails for sensitive financial/inventory operations.
+
+### WS-M — Printed Documents (A4 & Thermal)
+- **Objective:** One professional, shop-branded document family for every printed A4 page and thermal ticket in the app, replacing the four independent, visually-drifting generators inherited from earlier workstreams.
+- **Scope:**
+  - Shop legal identity (name, address, phone, optional email/website/RIB, NIF/NIS/RC/AI), logo, print language (independent of the app's display language), and A4 display toggles, editable in Settings → Printing.
+  - One shared rendering engine (`src/shared/documents/officialDocument.ts`) producing both the print-dialog HTML and the "Save as PDF" bytes from a single typed model per document kind — never a hand-built HTML string per screen.
+  - Design constraints treated as binding, not stylistic preference: black-and-white palette only (the shop's printer is monochrome), no signature blocks, column alignment declared by the model rather than guessed from header text, real PDF pagination with page numbers, and "Stockiha" reduced to a single small footer credit rather than the document's own brand.
+  - Optional amount-in-words (French/English; Arabic print pages carry the sentence in French under an Arabic label — a deliberate, documented limitation, not an oversight).
+  - The end-of-day cash session report (thermal and A4), built on the same engine, reusing the existing cash-session accounting functions' definitions of expected cash and credit sales verbatim rather than introducing a parallel calculation.
+  - Full French/Arabic/English coverage of every new label, reviewed against the project's existing commercial glossary (facture/فاتورة = invoice, bon de réception/وصل استلام = goods receipt, rapport de caisse/تقرير الصندوق = cash report, annulation/إلغاء = cancellation); legal/registration abbreviations (`NIF`, `NIS`, `RC`, `AI`, `RIB`) and the `Stockiha` name itself are never translated.
+  - No tax/TVA columns or totals anywhere on printed documents — out of scope until WS-C's tax policy work lands.
+- **Status:** Implemented (WS-M-1 through WS-M-4) and committed across a chained branch series; see `docs/printing/PRINTED-DOCUMENTS.md` for the engine's architecture and `CURRENT_STEP.md` §1 / the `WS-M-*-RESULT-REPORT.md` files for execution evidence and pending Windows manual acceptance.
 
 ---
 
