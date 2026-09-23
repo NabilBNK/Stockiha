@@ -310,3 +310,15 @@ pub(crate) async fn get_cash_capabilities(
         .await
         .map_err(IpcError::from)
 }
+
+#[tauri::command]
+pub(crate) async fn get_session_report(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    cash_session_id: i64,
+) -> Result<serde_json::Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    cash_session::get_session_report(pool, &session_token, cash_session_id)
+        .await
+        .map_err(IpcError::from)
+}

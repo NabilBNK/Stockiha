@@ -429,3 +429,20 @@ pub(crate) async fn get_cash_capabilities(
     serde_json::from_value(res)
         .map_err(|e| AppError::internal(format!("Failed to parse cash capabilities: {e}")))
 }
+
+/// WS-M-3: end-of-day cash session report. The shape is owned by PostgreSQL
+/// (`cash.get_session_report`); this stays a pass-through like
+/// `printing::get_printing_settings` so a new report field never needs a
+/// matching Rust struct.
+pub(crate) async fn get_session_report(
+    pool: &PgPool,
+    session_token: &str,
+    cash_session_id: i64,
+) -> Result<JsonValue, AppError> {
+    query_scalar("SELECT cash.get_session_report($1, $2)")
+        .bind(session_token)
+        .bind(cash_session_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from_posting_error)
+}

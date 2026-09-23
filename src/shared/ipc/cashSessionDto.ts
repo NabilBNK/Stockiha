@@ -85,3 +85,49 @@ export interface CashCapabilities {
   can_record_cash_movement: boolean;
   can_approve_cash_out: boolean;
 }
+
+/** WS-M-3: end-of-day cash session report (spec §6.5/M3-01). */
+export interface SessionReportMovementRow {
+  type: CashMovementDirection;
+  reason_code: CashMovementReason | null;
+  note: string | null;
+  amount: string;
+  recorded_at: string;
+}
+
+export interface SessionReport {
+  session: {
+    id: number;
+    status: CashSessionLifecycleStatus;
+    workstation_id: string;
+    opened_at: string;
+    closed_at: string | null;
+    opened_by: string | null;
+    closed_by: string | null;
+    opening_float: string;
+  };
+  sales: {
+    cash_count: number;
+    cash_total: string;
+    credit_count: number;
+    credit_total: string;
+    void_count: number;
+    void_total: string;
+  };
+  movements: {
+    cash_in_total: string;
+    cash_out_total: string;
+    rows: SessionReportMovementRow[];
+  };
+  customer: {
+    payments_total: string;
+    refunds_total: string;
+  };
+  cash: {
+    expected: string;
+    counted: string | null;
+    variance: string | null;
+    variance_approved_by: string | null;
+    tolerance: string;
+  };
+}

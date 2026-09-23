@@ -18,7 +18,13 @@ import type {
   CurrentCashSession,
   DenominationCountInput,
 } from '../../shared/ipc/cashSessionDto';
-import type { CashSessionDetail } from '../../shared/ipc/dto';
+import type { CashSessionDetail, PrintingSettingsDto } from '../../shared/ipc/dto';
+import { printDocumentA4, saveDocumentFileWithDialog } from '../../shared/documents/documentPrintService';
+import { renderOfficialDocumentHtml, renderOfficialDocumentPdf } from '../../shared/documents/officialDocument';
+import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
+import { buildSessionReportModel } from '../../shared/documents/models/sessionReportModel';
+import { buildThermalSessionReport } from './sessionReportBuilder';
+import { formatDisplayDate } from '../../shared/utils/formatters';
 
 const AMOUNT_RE = /^\d+(\.\d{1,2})?$/;
 const INTEGER_RE = /^\d+$/;
@@ -64,6 +70,13 @@ const COPY: Record<Locale, Record<string, string>> = {
     recordMovement: 'Record',
     movementRecorded: 'Cash movement recorded',
     movementAmountInvalid: 'Enter an amount greater than zero, for example 500 or 500.50.',
+    sessionReportPrint: 'Print end-of-day report',
+    sessionReportTitle: 'End-of-day cash report',
+    sessionReportThermal: 'Thermal',
+    sessionReportA4: 'A4 print',
+    sessionReportPdf: 'Save as PDF',
+    sessionReportCancel: 'Cancel',
+    noPrinterConfigured: 'No thermal printer is configured in Printing settings.',
   },
   fr: {
     currentCashier: 'Caissier actuel', state: 'État', beginClose: 'Commencer la clôture à l’aveugle',
@@ -105,6 +118,13 @@ const COPY: Record<Locale, Record<string, string>> = {
     recordMovement: 'Enregistrer',
     movementRecorded: 'Mouvement de caisse enregistré',
     movementAmountInvalid: 'Saisissez un montant supérieur à zéro, par exemple 500 ou 500.50.',
+    sessionReportPrint: 'Imprimer le rapport de fin de journée',
+    sessionReportTitle: 'Rapport de caisse de fin de journée',
+    sessionReportThermal: 'Thermique',
+    sessionReportA4: 'Impression A4',
+    sessionReportPdf: 'Enregistrer en PDF',
+    sessionReportCancel: 'Annuler',
+    noPrinterConfigured: "Aucune imprimante thermique n'est configurée dans les paramètres d'impression.",
   },
   ar: {
     currentCashier: 'أمين الصندوق الحالي', state: 'الحالة', beginClose: 'بدء الإغلاق بالجرد الأعمى',
@@ -146,6 +166,13 @@ const COPY: Record<Locale, Record<string, string>> = {
     recordMovement: 'تسجيل',
     movementRecorded: 'تم تسجيل حركة النقد',
     movementAmountInvalid: 'أدخل مبلغاً أكبر من صفر، مثال 500 أو 500.50.',
+    sessionReportPrint: 'طباعة تقرير نهاية اليوم',
+    sessionReportTitle: 'تقرير الصندوق لنهاية اليوم',
+    sessionReportThermal: 'حراري',
+    sessionReportA4: 'طباعة A4',
+    sessionReportPdf: 'حفظ كملف PDF',
+    sessionReportCancel: 'إلغاء',
+    noPrinterConfigured: 'لا توجد طابعة حرارية مهيأة في إعدادات الطباعة.',
   },
 };
 
@@ -183,6 +210,17 @@ export function CashSessionScreen() {
   const [cashCapabilities, setCashCapabilities] = useState<CashCapabilities | null>(null);
   const [approverUsername, setApproverUsername] = useState('');
   const [approverPassword, setApproverPassword] = useState('');
+
+  // WS-M-3: end-of-day cash session report.
+  const { identity: printIdentity } = useOfficialDocumentContext(token);
+  const [printingSettings, setPrintingSettings] = useState<PrintingSettingsDto | null>(null);
+  const [reportDialogSessionId, setReportDialogSessionId] = useState<number | null>(null);
+  const [reportBusy, setReportBusy] = useState<'thermal' | 'a4' | 'pdf' | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    ipc.getPrintingSettings(token).then(setPrintingSettings).catch(() => setPrintingSettings(null));
+  }, [token]);
 
   const refreshLifecycle = useCallback(async () => {
     if (!token) {
@@ -414,6 +452,72 @@ export function CashSessionScreen() {
     });
   }
 
+  async function printSessionReportThermal() {
+    if (!reportDialogSessionId || !printingSettings) return;
+    const printerName = printingSettings.thermal_printer_name?.trim() ?? '';
+    if (!printerName) {
+      setError(text.noPrinterConfigured);
+      return;
+    }
+    setReportBusy('thermal');
+    try {
+      const report = await cashIpc.getSessionReport(token, reportDialogSessionId);
+      await ipc.printRawReceipt(printerName, buildThermalSessionReport(report, printingSettings, locale));
+      setReportDialogSessionId(null);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setReportBusy(null);
+    }
+  }
+
+  async function printSessionReportA4() {
+    if (!reportDialogSessionId || !printIdentity) return;
+    setReportBusy('a4');
+    try {
+      const report = await cashIpc.getSessionReport(token, reportDialogSessionId);
+      const model = buildSessionReportModel(
+        report,
+        formatDisplayDate(new Date().toISOString(), locale),
+        printIdentity.printLocale,
+      );
+      printDocumentA4(renderOfficialDocumentHtml(model, printIdentity));
+      setReportDialogSessionId(null);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setReportBusy(null);
+    }
+  }
+
+  async function saveSessionReportPdf() {
+    if (!reportDialogSessionId || !printIdentity) return;
+    setReportBusy('pdf');
+    try {
+      const report = await cashIpc.getSessionReport(token, reportDialogSessionId);
+      const model = buildSessionReportModel(
+        report,
+        formatDisplayDate(new Date().toISOString(), locale),
+        printIdentity.printLocale,
+      );
+      const bytes = await renderOfficialDocumentPdf(model, printIdentity);
+      await saveDocumentFileWithDialog({
+        defaultFileName: `Rapport_Caisse_${reportDialogSessionId}.pdf`,
+        bytes,
+        filterName: 'PDF Document',
+        extension: 'pdf',
+      });
+      setReportDialogSessionId(null);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setReportBusy(null);
+    }
+  }
+
+  const thermalReportDisabled =
+    !printingSettings?.receipt_printing_enabled || !printingSettings?.thermal_printer_name?.trim();
+
   return (
     <section className="sk-page">
       <h1>{t('session.title')}</h1>
@@ -544,6 +648,14 @@ export function CashSessionScreen() {
             <Button type="button" variant="danger" loading={busy} onClick={beginClose}>
               {text.beginClose}
             </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              data-testid="session-report-print"
+              onClick={() => setReportDialogSessionId(current.id)}
+            >
+              🖨️ {text.sessionReportPrint}
+            </Button>
           </div>
           <form className="sk-card sk-form" onSubmit={suspend}>
             <TextField
@@ -627,6 +739,62 @@ export function CashSessionScreen() {
           <p>{text.expected}: {closedSummary.expected_amount ?? '—'}</p>
           <p>{text.counted}: {closedSummary.counted_amount ?? '—'}</p>
           <p><strong>{text.variance}: {closedSummary.variance_amount ?? '—'}</strong></p>
+          <Button
+            type="button"
+            variant="secondary"
+            data-testid="session-report-print-closed"
+            onClick={() => setReportDialogSessionId(closedSummary.id)}
+          >
+            🖨️ {text.sessionReportPrint}
+          </Button>
+        </div>
+      ) : null}
+
+      {reportDialogSessionId !== null ? (
+        <div className="sk-modal-overlay" data-testid="session-report-dialog">
+          <div className="sk-card" role="dialog" aria-modal="true">
+            <h2>{text.sessionReportTitle}</h2>
+            {error ? <Banner tone="error">{error}</Banner> : null}
+            <div className="sk-form-actions">
+              <Button
+                type="button"
+                data-testid="session-report-thermal"
+                loading={reportBusy === 'thermal'}
+                disabled={reportBusy !== null || thermalReportDisabled}
+                onClick={() => void printSessionReportThermal()}
+              >
+                {text.sessionReportThermal}
+              </Button>
+              <Button
+                type="button"
+                data-testid="session-report-a4"
+                loading={reportBusy === 'a4'}
+                disabled={reportBusy !== null}
+                onClick={() => void printSessionReportA4()}
+              >
+                {text.sessionReportA4}
+              </Button>
+              <Button
+                type="button"
+                data-testid="session-report-pdf"
+                loading={reportBusy === 'pdf'}
+                disabled={reportBusy !== null}
+                onClick={() => void saveSessionReportPdf()}
+              >
+                {text.sessionReportPdf}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                data-testid="session-report-dialog-cancel"
+                disabled={reportBusy !== null}
+                onClick={() => setReportDialogSessionId(null)}
+              >
+                {text.sessionReportCancel}
+              </Button>
+            </div>
+            {thermalReportDisabled ? <p className="sk-field-help">{text.noPrinterConfigured}</p> : null}
+          </div>
         </div>
       ) : null}
     </section>

@@ -14,6 +14,7 @@ import type {
   CurrentCashSession,
   DenominationCountInput,
   RecordCashMovementResult,
+  SessionReport,
 } from './cashSessionDto';
 
 export class CashSessionGatewayError extends Error {
@@ -158,4 +159,11 @@ export function saveCashSessionPolicy(
 
 export function getCashCapabilities(sessionToken: string): Promise<CashCapabilities> {
   return call<CashCapabilities>(COMMANDS.GET_CASH_CAPABILITIES, { sessionToken });
+}
+
+export function getSessionReport(
+  sessionToken: string,
+  cashSessionId: number,
+): Promise<SessionReport> {
+  return call<SessionReport>(COMMANDS.GET_SESSION_REPORT, { sessionToken, cashSessionId });
 }

@@ -26,6 +26,7 @@ suites=(
   src-tauri/tests/sales/ws_f_006_sale_void_integration.sql
   src-tauri/tests/documents/ws_l_001_journals_documents_integration.sql
   src-tauri/tests/core/ws_m_001_print_identity_integration.sql
+  src-tauri/tests/cash/ws_m_003_session_report_integration.sql
   src-tauri/tests/receivables/s4_001_customer_payment_integration.sql
   src-tauri/tests/cash/s4_002_cash_session_lifecycle.sql
   src-tauri/tests/cash/s4_002_cash_session_ownership_integration.sql
