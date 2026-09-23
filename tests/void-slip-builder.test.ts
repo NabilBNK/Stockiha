@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildA4VoidSlip, buildThermalVoidSlip, type VoidSlipInput } from '../src/features/pos/voidSlipBuilder';
+import { buildThermalVoidSlip, type VoidSlipInput } from '../src/features/pos/voidSlipBuilder';
 import type { PrintingSettingsDto } from '../src/shared/ipc/dto';
 
 const SETTINGS: PrintingSettingsDto = {
@@ -85,14 +85,5 @@ describe('void slip builder', () => {
     );
     expect(withCustomer).toContain('Client :');
     expect(withCustomer).toContain('Amine Client');
-  });
-
-  it('the A4 HTML contains the escaped void number', () => {
-    // Note: buildOfficialDocumentHtml (shared, out of scope for this task)
-    // falls back to its own default signature labels whenever `signatures`
-    // is an empty array rather than omitting the block — `signatures: []`
-    // cannot actually suppress it. See WS-F-6-RESULT-REPORT.md "Deviations".
-    const html = buildA4VoidSlip(BASE_INPUT, SETTINGS);
-    expect(html).toContain(BASE_INPUT.voidNumber);
   });
 });

@@ -11,13 +11,20 @@ import {
   humanDocumentType,
   humanStatus,
 } from '../../shared/utils/formatters';
+import { printDocumentA4, saveDocumentFileWithDialog } from '../../shared/documents/documentPrintService';
 import {
-  printDocumentA4,
-  saveDocumentFileWithDialog,
-  buildOfficialDocumentHtml,
-  escapeHtml,
-} from '../../shared/documents/documentPrintService';
-import { generateGenericDocumentPdf } from '../../shared/documents/genericDocumentPdf';
+  renderOfficialDocumentHtml,
+  renderOfficialDocumentPdf,
+  type OfficialDocumentColumn,
+  type OfficialDocumentModel,
+  type OfficialDocumentTotal,
+} from '../../shared/documents/officialDocument';
+import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
+import { buildSaleInvoiceModel } from '../../shared/documents/models/saleInvoiceModel';
+import { buildPaymentReceiptModel } from '../../shared/documents/models/paymentReceiptModel';
+import { buildSaleVoidModel } from '../../shared/documents/models/saleVoidModel';
+import { buildPurchaseReceiptModel } from '../../shared/documents/models/purchaseReceiptModel';
+import { buildGenericModel } from '../../shared/documents/models/genericModel';
 
 interface DocumentDetailLineItem {
   line_number?: number;
@@ -63,6 +70,7 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
   const { locale } = useI18n();
   const { user } = useSession();
   const token = user?.token ?? '';
+  const { identity } = useOfficialDocumentContext(token);
   const [detail, setDetail] = useState<BusinessDocumentDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -254,141 +262,200 @@ export const BusinessDocumentDetailModal: React.FC<BusinessDocumentDetailModalPr
   const voidReasonCode = getSubtypeString(sub, 'reason_code');
   const voidNote = getSubtypeString(sub, 'note');
 
-  const handlePrintA4 = () => {
-    if (!detail) return;
+  const buildModel = (): OfficialDocumentModel | null => {
+    if (!detail || !identity) return null;
 
-    const infoCardsHtml = `
-      <div class="info-card">
-        <div class="info-card-title">${escapeHtml(partyLabelDisplay)}</div>
-        <div class="info-row"><span>${escapeHtml(partyLabelDisplay)}:</span><strong>${escapeHtml(partyNameDisplay || '—')}</strong></div>
-        ${supplierCode ? `<div class="info-row"><span>Code:</span><strong>${escapeHtml(supplierCode)}</strong></div>` : ''}
-        ${extDocNum ? `<div class="info-row"><span>Réf:</span><strong>${escapeHtml(extDocNum)}</strong></div>` : ''}
-      </div>
-      <div class="info-card">
-        <div class="info-card-title">${escapeHtml(copy.warehouse)} & Infos</div>
-        <div class="info-row"><span>${escapeHtml(copy.warehouse)}:</span><strong>${escapeHtml(warehouseName || '—')}</strong></div>
-        <div class="info-row"><span>${escapeHtml(copy.fiscalYear)}:</span><strong>${escapeHtml(String(docFiscalYear || '—'))}</strong></div>
-        <div class="info-row"><span>Règlement:</span><strong>${escapeHtml(payStatus)} (${escapeHtml(payMethod)})</strong></div>
-      </div>
-    `;
+    const title = humanDocumentType(docType, locale);
+    const documentNumber = docNum || `DOC-${documentId}`;
+    const documentDateText = formatDisplayDate(docDate, locale);
+    const statusText = humanStatus(docStatus, locale);
+    const printLocale = identity.printLocale;
 
-    const tableHeaders = lines.length > 0 && lines.some(l => l.unit_price || l.unit_cost)
-      ? ['#', 'Désignation', 'Code / SKU', 'Unité', 'Qté', 'P.U (DZD)', 'Total (DZD)']
-      : ['#', 'Désignation', 'Code / SKU', 'Unité', 'Quantité'];
+    if (docType === 'CASH_SALE' || docType === 'CREDIT_SALE') {
+      return buildSaleInvoiceModel(
+        {
+          title,
+          documentNumber,
+          documentDateText,
+          statusText,
+          customerName: customerName || null,
+          lines: lines.map((l, idx) => ({
+            designation: String(l.product_name || l.product_name_snapshot || 'Article'),
+            quantity: String(l.quantity ?? l.received_quantity ?? idx),
+            unitPrice: formatDisplayAmount(String(l.unit_price || l.unit_cost || 0)),
+            lineTotal: formatDisplayAmount(String(l.line_total || 0)),
+          })),
+          subtotal: totalMonetaryVal ? formatDisplayAmount(subtotalVal) : null,
+          discount: showDiscount ? formatDisplayAmount(discountAmount as string) : null,
+          total: formatDisplayAmount(grandTotalVal),
+          totalNumeric: grandTotalVal,
+        },
+        printLocale,
+      );
+    }
 
-    const tableRowsHtml = lines.length > 0
-      ? lines.map((l, idx) => `
-        <tr>
-          <td style="color: #64748b;">${l.line_number || idx + 1}</td>
-          <td><strong>${escapeHtml(l.product_name || l.product_name_snapshot || 'Article')}</strong>${l.variant_name ? ` <small style="color: #64748b;">(${escapeHtml(l.variant_name)})</small>` : ''}</td>
-          <td><code>${escapeHtml(l.sku || l.sku_snapshot || '—')}</code></td>
-          <td>${escapeHtml(l.unit_code || l.unit_code_snapshot || 'U')}</td>
-          <td class="num"><strong>${l.quantity || l.received_quantity || 0}</strong></td>
-          ${tableHeaders.length > 5 ? `<td class="num">${formatDisplayAmount(String(l.unit_price || l.unit_cost || 0))}</td>` : ''}
-          ${tableHeaders.length > 5 ? `<td class="num"><strong>${formatDisplayAmount(String(l.line_total || 0))}</strong></td>` : ''}
-        </tr>
-      `).join('')
-      : `<tr><td colspan="${tableHeaders.length}" style="text-align: center; color: #64748b; padding: 16px;">${escapeHtml(copy.lineItems)} — ${escapeHtml(docNum || '')}</td></tr>`;
+    if (docType === 'CUSTOMER_PAYMENT' || docType === 'CUSTOMER_REFUND' || docType === 'SUPPLIER_PAYMENT') {
+      const isSupplier = docType === 'SUPPLIER_PAYMENT';
+      return buildPaymentReceiptModel(
+        {
+          title,
+          kind: isSupplier ? 'SUPPLIER_PAYMENT' : 'PAYMENT_RECEIPT',
+          documentNumber,
+          documentDateText,
+          statusText,
+          partyLabel: isSupplier ? copy.supplier : copy.customer,
+          partyName: partyNameDisplay || null,
+          paymentMethod: payMethod && payMethod !== 'N/A' ? payMethod : null,
+          lines: [{ label: title, amount: formatDisplayAmount(grandTotalVal) }],
+          total: formatDisplayAmount(grandTotalVal),
+          totalNumeric: grandTotalVal,
+        },
+        printLocale,
+      );
+    }
 
-    const totalsRowsHtml = totalMonetaryVal ? `
-      <tr>
-        <td>Sous-total:</td>
-        <td>${formatDisplayAmount(subtotalVal)}</td>
-      </tr>
-      ${Number(addCostVal) > 0 ? `
-      <tr>
-        <td>Frais additionnels:</td>
-        <td>+${formatDisplayAmount(addCostVal)}</td>
-      </tr>` : ''}
-      <tr class="grand-total">
-        <td>TOTAL GENERAL:</td>
-        <td>${formatDisplayAmount(grandTotalVal)}</td>
-      </tr>
-      ${Number(paidVal) > 0 ? `
-      <tr>
-        <td style="color: #166534;">Payé:</td>
-        <td style="color: #166534;">${formatDisplayAmount(paidVal)}</td>
-      </tr>` : ''}
-      ${Number(remainingVal) > 0 ? `
-      <tr>
-        <td style="color: #b91c1c;">Solde dû:</td>
-        <td style="color: #b91c1c;">${formatDisplayAmount(remainingVal)}</td>
-      </tr>` : ''}
-    ` : '';
+    if (docType === 'SALE_VOID') {
+      const originalSaleRel = relationships.find(
+        (rel) => rel.document_type === 'CASH_SALE' || rel.document_type === 'CREDIT_SALE',
+      );
+      return buildSaleVoidModel(
+        {
+          title,
+          documentNumber,
+          documentDateText,
+          statusText,
+          originalDocumentNumber: originalSaleRel?.document_number ?? '—',
+          customerName: customerName || null,
+          reasonText: voidReasonCode ? (copy[`reason_${voidReasonCode}`] ?? voidReasonCode) : null,
+          note: voidNote,
+          lines: lines.map((l, idx) => ({
+            designation: String(l.product_name || l.product_name_snapshot || 'Article'),
+            quantity: String(l.quantity ?? l.received_quantity ?? idx),
+            unitPrice: formatDisplayAmount(String(l.unit_price || l.unit_cost || 0)),
+            lineTotal: formatDisplayAmount(String(l.line_total || 0)),
+          })),
+          total: formatDisplayAmount(grandTotalVal),
+          totalNumeric: grandTotalVal,
+        },
+        printLocale,
+      );
+    }
 
-    const accountingBoxHtml = journal ? `
-      <h4>${escapeHtml(copy.linkedJournal)}: ${escapeHtml(journal.document_number ?? `#${journal.document_id}`)}</h4>
-      <div class="accounting-box-grid">
-        <span>Statut: <strong>${journal.is_balanced ? 'Équilibré ✓' : 'Non équilibré ⚠'}</strong></span>
-        <span>Débit: <strong>${formatDisplayAmount(journal.total_debit)}</strong></span>
-        <span>Crédit: <strong>${formatDisplayAmount(journal.total_credit)}</strong></span>
-      </div>
-    ` : undefined;
+    if (docType === 'PURCHASE_RECEIPT') {
+      return buildPurchaseReceiptModel(
+        {
+          title,
+          documentNumber,
+          documentDateText,
+          statusText,
+          supplierName: supplierName || null,
+          warehouseName: warehouseName || null,
+          purchaseOrderNumber: extDocNum || null,
+          lines: lines.map((l, idx) => ({
+            designation: String(l.product_name || l.product_name_snapshot || 'Article'),
+            quantity: String(l.quantity ?? l.received_quantity ?? idx),
+            unitPrice: formatDisplayAmount(String(l.unit_cost || l.unit_price || 0)),
+            lineTotal: formatDisplayAmount(String(l.line_total || 0)),
+          })),
+          total: formatDisplayAmount(grandTotalVal),
+          totalNumeric: grandTotalVal,
+        },
+        printLocale,
+      );
+    }
 
-    const html = buildOfficialDocumentHtml({
-      title: humanDocumentType(docType, locale),
-      documentNumber: docNum || `DOC-${documentId}`,
-      documentDate: formatDisplayDate(docDate, locale),
-      statusLabel: humanStatus(docStatus, locale),
-      isPosted: docStatus === 'POSTED',
-      locale,
-      infoCardsHtml,
-      tableHeaders,
-      tableRowsHtml,
-      totalsRowsHtml,
-      accountingBoxHtml,
-      footerNote: `Stockiha ERP · ${docNum || `DOC-${documentId}`}`,
+    // Generic fallback for document types without a dedicated layout
+    // (e.g. STOCK_RECEIPT, STOCK_ADJUSTMENT).
+    const hasPrices = lines.length > 0 && lines.some((l) => l.unit_price || l.unit_cost);
+    const columns: OfficialDocumentColumn[] = hasPrices
+      ? [
+          { key: 'designation', label: 'Désignation', align: 'start' },
+          { key: 'sku', label: 'SKU', align: 'start' },
+          { key: 'unit', label: 'Unité', align: 'start' },
+          { key: 'quantity', label: 'Qté', align: 'end' },
+          { key: 'unitPrice', label: 'P.U', align: 'end' },
+          { key: 'lineTotal', label: 'Total', align: 'end' },
+        ]
+      : [
+          { key: 'designation', label: 'Désignation', align: 'start' },
+          { key: 'sku', label: 'SKU', align: 'start' },
+          { key: 'unit', label: 'Unité', align: 'start' },
+          { key: 'quantity', label: 'Quantité', align: 'end' },
+        ];
+    const rows = lines.map((l, idx) => ({
+      designation: String(l.product_name || l.product_name_snapshot || 'Article'),
+      sku: String(l.sku || l.sku_snapshot || '—'),
+      unit: String(l.unit_code || l.unit_code_snapshot || 'U'),
+      quantity: String(l.quantity ?? l.received_quantity ?? idx),
+      unitPrice: formatDisplayAmount(String(l.unit_price || l.unit_cost || 0)),
+      lineTotal: formatDisplayAmount(String(l.line_total || 0)),
+    }));
+    const totals: OfficialDocumentTotal[] = totalMonetaryVal
+      ? [
+          { label: 'Sous-total', value: formatDisplayAmount(subtotalVal) },
+          ...(Number(addCostVal) > 0
+            ? [{ label: 'Frais additionnels', value: `+${formatDisplayAmount(addCostVal)}` }]
+            : []),
+          { label: 'Total', value: formatDisplayAmount(grandTotalVal), emphasis: true },
+          ...(Number(paidVal) > 0 ? [{ label: 'Payé', value: formatDisplayAmount(paidVal) }] : []),
+          ...(Number(remainingVal) > 0 ? [{ label: 'Solde dû', value: formatDisplayAmount(remainingVal) }] : []),
+        ]
+      : [];
+    const notes = journal
+      ? [
+          `${copy.linkedJournal}: ${journal.document_number ?? `#${journal.document_id}`} — Débit ${formatDisplayAmount(journal.total_debit)} / Crédit ${formatDisplayAmount(journal.total_credit)}`,
+        ]
+      : undefined;
+
+    return buildGenericModel({
+      title,
+      documentNumber,
+      documentDateText,
+      statusText,
+      partyBlock: partyNameDisplay
+        ? {
+            title: partyLabelDisplay,
+            rows: [
+              { label: partyLabelDisplay, value: partyNameDisplay },
+              ...(supplierCode ? [{ label: 'Code', value: supplierCode }] : []),
+            ],
+          }
+        : undefined,
+      metaBlock: warehouseName || docFiscalYear
+        ? {
+            title: copy.warehouse,
+            rows: [
+              ...(warehouseName ? [{ label: copy.warehouse, value: warehouseName }] : []),
+              { label: copy.fiscalYear, value: String(docFiscalYear || '—') },
+            ],
+          }
+        : undefined,
+      columns,
+      rows,
+      totals,
+      notes,
     });
+  };
 
-    printDocumentA4(html);
+  const handlePrintA4 = () => {
+    const model = buildModel();
+    if (!model || !identity) return;
+    printDocumentA4(renderOfficialDocumentHtml(model, identity));
   };
 
   const handleDownloadPdf = async () => {
-    if (!detail || downloadingPdf) return;
+    if (downloadingPdf) return;
+    const model = buildModel();
+    if (!model || !identity) return;
     try {
       setDownloadingPdf(true);
-      const tableHeaders = lines.length > 0 && lines.some(l => l.unit_price || l.unit_cost)
-        ? ['#', 'Article', 'SKU', 'Unité', 'Qté', 'Total']
-        : ['#', 'Article', 'SKU', 'Unité', 'Qté'];
-
-      const pdfBytes = await generateGenericDocumentPdf({
-        title: humanDocumentType(docType, locale),
-        documentNumber: docNum || `DOC-${documentId}`,
-        documentDate: formatDisplayDate(docDate, locale),
-        statusText: humanStatus(docStatus, locale),
-        locale,
-        partyLabel: partyLabelDisplay,
-        partyName: partyNameDisplay,
-        referenceLabel: extDocNum ? 'Réf' : undefined,
-        referenceValue: extDocNum || undefined,
-        warehouseLabel: warehouseName ? copy.warehouse : undefined,
-        warehouseValue: warehouseName || undefined,
-        tableHeaders,
-        lines: lines.map((l, idx) => ({
-          col1: String(l.line_number || idx + 1),
-          col2: String(l.product_name || l.product_name_snapshot || 'Article'),
-          col3: String(l.sku || l.sku_snapshot || '—'),
-          col4: String(l.unit_code || l.unit_code_snapshot || 'U'),
-          col5: String(l.quantity || l.received_quantity || 0),
-          col6: l.line_total ? formatDisplayAmount(String(l.line_total)) : undefined,
-        })),
-        totals: totalMonetaryVal ? [
-          { label: 'Sous-total', value: formatDisplayAmount(subtotalVal) },
-          ...(Number(addCostVal) > 0 ? [{ label: 'Frais', value: `+${formatDisplayAmount(addCostVal)}` }] : []),
-          { label: 'TOTAL GENERAL', value: formatDisplayAmount(grandTotalVal), isGrandTotal: true },
-          ...(Number(remainingVal) > 0 ? [{ label: 'Solde restant', value: formatDisplayAmount(remainingVal) }] : []),
-        ] : [],
-        accountingNote: journal
-          ? `Journal: ${journal.document_number ?? `#${journal.document_id}`} — Débit: ${formatDisplayAmount(journal.total_debit)} | Crédit: ${formatDisplayAmount(journal.total_credit)}`
-          : undefined,
-      });
-
+      const bytes = await renderOfficialDocumentPdf(model, identity);
       const safeDocType = (docType || 'Document').replace(/[^a-zA-Z0-9_-]/g, '_');
       const safeNum = (docNum || String(documentId)).replace(/[^a-zA-Z0-9_-]/g, '_');
 
       await saveDocumentFileWithDialog({
         defaultFileName: `${safeDocType}_${safeNum}.pdf`,
-        bytes: pdfBytes,
+        bytes,
         filterName: 'PDF Document',
         extension: 'pdf',
       });

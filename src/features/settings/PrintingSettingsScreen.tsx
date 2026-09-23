@@ -13,6 +13,9 @@ import {
   setCompanyLogo,
 } from '../../shared/ipc/gateway';
 import { printSaleReceipt } from '../pos/printReceipt';
+import { printDocumentA4 } from '../../shared/documents/documentPrintService';
+import { renderOfficialDocumentHtml, type OfficialDocumentIdentity, type PrintLocale } from '../../shared/documents/officialDocument';
+import { buildSaleInvoiceModel } from '../../shared/documents/models/saleInvoiceModel';
 
 interface Props {
   sessionToken: string;
@@ -35,7 +38,7 @@ const LENGTH_LIMITS: Record<string, number> = {
 };
 
 export function PrintingSettingsScreen({ sessionToken }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const errorText = useErrorText();
 
   const [loading, setLoading] = useState(true);
@@ -192,6 +195,57 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
     }
   }
 
+  function identityFromForm(): OfficialDocumentIdentity {
+    const resolvedPrintLocale: PrintLocale =
+      printLanguage === 'FOLLOW_APP' ? (locale as PrintLocale) : printLanguage;
+    return {
+      shopName: shopName.trim() || null,
+      legalName: shopLegalName.trim() || null,
+      address: shopAddress.trim() || null,
+      phone: shopPhone.trim() || null,
+      email: shopEmail.trim() || null,
+      website: shopWebsite.trim() || null,
+      nif: taxNif.trim() || null,
+      nis: taxNis.trim() || null,
+      rc: tradeRc.trim() || null,
+      ai: articleAi.trim() || null,
+      rib: bankRib.trim() || null,
+      logoDataUrl,
+      showEmail,
+      showWebsite,
+      showRib,
+      showLogo,
+      amountInWords,
+      a4FooterNote: a4FooterNote.trim() || null,
+      printLocale: resolvedPrintLocale,
+    };
+  }
+
+  function handlePreview() {
+    const identity = identityFromForm();
+    const sample = buildSaleInvoiceModel(
+      {
+        title: 'FACTURE',
+        documentNumber: 'APERCU-0001',
+        documentDateText: new Date().toLocaleDateString(),
+        statusText: 'POSTED',
+        customerName: 'Client Comptoir',
+        cashierName: 'Admin',
+        paymentLabel: 'Espèces',
+        lines: [
+          { designation: 'Article A', quantity: '2', unitPrice: '500,00', lineTotal: '1 000,00' },
+          { designation: 'Article B', quantity: '1', unitPrice: '350,60', lineTotal: '350,60' },
+        ],
+        subtotal: '1 350,60',
+        discount: '105,60',
+        total: '1 245,00',
+        totalNumeric: '1245.00',
+      },
+      identity.printLocale,
+    );
+    printDocumentA4(renderOfficialDocumentHtml(sample, identity));
+  }
+
   async function handleChooseLogo() {
     if (busy) return;
     const selected = await open({
@@ -296,6 +350,7 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
           currency: 'DZD',
         },
         currentSettings,
+        identityFromForm(),
       );
 
       if (outcome.status === 'printed') {
@@ -674,6 +729,12 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
               <option value="ar">{t('printing.printLanguageAr')}</option>
               <option value="en">{t('printing.printLanguageEn')}</option>
             </select>
+          </div>
+
+          <div className="sk-field">
+            <Button type="button" variant="secondary" data-testid="print-preview" onClick={handlePreview}>
+              {t('printing.preview')}
+            </Button>
           </div>
         </div>
       </div>

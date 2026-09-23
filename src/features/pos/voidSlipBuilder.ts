@@ -5,7 +5,6 @@
  * Money arrives here as decimal strings and is never converted to a number.
  */
 import type { PrintingSettingsDto } from '../../shared/ipc/dto';
-import { buildOfficialDocumentHtml, escapeHtml } from '../../shared/documents/documentPrintService';
 import { padEnd, padStart, toPrinterBytes } from './receiptBuilder';
 
 export interface VoidSlipInput {
@@ -98,60 +97,4 @@ export function buildThermalVoidSlip(input: VoidSlipInput, settings: PrintingSet
   bytes.push(GS, 0x56, 0x42, 0x00);
 
   return bytes;
-}
-
-/** Builds the A4 HTML for one cancellation slip. This is temporary; the A4 workstream will redesign it. */
-export function buildA4VoidSlip(input: VoidSlipInput, settings: PrintingSettingsDto): string {
-  const isEn = input.locale === 'en';
-  void settings;
-
-  const infoCardsHtml = `
-    <div class="info-card">
-      <div class="info-card-title">${escapeHtml(isEn ? 'Cancelled sale' : 'Vente annulée')}</div>
-      <div class="info-row"><span>${escapeHtml(isEn ? 'Sale no.' : 'N° vente')}:</span><strong>${escapeHtml(input.originalNumber)}</strong></div>
-    </div>
-    <div class="info-card">
-      <div class="info-card-title">${escapeHtml(isEn ? 'Reason' : 'Motif')}</div>
-      <div class="info-row"><span>${escapeHtml(isEn ? 'Reason' : 'Motif')}:</span><strong>${escapeHtml(input.reasonText)}</strong></div>
-      ${
-        input.customerName
-          ? `<div class="info-row"><span>${escapeHtml(isEn ? 'Customer' : 'Client')}:</span><strong>${escapeHtml(input.customerName)}</strong></div>`
-          : ''
-      }
-    </div>
-  `;
-
-  const tableHeaders = isEn ? ['Item', 'Qty', 'Total'] : ['Article', 'Qté', 'Total'];
-  const tableRowsHtml = input.lines
-    .map(
-      (l) => `
-      <tr>
-        <td><strong>${escapeHtml(l.name)}</strong></td>
-        <td class="num">${escapeHtml(l.qty)}</td>
-        <td class="num"><strong>${escapeHtml(l.lineTotal)}</strong></td>
-      </tr>
-    `,
-    )
-    .join('');
-
-  const totalsRowsHtml = `
-    <tr class="grand-total">
-      <td>${escapeHtml(isEn ? 'TOTAL CANCELLED' : 'TOTAL ANNULE')}:</td>
-      <td>${escapeHtml(input.total)} ${escapeHtml(input.currency)}</td>
-    </tr>
-  `;
-
-  return buildOfficialDocumentHtml({
-    title: isEn ? 'Sale cancellation' : 'Annulation de vente',
-    documentNumber: input.voidNumber,
-    documentDate: input.dateText,
-    statusLabel: isEn ? 'CANCELLED' : 'ANNULÉ',
-    isPosted: false,
-    locale: isEn ? 'en' : 'fr',
-    infoCardsHtml,
-    tableHeaders,
-    tableRowsHtml,
-    totalsRowsHtml,
-    signatures: [],
-  });
 }

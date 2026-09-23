@@ -10,6 +10,7 @@ import type { PrintingSettingsDto } from '../../shared/ipc/dto';
 import { formatDisplayAmount } from '../../shared/utils/formatters';
 import { printVoidSlip, type PrintOutcome } from '../pos/printReceipt';
 import type { VoidSlipInput } from '../pos/voidSlipBuilder';
+import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
@@ -145,6 +146,7 @@ export function SessionSalesPanel({ token, cashSessionId, onChanged }: SessionSa
   const [hidden, setHidden] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [printingSettings, setPrintingSettings] = useState<PrintingSettingsDto | null>(null);
+  const { identity: printIdentity } = useOfficialDocumentContext(token);
 
   const [openSale, setOpenSale] = useState<SessionSale | null>(null);
   const [reason, setReason] = useState<VoidReason>('CUSTOMER_CHANGED_MIND');
@@ -226,7 +228,7 @@ export function SessionSalesPanel({ token, cashSessionId, onChanged }: SessionSa
         currency: 'DA',
         locale,
       };
-      const outcome = await printVoidSlip(slip, printingSettings);
+      const outcome = await printVoidSlip(slip, printingSettings, printIdentity);
       setLastSlip(slip);
       setPrintOutcome(outcome);
       setPrintWarning(outcome.status === 'failed');
@@ -243,7 +245,7 @@ export function SessionSalesPanel({ token, cashSessionId, onChanged }: SessionSa
 
   async function printAgain() {
     if (!lastSlip) return;
-    setPrintOutcome(await printVoidSlip(lastSlip, printingSettings));
+    setPrintOutcome(await printVoidSlip(lastSlip, printingSettings, printIdentity));
   }
 
   return (

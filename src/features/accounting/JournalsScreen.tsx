@@ -20,13 +20,11 @@ import {
   humanDocumentType,
   journalSourceLabel,
 } from '../../shared/utils/formatters';
-import {
-  printDocumentA4,
-  saveDocumentFileWithDialog,
-  buildOfficialDocumentHtml,
-  escapeHtml,
-} from '../../shared/documents/documentPrintService';
-import { generateGenericDocumentPdf } from '../../shared/documents/genericDocumentPdf';
+import { printDocumentA4, saveDocumentFileWithDialog } from '../../shared/documents/documentPrintService';
+import { renderOfficialDocumentHtml, renderOfficialDocumentPdf } from '../../shared/documents/officialDocument';
+import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
+import { buildJournalEntryModel } from '../../shared/documents/models/journalEntryModel';
+import { buildJournalsReportModel } from '../../shared/documents/models/journalsReportModel';
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
@@ -161,6 +159,8 @@ export function JournalsScreen({ initialJournalId }: Props) {
   const { user } = useSession();
   const errorText = useErrorText();
   const token = user?.token ?? '';
+  const { identity: printIdentity } = useOfficialDocumentContext(token);
+  const [downloadingReportPdf, setDownloadingReportPdf] = useState(false);
 
   const [selectedJournal, setSelectedJournal] = useState<JournalDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -257,6 +257,64 @@ export function JournalsScreen({ initialJournalId }: Props) {
   const to = page * 50 + rows.length;
   const sourceTypes = result?.available_source_types ?? [];
 
+  const buildReportModel = () => {
+    if (!printIdentity || rows.length === 0) return null;
+    const reportTitle =
+      locale === 'fr' ? 'Registre des journaux' : locale === 'ar' ? 'سجل اليوميات' : 'Journals Register';
+    let totalDebit = 0;
+    let totalCredit = 0;
+    for (const row of rows) {
+      totalDebit += Number(row.total_debit) || 0;
+      totalCredit += Number(row.total_credit) || 0;
+    }
+    return buildJournalsReportModel(
+      {
+        title: reportTitle,
+        documentNumber: `JRN-${new Date().toISOString().slice(0, 10)}`,
+        documentDateText: formatDisplayDate(new Date().toISOString(), locale),
+        periodText: `${filters.dateFrom || '—'} — ${filters.dateTo || '—'}`,
+        totalCountText: `${total}`,
+        rows: rows.map((row) => ({
+          number: row.document_number ?? `#${row.document_id}`,
+          date: formatDisplayDate(row.document_date, locale),
+          source: journalSourceLabel(row.source_type, row.source_id, row.source_document_number, locale),
+          debit: formatDisplayAmount(row.total_debit),
+          credit: formatDisplayAmount(row.total_credit),
+        })),
+        totalDebit: formatDisplayAmount(String(totalDebit)),
+        totalCredit: formatDisplayAmount(String(totalCredit)),
+      },
+      printIdentity.printLocale,
+    );
+  };
+
+  const handlePrintReportA4 = () => {
+    const model = buildReportModel();
+    if (!model || !printIdentity) return;
+    printDocumentA4(renderOfficialDocumentHtml(model, printIdentity));
+  };
+
+  const handleDownloadReportPdf = async () => {
+    if (downloadingReportPdf) return;
+    const model = buildReportModel();
+    if (!model || !printIdentity) return;
+    try {
+      setDownloadingReportPdf(true);
+      const bytes = await renderOfficialDocumentPdf(model, printIdentity);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      await saveDocumentFileWithDialog({
+        defaultFileName: `Registre_Journaux_${todayStr}.pdf`,
+        bytes,
+        filterName: 'PDF Document',
+        extension: 'pdf',
+      });
+    } catch (err) {
+      console.error('Download journals report PDF failed:', err);
+    } finally {
+      setDownloadingReportPdf(false);
+    }
+  };
+
   return (
     <section className="sk-screen" data-testid="journals-screen">
       <header className="sk-screen__header">
@@ -265,6 +323,21 @@ export function JournalsScreen({ initialJournalId }: Props) {
           <p className="sk-muted">{text.subtitle}</p>
         </div>
         <div className="sk-form-actions">
+          {rows.length > 0 && (
+            <>
+              <Button variant="secondary" onClick={handlePrintReportA4} data-testid="journals-report-print">
+                🖨️ {text.printA4}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => void handleDownloadReportPdf()}
+                disabled={downloadingReportPdf}
+                data-testid="journals-report-download-pdf"
+              >
+                {downloadingReportPdf ? text.downloading : `📄 ${text.downloadPdf}`}
+              </Button>
+            </>
+          )}
           <Button variant="secondary" onClick={() => void loadJournals()}>
             {text.refresh}
           </Button>
@@ -464,6 +537,7 @@ export function JournalDetailModal({
   const text = COPY[locale];
   const { user } = useSession();
   const token = user?.token ?? '';
+  const { identity: printIdentity } = useOfficialDocumentContext(token);
   const [detail, setDetail] = useState<JournalDetail | null>(initialDetail ?? null);
   const [loading, setLoading] = useState(!initialDetail);
 
@@ -499,110 +573,47 @@ export function JournalDetailModal({
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
+  const buildModel = () => {
+    if (!detail || !printIdentity) return null;
+    return buildJournalEntryModel(
+      {
+        title: locale === 'fr' ? 'Pièce comptable' : locale === 'ar' ? 'سند قيد محاسبي' : 'Journal Voucher',
+        documentNumber: detail.document_number ?? `JE-${detail.document_id}`,
+        documentDateText: formatDisplayDate(detail.document_date, locale),
+        statusText: detail.is_balanced ? text.balanced : text.unbalanced,
+        sourceLabel: text.sourceType,
+        sourceValue: `${humanDocumentType(detail.source_type, locale)}${detail.source_document_number ? ` · ${detail.source_document_number}` : detail.source_id ? ` · #${detail.source_id}` : ''}`,
+        description: detail.description,
+        lines: detail.lines.map((line) => ({
+          account: line.account_code,
+          label: line.account_name,
+          debit: Number(line.debit) > 0 ? formatDisplayAmount(line.debit) : '—',
+          credit: Number(line.credit) > 0 ? formatDisplayAmount(line.credit) : '—',
+        })),
+        totalDebit: formatDisplayAmount(detail.total_debit),
+        totalCredit: formatDisplayAmount(detail.total_credit),
+      },
+      printIdentity.printLocale,
+    );
+  };
+
   const handlePrintA4 = () => {
-    if (!detail) return;
-
-    const infoCardsHtml = `
-      <div class="info-card">
-        <div class="info-card-title">${escapeHtml(text.sourceType)} &amp; ${escapeHtml(text.sourceDocument)}</div>
-        <div class="info-row"><span>${escapeHtml(text.sourceType)}:</span><strong>${escapeHtml(humanDocumentType(detail.source_type, locale))}</strong></div>
-        <div class="info-row"><span>${escapeHtml(text.sourceDocument)}:</span><strong>${escapeHtml(detail.source_document_number ?? (detail.source_id ? `#${detail.source_id}` : '—'))}</strong></div>
-      </div>
-      <div class="info-card">
-        <div class="info-card-title">${escapeHtml(text.balanced)} &amp; Totaux</div>
-        <div class="info-row"><span>${escapeHtml(text.date)}:</span><strong>${escapeHtml(formatDisplayDate(detail.document_date, locale))}</strong></div>
-        <div class="info-row"><span>Statut:</span><strong>${detail.is_balanced ? 'Équilibré ✓' : 'Non équilibré ⚠'}</strong></div>
-      </div>
-    `;
-
-    const tableHeaders = [text.line, text.accountCode, text.accountName, text.debit, text.credit];
-
-    const tableRowsHtml = detail.lines.map((line) => {
-      const hasDebit = Number(line.debit) > 0;
-      const hasCredit = Number(line.credit) > 0;
-      return `
-        <tr>
-          <td style="color: #64748b;">${line.line_number}</td>
-          <td><code>${escapeHtml(line.account_code)}</code></td>
-          <td><strong>${escapeHtml(line.account_name)}</strong></td>
-          <td class="num">${hasDebit ? `<strong>${formatDisplayAmount(line.debit)}</strong>` : '<span style="color: #94a3b8;">—</span>'}</td>
-          <td class="num">${hasCredit ? `<strong>${formatDisplayAmount(line.credit)}</strong>` : '<span style="color: #94a3b8;">—</span>'}</td>
-        </tr>
-      `;
-    }).join('');
-
-    const totalsRowsHtml = `
-      <tr class="grand-total">
-        <td>TOTAL DÉBIT:</td>
-        <td>${formatDisplayAmount(detail.total_debit)}</td>
-      </tr>
-      <tr class="grand-total">
-        <td>TOTAL CRÉDIT:</td>
-        <td>${formatDisplayAmount(detail.total_credit)}</td>
-      </tr>
-    `;
-
-    const html = buildOfficialDocumentHtml({
-      title: locale === 'fr' ? 'PIÈCE COMPTABLE / JOURNAL' : locale === 'ar' ? 'سند قيد محاسبي' : 'JOURNAL VOUCHER',
-      documentNumber: detail.document_number ?? `JE-${detail.document_id}`,
-      documentDate: formatDisplayDate(detail.document_date, locale),
-      statusLabel: detail.is_balanced ? text.balanced : text.unbalanced,
-      isPosted: true,
-      locale,
-      infoCardsHtml,
-      tableHeaders,
-      tableRowsHtml,
-      totalsRowsHtml,
-      accountingBoxHtml: detail.description ? `<h4>${escapeHtml(text.description)}</h4><p style="font-size: 8.5pt; color: #334155;">${escapeHtml(detail.description)}</p>` : undefined,
-      signatures: locale === 'ar'
-        ? ['المحاسب', 'المراجع', 'المدير المالي']
-        : locale === 'fr'
-        ? ['Comptable', 'Vérificateur', 'Direction Financière']
-        : ['Accountant', 'Auditor', 'Finance Director'],
-      footerNote: `Stockiha ERP · Journal ${detail.document_number ?? `#${detail.document_id}`}`,
-    });
-
-    printDocumentA4(html);
+    const model = buildModel();
+    if (!model || !printIdentity) return;
+    printDocumentA4(renderOfficialDocumentHtml(model, printIdentity));
   };
 
   const handleDownloadPdf = async () => {
-    if (!detail || downloadingPdf) return;
+    if (downloadingPdf) return;
+    const model = buildModel();
+    if (!model || !printIdentity || !detail) return;
     try {
       setDownloadingPdf(true);
-      const pdfBytes = await generateGenericDocumentPdf({
-        title: locale === 'fr' ? 'PIECE COMPTABLE' : locale === 'ar' ? 'سند قيد محاسبي' : 'JOURNAL VOUCHER',
-        documentNumber: detail.document_number ?? `JE-${detail.document_id}`,
-        documentDate: formatDisplayDate(detail.document_date, locale),
-        statusText: detail.is_balanced ? text.balanced : text.unbalanced,
-        locale,
-        partyLabel: text.sourceType,
-        partyName: humanDocumentType(detail.source_type, locale),
-        referenceLabel: text.sourceDocument,
-        referenceValue: detail.source_document_number ?? (detail.source_id ? `#${detail.source_id}` : '—'),
-        tableHeaders: [text.line, text.accountCode, text.accountName, text.debit, text.credit],
-        lines: detail.lines.map((l) => ({
-          col1: String(l.line_number),
-          col2: l.account_code,
-          col3: l.account_name,
-          col4: Number(l.debit) > 0 ? formatDisplayAmount(l.debit) : '—',
-          col5: Number(l.credit) > 0 ? formatDisplayAmount(l.credit) : '—',
-        })),
-        totals: [
-          { label: text.totalDebit, value: formatDisplayAmount(detail.total_debit) },
-          { label: text.totalCredit, value: formatDisplayAmount(detail.total_credit), isGrandTotal: true },
-        ],
-        accountingNote: detail.description || undefined,
-        signatures: locale === 'ar'
-          ? ['المحاسب', 'المراجع', 'المدير المالي']
-          : locale === 'fr'
-          ? ['Comptable', 'Vérificateur', 'Direction Financière']
-          : ['Accountant', 'Auditor', 'Finance Director'],
-      });
-
+      const bytes = await renderOfficialDocumentPdf(model, printIdentity);
       const safeNum = (detail.document_number ?? `JE-${detail.document_id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
       await saveDocumentFileWithDialog({
         defaultFileName: `Piece_Comptable_${safeNum}.pdf`,
-        bytes: pdfBytes,
+        bytes,
         filterName: 'PDF Document',
         extension: 'pdf',
       });

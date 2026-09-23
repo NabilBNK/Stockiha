@@ -6,6 +6,7 @@ import type { PurchaseReceiptLineDto, PurchaseReceiptSummary } from '../../share
 import { PROCUREMENT_COPY } from './procurementCopy';
 import { downloadPurchaseReceiptXlsx } from './purchaseReceiptExport';
 import { printReceiptA4, downloadReceiptPdf } from './purchaseReceiptPrint';
+import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
 import { formatDisplayDate } from '../../shared/utils/formatters';
 import './procurement.css';
 
@@ -25,6 +26,7 @@ export function PurchaseReceiptDetailModal({
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
   const errorText = useErrorText();
+  const { identity } = useOfficialDocumentContext(sessionToken);
   const modalBodyRef = useRef<HTMLDivElement>(null);
 
   const [lines, setLines] = useState<PurchaseReceiptLineDto[]>([]);
@@ -86,13 +88,15 @@ export function PurchaseReceiptDetailModal({
     receipt.receipt_origin === 'DIRECT_PURCHASE' || !receipt.purchase_order_id;
 
   const handlePrintA4 = () => {
-    printReceiptA4({ receipt, lines, locale });
+    if (!identity) return;
+    printReceiptA4({ receipt, lines, locale }, identity);
   };
 
   const handleDownloadPdf = async () => {
+    if (!identity) return;
     try {
       setDownloadingPdf(true);
-      await downloadReceiptPdf({ receipt, lines, locale });
+      await downloadReceiptPdf({ receipt, lines, locale }, identity);
     } catch (err: unknown) {
       setError(errorText(err));
     } finally {

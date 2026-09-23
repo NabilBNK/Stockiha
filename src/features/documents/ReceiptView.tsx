@@ -12,12 +12,11 @@ import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useSession } from '../../shared/session/SessionContext';
 import * as ipc from '../../shared/ipc/gateway';
 import type { DocumentJob, SaleDocument, SaleLine } from '../../shared/ipc/dto';
-import { formatDisplayAmount, formatDisplayDate } from '../../shared/utils/formatters';
-import {
-  buildOfficialDocumentHtml,
-  escapeHtml,
-  printDocumentA4,
-} from '../../shared/documents/documentPrintService';
+import { formatDisplayAmount, formatDisplayDate, humanDocumentType } from '../../shared/utils/formatters';
+import { printDocumentA4, saveDocumentFileWithDialog } from '../../shared/documents/documentPrintService';
+import { renderOfficialDocumentHtml, renderOfficialDocumentPdf } from '../../shared/documents/officialDocument';
+import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
+import { buildSaleInvoiceModel } from '../../shared/documents/models/saleInvoiceModel';
 
 const TERMINAL_STATUSES = new Set([
   'COMPLETED',
@@ -120,61 +119,55 @@ export function ReceiptView({
     };
   }, [jobs, loadJobs, showJobs]);
 
+  const { identity } = useOfficialDocumentContext(token);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const buildModel = useCallback(() => {
+    if (!doc || !identity) return null;
+    return buildSaleInvoiceModel(
+      {
+        title: humanDocumentType(doc.document_type, locale),
+        documentNumber: doc.document_number ?? `DOC-${doc.document_id}`,
+        documentDateText: formatReceiptDateTime(doc.posted_at ?? doc.document_date, locale),
+        statusText: doc.status || 'POSTED',
+        cashierName: user?.username || null,
+        paymentLabel: t('receipt.payment'),
+        lines: lines.map((l) => ({
+          designation: l.variant_name_snapshot,
+          quantity: l.quantity,
+          unitPrice: formatDisplayAmount(l.unit_price),
+          lineTotal: formatDisplayAmount(l.line_total),
+        })),
+        total: formatDisplayAmount(doc.total_amount),
+        totalNumeric: doc.total_amount,
+      },
+      identity.printLocale,
+    );
+  }, [doc, identity, lines, locale, t, user]);
+
   const handlePrint = useCallback(() => {
-    if (!doc) return;
+    const model = buildModel();
+    if (!model || !identity) return;
+    printDocumentA4(renderOfficialDocumentHtml(model, identity));
+  }, [buildModel, identity]);
 
-    const infoCardsHtml = `
-      <div class="info-card">
-        <div class="info-card-title">${escapeHtml(t('receipt.number'))}</div>
-        <div class="info-row"><span>Réf:</span><strong>${escapeHtml(doc.document_number ?? `DOC-${doc.document_id}`)}</strong></div>
-        <div class="info-row"><span>Date:</span><strong>${escapeHtml(formatReceiptDateTime(doc.posted_at ?? doc.document_date, locale))}</strong></div>
-      </div>
-      <div class="info-card">
-        <div class="info-card-title">${escapeHtml(t('receipt.paymentMethod'))}</div>
-        <div class="info-row"><span>Mode:</span><strong>${escapeHtml(t('receipt.payment'))}</strong></div>
-        <div class="info-row"><span>${escapeHtml(t('receipt.cashier'))}:</span><strong>${escapeHtml(user?.username || '—')}</strong></div>
-      </div>
-    `;
-
-    const tableHeaders = ['#', t('receipt.line'), 'SKU', t('receipt.qty'), t('receipt.unitPrice'), t('receipt.lineTotal')];
-    const tableRowsHtml = lines
-      .map(
-        (l) => `
-        <tr>
-          <td style="color: #64748b;">${l.line_number}</td>
-          <td><strong>${escapeHtml(l.variant_name_snapshot)}</strong></td>
-          <td><code>${escapeHtml(l.variant_sku_snapshot)}</code></td>
-          <td class="num"><strong>${l.quantity}</strong></td>
-          <td class="num">${formatDisplayAmount(l.unit_price)}</td>
-          <td class="num"><strong>${formatDisplayAmount(l.line_total)}</strong></td>
-        </tr>
-      `,
-      )
-      .join('');
-
-    const totalsRowsHtml = `
-      <tr class="grand-total">
-        <td>TOTAL:</td>
-        <td>${formatDisplayAmount(doc.total_amount)}</td>
-      </tr>
-    `;
-
-    const html = buildOfficialDocumentHtml({
-      title: t('receipt.officialDocument'),
-      documentNumber: doc.document_number ?? `DOC-${doc.document_id}`,
-      documentDate: formatReceiptDateTime(doc.posted_at ?? doc.document_date, locale),
-      statusLabel: doc.status || 'POSTED',
-      isPosted: true,
-      locale,
-      infoCardsHtml,
-      tableHeaders,
-      tableRowsHtml,
-      totalsRowsHtml,
-      footerNote: `Stockiha ERP · ${doc.document_number ?? `DOC-${doc.document_id}`}`,
-    });
-
-    printDocumentA4(html);
-  }, [doc, lines, locale, t, user]);
+  const handleDownloadPdf = useCallback(async () => {
+    const model = buildModel();
+    if (!model || !identity || !doc) return;
+    setDownloadingPdf(true);
+    try {
+      const bytes = await renderOfficialDocumentPdf(model, identity);
+      const safeNum = (doc.document_number ?? String(doc.document_id)).replace(/[^a-zA-Z0-9_-]/g, '_');
+      await saveDocumentFileWithDialog({
+        defaultFileName: `${safeNum}.pdf`,
+        bytes,
+        filterName: 'PDF Document',
+        extension: 'pdf',
+      });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }, [buildModel, identity, doc]);
 
   if (loading) return <Spinner />;
   if (error) return <Banner tone="error">{error}</Banner>;
@@ -331,6 +324,14 @@ export function ReceiptView({
         <div className="sk-receipt__footer-actions">
           <Button variant="secondary" onClick={handlePrint}>
             🖨️ {t('receipt.print')}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => void handleDownloadPdf()}
+            loading={downloadingPdf}
+            disabled={downloadingPdf}
+          >
+            📄 {t('receipt.downloadPdf')}
           </Button>
           {onClose ? (
             <Button variant="primary" onClick={onClose}>

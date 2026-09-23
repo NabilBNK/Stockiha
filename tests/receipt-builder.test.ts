@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildA4Receipt,
   buildThermalReceipt,
   formatReceiptItemName,
   type ReceiptInput,
@@ -96,28 +95,6 @@ describe('receiptBuilder', () => {
       const bytes = buildThermalReceipt(receiptWithArabic, sampleSettings);
       expect(bytes).toContain(63);
     }).not.toThrow();
-  });
-
-  it('buildA4Receipt output contains the document number and total, and a product name containing <script> appears escaped', () => {
-    const receiptWithScript: ReceiptInput = {
-      ...sampleReceipt,
-      documentNumber: 'DOC-TEST-999',
-      total: '999.00',
-      lines: [
-        {
-          name: '<script>alert("xss")</script>',
-          qty: 1,
-          unitPrice: '999.00',
-          lineTotal: '999.00',
-        },
-      ],
-    };
-
-    const html = buildA4Receipt(receiptWithScript, sampleSettings);
-    expect(html).toContain('DOC-TEST-999');
-    expect(html).toContain('999.00');
-    expect(html).not.toContain('<script>alert("xss")</script>');
-    expect(html).toContain('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
   });
 
   it('sanitizes typographical characters like em-dash and accents so they do not become question marks', () => {
@@ -246,36 +223,6 @@ describe('receiptBuilder', () => {
       expect(text).toContain('SUBTOTAL :');
       expect(text).toContain('DISCOUNT :');
       expect(text).toContain('TOTAL TO PAY :');
-    });
-
-    it('buildA4Receipt renders subtotal and discount rows in French by default', () => {
-      const discountedReceipt: ReceiptInput = {
-        ...sampleReceipt,
-        subtotal: '250.00',
-        discount: '50.00',
-        total: '200.00',
-      };
-      const html = buildA4Receipt(discountedReceipt, sampleSettings);
-      expect(html).toContain('Sous-total :');
-      expect(html).toContain('250.00 DZD');
-      expect(html).toContain('Remise accordée :');
-      expect(html).toContain('-50.00 DZD');
-      expect(html).toContain('Total Net à Payer');
-      expect(html).toContain('200.00 DZD');
-    });
-
-    it('buildA4Receipt renders subtotal and discount in Arabic when locale is ar', () => {
-      const discountedReceipt: ReceiptInput = {
-        ...sampleReceipt,
-        subtotal: '250.00',
-        discount: '50.00',
-        total: '200.00',
-        locale: 'ar',
-      };
-      const html = buildA4Receipt(discountedReceipt, sampleSettings);
-      expect(html).toContain('المجموع الفرعي :');
-      expect(html).toContain('التخفيض الممنوح :');
-      expect(html).toContain('الصافي للدفع');
     });
   });
 });

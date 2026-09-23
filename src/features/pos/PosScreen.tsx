@@ -22,6 +22,7 @@ import { ReceiptView } from '../documents/ReceiptView';
 import { resolveBarcodeFirst } from '../../shared/search/barcodeFirstSearch';
 import { ItemSearchModal } from '../../shared/components/ItemSearchModal';
 import { printSaleReceipt, type PrintOutcome } from './printReceipt';
+import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
 import { formatReceiptItemName } from './receiptBuilder';
 import type { PrintingSettingsDto } from '../../shared/ipc/dto';
 
@@ -137,6 +138,7 @@ export function PosScreen() {
   const [lastSaleDocId, setLastSaleDocId] = useState<number | null>(null);
   const [lastCreditSale, setLastCreditSale] = useState<CreditSaleResult | null>(null);
   const [printingSettings, setPrintingSettings] = useState<PrintingSettingsDto | null>(null);
+  const { identity: printIdentity } = useOfficialDocumentContext(token);
   const [printOutcome, setPrintOutcome] = useState<PrintOutcome | null>(null);
   const [lastReceiptInput, setLastReceiptInput] = useState<Parameters<typeof printSaleReceipt>[0] | null>(null);
   const [capabilities, setCapabilities] = useState<CustomerCapabilities | null>(null);
@@ -505,9 +507,9 @@ export function PosScreen() {
         locale,
       };
       setLastReceiptInput(input);
-      setPrintOutcome(await printSaleReceipt(input, printingSettings));
+      setPrintOutcome(await printSaleReceipt(input, printingSettings, printIdentity));
     },
-    [cart, provisionalTotal, hasDiscount, trimmedDiscount, netTotal, locale, paymentMode, printingSettings, user, creditText],
+    [cart, provisionalTotal, hasDiscount, trimmedDiscount, netTotal, locale, paymentMode, printingSettings, printIdentity, user, creditText],
   );
 
   async function confirmSale() {
@@ -1027,7 +1029,7 @@ export function PosScreen() {
                           variant="secondary"
                           onClick={() => {
                             if (lastReceiptInput) {
-                              void printSaleReceipt(lastReceiptInput, printingSettings).then(setPrintOutcome);
+                              void printSaleReceipt(lastReceiptInput, printingSettings, printIdentity).then(setPrintOutcome);
                             }
                           }}
                           data-testid="pos-reprint"
@@ -1092,7 +1094,7 @@ export function PosScreen() {
                           variant="secondary"
                           onClick={() => {
                             if (lastReceiptInput) {
-                              void printSaleReceipt(lastReceiptInput, printingSettings).then(setPrintOutcome);
+                              void printSaleReceipt(lastReceiptInput, printingSettings, printIdentity).then(setPrintOutcome);
                             }
                           }}
                           data-testid="pos-reprint"

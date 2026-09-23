@@ -23,13 +23,10 @@ import {
   humanDocumentType,
   humanStatus,
 } from '../../shared/utils/formatters';
-import {
-  printDocumentA4,
-  saveDocumentFileWithDialog,
-  buildOfficialDocumentHtml,
-  escapeHtml,
-} from '../../shared/documents/documentPrintService';
-import { generateGenericDocumentPdf } from '../../shared/documents/genericDocumentPdf';
+import { printDocumentA4, saveDocumentFileWithDialog } from '../../shared/documents/documentPrintService';
+import { renderOfficialDocumentHtml, renderOfficialDocumentPdf } from '../../shared/documents/officialDocument';
+import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
+import { buildDocumentsReportModel } from '../../shared/documents/models/documentsReportModel';
 
 type ActiveTab = 'DOCUMENTS' | 'REPORTS';
 
@@ -249,6 +246,7 @@ export const DocumentsScreen: React.FC = () => {
   const text = COPY[locale];
   const { user } = useSession();
   const token = user?.token ?? '';
+  const { identity: printIdentity } = useOfficialDocumentContext(token);
   const errorText = useErrorText();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('DOCUMENTS');
@@ -352,122 +350,65 @@ export const DocumentsScreen: React.FC = () => {
     }
   };
 
-  const handlePrintReportA4 = () => {
-    if (!reportResult) return;
+  const buildReportModel = () => {
+    if (!reportResult || !printIdentity) return null;
 
     const repSummary = reportResult.summary;
     const repRows = reportResult.rows || [];
     const repTypeAmounts = repSummary?.type_amounts || [];
 
     const dateRangeStr = reportFilter.date_from || reportFilter.date_to
-      ? `${reportFilter.date_from ? formatDisplayDate(reportFilter.date_from, locale) : 'Début'} — ${reportFilter.date_to ? formatDisplayDate(reportFilter.date_to, locale) : 'Ce jour'}`
-      : 'Toutes les dates enregistrées';
+      ? `${reportFilter.date_from ? formatDisplayDate(reportFilter.date_from, locale) : '—'} — ${reportFilter.date_to ? formatDisplayDate(reportFilter.date_to, locale) : '—'}`
+      : text.allDates ?? '—';
 
-    const infoCardsHtml = `
-      <div class="info-card">
-        <div class="info-card-title">Période &amp; Filtres</div>
-        <div class="info-row"><span>Période:</span><strong>${escapeHtml(dateRangeStr)}</strong></div>
-        <div class="info-row"><span>Type:</span><strong>${escapeHtml(reportFilter.document_type ? humanDocumentType(reportFilter.document_type, locale) : 'Tous les types')}</strong></div>
-        <div class="info-row"><span>Statut:</span><strong>${escapeHtml(reportFilter.status || 'Tous statuts')}</strong></div>
-      </div>
-      <div class="info-card">
-        <div class="info-card-title">Statistiques d'Activité</div>
-        <div class="info-row"><span>${escapeHtml(text.totalDocs)}:</span><strong>${repSummary?.total_count || 0}</strong></div>
-        <div class="info-row"><span>${escapeHtml(text.postedDocs)} / ${escapeHtml(text.draftDocs)}:</span><strong>${repSummary?.posted_count || 0} / ${repSummary?.draft_count || 0}</strong></div>
-        <div class="info-row"><span>${escapeHtml(text.withJournalDocs)}:</span><strong>${repSummary?.linked_journal_count || 0}</strong></div>
-      </div>
-    `;
+    const reportTitle =
+      locale === 'fr'
+        ? "Rapport d'activité des documents"
+        : locale === 'ar'
+          ? 'تقرير نشاط المستندات التجارية'
+          : 'Business Documents Activity Report';
 
-    const tableHeaders = [text.number, text.type, text.date, text.status, text.party, text.totalAmount, text.journal];
-
-    const tableRowsHtml = repRows.map((row) => `
-      <tr>
-        <td><strong>${escapeHtml(row.document_number ?? `#${row.document_id}`)}</strong></td>
-        <td>${escapeHtml(humanDocumentType(row.document_type, locale))}</td>
-        <td>${escapeHtml(formatDisplayDate(row.document_date, locale))}</td>
-        <td><span style="font-weight: 700; color: ${row.status === 'POSTED' ? '#166534' : '#854d0e'};">${escapeHtml(humanStatus(row.status, locale))}</span></td>
-        <td>${escapeHtml(row.party_name || '—')}</td>
-        <td class="num">${row.amount ? formatDisplayAmount(row.amount) : '—'}</td>
-        <td><code>${escapeHtml(row.linked_journal_number ?? (row.linked_journal_id ? `#${row.linked_journal_id}` : '—'))}</code></td>
-      </tr>
-    `).join('');
-
-    const totalsRowsHtml = repTypeAmounts.map((ta) => `
-      <tr>
-        <td>${escapeHtml(humanDocumentType(ta.type, locale))} (${escapeHtml(String(ta.count))}):</td>
-        <td>${formatDisplayAmount(ta.total_amount)}</td>
-      </tr>
-    `).join('');
-
-    const html = buildOfficialDocumentHtml({
-      title: locale === 'fr' ? "RAPPORT D'ACTIVITÉ DES DOCUMENTS" : locale === 'ar' ? 'تقرير نشاط المستندات التجارية' : 'BUSINESS DOCUMENTS ACTIVITY REPORT',
-      subTitle: `Stockiha ERP — Registre Officiel (${dateRangeStr})`,
-      documentNumber: `RAP-${new Date().toISOString().slice(0, 10)}`,
-      documentDate: formatDisplayDate(new Date().toISOString(), locale),
-      statusLabel: `${repSummary?.total_count || 0} DOCUMENTS`,
-      isPosted: true,
-      locale,
-      infoCardsHtml,
-      tableHeaders,
-      tableRowsHtml,
-      totalsRowsHtml,
-      signatures: locale === 'ar'
-        ? ['المسؤول / المحرر', 'الإدارة / التأشيرة']
-        : locale === 'fr'
-        ? ['Responsable Édition', 'Direction / Visa']
-        : ['Prepared By', 'Management / Visa'],
-      footerNote: `Stockiha ERP · ${dateRangeStr}`,
-    });
-
-    printDocumentA4(html);
-  };
-
-  const handleDownloadReportPdf = async () => {
-    if (!reportResult || downloadingReportPdf) return;
-    try {
-      setDownloadingReportPdf(true);
-      const repSummary = reportResult.summary;
-      const repRows = reportResult.rows || [];
-      const repTypeAmounts = repSummary?.type_amounts || [];
-
-      const dateRangeStr = reportFilter.date_from || reportFilter.date_to
-        ? `${reportFilter.date_from ? formatDisplayDate(reportFilter.date_from, locale) : 'Début'} — ${reportFilter.date_to ? formatDisplayDate(reportFilter.date_to, locale) : 'Ce jour'}`
-        : 'Toutes les dates';
-
-      const pdfBytes = await generateGenericDocumentPdf({
-        title: locale === 'fr' ? "RAPPORT DES DOCUMENTS" : locale === 'ar' ? 'تقرير المستندات' : 'DOCUMENTS REPORT',
+    return buildDocumentsReportModel(
+      {
+        title: reportTitle,
         documentNumber: `RAP-${new Date().toISOString().slice(0, 10)}`,
-        documentDate: formatDisplayDate(new Date().toISOString(), locale),
-        statusText: `${repSummary?.total_count || 0} DOCS`,
-        locale,
-        partyLabel: 'Période',
-        partyName: dateRangeStr,
-        warehouseLabel: 'Statistiques',
-        warehouseValue: `Total: ${repSummary?.total_count || 0} (Validés: ${repSummary?.posted_count || 0})`,
-        tableHeaders: [text.number, text.type, text.date, text.status, text.party, text.totalAmount],
-        lines: repRows.slice(0, 18).map((row) => ({
-          col1: row.document_number ?? `#${row.document_id}`,
-          col2: humanDocumentType(row.document_type, locale),
-          col3: formatDisplayDate(row.document_date, locale),
-          col4: humanStatus(row.status, locale),
-          col5: row.party_name || '—',
-          col6: row.amount ? formatDisplayAmount(row.amount) : '—',
+        documentDateText: formatDisplayDate(new Date().toISOString(), locale),
+        periodText: dateRangeStr,
+        totalCountText: `${repSummary?.total_count || 0} ${text.totalDocs}`,
+        rows: repRows.map((row) => ({
+          number: row.document_number ?? `#${row.document_id}`,
+          type: humanDocumentType(row.document_type, locale),
+          date: formatDisplayDate(row.document_date, locale),
+          party: row.party_name || '—',
+          amount: row.amount ? formatDisplayAmount(row.amount) : '—',
+          status: humanStatus(row.status, locale),
         })),
-        totals: repTypeAmounts.map((ta) => ({
+        typeAmounts: repTypeAmounts.map((ta) => ({
           label: `${humanDocumentType(ta.type, locale)} (${ta.count})`,
           value: formatDisplayAmount(ta.total_amount),
         })),
-        signatures: locale === 'ar'
-          ? ['المسؤول / المحرر', 'الإدارة / التأشيرة']
-          : locale === 'fr'
-          ? ['Responsable Édition', 'Direction / Visa']
-          : ['Prepared By', 'Management / Visa'],
-      });
+      },
+      printIdentity.printLocale,
+    );
+  };
 
+  const handlePrintReportA4 = () => {
+    const model = buildReportModel();
+    if (!model || !printIdentity) return;
+    printDocumentA4(renderOfficialDocumentHtml(model, printIdentity));
+  };
+
+  const handleDownloadReportPdf = async () => {
+    if (downloadingReportPdf) return;
+    const model = buildReportModel();
+    if (!model || !printIdentity) return;
+    try {
+      setDownloadingReportPdf(true);
+      const bytes = await renderOfficialDocumentPdf(model, printIdentity);
       const todayStr = new Date().toISOString().slice(0, 10);
       await saveDocumentFileWithDialog({
         defaultFileName: `Rapport_Documents_${todayStr}.pdf`,
-        bytes: pdfBytes,
+        bytes,
         filterName: 'PDF Document',
         extension: 'pdf',
       });
