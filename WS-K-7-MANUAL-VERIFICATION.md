@@ -43,5 +43,19 @@ Install the new build (version 0.7.0) and check that the screen shows
     code and needs its own licence (the grace period applies there).
 13. In a normal installed build, activate a real licence you issued for
     this machine's code and confirm the status turns Active.
-14. With an expired licence installed, confirm a cash sale is refused while
-    Documents, backup and closing the cash session still work.
+14. With an expired licence installed (reuse the one from step 7, or issue
+    a fresh one dated yesterday and activate it), check each surface
+    individually:
+    - **POS**: open the till screen. Instead of the catalog and checkout,
+      a card titled "Selling is blocked" appears, with an "Open licence"
+      button. No product list, no pay button.
+    - **Documents**: existing sale/purchase documents still list and open
+      normally — searching, viewing, and reprinting all work.
+    - **Backup**: Settings → Backup and recovery → "Create backup now"
+      still completes successfully.
+    - **Cash session**: if a session is already open, it can still be
+      counted and closed normally. If no session is open, "Open session"
+      is disabled and shows the hint that a new session needs an active
+      licence.
+    - Click "Open licence" on the POS blocked card: it jumps to Settings
+      and scrolls to the Licence card.
