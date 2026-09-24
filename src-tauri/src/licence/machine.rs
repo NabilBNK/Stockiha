@@ -209,6 +209,10 @@ mod tests {
     #[ignore = "requires a real Windows registry; run explicitly on the target OS"]
     fn reads_real_machine_guid_on_windows() {
         let code = machine_code().expect("MachineGuid must be readable on a real Windows machine");
+        // Not secret (plan §3.7: "machine_code ... is not secret") — printed
+        // so a manual run can record it (e.g. in a Result Report), unlike
+        // the raw MachineGuid itself, which this module never surfaces.
+        println!("machine code: {code}");
         assert!(MACHINE_CODE_RE.is_match(&code), "got {code}");
     }
 }
