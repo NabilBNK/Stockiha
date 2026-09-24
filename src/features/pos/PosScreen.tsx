@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, Button, ConfirmDialog, Spinner } from '../../shared/components';
 import { useI18n, type Locale } from '../../shared/i18n';
 import { codeForError, useErrorText } from '../../shared/hooks/useErrorText';
+import { useLicence } from '../../shared/licence/LicenceContext';
 import { useSession } from '../../shared/session/SessionContext';
 import { useAppData } from '../../app/AppDataContext';
 import * as ipc from '../../shared/ipc/gateway';
@@ -104,12 +105,13 @@ function toProductListItem(row: ProductListItemV2): ProductListItem {
   };
 }
 
-export function PosScreen() {
+export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}) {
   const { t, locale } = useI18n();
   const creditText = CREDIT_COPY[locale];
   const { user, activeCashSession, workstationId } = useSession();
   const { selectedWarehouseId, openFiscalPeriod } = useAppData();
   const errorText = useErrorText();
+  const { readOnly } = useLicence();
   const token = user?.token ?? '';
 
   const PAGE_SIZE = 60;
@@ -628,6 +630,21 @@ export function PosScreen() {
       }
       setOverrideBusy(false);
     }
+  }
+
+  if (readOnly) {
+    return (
+      <section className="sk-page">
+        <h1>{t('pos.title')}</h1>
+        <div className="sk-card" data-testid="pos-licence-blocked">
+          <h2>{t('licence.posBlockedTitle')}</h2>
+          <p>{t('licence.posBlockedBody')}</p>
+          <Button type="button" onClick={onOpenLicence}>
+            {t('licence.open')}
+          </Button>
+        </div>
+      </section>
+    );
   }
 
   if (!activeCashSession) {

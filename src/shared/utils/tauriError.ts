@@ -63,6 +63,12 @@ const SAFE_MESSAGES: Record<AppErrorCode, string> = {
   LOGO_TOO_LARGE: 'This file exceeds the 2 MB logo size limit.',
   LOGO_NOT_A_FILE: 'This file could not be read. Choose another one.',
   LOGO_UNSUPPORTED_TYPE: 'Unsupported format. Use a PNG, JPEG or WebP image.',
+  LICENCE_READ_ONLY: 'Read-only mode: the licence is not active. Open Settings, then Licence.',
+  LICENCE_MALFORMED: 'This licence key is incomplete or damaged. Paste the whole key again.',
+  LICENCE_INVALID: 'This licence key is not valid. Contact your supplier.',
+  LICENCE_WRONG_MACHINE: 'This licence key was issued for another computer.',
+  LICENCE_EXPIRED: 'This licence key has already expired.',
+  LICENCE_MACHINE_UNAVAILABLE: 'This computer cannot be identified. Contact your supplier.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 };
 

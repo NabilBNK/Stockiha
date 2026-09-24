@@ -11,6 +11,7 @@ import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useSession } from '../../shared/session/SessionContext';
 import { APP_VERSION_MARKER } from '../../shared/version';
+import { LicenceBanner } from '../licence/LicenceBanner';
 
 export function LoginScreen() {
   const { t } = useI18n();
@@ -40,6 +41,7 @@ export function LoginScreen() {
 
   return (
     <div className="sk-centered">
+      <LicenceBanner variant="login" />
       <form className="sk-card sk-form" onSubmit={onSubmit} aria-label={t('auth.title')}>
         <h1>{t('auth.title')}</h1>
         {error ? (

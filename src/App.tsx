@@ -8,6 +8,7 @@
  */
 import { ErrorBoundary } from './shared/components/ErrorBoundary';
 import { I18nProvider } from './shared/i18n';
+import { LicenceProvider } from './shared/licence/LicenceContext';
 import { SessionProvider } from './shared/session/SessionContext';
 import { RecoveryTakeoverProvider } from './features/settings/recovery/RecoveryTakeoverContext';
 import { AppRouter } from './app/AppRouter';
@@ -21,11 +22,13 @@ function App() {
   return (
     <ErrorBoundary>
       <I18nProvider>
-        <SessionProvider>
-          <RecoveryTakeoverProvider>
-            <AppRouter />
-          </RecoveryTakeoverProvider>
-        </SessionProvider>
+        <LicenceProvider>
+          <SessionProvider>
+            <RecoveryTakeoverProvider>
+              <AppRouter />
+            </RecoveryTakeoverProvider>
+          </SessionProvider>
+        </LicenceProvider>
       </I18nProvider>
     </ErrorBoundary>
   );

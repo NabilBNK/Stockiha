@@ -242,6 +242,12 @@ export const COMMANDS = {
   SET_COMPANY_LOGO: 'set_company_logo',
   GET_COMPANY_LOGO: 'get_company_logo',
   CLEAR_COMPANY_LOGO: 'clear_company_logo',
+
+  // WS-K-7 — offline licence activation
+  GET_LICENCE_STATUS: 'get_licence_status',
+  ACTIVATE_LICENCE: 'activate_licence',
+  REMOVE_LICENCE: 'remove_licence',
+  REFRESH_LICENCE_STATUS: 'refresh_licence_status',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

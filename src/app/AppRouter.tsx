@@ -24,6 +24,8 @@ import {
   runAutomaticBackup,
 } from '../shared/ipc/recoveryGateway';
 import { AppShell, type AppView } from './AppShell';
+import { LicenceBanner } from '../features/licence/LicenceBanner';
+import { LicenceSettingsCard } from '../features/licence/LicenceSettingsCard';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
 import { BackendUnavailableScreen } from '../features/startup/BackendUnavailableScreen';
@@ -466,6 +468,16 @@ function AuthenticatedApp() {
     setView('products');
   }
 
+  // WS-K-7: navigate to Settings and scroll the licence card into view — the
+  // one cross-screen action the licence banner and the POS/cash-session
+  // blocked cards all need (plan §7.3/§7.5).
+  function openLicenceCard() {
+    setView('settings');
+    window.requestAnimationFrame(() => {
+      document.getElementById('licence-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   async function finishOpeningStateApplication() {
     await refreshOpeningStateStatus();
     setView('settings');
@@ -482,6 +494,7 @@ function AuthenticatedApp() {
       customerCapabilities={customerCapabilities}
     >
       <UpdateBanner cashSessionOpen={activeCashSession !== null} />
+      <LicenceBanner onOpenLicence={openLicenceCard} />
       {configWarning === 'INSECURE_PERMISSIONS' ? (
         <Banner tone="warning" testId="db-config-permission-warning">
           {t('backend.configWarning.insecurePermissions')}
@@ -512,6 +525,7 @@ function AuthenticatedApp() {
       )}
       {view === 'settings' && (
         <>
+          <LicenceSettingsCard sessionToken={user?.token ?? ''} />
           {openingStateStatus?.showDeferredAccess ? (
             <section className="sk-card" aria-labelledby="deferred-opening-state-title">
               <h2 id="deferred-opening-state-title">{text.deferredTitle}</h2>
@@ -551,7 +565,7 @@ function AuthenticatedApp() {
       {view === 'inventory' && <InventoryScreen />}
       {view === 'stock' && <StockReceiptScreen />}
       {view === 'adjustment' && inventoryCorrectionsEnabled && <StockAdjustmentScreen />}
-      {view === 'pos' && <PosScreen />}
+      {view === 'pos' && <PosScreen onOpenLicence={openLicenceCard} />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}
       {view === 'journals' && <JournalsScreen />}
