@@ -730,6 +730,12 @@ pub(crate) fn stable_error_code(error: &AppError) -> &'static str {
         AppError::LogoTooLarge { .. } => "LOGO_TOO_LARGE",
         AppError::LogoNotAFile { .. } => "LOGO_NOT_A_FILE",
         AppError::LogoUnsupportedType { .. } => "LOGO_UNSUPPORTED_TYPE",
+        AppError::LicenceReadOnly { .. } => "LICENCE_READ_ONLY",
+        AppError::LicenceMalformed { .. } => "LICENCE_MALFORMED",
+        AppError::LicenceInvalid { .. } => "LICENCE_INVALID",
+        AppError::LicenceWrongMachine { .. } => "LICENCE_WRONG_MACHINE",
+        AppError::LicenceExpired { .. } => "LICENCE_EXPIRED",
+        AppError::LicenceMachineUnavailable { .. } => "LICENCE_MACHINE_UNAVAILABLE",
     }
 }
 

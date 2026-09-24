@@ -86,3 +86,16 @@ Folders/
 *.key.pub
 *.minisign
 stockiha-update-signing*
+
+# WS-K-7 — licence signing key material. Same posture as WS-K-6 above: only
+# the PUBLIC keys are meant to be distributed with the app and are explicitly
+# un-ignored below. The licence-signing PRIVATE key and its password are the
+# Owner's alone (see scripts/licence/README.md) and must never exist inside
+# this repository. `test-fixtures/` holds a deliberately public, test-only
+# key pair (see src-tauri/licence/test-fixtures/) that is safe to commit and
+# is explicitly un-ignored as well.
+!src-tauri/licence/licence-public.key
+!src-tauri/licence/test-licence-public.key
+!src-tauri/licence/test-fixtures/
+!src-tauri/licence/test-fixtures/*.key
+scripts/licence/out/

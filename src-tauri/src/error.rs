@@ -78,6 +78,22 @@ pub enum ErrorCode {
     /// WS-M-1: the chosen file's extension or magic bytes are not one of
     /// PNG, JPEG or WebP.
     LogoUnsupportedType,
+    /// WS-K-7: the enforcement gate blocked a command because the licence
+    /// mode is `READ_ONLY`.
+    LicenceReadOnly,
+    /// WS-K-7: the pasted licence key text cannot be parsed at all (wrong
+    /// prefix, wrong part count, bad base64, bad JSON, or over-length).
+    LicenceMalformed,
+    /// WS-K-7: the licence key decodes but fails signature verification,
+    /// field validation, or the clock-rollback-requires-fresh-licence rule.
+    LicenceInvalid,
+    /// WS-K-7: the licence belongs to a different machine.
+    LicenceWrongMachine,
+    /// WS-K-7: activation was attempted with an already-expired licence.
+    LicenceExpired,
+    /// WS-K-7: this machine's lock code cannot be computed (e.g. the
+    /// Windows registry is unreadable).
+    LicenceMachineUnavailable,
 }
 
 pub enum AppError {
@@ -184,6 +200,30 @@ pub enum AppError {
         diagnostic: String,
     },
     LogoUnsupportedType {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    LicenceReadOnly {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    LicenceMalformed {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    LicenceInvalid {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    LicenceWrongMachine {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    LicenceExpired {
+        #[cfg_attr(not(test), allow(dead_code))]
+        diagnostic: String,
+    },
+    LicenceMachineUnavailable {
         #[cfg_attr(not(test), allow(dead_code))]
         diagnostic: String,
     },
@@ -359,6 +399,20 @@ impl fmt::Debug for AppError {
             AppError::LogoUnsupportedType { .. } => {
                 f.write_str("AppError::LogoUnsupportedType(<redacted>)")
             }
+            AppError::LicenceReadOnly { .. } => {
+                f.write_str("AppError::LicenceReadOnly(<redacted>)")
+            }
+            AppError::LicenceMalformed { .. } => {
+                f.write_str("AppError::LicenceMalformed(<redacted>)")
+            }
+            AppError::LicenceInvalid { .. } => f.write_str("AppError::LicenceInvalid(<redacted>)"),
+            AppError::LicenceWrongMachine { .. } => {
+                f.write_str("AppError::LicenceWrongMachine(<redacted>)")
+            }
+            AppError::LicenceExpired { .. } => f.write_str("AppError::LicenceExpired(<redacted>)"),
+            AppError::LicenceMachineUnavailable { .. } => {
+                f.write_str("AppError::LicenceMachineUnavailable(<redacted>)")
+            }
         }
     }
 }
@@ -416,6 +470,16 @@ impl fmt::Display for AppError {
             AppError::LogoTooLarge { .. } => f.write_str("logo file is too large"),
             AppError::LogoNotAFile { .. } => f.write_str("logo path is not a usable file"),
             AppError::LogoUnsupportedType { .. } => f.write_str("logo file type is not supported"),
+            AppError::LicenceReadOnly { .. } => f.write_str("licence read-only mode"),
+            AppError::LicenceMalformed { .. } => f.write_str("licence key could not be parsed"),
+            AppError::LicenceInvalid { .. } => f.write_str("licence key is not valid"),
+            AppError::LicenceWrongMachine { .. } => {
+                f.write_str("licence was issued for a different machine")
+            }
+            AppError::LicenceExpired { .. } => f.write_str("licence key has already expired"),
+            AppError::LicenceMachineUnavailable { .. } => {
+                f.write_str("this machine cannot be identified")
+            }
         }
     }
 }
@@ -486,6 +550,14 @@ impl From<AppError> for IpcError {
             AppError::LogoTooLarge { .. } => IpcError::new(ErrorCode::LogoTooLarge),
             AppError::LogoNotAFile { .. } => IpcError::new(ErrorCode::LogoNotAFile),
             AppError::LogoUnsupportedType { .. } => IpcError::new(ErrorCode::LogoUnsupportedType),
+            AppError::LicenceReadOnly { .. } => IpcError::new(ErrorCode::LicenceReadOnly),
+            AppError::LicenceMalformed { .. } => IpcError::new(ErrorCode::LicenceMalformed),
+            AppError::LicenceInvalid { .. } => IpcError::new(ErrorCode::LicenceInvalid),
+            AppError::LicenceWrongMachine { .. } => IpcError::new(ErrorCode::LicenceWrongMachine),
+            AppError::LicenceExpired { .. } => IpcError::new(ErrorCode::LicenceExpired),
+            AppError::LicenceMachineUnavailable { .. } => {
+                IpcError::new(ErrorCode::LicenceMachineUnavailable)
+            }
         }
     }
 }
@@ -607,6 +679,59 @@ mod tests {
                     diagnostic: SENTINEL.to_owned(),
                 },
                 "LOGO_UNSUPPORTED_TYPE",
+            ),
+        ];
+        for (error, expected) in cases {
+            assert!(!format!("{error:?}").contains(SENTINEL));
+            assert!(format!("{error:?}").ends_with("(<redacted>)"));
+            let ipc: IpcError = error.into();
+            assert_eq!(
+                serde_json::to_string(&ipc).unwrap(),
+                format!(r#"{{"code":"{expected}"}}"#)
+            );
+        }
+    }
+
+    /// WS-K-7 (plan §5.9): the six new licence codes serialize to the exact
+    /// strings the frontend allowlist (`BACKEND_ERROR_CODES`) carries.
+    #[test]
+    fn ws_k_7_licence_error_codes_serialize_to_the_planned_strings() {
+        let cases = [
+            (
+                AppError::LicenceReadOnly {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "LICENCE_READ_ONLY",
+            ),
+            (
+                AppError::LicenceMalformed {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "LICENCE_MALFORMED",
+            ),
+            (
+                AppError::LicenceInvalid {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "LICENCE_INVALID",
+            ),
+            (
+                AppError::LicenceWrongMachine {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "LICENCE_WRONG_MACHINE",
+            ),
+            (
+                AppError::LicenceExpired {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "LICENCE_EXPIRED",
+            ),
+            (
+                AppError::LicenceMachineUnavailable {
+                    diagnostic: SENTINEL.to_owned(),
+                },
+                "LICENCE_MACHINE_UNAVAILABLE",
             ),
         ];
         for (error, expected) in cases {

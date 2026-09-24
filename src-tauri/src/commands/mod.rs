@@ -12,6 +12,7 @@ pub mod embedded_setup;
 pub mod finance;
 pub mod iam;
 pub mod inventory;
+pub mod licence;
 pub mod onboarding;
 pub mod opening_state;
 pub mod opening_state_application;

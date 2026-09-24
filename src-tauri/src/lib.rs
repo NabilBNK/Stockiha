@@ -5,6 +5,7 @@ pub mod commands;
 mod domain;
 mod error;
 mod infrastructure;
+mod licence;
 pub mod state;
 
 /// Installs a `tracing` subscriber so `RUST_LOG` (e.g. `RUST_LOG=sqlx=debug`)
@@ -38,6 +39,51 @@ pub fn maybe_run_provision_migrate() {
     }
     let exit_code = infrastructure::provision_cli::run();
     std::process::exit(exit_code);
+}
+
+/// WS-K-7: periodic licence refresh, for the app's whole lifetime. Waits
+/// (bounded) for the database to become available, refreshes once against
+/// it, then loops every `licence::REEVALUATE_EVERY_MINUTES`, emitting
+/// `licence-status-changed` whenever a refresh's status differs from the
+/// one before it — the gate itself only ever reads `LicenceRuntime::mode()`
+/// at call time, so a refresh here takes effect immediately, without a
+/// restart, with no coupling between this task and the gate.
+async fn licence_refresh_loop(app_handle: tauri::AppHandle) {
+    use tauri::{Emitter, Manager};
+
+    let poll_interval = std::time::Duration::from_secs(5);
+    let max_wait = std::time::Duration::from_secs(120);
+    let mut waited = std::time::Duration::ZERO;
+    while app_handle
+        .try_state::<infrastructure::db::DatabaseState>()
+        .is_none_or(|db_state| infrastructure::db::pool_or_unavailable(db_state.inner()).is_err())
+    {
+        if waited >= max_wait {
+            break;
+        }
+        tokio::time::sleep(poll_interval).await;
+        waited += poll_interval;
+    }
+
+    loop {
+        let runtime = app_handle.state::<licence::LicenceRuntime>();
+        let db_state = app_handle.try_state::<infrastructure::db::DatabaseState>();
+        let pool = db_state
+            .as_ref()
+            .and_then(|s| infrastructure::db::pool_or_unavailable(s.inner()).ok());
+
+        let previous_status = runtime.snapshot().status;
+        let evaluation = runtime.refresh(pool).await;
+        if evaluation.status != previous_status {
+            let dto = licence::LicenceStatusDto::from_evaluation(evaluation);
+            let _ = app_handle.emit("licence-status-changed", dto);
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(
+            licence::REEVALUATE_EVERY_MINUTES * 60,
+        ))
+        .await;
+    }
 }
 
 /// WS-K-4: resolve whether the embedded PostgreSQL server needs to be
@@ -176,6 +222,23 @@ pub fn run() {
                 std::sync::Mutex<infrastructure::pg_process::EmbeddedPostgresHandle>,
             >>();
 
+            // WS-K-7: managed synchronously here (not inside the
+            // `block_on` below) so the initial snapshot — computed from
+            // file values only, no database — stays fast and startup is
+            // never gated on it (plan §5.6). `developer_mode` is true only
+            // for a debug build that also has the developer database env
+            // var set (the `run.bat` setup); a release build never takes
+            // this path.
+            let developer_mode = cfg!(debug_assertions)
+                && std::env::var(infrastructure::db::DATABASE_URL_ENV)
+                    .map(|v| !v.trim().is_empty())
+                    .unwrap_or(false);
+            app.manage(licence::LicenceRuntime::new(
+                app_data_dir.clone(),
+                developer_mode,
+            ));
+            tauri::async_runtime::spawn(licence_refresh_loop(app.handle().clone()));
+
             tauri::async_runtime::block_on(async {
                 ensure_embedded_postgres_running(
                     app_data_dir.as_deref(),
@@ -266,224 +329,250 @@ pub fn run() {
             });
 
             Ok(())
+        });
+
+    // WS-K-7: the enforcement gate wraps `invoke_handler` exactly once,
+    // here — every command below still runs through the same generated
+    // dispatcher (`inner`) unchanged; this only adds a rejection path taken
+    // in `READ_ONLY` mode (plan §6.1). Every existing handler is kept
+    // exactly as it was; only the four licence commands are new additions
+    // to this list (216 total, was 212).
+    let inner: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+        commands::app_info::get_app_info,
+        commands::db_health::check_db_health,
+        commands::db_health::get_db_diagnostic,
+        commands::embedded_setup::run_embedded_setup,
+        commands::safe_upgrade::run_safe_database_upgrade,
+        commands::update_policy::get_update_policy,
+        commands::update_shutdown::prepare_for_update_install,
+        commands::update_shutdown::resume_after_failed_update_install,
+        commands::auth::login,
+        commands::auth::logout,
+        commands::iam::create_user,
+        commands::iam::list_users,
+        commands::iam::set_user_active,
+        commands::iam::assign_user_role,
+        commands::iam::create_role,
+        commands::iam::list_permissions,
+        commands::iam::list_roles,
+        commands::iam::list_role_permissions,
+        commands::iam::set_role_permissions,
+        commands::stock_receipt::post_stock_receipt,
+        commands::stock_adjustment::confirm_stock_adjustment,
+        commands::stock_adjustment::list_stock_adjustment_units,
+        commands::inventory::get_inventory_capabilities,
+        commands::inventory::list_inventory_snapshot,
+        commands::cash_sale::confirm_cash_sale,
+        commands::credit_sale::confirm_credit_sale,
+        commands::credit_sale::authorize_credit_override,
+        commands::cash_session::open_cash_session,
+        commands::cash_session::inspect_active_cash_session,
+        commands::cash_session::inspect_current_cash_session,
+        commands::cash_session::list_cash_denominations,
+        commands::cash_session::begin_cash_session_close,
+        commands::cash_session::cancel_cash_session_close,
+        commands::cash_session::submit_cash_session_count,
+        commands::cash_session::approve_cash_session_variance,
+        commands::cash_session::suspend_cash_session,
+        commands::cash_session::resume_cash_session,
+        commands::cash_session::handover_cash_session,
+        commands::cash_session::get_cash_session,
+        commands::cash_session::record_cash_movement,
+        commands::cash_session::list_cash_movements,
+        commands::cash_session::get_cash_session_policy,
+        commands::cash_session::save_cash_session_policy,
+        commands::cash_session::get_cash_capabilities,
+        commands::cash_session::get_session_report,
+        commands::sale_void::void_sale,
+        commands::sale_void::list_session_sales,
+        commands::drawer::list_drawer_operation_policy,
+        commands::drawer::update_drawer_operation_policy,
+        commands::onboarding::get_historical_finance_setting,
+        commands::onboarding::update_historical_finance_setting,
+        commands::onboarding::get_inventory_corrections_setting,
+        commands::onboarding::update_inventory_corrections_setting,
+        commands::onboarding::create_historical_finance_batch,
+        commands::onboarding::replace_historical_finance_batch_data,
+        commands::onboarding::validate_historical_finance_batch,
+        commands::onboarding::approve_historical_finance_batch,
+        commands::onboarding::get_historical_finance_summary,
+        commands::onboarding::create_historical_trade_batch,
+        commands::onboarding::replace_historical_trade_batch_data,
+        commands::onboarding::validate_historical_trade_batch,
+        commands::onboarding::approve_historical_trade_batch,
+        commands::onboarding::get_historical_trade_analytics,
+        commands::onboarding::get_historical_product_mapping,
+        commands::onboarding::get_historical_mapping_readiness,
+        commands::onboarding::get_historical_report,
+        commands::onboarding::get_historical_report_scope,
+        commands::onboarding::apply_historical_product_alias_decisions,
+        commands::onboarding::clear_historical_product_alias,
+        commands::opening_state::get_opening_state_setting,
+        commands::opening_state::update_opening_state_setting,
+        commands::opening_state::create_opening_state_package,
+        commands::opening_state::replace_opening_state_package_data,
+        commands::opening_state::validate_opening_state_package,
+        commands::opening_state::approve_opening_state_package,
+        commands::opening_state::get_opening_state_package,
+        commands::opening_state_lifecycle::get_opening_state_onboarding_status,
+        commands::opening_state_lifecycle::set_opening_state_onboarding_choice,
+        commands::opening_state_application::get_opening_state_application_context,
+        commands::opening_state_application::update_opening_state_application_setting,
+        commands::opening_state_application::apply_opening_state,
+        commands::recovery::get_restore_verification_setting,
+        commands::recovery::update_restore_verification_setting,
+        commands::recovery::create_operator_backup,
+        commands::recovery::validate_operator_backup,
+        commands::recovery::verify_operator_backup_restore,
+        commands::recovery::get_backup_destination_setting,
+        commands::recovery::update_backup_destination_setting,
+        commands::recovery::get_recovery_mode,
+        commands::recovery::get_recovery_capabilities,
+        commands::recovery::get_backup_status,
+        commands::recovery::list_backups,
+        commands::recovery::copy_backup_to,
+        commands::recovery::restore_backup_live,
+        commands::recovery::inspect_backup_for_fresh_install,
+        commands::recovery::restore_backup_fresh_install,
+        commands::recovery::restart_after_recovery,
+        commands::recovery::run_automatic_backup,
+        commands::setup::get_setup_status,
+        commands::setup::bootstrap_first_admin,
+        commands::catalog::create_product,
+        commands::catalog::list_products,
+        commands::catalog::create_product_with_variants,
+        commands::catalog::add_variant,
+        commands::catalog::update_variant,
+        commands::catalog::set_variant_active,
+        commands::catalog::update_product,
+        commands::catalog::create_attribute,
+        commands::catalog::add_attribute_value,
+        commands::catalog::list_attributes,
+        commands::catalog::create_unit,
+        commands::catalog::list_units,
+        commands::catalog::set_variant_attributes,
+        commands::catalog::add_variant_barcode,
+        commands::catalog::remove_variant_barcode,
+        commands::catalog::add_variant_alt_unit,
+        commands::catalog::remove_variant_alt_unit,
+        commands::catalog::set_variant_base_unit,
+        commands::catalog::resolve_barcode,
+        commands::catalog::list_catalog_products,
+        commands::catalog::get_product_detail,
+        // WS-D-2 — reference-data lifecycle, quick_create_product,
+        // list_products_v2, and the widened update_product/update_variant
+        // overloads (D-1 deliverable exposed to the app).
+        commands::catalog::list_categories,
+        commands::catalog::create_category,
+        commands::catalog::rename_category,
+        commands::catalog::set_category_active,
+        commands::catalog::delete_category,
+        commands::catalog::list_attributes_v2,
+        commands::catalog::rename_attribute,
+        commands::catalog::set_attribute_active,
+        commands::catalog::set_attribute_visible_on_receipt,
+        commands::catalog::delete_attribute,
+        commands::catalog::list_attribute_values,
+        commands::catalog::rename_attribute_value,
+        commands::catalog::set_attribute_value_active,
+        commands::catalog::delete_attribute_value,
+        commands::catalog::list_units_v2,
+        commands::catalog::rename_unit,
+        commands::catalog::set_unit_active,
+        commands::catalog::delete_unit,
+        commands::catalog::quick_create_product,
+        commands::catalog::list_products_v2,
+        commands::catalog::update_product_v2,
+        commands::catalog::update_variant_v2,
+        commands::warehouse::create_warehouse,
+        commands::warehouse::list_warehouses,
+        commands::reference::list_fiscal_periods,
+        commands::reference::get_open_fiscal_period,
+        commands::reference::get_dashboard_summary,
+        commands::documents::get_sale_document,
+        commands::documents::list_sale_lines,
+        commands::documents::list_document_jobs,
+        commands::documents::list_printable_documents,
+        commands::documents::list_business_documents,
+        commands::documents::get_customer_document_payload,
+        commands::finance::list_journals,
+        commands::finance::get_journal_detail,
+        commands::finance::search_journals,
+        commands::documents::generate_customer_document_pdf,
+        commands::documents::enqueue_customer_reprint,
+        commands::documents::get_business_document_detail,
+        commands::documents::get_business_document_reports,
+        commands::documents::search_business_documents,
+        commands::documents::save_binary_file,
+        commands::procurement::create_supplier,
+        commands::procurement::update_supplier,
+        commands::procurement::list_suppliers,
+        commands::procurement::create_purchase_order_draft,
+        commands::procurement::update_purchase_order_draft,
+        commands::procurement::confirm_purchase_order,
+        commands::procurement::cancel_purchase_order,
+        commands::procurement::list_purchase_orders,
+        commands::procurement::list_purchase_product_options,
+        commands::procurement::get_purchase_order_detail,
+        commands::procurement::confirm_purchase_receipt,
+        commands::procurement::confirm_direct_purchase,
+        commands::procurement::post_purchase_payment,
+        commands::procurement::list_purchase_payment_status,
+        commands::procurement::list_purchase_payments,
+        commands::procurement::list_supplier_balances,
+        commands::procurement::confirm_purchase_return,
+        commands::procurement::list_purchase_returnable_lines,
+        commands::procurement::list_purchase_returns,
+        commands::procurement::list_purchase_receipts,
+        commands::procurement::list_purchase_receipt_lines,
+        commands::procurement::get_procurement_capabilities,
+        commands::procurement::allocate_landed_cost,
+        commands::procurement::create_supplier_invoice_draft,
+        commands::procurement::confirm_supplier_invoice,
+        commands::procurement::list_supplier_invoices,
+        commands::procurement::list_supplier_liabilities,
+        commands::procurement::create_supplier_return_draft,
+        commands::procurement::confirm_supplier_return,
+        commands::procurement::post_supplier_payment,
+        commands::procurement::list_supplier_returns,
+        commands::procurement::list_supplier_payments,
+        commands::customer::create_customer,
+        commands::customer::update_customer,
+        commands::customer::list_customers,
+        commands::customer::get_customer_capabilities,
+        commands::customer::get_customer_credit_summary,
+        commands::customer::list_customer_ledger,
+        commands::receivables::list_open_customer_invoices,
+        commands::receivables::post_customer_payment,
+        commands::receivables::list_refundable_customer_payments,
+        commands::receivables::authorize_customer_payment_refund,
+        commands::receivables::post_customer_refund,
+        commands::printing::print_raw_receipt,
+        commands::printing::get_printing_settings,
+        commands::printing::save_printing_settings,
+        commands::printing::set_company_logo,
+        commands::printing::get_company_logo,
+        commands::printing::clear_company_logo,
+        commands::licence::get_licence_status,
+        commands::licence::activate_licence,
+        commands::licence::remove_licence,
+        commands::licence::refresh_licence_status,
+    ];
+    let app = app
+        .invoke_handler(move |invoke: tauri::ipc::Invoke<_>| {
+            use tauri::Manager;
+            let command = invoke.message.command().to_string();
+            let webview = invoke.message.webview();
+            let runtime = webview.state::<licence::LicenceRuntime>();
+            if licence::gate::is_blocked(&command, runtime.mode()) {
+                licence::storage::log_blocked(&command);
+                invoke.resolver.reject(crate::error::IpcError::new(
+                    crate::error::ErrorCode::LicenceReadOnly,
+                ));
+                return true;
+            }
+            inner(invoke)
         })
-        .invoke_handler(tauri::generate_handler![
-            commands::app_info::get_app_info,
-            commands::db_health::check_db_health,
-            commands::db_health::get_db_diagnostic,
-            commands::embedded_setup::run_embedded_setup,
-            commands::safe_upgrade::run_safe_database_upgrade,
-            commands::update_policy::get_update_policy,
-            commands::update_shutdown::prepare_for_update_install,
-            commands::update_shutdown::resume_after_failed_update_install,
-            commands::auth::login,
-            commands::auth::logout,
-            commands::iam::create_user,
-            commands::iam::list_users,
-            commands::iam::set_user_active,
-            commands::iam::assign_user_role,
-            commands::iam::create_role,
-            commands::iam::list_permissions,
-            commands::iam::list_roles,
-            commands::iam::list_role_permissions,
-            commands::iam::set_role_permissions,
-            commands::stock_receipt::post_stock_receipt,
-            commands::stock_adjustment::confirm_stock_adjustment,
-            commands::stock_adjustment::list_stock_adjustment_units,
-            commands::inventory::get_inventory_capabilities,
-            commands::inventory::list_inventory_snapshot,
-            commands::cash_sale::confirm_cash_sale,
-            commands::credit_sale::confirm_credit_sale,
-            commands::credit_sale::authorize_credit_override,
-            commands::cash_session::open_cash_session,
-            commands::cash_session::inspect_active_cash_session,
-            commands::cash_session::inspect_current_cash_session,
-            commands::cash_session::list_cash_denominations,
-            commands::cash_session::begin_cash_session_close,
-            commands::cash_session::cancel_cash_session_close,
-            commands::cash_session::submit_cash_session_count,
-            commands::cash_session::approve_cash_session_variance,
-            commands::cash_session::suspend_cash_session,
-            commands::cash_session::resume_cash_session,
-            commands::cash_session::handover_cash_session,
-            commands::cash_session::get_cash_session,
-            commands::cash_session::record_cash_movement,
-            commands::cash_session::list_cash_movements,
-            commands::cash_session::get_cash_session_policy,
-            commands::cash_session::save_cash_session_policy,
-            commands::cash_session::get_cash_capabilities,
-            commands::cash_session::get_session_report,
-            commands::sale_void::void_sale,
-            commands::sale_void::list_session_sales,
-            commands::drawer::list_drawer_operation_policy,
-            commands::drawer::update_drawer_operation_policy,
-            commands::onboarding::get_historical_finance_setting,
-            commands::onboarding::update_historical_finance_setting,
-            commands::onboarding::get_inventory_corrections_setting,
-            commands::onboarding::update_inventory_corrections_setting,
-            commands::onboarding::create_historical_finance_batch,
-            commands::onboarding::replace_historical_finance_batch_data,
-            commands::onboarding::validate_historical_finance_batch,
-            commands::onboarding::approve_historical_finance_batch,
-            commands::onboarding::get_historical_finance_summary,
-            commands::onboarding::create_historical_trade_batch,
-            commands::onboarding::replace_historical_trade_batch_data,
-            commands::onboarding::validate_historical_trade_batch,
-            commands::onboarding::approve_historical_trade_batch,
-            commands::onboarding::get_historical_trade_analytics,
-            commands::onboarding::get_historical_product_mapping,
-            commands::onboarding::get_historical_mapping_readiness,
-            commands::onboarding::get_historical_report,
-            commands::onboarding::get_historical_report_scope,
-            commands::onboarding::apply_historical_product_alias_decisions,
-            commands::onboarding::clear_historical_product_alias,
-            commands::opening_state::get_opening_state_setting,
-            commands::opening_state::update_opening_state_setting,
-            commands::opening_state::create_opening_state_package,
-            commands::opening_state::replace_opening_state_package_data,
-            commands::opening_state::validate_opening_state_package,
-            commands::opening_state::approve_opening_state_package,
-            commands::opening_state::get_opening_state_package,
-            commands::opening_state_lifecycle::get_opening_state_onboarding_status,
-            commands::opening_state_lifecycle::set_opening_state_onboarding_choice,
-            commands::opening_state_application::get_opening_state_application_context,
-            commands::opening_state_application::update_opening_state_application_setting,
-            commands::opening_state_application::apply_opening_state,
-            commands::recovery::get_restore_verification_setting,
-            commands::recovery::update_restore_verification_setting,
-            commands::recovery::create_operator_backup,
-            commands::recovery::validate_operator_backup,
-            commands::recovery::verify_operator_backup_restore,
-            commands::recovery::get_backup_destination_setting,
-            commands::recovery::update_backup_destination_setting,
-            commands::recovery::get_recovery_mode,
-            commands::recovery::get_recovery_capabilities,
-            commands::recovery::get_backup_status,
-            commands::recovery::list_backups,
-            commands::recovery::copy_backup_to,
-            commands::recovery::restore_backup_live,
-            commands::recovery::inspect_backup_for_fresh_install,
-            commands::recovery::restore_backup_fresh_install,
-            commands::recovery::restart_after_recovery,
-            commands::recovery::run_automatic_backup,
-            commands::setup::get_setup_status,
-            commands::setup::bootstrap_first_admin,
-            commands::catalog::create_product,
-            commands::catalog::list_products,
-            commands::catalog::create_product_with_variants,
-            commands::catalog::add_variant,
-            commands::catalog::update_variant,
-            commands::catalog::set_variant_active,
-            commands::catalog::update_product,
-            commands::catalog::create_attribute,
-            commands::catalog::add_attribute_value,
-            commands::catalog::list_attributes,
-            commands::catalog::create_unit,
-            commands::catalog::list_units,
-            commands::catalog::set_variant_attributes,
-            commands::catalog::add_variant_barcode,
-            commands::catalog::remove_variant_barcode,
-            commands::catalog::add_variant_alt_unit,
-            commands::catalog::remove_variant_alt_unit,
-            commands::catalog::set_variant_base_unit,
-            commands::catalog::resolve_barcode,
-            commands::catalog::list_catalog_products,
-            commands::catalog::get_product_detail,
-            // WS-D-2 — reference-data lifecycle, quick_create_product,
-            // list_products_v2, and the widened update_product/update_variant
-            // overloads (D-1 deliverable exposed to the app).
-            commands::catalog::list_categories,
-            commands::catalog::create_category,
-            commands::catalog::rename_category,
-            commands::catalog::set_category_active,
-            commands::catalog::delete_category,
-            commands::catalog::list_attributes_v2,
-            commands::catalog::rename_attribute,
-            commands::catalog::set_attribute_active,
-            commands::catalog::set_attribute_visible_on_receipt,
-            commands::catalog::delete_attribute,
-            commands::catalog::list_attribute_values,
-            commands::catalog::rename_attribute_value,
-            commands::catalog::set_attribute_value_active,
-            commands::catalog::delete_attribute_value,
-            commands::catalog::list_units_v2,
-            commands::catalog::rename_unit,
-            commands::catalog::set_unit_active,
-            commands::catalog::delete_unit,
-            commands::catalog::quick_create_product,
-            commands::catalog::list_products_v2,
-            commands::catalog::update_product_v2,
-            commands::catalog::update_variant_v2,
-            commands::warehouse::create_warehouse,
-            commands::warehouse::list_warehouses,
-            commands::reference::list_fiscal_periods,
-            commands::reference::get_open_fiscal_period,
-            commands::reference::get_dashboard_summary,
-            commands::documents::get_sale_document,
-            commands::documents::list_sale_lines,
-            commands::documents::list_document_jobs,
-            commands::documents::list_printable_documents,
-            commands::documents::list_business_documents,
-            commands::documents::get_customer_document_payload,
-            commands::finance::list_journals,
-            commands::finance::get_journal_detail,
-            commands::finance::search_journals,
-            commands::documents::generate_customer_document_pdf,
-            commands::documents::enqueue_customer_reprint,
-            commands::documents::get_business_document_detail,
-            commands::documents::get_business_document_reports,
-            commands::documents::search_business_documents,
-            commands::documents::save_binary_file,
-            commands::procurement::create_supplier,
-            commands::procurement::update_supplier,
-            commands::procurement::list_suppliers,
-            commands::procurement::create_purchase_order_draft,
-            commands::procurement::update_purchase_order_draft,
-            commands::procurement::confirm_purchase_order,
-            commands::procurement::cancel_purchase_order,
-            commands::procurement::list_purchase_orders,
-            commands::procurement::list_purchase_product_options,
-            commands::procurement::get_purchase_order_detail,
-            commands::procurement::confirm_purchase_receipt,
-            commands::procurement::confirm_direct_purchase,
-            commands::procurement::post_purchase_payment,
-            commands::procurement::list_purchase_payment_status,
-            commands::procurement::list_purchase_payments,
-            commands::procurement::list_supplier_balances,
-            commands::procurement::confirm_purchase_return,
-            commands::procurement::list_purchase_returnable_lines,
-            commands::procurement::list_purchase_returns,
-            commands::procurement::list_purchase_receipts,
-            commands::procurement::list_purchase_receipt_lines,
-            commands::procurement::get_procurement_capabilities,
-            commands::procurement::allocate_landed_cost,
-            commands::procurement::create_supplier_invoice_draft,
-            commands::procurement::confirm_supplier_invoice,
-            commands::procurement::list_supplier_invoices,
-            commands::procurement::list_supplier_liabilities,
-            commands::procurement::create_supplier_return_draft,
-            commands::procurement::confirm_supplier_return,
-            commands::procurement::post_supplier_payment,
-            commands::procurement::list_supplier_returns,
-            commands::procurement::list_supplier_payments,
-            commands::customer::create_customer,
-            commands::customer::update_customer,
-            commands::customer::list_customers,
-            commands::customer::get_customer_capabilities,
-            commands::customer::get_customer_credit_summary,
-            commands::customer::list_customer_ledger,
-            commands::receivables::list_open_customer_invoices,
-            commands::receivables::post_customer_payment,
-            commands::receivables::list_refundable_customer_payments,
-            commands::receivables::authorize_customer_payment_refund,
-            commands::receivables::post_customer_refund,
-            commands::printing::print_raw_receipt,
-            commands::printing::get_printing_settings,
-            commands::printing::save_printing_settings,
-            commands::printing::set_company_logo,
-            commands::printing::get_company_logo,
-            commands::printing::clear_company_logo,
-        ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 

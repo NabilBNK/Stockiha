@@ -222,6 +222,18 @@ serde_json = "=1.0.150"
 # lock churn) — it is now needed at runtime, not just in tests.
 base64 = "=0.22.1"
 
+# WS-K-7: also used at runtime to verify licence keys. `minisign-verify` is
+# promoted here from `[dev-dependencies]` (added in WS-K-6 for a test-only
+# assertion against `tauri-plugin-updater`'s own verification primitive) to
+# a normal dependency, at the exact same pinned version already resolved in
+# `Cargo.lock` (no version change, no lock churn) — the licence engine
+# verifies an Ed25519/minisign signature over the licence payload with this
+# same crate, offline, against a public key compiled into the binary (see
+# `licence::signature`). The licence key pair is a separate keypair from the
+# update-signing one (see `licence::mod` doc comment); this crate only ever
+# verifies, never signs, so a leaked binary can never mint a licence.
+minisign-verify = "=0.2.5"
+
 # S0-005: Windows Credential Manager access (Win32 generic credentials).
 # S0-008: adds `Win32_Graphics_Printing` (OpenPrinterW/StartDocPrinterW/
 # StartPagePrinter/WritePrinter/EndPagePrinter/EndDocPrinter/AbortPrinter/
@@ -241,6 +253,9 @@ base64 = "=0.22.1"
 # WS-K-4: `Win32_System_Threading` for `OpenProcess`/`GetExitCodeProcess`/
 # `QueryFullProcessImageNameW` — the stale `postmaster.pid` liveness check
 # (infrastructure::pg_process). No new crate.
+# WS-K-7: `Win32_System_Registry` for `RegGetValueW`, reading
+# `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` — the machine-lock
+# input for licence activation (see `licence::machine`). No new crate.
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security_Credentials",
@@ -250,19 +265,9 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Security_Authorization",
     "Win32_Storage_FileSystem",
     "Win32_System_Threading",
+    "Win32_System_Registry",
 ] }
 
 [dev-dependencies]
 # S0-003: async runtime for the opt-in PostgreSQL integration tests only.
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-# WS-K-6: `minisign-verify` is the exact crate `tauri-plugin-updater` itself
-# uses to verify a downloaded installer's signature (confirmed by reading
-# that crate's own source, not assumed) — the one piece of that plugin
-# testable from outside it without a full Tauri app context (`UpdaterBuilder
-# ::new` is `pub(crate)`, requiring a live `&AppHandle`). This proves "a
-# tampered installer cannot install" against the real verification
-# primitive in play, using a real (throwaway, test-only) Ed25519/minisign
-# keypair — see tests/update_signature_verification.rs. Pinned to the exact
-# version already resolved transitively via `tauri-plugin-updater`
-# (confirmed in Cargo.lock), so this adds zero new package versions.
-minisign-verify = "=0.2.5"
