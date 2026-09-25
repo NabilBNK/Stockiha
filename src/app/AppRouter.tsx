@@ -18,6 +18,7 @@ import type { CustomerCapabilities } from '../shared/ipc/customerDto';
 import { getReportsCapabilities } from '../shared/ipc/reportsGateway';
 import type { ReportsCapabilities } from '../shared/ipc/reportsDto';
 import { ReportsScreen } from '../features/reports/ReportsScreen';
+import { NotificationsProvider } from '../features/notifications/NotificationsContext';
 import { AppDataProvider, useAppData } from './AppDataContext';
 import { LiveRestoreScreen } from '../features/settings/recovery/LiveRestoreScreen';
 import { useRecoveryTakeover } from '../features/settings/recovery/RecoveryTakeoverContext';
@@ -510,6 +511,7 @@ function AuthenticatedApp() {
   }
 
   return (
+    <NotificationsProvider>
     <AppShell
       currentView={view}
       onNavigate={setView}
@@ -535,7 +537,7 @@ function AuthenticatedApp() {
           </Button>
         </Banner>
       ) : null}
-      {view === 'dashboard' && <DashboardScreen />}
+      {view === 'dashboard' && <DashboardScreen setView={setView} />}
       {view === 'reports' && <ReportsScreen setView={setView} />}
       {view === 'historical_finance' && (
         <HistoricalFinanceScreen sessionToken={user?.token ?? ''} />
@@ -607,5 +609,6 @@ function AuthenticatedApp() {
         />
       )}
     </AppShell>
+    </NotificationsProvider>
   );
 }

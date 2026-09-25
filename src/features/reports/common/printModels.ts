@@ -11,8 +11,10 @@ import type {
   AccountLedger,
   CashFlow,
   CustomerStatement,
+  LowStock,
   MarginAlerts,
   MonthlySummary,
+  ProductHistory,
   ProfitAndLoss,
   ReceivablesAging,
   SalesByCashier,
@@ -21,6 +23,8 @@ import type {
   SalesByProduct,
   SalesSummary,
   SalesTimeseries,
+  SlowMovers,
+  StockValuation,
   SupplierBalances,
   SupplierStatement,
   TrialBalance,
@@ -592,5 +596,110 @@ export function buildAccountLedgerModel(ctx: ReportPrintContext, data: AccountLe
       { date: ctx.period.to, journal_number: '', description: ctx.copy.closingBalance, debit: '', credit: '', balance: data.closing_balance },
     ],
     [{ label: ctx.copy.closingBalance, value: data.closing_balance, emphasis: true }],
+  );
+}
+
+export function buildStockValuationModel(ctx: ReportPrintContext, data: StockValuation): OfficialDocumentModel {
+  return buildReportModel(
+    ctx,
+    'STOCK_REPORT',
+    ctx.copy.stockValuation,
+    [
+      { key: 'product', label: ctx.copy.stockValuation, align: 'start' },
+      { key: 'sku', label: 'SKU', align: 'start' },
+      { key: 'category', label: ctx.copy.category, align: 'start' },
+      { key: 'quantity', label: '', align: 'end' },
+      { key: 'avg_cost', label: ctx.copy.avgCost, align: 'end' },
+      { key: 'stock_value', label: ctx.copy.stockValue, align: 'end' },
+      { key: 'retail_value', label: ctx.copy.retailValue, align: 'end' },
+    ],
+    data.rows.map((row) => ({
+      product: `${row.product_name} — ${row.variant_label ?? ''}`,
+      sku: row.sku,
+      category: row.category_name ?? ctx.copy.noCategory,
+      quantity: formatQuantityWithPack(row.quantity_base, row.base_unit_name, row.pack_unit_name, row.pack_factor, ctx.locale),
+      avg_cost: row.wac ?? '—',
+      stock_value: row.stock_value,
+      retail_value: row.retail_value,
+    })),
+    [
+      { label: ctx.copy.stockValue, value: data.totals.stock_value, emphasis: true },
+      { label: ctx.copy.retailValue, value: data.totals.retail_value },
+    ],
+  );
+}
+
+export function buildLowStockModel(ctx: ReportPrintContext, data: LowStock): OfficialDocumentModel {
+  return buildReportModel(
+    ctx,
+    'STOCK_REPORT',
+    ctx.copy.lowStock,
+    [
+      { key: 'product', label: ctx.copy.lowStock, align: 'start' },
+      { key: 'sku', label: 'SKU', align: 'start' },
+      { key: 'on_hand', label: ctx.copy.onHand, align: 'end' },
+      { key: 'minimum', label: ctx.copy.minimumStock, align: 'end' },
+      { key: 'suggested', label: ctx.copy.suggestedOrder, align: 'end' },
+      { key: 'supplier', label: ctx.copy.lastSupplier, align: 'start' },
+    ],
+    data.rows.map((row) => ({
+      product: `${row.product_name} — ${row.variant_label ?? ''}`,
+      sku: row.sku,
+      on_hand: row.on_hand,
+      minimum: row.minimum_stock,
+      suggested: row.suggested_qty_base,
+      supplier: row.last_supplier_name ?? '—',
+    })),
+  );
+}
+
+export function buildSlowMoversModel(ctx: ReportPrintContext, data: SlowMovers): OfficialDocumentModel {
+  return buildReportModel(
+    ctx,
+    'STOCK_REPORT',
+    ctx.copy.slowMovers,
+    [
+      { key: 'product', label: ctx.copy.slowMovers, align: 'start' },
+      { key: 'sku', label: 'SKU', align: 'start' },
+      { key: 'on_hand', label: ctx.copy.onHand, align: 'end' },
+      { key: 'stock_value', label: ctx.copy.stockValue, align: 'end' },
+      { key: 'last_sale', label: ctx.copy.lastSale, align: 'start' },
+      { key: 'days_since', label: ctx.copy.daysSince, align: 'end' },
+    ],
+    data.rows.map((row) => ({
+      product: `${row.product_name} — ${row.variant_label ?? ''}`,
+      sku: row.sku,
+      on_hand: formatQuantityWithPack(row.on_hand, row.base_unit_name, row.pack_unit_name, row.pack_factor, ctx.locale),
+      stock_value: row.stock_value,
+      last_sale: row.last_sale_date ?? ctx.copy.neverSold,
+      days_since: row.days_since_last_sale === null ? '—' : String(row.days_since_last_sale),
+    })),
+    [{ label: ctx.copy.stockValue, value: data.totals.stock_value, emphasis: true }],
+  );
+}
+
+export function buildProductHistoryModel(ctx: ReportPrintContext, data: ProductHistory): OfficialDocumentModel {
+  return buildReportModel(
+    ctx,
+    'STOCK_REPORT',
+    `${ctx.copy.productHistory} — ${data.variant.product_name} — ${data.variant.variant_label ?? ''}`,
+    [
+      { key: 'date', label: ctx.copy.dateTime, align: 'start' },
+      { key: 'movement', label: ctx.copy.movement, align: 'start' },
+      { key: 'document', label: ctx.copy.document, align: 'start' },
+      { key: 'delta', label: ctx.copy.quantityChange, align: 'end' },
+      { key: 'running', label: ctx.copy.runningQuantity, align: 'end' },
+    ],
+    [
+      { date: data.from, movement: '', document: '', delta: '', running: data.opening_quantity },
+      ...data.rows.map((row) => ({
+        date: row.occurred_at,
+        movement: row.movement_type,
+        document: row.document_number ?? '',
+        delta: row.quantity_delta,
+        running: row.running_quantity,
+      })),
+      { date: data.to, movement: '', document: '', delta: '', running: data.closing_quantity },
+    ],
   );
 }

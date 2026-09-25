@@ -523,6 +523,13 @@ pub fn run() {
         commands::reports::get_trial_balance,
         commands::reports::get_account_ledger,
         commands::reports::list_report_accounts,
+        // WS-I-3: stock reports, notifications and the Today home.
+        commands::reports::get_stock_valuation,
+        commands::reports::get_low_stock,
+        commands::reports::get_slow_movers,
+        commands::reports::get_product_history,
+        commands::reports::get_report_notifications,
+        commands::reports::get_today_overview,
         commands::documents::save_binary_file,
         commands::procurement::create_supplier,
         commands::procurement::update_supplier,

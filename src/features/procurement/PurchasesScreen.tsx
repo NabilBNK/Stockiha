@@ -30,6 +30,9 @@ import { JournalDetailModal } from '../accounting/JournalsScreen';
 import { addExactDecimals, isPositiveDecimal, multiplyExactDecimals } from './procurementDecimal';
 import { PROCUREMENT_COPY } from './procurementCopy';
 import './procurement.css';
+// WS-I-3 STEP I3-07 — the low-stock report's "Prepare purchase" prefill.
+import { PURCHASE_PREFILL_STORAGE_KEY, type PurchasePrefillPayload } from '../reports/stock/LowStockReport';
+import { formatReportCopy, useReportCopy } from '../reports/common/reportCopy';
 
 interface Props {
   sessionToken: string;
@@ -40,7 +43,10 @@ interface Props {
 export default function PurchasesScreen({ sessionToken, capabilities, openFiscalPeriodId }: Props) {
   const { t, locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
+  const reportCopy = useReportCopy();
   const errorText = useErrorText();
+  const [pendingPrefill, setPendingPrefill] = useState<PurchasePrefillPayload | null>(null);
+  const [prefillInfo, setPrefillInfo] = useState<{ added: number; skipped: number } | null>(null);
   const [receipts, setReceipts] = useState<PurchaseReceiptSummary[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -139,6 +145,62 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
       },
     ]);
   };
+
+  // WS-I-3 STEP I3-07 — read the prefill once on mount and remove it
+  // immediately, so a stale/replayed value never re-applies.
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = window.sessionStorage.getItem(PURCHASE_PREFILL_STORAGE_KEY);
+      window.sessionStorage.removeItem(PURCHASE_PREFILL_STORAGE_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const payload = JSON.parse(raw) as PurchasePrefillPayload;
+      const createdAtMs = Date.parse(payload.created_at);
+      if (!Number.isFinite(createdAtMs) || Date.now() - createdAtMs > 10 * 60 * 1000) return;
+      setPendingPrefill(payload);
+    } catch {
+      // Malformed JSON — ignored per STEP I3-07.
+    }
+  }, []);
+
+  // Applied once the product options have loaded, since matching a line's
+  // variant_id to a unit/cost needs `products`.
+  useEffect(() => {
+    if (!pendingPrefill || products.length === 0) return;
+    const payload = pendingPrefill;
+    setPendingPrefill(null);
+    setShowCreateForm(true);
+    if (payload.supplier_id !== null) {
+      setSupplierId(payload.supplier_id);
+    }
+    let added = 0;
+    let skipped = 0;
+    const newLines: CreatePoLinePayload[] = [];
+    for (const line of payload.lines) {
+      const option = products.find((p) => p.variant_id === line.variant_id && p.is_active);
+      if (!option) {
+        skipped += 1;
+        continue;
+      }
+      newLines.push({
+        variant_id: option.variant_id,
+        unit_id: option.default_unit_id,
+        quantity_ordered: String(line.quantity_base),
+        unit_cost: line.unit_cost ?? '',
+      });
+      added += 1;
+    }
+    if (newLines.length > 0) {
+      setLines((prev) => [...prev, ...newLines]);
+    }
+    if (added > 0 || skipped > 0) {
+      setPrefillInfo({ added, skipped });
+    }
+  }, [pendingPrefill, products]);
 
   const openPickerForNewLine = () => {
     setPickerTargetIndex(null);
@@ -385,6 +447,15 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
       {successBanner && (
         <div className="sk-banner sk-banner--success" data-testid="po-success-banner">
           {successBanner}
+        </div>
+      )}
+
+      {prefillInfo && (
+        <div className="sk-banner sk-banner--info" data-testid="purchase-prefill-banner">
+          {formatReportCopy(reportCopy.prefillBanner, { n: String(prefillInfo.added) })}
+          {prefillInfo.skipped > 0
+            ? ` ${formatReportCopy(reportCopy.prefillSkipped, { m: String(prefillInfo.skipped) })}`
+            : ''}
         </div>
       )}
 

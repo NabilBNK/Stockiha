@@ -28,6 +28,7 @@ import type {
 } from '../shared/ipc/dto';
 import type { CustomerCapabilities } from '../shared/ipc/customerDto';
 import type { ReportsCapabilities } from '../shared/ipc/reportsDto';
+import { NotificationBell } from '../features/notifications/NotificationBell';
 
 export type AppView =
   | 'dashboard'
@@ -417,6 +418,7 @@ export function AppShell({
               </button>
             ))}
           </div>
+          <NotificationBell setView={onNavigate} />
           <button
             type="button"
             className="sk-shell__icon-button"

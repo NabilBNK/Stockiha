@@ -151,6 +151,13 @@ export const COMMANDS = {
   GET_TRIAL_BALANCE: 'get_trial_balance',
   GET_ACCOUNT_LEDGER: 'get_account_ledger',
   LIST_REPORT_ACCOUNTS: 'list_report_accounts',
+  // WS-I-3 stock reports, notifications and the Today home
+  GET_STOCK_VALUATION: 'get_stock_valuation',
+  GET_LOW_STOCK: 'get_low_stock',
+  GET_SLOW_MOVERS: 'get_slow_movers',
+  GET_PRODUCT_HISTORY: 'get_product_history',
+  GET_REPORT_NOTIFICATIONS: 'get_report_notifications',
+  GET_TODAY_OVERVIEW: 'get_today_overview',
   // Slice 2 — variant catalog
   ADD_VARIANT: 'add_variant',
   SET_VARIANT_ACTIVE: 'set_variant_active',

@@ -439,3 +439,138 @@ pub async fn list_report_accounts(
     .await
     .map_err(IpcError::from)
 }
+
+// WS-I-3 — stock reports, notifications and the Today home.
+
+#[tauri::command]
+pub async fn get_stock_valuation(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    category_id: Option<i64>,
+    search: Option<String>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_stock_valuation($1, $2, $3, $4, $5)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::BigInt(category_id),
+            ReportBind::Text(search),
+            ReportBind::Int(limit),
+            ReportBind::Int(offset),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_low_stock(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    search: Option<String>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_low_stock($1, $2, $3, $4)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::Text(search),
+            ReportBind::Int(limit),
+            ReportBind::Int(offset),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_slow_movers(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    days: i32,
+    search: Option<String>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_slow_movers($1, $2, $3, $4, $5)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::Int(Some(days)),
+            ReportBind::Text(search),
+            ReportBind::Int(limit),
+            ReportBind::Int(offset),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn get_product_history(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    variant_id: i64,
+    date_from: String,
+    date_to: String,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let from = parse_filter_date(&date_from).map_err(IpcError::from)?;
+    let to = parse_filter_date(&date_to).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_product_history($1, $2, $3, $4, $5, $6)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::BigInt(Some(variant_id)),
+            ReportBind::Date(Some(from)),
+            ReportBind::Date(Some(to)),
+            ReportBind::Int(limit),
+            ReportBind::Int(offset),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_report_notifications(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_notifications($1)",
+        vec![ReportBind::Text(Some(session_token))],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_today_overview(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_today($1)",
+        vec![ReportBind::Text(Some(session_token))],
+    )
+    .await
+    .map_err(IpcError::from)
+}

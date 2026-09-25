@@ -359,3 +359,172 @@ export interface ReportAccountRow {
 export interface ReportAccountsList {
   rows: ReportAccountRow[];
 }
+
+// WS-I-3 — stock reports, notifications and the Today home.
+
+export interface StockValuationRow {
+  variant_id: number;
+  product_name: string;
+  variant_label: string | null;
+  sku: string;
+  category_name: string | null;
+  quantity_base: string;
+  base_unit_name: string;
+  pack_unit_name: string | null;
+  pack_factor: string | null;
+  wac: string | null;
+  stock_value: string;
+  sale_price: string;
+  retail_value: string;
+  potential_margin: string;
+}
+
+export interface StockValuationTotals {
+  variant_count: number;
+  stock_value: string;
+  retail_value: string;
+  potential_margin: string;
+}
+
+export interface StockValuation {
+  total_count: number;
+  rows: StockValuationRow[];
+  totals: StockValuationTotals;
+}
+
+export interface LowStockRow {
+  variant_id: number;
+  product_name: string;
+  variant_label: string | null;
+  sku: string;
+  on_hand: string;
+  minimum_stock: string;
+  suggested_qty_base: string;
+  suggested_packs: string | null;
+  base_unit_name: string;
+  pack_unit_name: string | null;
+  pack_factor: string | null;
+  last_supplier_id: number | null;
+  last_supplier_name: string | null;
+  last_unit_cost: string | null;
+  last_purchase_date: string | null;
+}
+
+export interface LowStock {
+  total_count: number;
+  rows: LowStockRow[];
+}
+
+export interface SlowMoverRow {
+  variant_id: number;
+  product_name: string;
+  variant_label: string | null;
+  sku: string;
+  on_hand: string;
+  base_unit_name: string;
+  pack_unit_name: string | null;
+  pack_factor: string | null;
+  stock_value: string;
+  last_sale_date: string | null;
+  days_since_last_sale: number | null;
+  last_purchase_date: string | null;
+}
+
+export interface SlowMoversTotals {
+  variant_count: number;
+  stock_value: string;
+}
+
+export interface SlowMovers {
+  days: number;
+  total_count: number;
+  rows: SlowMoverRow[];
+  totals: SlowMoversTotals;
+}
+
+export interface ProductHistoryRow {
+  movement_id: number;
+  occurred_at: string;
+  movement_type: string;
+  reference_type: string;
+  document_id: number | null;
+  document_number: string | null;
+  document_type: string | null;
+  quantity_delta: string;
+  running_quantity: string;
+  value_delta: string;
+}
+
+export interface ProductHistory {
+  variant: {
+    variant_id: number;
+    product_name: string;
+    variant_label: string | null;
+    sku: string;
+    base_unit_name: string;
+    pack_unit_name: string | null;
+    pack_factor: string | null;
+  };
+  from: string;
+  to: string;
+  opening_quantity: string;
+  closing_quantity: string;
+  total_count: number;
+  rows: ProductHistoryRow[];
+}
+
+export type NotificationKind =
+  | 'OUT_OF_STOCK'
+  | 'LOW_STOCK'
+  | 'OVERDUE_DEBTS'
+  | 'CREDIT_LIMIT_EXCEEDED'
+  | 'MARGIN_ALERTS_7D'
+  | 'SLOW_MOVERS_90D'
+  | 'CASH_SESSION_LONG_OPEN'
+  | 'BACKUP_OVERDUE';
+
+export type NotificationSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
+
+export interface ReportNotificationItem {
+  id: NotificationKind;
+  kind: NotificationKind;
+  severity: NotificationSeverity;
+  count?: number;
+  amount?: string;
+  max_days?: number;
+  session_id?: number;
+  hours?: number;
+  last_success_at?: string | null;
+}
+
+export interface ReportNotifications {
+  generated_at: string;
+  items: ReportNotificationItem[];
+}
+
+export interface TodayDrawer {
+  session_id: number;
+  status: string;
+  opening_float: string;
+  expected_now: string;
+}
+
+export interface TodayHourlyPoint {
+  hour: number;
+  net_sales: string;
+  sale_count: number;
+}
+
+export interface TodayOverview {
+  today: { date: string; summary: SalesSummary };
+  same_day_last_week: { date: string; summary: SalesSummary };
+  hourly_today: TodayHourlyPoint[];
+  top_products_today: SalesByProductRow[];
+  drawer: TodayDrawer | null;
+  receivables_total: string;
+  overdue_total: string;
+  payables_total: string;
+  low_stock_count: number;
+  out_of_stock_count: number;
+  month_to_date: { from: string; to: string; net_sales: string; gross_profit: string };
+}

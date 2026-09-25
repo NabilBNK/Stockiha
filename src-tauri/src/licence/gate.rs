@@ -166,6 +166,12 @@ pub(crate) const ALLOWED_IN_READ_ONLY: &[&str] = &[
     "get_trial_balance",
     "get_account_ledger",
     "list_report_accounts",
+    "get_stock_valuation",
+    "get_low_stock",
+    "get_slow_movers",
+    "get_product_history",
+    "get_report_notifications",
+    "get_today_overview",
 ];
 
 #[cfg(test)]
@@ -220,7 +226,7 @@ mod tests {
 
         assert_eq!(
             registered.len(),
-            234,
+            240,
             "A command was added or removed: update licence::gate::ALLOWED_IN_READ_ONLY \
              deliberately (see WS-K-7 plan §6.3) and change this count."
         );

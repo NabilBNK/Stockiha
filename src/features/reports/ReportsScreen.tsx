@@ -27,10 +27,17 @@ import { SuppliersReport } from './finance/SuppliersReport';
 import { SupplierStatementReport } from './finance/SupplierStatementReport';
 import { TrialBalanceReport } from './finance/TrialBalanceReport';
 import { AccountLedgerReport } from './finance/AccountLedgerReport';
+import { StockValuationReport } from './stock/StockValuationReport';
+import { LowStockReport } from './stock/LowStockReport';
+import { SlowMoversReport } from './stock/SlowMoversReport';
+import { ProductHistoryReport } from './stock/ProductHistoryReport';
 
-const STORAGE_KEY = 'stockiha.reports.lastTab';
+// Exported so the notifications bell/panel and the Today home can jump
+// straight to a sub-report (STEP I3-06's "Navigating to a sub-report").
+export const REPORTS_LAST_TAB_STORAGE_KEY = 'stockiha.reports.lastTab';
+const STORAGE_KEY = REPORTS_LAST_TAB_STORAGE_KEY;
 
-type TabId = 'sales' | 'finance' | 'owed' | 'accounting';
+type TabId = 'sales' | 'finance' | 'owed' | 'accounting' | 'stock';
 
 const SALES_SUB_IDS = [
   'summary',
@@ -45,12 +52,21 @@ const SALES_SUB_IDS = [
 const FINANCE_SUB_IDS = ['monthly-summary', 'profit-loss', 'cash-flow'] as const;
 const OWED_SUB_IDS = ['receivables', 'customer-statement', 'suppliers', 'supplier-statement'] as const;
 const ACCOUNTING_SUB_IDS = ['trial-balance', 'account-ledger'] as const;
+// I3-06 deviation (documented in the result report): the plan's own example
+// sessionStorage targets ("stock/low", "stock/slow", "sales/margin") do not
+// match the sub ids WS-I-1 already shipped ("margin-alerts") or the kebab
+// convention every other sub id here uses ("best-sellers", "by-product").
+// Kept that established convention instead of introducing a second,
+// inconsistent naming scheme; the notifications panel/bell below target
+// these exact ids.
+const STOCK_SUB_IDS = ['valuation', 'low-stock', 'slow-movers', 'product-history'] as const;
 
 const SUB_IDS_BY_TAB: Record<TabId, readonly string[]> = {
   sales: SALES_SUB_IDS,
   finance: FINANCE_SUB_IDS,
   owed: OWED_SUB_IDS,
   accounting: ACCOUNTING_SUB_IDS,
+  stock: STOCK_SUB_IDS,
 };
 
 const DEFAULT_SUB_BY_TAB: Record<TabId, string> = {
@@ -58,6 +74,7 @@ const DEFAULT_SUB_BY_TAB: Record<TabId, string> = {
   finance: 'monthly-summary',
   owed: 'receivables',
   accounting: 'trial-balance',
+  stock: 'valuation',
 };
 
 function readLastTab(): { tab: TabId; sub: string } {
@@ -74,10 +91,9 @@ function readLastTab(): { tab: TabId; sub: string } {
 }
 
 export function ReportsScreen({ setView }: { setView: (v: AppView) => void }) {
-  // `setView` is part of this screen's declared contract (plan §5.9) because
-  // a later sub-plan's "Prepare purchase" action (WS-I-3, A12) navigates
-  // away from Reports to the Purchases screen. Unused before WS-I-3.
-  void setView;
+  // `setView` is part of this screen's declared contract (plan §5.9): the
+  // WS-I-3 "Prepare purchase" action (A12) navigates away from Reports to
+  // the Purchases screen — see LowStockReport.
   const copy = useReportCopy();
   const [{ tab, sub }, setActive] = useState(readLastTab);
   const [customerStatementPrefill, setCustomerStatementPrefill] =
@@ -111,7 +127,7 @@ export function ReportsScreen({ setView }: { setView: (v: AppView) => void }) {
   return (
     <div className="sk-reports-screen">
       <nav className="sk-view-switcher" role="tablist" aria-label={copy.reports} data-testid="reports-view-switcher">
-        {(['sales', 'finance', 'owed', 'accounting'] as const).map((id) => (
+        {(['sales', 'finance', 'owed', 'accounting', 'stock'] as const).map((id) => (
           <button
             key={id}
             type="button"
@@ -167,6 +183,11 @@ export function ReportsScreen({ setView }: { setView: (v: AppView) => void }) {
 
       {tab === 'accounting' && sub === 'trial-balance' && <TrialBalanceReport />}
       {tab === 'accounting' && sub === 'account-ledger' && <AccountLedgerReport />}
+
+      {tab === 'stock' && sub === 'valuation' && <StockValuationReport />}
+      {tab === 'stock' && sub === 'low-stock' && <LowStockReport setView={setView} />}
+      {tab === 'stock' && sub === 'slow-movers' && <SlowMoversReport />}
+      {tab === 'stock' && sub === 'product-history' && <ProductHistoryReport />}
     </div>
   );
 }
@@ -181,6 +202,8 @@ function TAB_LABEL(id: TabId, copy: Record<string, string>): string {
       return copy.tabOwed;
     case 'accounting':
       return copy.tabAccounting;
+    case 'stock':
+      return copy.tabStock;
     default:
       return id;
   }
@@ -222,6 +245,14 @@ function SUB_LABEL(id: string, copy: Record<string, string>): string {
       return copy.trialBalance;
     case 'account-ledger':
       return copy.accountLedger;
+    case 'valuation':
+      return copy.stockValuation;
+    case 'low-stock':
+      return copy.lowStock;
+    case 'slow-movers':
+      return copy.slowMovers;
+    case 'product-history':
+      return copy.productHistory;
     default:
       return id;
   }

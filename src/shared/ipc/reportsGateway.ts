@@ -5,11 +5,14 @@ import type {
   AccountLedger,
   CashFlow,
   CustomerStatement,
+  LowStock,
   MarginAlerts,
   MonthlySummary,
+  ProductHistory,
   ProfitAndLoss,
   ReceivablesAging,
   ReportAccountsList,
+  ReportNotifications,
   ReportsCapabilities,
   SalesByCashier,
   SalesByCategory,
@@ -17,8 +20,11 @@ import type {
   SalesByProduct,
   SalesSummary,
   SalesTimeseries,
+  SlowMovers,
+  StockValuation,
   SupplierBalances,
   SupplierStatement,
+  TodayOverview,
   TrialBalance,
 } from './reportsDto';
 import { GatewayError } from './gateway';
@@ -286,6 +292,96 @@ export function getAccountLedger(
 
 export function listReportAccounts(sessionToken: string): Promise<ReportAccountsList> {
   return invoke<ReportAccountsList>(COMMANDS.LIST_REPORT_ACCOUNTS, { sessionToken }).catch(
+    (error: unknown) => {
+      throw new GatewayError(parseTauriError(error));
+    },
+  );
+}
+
+// WS-I-3 — stock reports, notifications and the Today home.
+
+export function getStockValuation(
+  sessionToken: string,
+  categoryId: number | null,
+  search: string | null,
+  limit: number,
+  offset: number,
+): Promise<StockValuation> {
+  return invoke<StockValuation>(COMMANDS.GET_STOCK_VALUATION, {
+    sessionToken,
+    categoryId,
+    search,
+    limit,
+    offset,
+  }).catch((error: unknown) => {
+    throw new GatewayError(parseTauriError(error));
+  });
+}
+
+export function getLowStock(
+  sessionToken: string,
+  search: string | null,
+  limit: number,
+  offset: number,
+): Promise<LowStock> {
+  return invoke<LowStock>(COMMANDS.GET_LOW_STOCK, {
+    sessionToken,
+    search,
+    limit,
+    offset,
+  }).catch((error: unknown) => {
+    throw new GatewayError(parseTauriError(error));
+  });
+}
+
+export function getSlowMovers(
+  sessionToken: string,
+  days: number,
+  search: string | null,
+  limit: number,
+  offset: number,
+): Promise<SlowMovers> {
+  return invoke<SlowMovers>(COMMANDS.GET_SLOW_MOVERS, {
+    sessionToken,
+    days,
+    search,
+    limit,
+    offset,
+  }).catch((error: unknown) => {
+    throw new GatewayError(parseTauriError(error));
+  });
+}
+
+export function getProductHistory(
+  sessionToken: string,
+  variantId: number,
+  dateFrom: string,
+  dateTo: string,
+  limit: number,
+  offset: number,
+): Promise<ProductHistory> {
+  return invoke<ProductHistory>(COMMANDS.GET_PRODUCT_HISTORY, {
+    sessionToken,
+    variantId,
+    dateFrom,
+    dateTo,
+    limit,
+    offset,
+  }).catch((error: unknown) => {
+    throw new GatewayError(parseTauriError(error));
+  });
+}
+
+export function getReportNotifications(sessionToken: string): Promise<ReportNotifications> {
+  return invoke<ReportNotifications>(COMMANDS.GET_REPORT_NOTIFICATIONS, { sessionToken }).catch(
+    (error: unknown) => {
+      throw new GatewayError(parseTauriError(error));
+    },
+  );
+}
+
+export function getTodayOverview(sessionToken: string): Promise<TodayOverview> {
+  return invoke<TodayOverview>(COMMANDS.GET_TODAY_OVERVIEW, { sessionToken }).catch(
     (error: unknown) => {
       throw new GatewayError(parseTauriError(error));
     },
