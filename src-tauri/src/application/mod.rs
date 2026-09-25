@@ -39,6 +39,8 @@ pub(crate) mod recovery;
 pub(crate) mod recovery_creation;
 // WS-H-3: EMBEDDED-mode recovery orchestration (installed builds).
 pub(crate) mod recovery_embedded;
+// WS-I-1: reporting foundation (`reports.*` SQL functions).
+pub(crate) mod reports;
 pub(crate) mod sale_void;
 pub(crate) mod setup;
 pub(crate) mod stock_adjustment;

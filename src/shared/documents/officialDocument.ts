@@ -32,6 +32,21 @@ export type OfficialDocumentKind =
   | 'DOCUMENTS_REPORT'
   | 'JOURNALS_REPORT'
   | 'CASH_SESSION_REPORT'
+  // WS-I: reporting print/PDF kinds. All added in WS-I-1 (§4.4) so later
+  // sub-plans never touch this union again.
+  | 'SALES_SUMMARY'
+  | 'SALES_REPORT'
+  | 'MARGIN_REPORT'
+  | 'PROFIT_LOSS'
+  | 'CASH_FLOW'
+  | 'MONTHLY_SUMMARY'
+  | 'AGING_REPORT'
+  | 'CUSTOMER_STATEMENT'
+  | 'SUPPLIER_STATEMENT'
+  | 'SUPPLIER_BALANCES'
+  | 'TRIAL_BALANCE'
+  | 'ACCOUNT_LEDGER'
+  | 'STOCK_REPORT'
   | 'GENERIC';
 
 export interface OfficialDocumentColumn {

@@ -131,6 +131,33 @@ export const COMMANDS = {
   SEARCH_JOURNALS: 'search_journals',
   SEARCH_BUSINESS_DOCUMENTS: 'search_business_documents',
   SAVE_BINARY_FILE: 'save_binary_file',
+  // WS-I reports
+  GET_REPORTS_CAPABILITIES: 'get_reports_capabilities',
+  GET_SALES_SUMMARY: 'get_sales_summary',
+  GET_SALES_TIMESERIES: 'get_sales_timeseries',
+  GET_SALES_BY_PRODUCT: 'get_sales_by_product',
+  GET_SALES_BY_CATEGORY: 'get_sales_by_category',
+  GET_SALES_BY_CASHIER: 'get_sales_by_cashier',
+  GET_SALES_BY_HOUR: 'get_sales_by_hour',
+  GET_MARGIN_ALERTS: 'get_margin_alerts',
+  // WS-I-2 finance/money-owed/accountant reports
+  GET_PROFIT_AND_LOSS: 'get_profit_and_loss',
+  GET_CASH_FLOW: 'get_cash_flow',
+  GET_MONTHLY_SUMMARY: 'get_monthly_summary',
+  GET_RECEIVABLES_AGING: 'get_receivables_aging',
+  GET_CUSTOMER_STATEMENT: 'get_customer_statement',
+  GET_SUPPLIER_BALANCES: 'get_supplier_balances',
+  GET_SUPPLIER_STATEMENT: 'get_supplier_statement',
+  GET_TRIAL_BALANCE: 'get_trial_balance',
+  GET_ACCOUNT_LEDGER: 'get_account_ledger',
+  LIST_REPORT_ACCOUNTS: 'list_report_accounts',
+  // WS-I-3 stock reports, notifications and the Today home
+  GET_STOCK_VALUATION: 'get_stock_valuation',
+  GET_LOW_STOCK: 'get_low_stock',
+  GET_SLOW_MOVERS: 'get_slow_movers',
+  GET_PRODUCT_HISTORY: 'get_product_history',
+  GET_REPORT_NOTIFICATIONS: 'get_report_notifications',
+  GET_TODAY_OVERVIEW: 'get_today_overview',
   // Slice 2 — variant catalog
   ADD_VARIANT: 'add_variant',
   SET_VARIANT_ACTIVE: 'set_variant_active',
@@ -242,6 +269,12 @@ export const COMMANDS = {
   SET_COMPANY_LOGO: 'set_company_logo',
   GET_COMPANY_LOGO: 'get_company_logo',
   CLEAR_COMPANY_LOGO: 'clear_company_logo',
+
+  // WS-K-7 — offline licence activation
+  GET_LICENCE_STATUS: 'get_licence_status',
+  ACTIVATE_LICENCE: 'activate_licence',
+  REMOVE_LICENCE: 'remove_licence',
+  REFRESH_LICENCE_STATUS: 'refresh_licence_status',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

@@ -15,6 +15,10 @@ import { getOpeningStateOnboardingStatus } from '../shared/ipc/openingStateLifec
 import type { OpeningStateOnboardingStatusResult } from '../shared/ipc/openingStateLifecycleDto';
 import { getCustomerCapabilities } from '../shared/ipc/customerGateway';
 import type { CustomerCapabilities } from '../shared/ipc/customerDto';
+import { getReportsCapabilities } from '../shared/ipc/reportsGateway';
+import type { ReportsCapabilities } from '../shared/ipc/reportsDto';
+import { ReportsScreen } from '../features/reports/ReportsScreen';
+import { NotificationsProvider } from '../features/notifications/NotificationsContext';
 import { AppDataProvider, useAppData } from './AppDataContext';
 import { LiveRestoreScreen } from '../features/settings/recovery/LiveRestoreScreen';
 import { useRecoveryTakeover } from '../features/settings/recovery/RecoveryTakeoverContext';
@@ -24,6 +28,8 @@ import {
   runAutomaticBackup,
 } from '../shared/ipc/recoveryGateway';
 import { AppShell, type AppView } from './AppShell';
+import { LicenceBanner } from '../features/licence/LicenceBanner';
+import { LicenceSettingsCard } from '../features/licence/LicenceSettingsCard';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { SetupScreen } from '../features/setup/SetupScreen';
 import { BackendUnavailableScreen } from '../features/startup/BackendUnavailableScreen';
@@ -207,6 +213,8 @@ function AuthenticatedApp() {
     useState<ProcurementCapabilities | null>(null);
   const [customerCapabilities, setCustomerCapabilities] =
     useState<CustomerCapabilities | null>(null);
+  const [reportsCapabilities, setReportsCapabilities] =
+    useState<ReportsCapabilities | null>(null);
   /**
    * WS-K-1 (correction 1) — a persistent, non-dismissible notice that
    * `database.json`'s on-disk permissions look broader than the current
@@ -375,6 +383,27 @@ function AuthenticatedApp() {
     };
   }, [user?.token]);
 
+  // WS-I-1 — read-only capability for the reporting screens; safe-deny like
+  // the other capability flags above (UI hiding only, not authorisation).
+  useEffect(() => {
+    const token = user?.token;
+    if (!token) {
+      setReportsCapabilities(null);
+      return;
+    }
+    let active = true;
+    void getReportsCapabilities(token)
+      .then((capabilities) => {
+        if (active) setReportsCapabilities(capabilities);
+      })
+      .catch(() => {
+        if (active) setReportsCapabilities({ can_view_reports: false });
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.token]);
+
   useEffect(() => {
     void refreshActiveCashSession();
   }, [refreshActiveCashSession]);
@@ -466,12 +495,23 @@ function AuthenticatedApp() {
     setView('products');
   }
 
+  // WS-K-7: navigate to Settings and scroll the licence card into view — the
+  // one cross-screen action the licence banner and the POS/cash-session
+  // blocked cards all need (plan §7.3/§7.5).
+  function openLicenceCard() {
+    setView('settings');
+    window.requestAnimationFrame(() => {
+      document.getElementById('licence-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   async function finishOpeningStateApplication() {
     await refreshOpeningStateStatus();
     setView('settings');
   }
 
   return (
+    <NotificationsProvider>
     <AppShell
       currentView={view}
       onNavigate={setView}
@@ -480,8 +520,10 @@ function AuthenticatedApp() {
       inventoryCorrectionsEnabled={inventoryCorrectionsEnabled}
       procurementCapabilities={procurementCapabilities}
       customerCapabilities={customerCapabilities}
+      reportsCapabilities={reportsCapabilities}
     >
       <UpdateBanner cashSessionOpen={activeCashSession !== null} />
+      <LicenceBanner onOpenLicence={openLicenceCard} />
       {configWarning === 'INSECURE_PERMISSIONS' ? (
         <Banner tone="warning" testId="db-config-permission-warning">
           {t('backend.configWarning.insecurePermissions')}
@@ -495,7 +537,8 @@ function AuthenticatedApp() {
           </Button>
         </Banner>
       ) : null}
-      {view === 'dashboard' && <DashboardScreen />}
+      {view === 'dashboard' && <DashboardScreen setView={setView} />}
+      {view === 'reports' && <ReportsScreen setView={setView} />}
       {view === 'historical_finance' && (
         <HistoricalFinanceScreen sessionToken={user?.token ?? ''} />
       )}
@@ -512,6 +555,7 @@ function AuthenticatedApp() {
       )}
       {view === 'settings' && (
         <>
+          <LicenceSettingsCard sessionToken={user?.token ?? ''} />
           {openingStateStatus?.showDeferredAccess ? (
             <section className="sk-card" aria-labelledby="deferred-opening-state-title">
               <h2 id="deferred-opening-state-title">{text.deferredTitle}</h2>
@@ -551,7 +595,7 @@ function AuthenticatedApp() {
       {view === 'inventory' && <InventoryScreen />}
       {view === 'stock' && <StockReceiptScreen />}
       {view === 'adjustment' && inventoryCorrectionsEnabled && <StockAdjustmentScreen />}
-      {view === 'pos' && <PosScreen />}
+      {view === 'pos' && <PosScreen onOpenLicence={openLicenceCard} />}
       {view === 'session' && <CashSessionScreen />}
       {view === 'documents' && <DocumentsScreen />}
       {view === 'journals' && <JournalsScreen />}
@@ -565,5 +609,6 @@ function AuthenticatedApp() {
         />
       )}
     </AppShell>
+    </NotificationsProvider>
   );
 }

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Banner, Button, TextField } from '../../shared/components';
 import { useI18n, type Locale } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
+import { useLicence } from '../../shared/licence/LicenceContext';
 import { useSession } from '../../shared/session/SessionContext';
 import { useAppData } from '../../app/AppDataContext';
 import * as ipc from '../../shared/ipc/gateway';
@@ -186,6 +187,7 @@ export function CashSessionScreen() {
   const { user, refreshActiveCashSession, workstationId } = useSession();
   const { selectedWarehouseId } = useAppData();
   const errorText = useErrorText();
+  const { readOnly } = useLicence();
   const token = user?.token ?? '';
 
   const [current, setCurrent] = useState<CurrentCashSession | null>(null);
@@ -527,6 +529,11 @@ export function CashSessionScreen() {
       {!current ? (
         <form className="sk-card sk-form" onSubmit={onOpen} aria-label={t('session.open')}>
           <Banner tone="info">{t('session.none')}</Banner>
+          {readOnly ? (
+            <Banner tone="warning" testId="cash-open-licence-blocked">
+              {t('licence.openSessionBlocked')}
+            </Banner>
+          ) : null}
           <TextField
             label={t('session.openingFloat')}
             value={openingFloat}
@@ -535,7 +542,11 @@ export function CashSessionScreen() {
             error={!AMOUNT_RE.test(openingFloat) ? t('errors.validation') : undefined}
             required
           />
-          <Button type="submit" loading={busy} disabled={selectedWarehouseId == null || !AMOUNT_RE.test(openingFloat)}>
+          <Button
+            type="submit"
+            loading={busy}
+            disabled={readOnly || selectedWarehouseId == null || !AMOUNT_RE.test(openingFloat)}
+          >
             {t('session.open')}
           </Button>
         </form>

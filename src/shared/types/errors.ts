@@ -35,6 +35,13 @@ export const BACKEND_ERROR_CODES = [
   'LOGO_TOO_LARGE',
   'LOGO_NOT_A_FILE',
   'LOGO_UNSUPPORTED_TYPE',
+  // WS-K-7: licence activation.
+  'LICENCE_READ_ONLY',
+  'LICENCE_MALFORMED',
+  'LICENCE_INVALID',
+  'LICENCE_WRONG_MACHINE',
+  'LICENCE_EXPIRED',
+  'LICENCE_MACHINE_UNAVAILABLE',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -74,6 +81,12 @@ export const ERROR_MESSAGE_KEYS = {
   LOGO_TOO_LARGE: 'errors.logoTooLarge',
   LOGO_NOT_A_FILE: 'errors.logoNotAFile',
   LOGO_UNSUPPORTED_TYPE: 'errors.logoUnsupportedType',
+  LICENCE_READ_ONLY: 'errors.licenceReadOnly',
+  LICENCE_MALFORMED: 'errors.licenceMalformed',
+  LICENCE_INVALID: 'errors.licenceInvalid',
+  LICENCE_WRONG_MACHINE: 'errors.licenceWrongMachine',
+  LICENCE_EXPIRED: 'errors.licenceExpired',
+  LICENCE_MACHINE_UNAVAILABLE: 'errors.licenceMachineUnavailable',
   UNKNOWN_ERROR: 'errors.unknown',
 } as const satisfies Record<AppErrorCode, string>;
 

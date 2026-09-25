@@ -370,16 +370,20 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
   if (loading) return <Spinner />;
 
   return (
-    <section className="sk-page" aria-labelledby="printing-settings-title">
-      <div className="sk-card">
-        <h2 id="printing-settings-title">{t('printing.title')}</h2>
+    <section className="sk-page sk-settings-page" aria-labelledby="printing-settings-title">
+      <div className="sk-settings-card">
+        <div className="sk-settings-card__header">
+          <div className="sk-settings-card__title-group">
+            <h2 id="printing-settings-title" className="sk-settings-card__title">{t('printing.title')}</h2>
+          </div>
+        </div>
 
         {error ? <Banner tone="error">{error}</Banner> : null}
         {feedback ? <Banner tone="success">{feedback}</Banner> : null}
 
         <div className="sk-form">
           <div className="sk-field">
-            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label className="sk-checkbox-row">
               <input
                 type="checkbox"
                 data-testid="printing-enabled"
@@ -502,8 +506,12 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
         </div>
       </div>
 
-      <div className="sk-card">
-        <h3>{t('printing.identityTitle')}</h3>
+      <div className="sk-settings-card">
+        <div className="sk-settings-card__header">
+          <div className="sk-settings-card__title-group">
+            <h2 className="sk-settings-card__title">{t('printing.identityTitle')}</h2>
+          </div>
+        </div>
 
         <div className="sk-form">
           <div className="sk-field">
@@ -657,7 +665,7 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
           </div>
 
           <div className="sk-field">
-            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label className="sk-checkbox-row">
               <input
                 type="checkbox"
                 data-testid="show-logo"
@@ -669,7 +677,7 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
           </div>
 
           <div className="sk-field">
-            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label className="sk-checkbox-row">
               <input
                 type="checkbox"
                 data-testid="show-email"
@@ -681,7 +689,7 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
           </div>
 
           <div className="sk-field">
-            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label className="sk-checkbox-row">
               <input
                 type="checkbox"
                 data-testid="show-website"
@@ -693,7 +701,7 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
           </div>
 
           <div className="sk-field">
-            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label className="sk-checkbox-row">
               <input
                 type="checkbox"
                 data-testid="show-rib"
@@ -705,7 +713,7 @@ export function PrintingSettingsScreen({ sessionToken }: Props) {
           </div>
 
           <div className="sk-field">
-            <label className="sk-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label className="sk-checkbox-row">
               <input
                 type="checkbox"
                 data-testid="amount-in-words"

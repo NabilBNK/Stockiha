@@ -1,0 +1,91 @@
+/* WS-I redesign — the handful of report-specific classes with no existing
+   precedent elsewhere in the app. Everything else in the Reports feature
+   reuses the shared .sk-* system from global.css / historical-finance.css. */
+
+.sk-reports-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sk-gap);
+  padding: 20px;
+}
+
+.sk-report-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sk-report-frame__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--sk-text);
+}
+
+.sk-report-frame__footnote {
+  margin: 0;
+  color: var(--sk-text-soft);
+  font-size: .88rem;
+}
+
+.sk-reports-table-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sk-reports-loading {
+  min-height: 160px;
+}
+
+.sk-reports-table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block-start: 10px;
+  color: var(--sk-text-soft);
+  font-size: .92rem;
+}
+
+.sk-report-toggle,
+.sk-report-granularity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sk-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+  background: var(--sk-surface);
+  box-shadow: var(--sk-shadow);
+}
+
+.sk-picker-list li {
+  display: flex;
+}
+
+.sk-picker-list button {
+  flex: 1;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--sk-radius-sm);
+  background: transparent;
+  color: var(--sk-text);
+  text-align: start;
+  cursor: pointer;
+  transition: background-color .15s;
+}
+
+.sk-picker-list button:hover {
+  background: var(--sk-surface-hover);
+}
