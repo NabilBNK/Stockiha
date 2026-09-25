@@ -27,3 +27,14 @@
 13. The supplier statement ends with the same balance as the Suppliers page.
 14. The trial balance says "Balanced". Open one account's ledger and click a journal number.
 15. **Specifically check the end-of-day cash-out drawer count** — during Result Report review, a pre-existing bug was found (not introduced by WS-I): after any "cash out" during a session, the count screen's *expected* amount is inflated by 2x the cash-out total (confirmed in `sales.submit_cash_session_count`, unrelated to reporting). Closing a session with a real cash-out and checking whether the reported variance/shortfall looks right is worth a specific look, independent of the WS-I reports themselves (which compute correctly from the underlying ledger, not from this session field).
+
+## After WS-I-3
+
+16. Set a minimum stock above the current stock on two products: the bell shows a badge, and the home page shows the low-stock count.
+17. Low stock → tick both → Prepare purchase: the purchase opens with both lines filled in; save it; the alert disappears.
+18. Slow movers at 90 days lists products not sold recently, with the money tied up.
+19. The home page shows today's sales, profit, cash expected, top products and the hourly chart. "Copy today's summary for WhatsApp" pastes correctly.
+20. Dismiss a notification: hidden today, back tomorrow if still true.
+21. Switch to French, then Arabic: reports, home page and bell all read correctly.
+22. **Stock valuation "Avg cost" and product history**: open a product with real purchase history and confirm the running quantity in Product history matches the on-hand shown in Stock valuation for today's date.
+23. **Prepare purchase with two suppliers**: select two low-stock rows whose last supplier differs, confirm the "choose a supplier" dialog appears, and that "Choose later" still opens the purchase form (with no supplier pre-selected).
