@@ -155,6 +155,17 @@ pub(crate) const ALLOWED_IN_READ_ONLY: &[&str] = &[
     "get_sales_by_cashier",
     "get_sales_by_hour",
     "get_margin_alerts",
+    // WS-I-2: finance, money owed and accountant reports (reads only).
+    "get_profit_and_loss",
+    "get_cash_flow",
+    "get_monthly_summary",
+    "get_receivables_aging",
+    "get_customer_statement",
+    "get_supplier_balances",
+    "get_supplier_statement",
+    "get_trial_balance",
+    "get_account_ledger",
+    "list_report_accounts",
 ];
 
 #[cfg(test)]
@@ -209,7 +220,7 @@ mod tests {
 
         assert_eq!(
             registered.len(),
-            224,
+            234,
             "A command was added or removed: update licence::gate::ALLOWED_IN_READ_ONLY \
              deliberately (see WS-K-7 plan §6.3) and change this count."
         );

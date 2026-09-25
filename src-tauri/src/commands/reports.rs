@@ -206,3 +206,236 @@ pub async fn get_margin_alerts(
     .await
     .map_err(IpcError::from)
 }
+
+// WS-I-2: finance, money owed and accountant reports.
+
+#[tauri::command]
+pub async fn get_profit_and_loss(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    date_from: String,
+    date_to: String,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let from = parse_filter_date(&date_from).map_err(IpcError::from)?;
+    let to = parse_filter_date(&date_to).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_profit_and_loss($1, $2, $3)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::Date(Some(from)),
+            ReportBind::Date(Some(to)),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_cash_flow(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    date_from: String,
+    date_to: String,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let from = parse_filter_date(&date_from).map_err(IpcError::from)?;
+    let to = parse_filter_date(&date_to).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_cash_flow($1, $2, $3)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::Date(Some(from)),
+            ReportBind::Date(Some(to)),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_monthly_summary(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    year: i32,
+    month: i32,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_monthly_summary($1, $2, $3)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::Int(Some(year)),
+            ReportBind::Int(Some(month)),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_receivables_aging(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    search: Option<String>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_receivables_aging($1, $2, $3, $4)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::Text(search),
+            ReportBind::Int(limit),
+            ReportBind::Int(offset),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_customer_statement(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    customer_id: i64,
+    date_from: String,
+    date_to: String,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let from = parse_filter_date(&date_from).map_err(IpcError::from)?;
+    let to = parse_filter_date(&date_to).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_customer_statement($1, $2, $3, $4)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::BigInt(Some(customer_id)),
+            ReportBind::Date(Some(from)),
+            ReportBind::Date(Some(to)),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_supplier_balances(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    search: Option<String>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_supplier_balances($1, $2, $3, $4)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::Text(search),
+            ReportBind::Int(limit),
+            ReportBind::Int(offset),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_supplier_statement(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    supplier_id: i64,
+    date_from: String,
+    date_to: String,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let from = parse_filter_date(&date_from).map_err(IpcError::from)?;
+    let to = parse_filter_date(&date_to).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_supplier_statement($1, $2, $3, $4)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::BigInt(Some(supplier_id)),
+            ReportBind::Date(Some(from)),
+            ReportBind::Date(Some(to)),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn get_trial_balance(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    date_from: String,
+    date_to: String,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let from = parse_filter_date(&date_from).map_err(IpcError::from)?;
+    let to = parse_filter_date(&date_to).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_trial_balance($1, $2, $3)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::Date(Some(from)),
+            ReportBind::Date(Some(to)),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn get_account_ledger(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    account_id: i64,
+    date_from: String,
+    date_to: String,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let from = parse_filter_date(&date_from).map_err(IpcError::from)?;
+    let to = parse_filter_date(&date_to).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.get_account_ledger($1, $2, $3, $4, $5, $6)",
+        vec![
+            ReportBind::Text(Some(session_token)),
+            ReportBind::BigInt(Some(account_id)),
+            ReportBind::Date(Some(from)),
+            ReportBind::Date(Some(to)),
+            ReportBind::Int(limit),
+            ReportBind::Int(offset),
+        ],
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub async fn list_report_accounts(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+) -> Result<Value, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    call_report(
+        pool,
+        "SELECT reports.list_accounts($1)",
+        vec![ReportBind::Text(Some(session_token))],
+    )
+    .await
+    .map_err(IpcError::from)
+}

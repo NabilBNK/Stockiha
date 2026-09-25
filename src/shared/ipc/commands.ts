@@ -140,6 +140,17 @@ export const COMMANDS = {
   GET_SALES_BY_CASHIER: 'get_sales_by_cashier',
   GET_SALES_BY_HOUR: 'get_sales_by_hour',
   GET_MARGIN_ALERTS: 'get_margin_alerts',
+  // WS-I-2 finance/money-owed/accountant reports
+  GET_PROFIT_AND_LOSS: 'get_profit_and_loss',
+  GET_CASH_FLOW: 'get_cash_flow',
+  GET_MONTHLY_SUMMARY: 'get_monthly_summary',
+  GET_RECEIVABLES_AGING: 'get_receivables_aging',
+  GET_CUSTOMER_STATEMENT: 'get_customer_statement',
+  GET_SUPPLIER_BALANCES: 'get_supplier_balances',
+  GET_SUPPLIER_STATEMENT: 'get_supplier_statement',
+  GET_TRIAL_BALANCE: 'get_trial_balance',
+  GET_ACCOUNT_LEDGER: 'get_account_ledger',
+  LIST_REPORT_ACCOUNTS: 'list_report_accounts',
   // Slice 2 — variant catalog
   ADD_VARIANT: 'add_variant',
   SET_VARIANT_ACTIVE: 'set_variant_active',

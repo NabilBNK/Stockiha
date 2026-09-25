@@ -8,17 +8,26 @@ import type {
   OfficialDocumentTotal,
 } from '../../../shared/documents/officialDocument';
 import type {
+  AccountLedger,
+  CashFlow,
+  CustomerStatement,
   MarginAlerts,
+  MonthlySummary,
+  ProfitAndLoss,
+  ReceivablesAging,
   SalesByCashier,
   SalesByCategory,
   SalesByHour,
   SalesByProduct,
   SalesSummary,
   SalesTimeseries,
+  SupplierBalances,
+  SupplierStatement,
+  TrialBalance,
 } from '../../../shared/ipc/reportsDto';
 import { formatQuantityWithPack } from './quantity';
 import type { Period } from './periods';
-import { WEEKDAY_KEYS } from './reportCopy';
+import { entryTypeLabel, WEEKDAY_KEYS } from './reportCopy';
 
 export interface ReportPrintContext {
   period: Period;
@@ -287,5 +296,301 @@ export function buildMarginAlertsModel(ctx: ReportPrintContext, report: MarginAl
       wac: row.current_wac ?? '—',
       suggested: row.suggested_min_price ?? '—',
     })),
+  );
+}
+
+// ============================================================================
+// WS-I-2 — finance, money owed and accountant reports.
+// ============================================================================
+
+export function buildMonthlySummaryModel(ctx: ReportPrintContext, data: MonthlySummary): OfficialDocumentModel {
+  const rows: Record<string, string>[] = [
+    { metric: ctx.copy.netSales, value: data.pnl.net_sales },
+    { metric: ctx.copy.costOfSales, value: data.pnl.cost_of_sales },
+    { metric: ctx.copy.grossProfit, value: data.pnl.gross_profit },
+    { metric: ctx.copy.marginPct, value: data.pnl.margin_pct ?? '—' },
+    { metric: ctx.copy.expenses, value: data.pnl.expenses },
+    { metric: ctx.copy.cashShortages, value: data.pnl.cash_shortages },
+    { metric: ctx.copy.cashOverages, value: data.pnl.cash_overages },
+    { metric: ctx.copy.netResult, value: data.pnl.net_result },
+    { metric: ctx.copy.purchases, value: data.purchases_total },
+    { metric: ctx.copy.owedToYou, value: data.receivables_now },
+    { metric: ctx.copy.youOwe, value: data.payables_now },
+    { metric: ctx.copy.stockValue, value: data.stock_value_now },
+    ...data.top_products.map((p, i) => ({
+      metric: `${ctx.copy.grossProfit} #${i + 1}: ${p.product_name} — ${p.variant_label}`,
+      value: p.gross_profit,
+    })),
+  ];
+  return buildReportModel(
+    ctx,
+    'MONTHLY_SUMMARY',
+    `${ctx.copy.monthlySummary} — ${data.period.from} → ${data.period.to}`,
+    [
+      { key: 'metric', label: '', align: 'start' },
+      { key: 'value', label: '', align: 'end' },
+    ],
+    rows,
+    [{ label: ctx.copy.netResult, value: data.pnl.net_result, emphasis: true }],
+  );
+}
+
+export function buildProfitLossModel(ctx: ReportPrintContext, data: ProfitAndLoss): OfficialDocumentModel {
+  return buildReportModel(
+    ctx,
+    'PROFIT_LOSS',
+    ctx.copy.profitLoss,
+    [
+      { key: 'label', label: '', align: 'start' },
+      { key: 'amount', label: '', align: 'end' },
+    ],
+    [
+      { label: ctx.copy.netSales, amount: data.net_sales },
+      { label: ctx.copy.costOfSales, amount: data.cost_of_sales },
+      { label: ctx.copy.grossProfit, amount: data.gross_profit },
+      { label: ctx.copy.expenses, amount: data.expenses },
+      { label: ctx.copy.cashShortages, amount: data.cash_shortages },
+      { label: ctx.copy.cashOverages, amount: data.cash_overages },
+    ],
+    [
+      { label: ctx.copy.grossProfit, value: data.gross_profit, emphasis: true },
+      { label: ctx.copy.netResult, value: data.net_result, emphasis: true },
+    ],
+  );
+}
+
+export function buildCashFlowModel(ctx: ReportPrintContext, data: CashFlow): OfficialDocumentModel {
+  const rows: Record<string, string>[] = [
+    { section: ctx.copy.reports, label: 'Cash sales', amount: data.in.cash_sales },
+    { section: ctx.copy.reports, label: 'Customer payments', amount: data.in.customer_payments_cash },
+    { section: ctx.copy.reports, label: 'Cash in', amount: data.in.cash_in },
+    { section: ctx.copy.reports, label: 'Refunds', amount: data.out.refunds },
+    { section: ctx.copy.reports, label: 'Cancellations', amount: data.out.cancellations },
+    { section: ctx.copy.reports, label: 'Cash out', amount: data.out.cash_out },
+  ];
+  return buildReportModel(
+    ctx,
+    'CASH_FLOW',
+    ctx.copy.cashFlow,
+    [
+      { key: 'label', label: '', align: 'start' },
+      { key: 'amount', label: '', align: 'end' },
+    ],
+    rows,
+    [
+      { label: 'Net drawer flow', value: data.net_drawer_flow, emphasis: true },
+      { label: 'Paid to suppliers (all methods)', value: data.supplier_payments_all_methods },
+    ],
+  );
+}
+
+export function buildReceivablesAgingModel(ctx: ReportPrintContext, data: ReceivablesAging): OfficialDocumentModel {
+  return buildReportModel(
+    ctx,
+    'AGING_REPORT',
+    ctx.copy.receivables,
+    [
+      { key: 'name', label: ctx.copy.receivables, align: 'start' },
+      { key: 'phone', label: '', align: 'start' },
+      { key: 'total_open', label: '', align: 'end' },
+      { key: 'not_due', label: ctx.copy.notDue, align: 'end' },
+      { key: 'd1_30', label: '1-30', align: 'end' },
+      { key: 'd31_60', label: '31-60', align: 'end' },
+      { key: 'd61_90', label: '61-90', align: 'end' },
+      { key: 'd90_plus', label: '90+', align: 'end' },
+      { key: 'days_overdue', label: ctx.copy.daysOverdue, align: 'end' },
+    ],
+    data.rows.map((row) => ({
+      name: `${row.name} (${row.code})`,
+      phone: row.phone ?? '',
+      total_open: row.total_open,
+      not_due: row.not_due,
+      d1_30: row.d1_30,
+      d31_60: row.d31_60,
+      d61_90: row.d61_90,
+      d90_plus: row.d90_plus,
+      days_overdue: String(row.days_overdue),
+    })),
+    [{ label: ctx.copy.receivables, value: data.totals.total_open, emphasis: true }],
+  );
+}
+
+export function buildCustomerStatementModel(ctx: ReportPrintContext, data: CustomerStatement): OfficialDocumentModel {
+  const model = buildReportModel(
+    ctx,
+    'CUSTOMER_STATEMENT',
+    ctx.copy.customerStatement,
+    [
+      { key: 'date', label: '', align: 'start' },
+      { key: 'document', label: '', align: 'start' },
+      { key: 'type', label: '', align: 'start' },
+      { key: 'debit', label: '', align: 'end' },
+      { key: 'credit', label: '', align: 'end' },
+      { key: 'balance', label: '', align: 'end' },
+    ],
+    [
+      { date: ctx.period.from, document: '', type: ctx.copy.openingBalance, debit: '', credit: '', balance: data.opening_balance },
+      ...data.entries.map((entry) => ({
+        date: entry.date,
+        document: entry.document_number ?? '',
+        type: entryTypeLabel(entry.entry_type, ctx.copy),
+        debit: entry.debit,
+        credit: entry.credit,
+        balance: entry.balance,
+      })),
+      { date: ctx.period.to, document: '', type: ctx.copy.closingBalance, debit: '', credit: '', balance: data.closing_balance },
+    ],
+    [
+      { label: ctx.copy.openingBalance, value: data.opening_balance },
+      { label: 'Total debit', value: data.total_debit },
+      { label: 'Total credit', value: data.total_credit },
+      { label: ctx.copy.balanceDue, value: data.closing_balance, emphasis: true },
+    ],
+  );
+  model.partyBlock = {
+    title: ctx.copy.customerStatement,
+    rows: [
+      { label: 'Code', value: data.customer.code },
+      { label: ctx.copy.customerStatement, value: data.customer.name },
+      { label: 'Phone', value: data.customer.phone ?? '' },
+      { label: 'Address', value: data.customer.address ?? '' },
+    ],
+  };
+  const closing = Number(data.closing_balance);
+  if (closing > 0) model.amountInWordsValue = data.closing_balance;
+  return model;
+}
+
+export function buildSupplierStatementModel(ctx: ReportPrintContext, data: SupplierStatement): OfficialDocumentModel {
+  const model = buildReportModel(
+    ctx,
+    'SUPPLIER_STATEMENT',
+    ctx.copy.supplierStatement,
+    [
+      { key: 'date', label: '', align: 'start' },
+      { key: 'document', label: '', align: 'start' },
+      { key: 'type', label: '', align: 'start' },
+      { key: 'increase', label: '', align: 'end' },
+      { key: 'decrease', label: '', align: 'end' },
+      { key: 'balance', label: '', align: 'end' },
+    ],
+    [
+      { date: ctx.period.from, document: '', type: ctx.copy.openingBalance, increase: '', decrease: '', balance: data.opening_balance },
+      ...data.entries.map((entry) => ({
+        date: entry.date,
+        document: entry.document_number ?? '',
+        type: entryTypeLabel(entry.entry_type, ctx.copy),
+        increase: entry.increase,
+        decrease: entry.decrease,
+        balance: entry.balance,
+      })),
+      { date: ctx.period.to, document: '', type: ctx.copy.closingBalance, increase: '', decrease: '', balance: data.closing_balance },
+    ],
+    [{ label: ctx.copy.balanceDue, value: data.closing_balance, emphasis: true }],
+  );
+  model.partyBlock = {
+    title: ctx.copy.supplierStatement,
+    rows: [
+      { label: 'Code', value: data.supplier.code },
+      { label: ctx.copy.supplierStatement, value: data.supplier.name },
+      { label: 'Phone', value: data.supplier.phone ?? '' },
+    ],
+  };
+  return model;
+}
+
+export function buildSupplierBalancesModel(ctx: ReportPrintContext, data: SupplierBalances): OfficialDocumentModel {
+  return buildReportModel(
+    ctx,
+    'SUPPLIER_BALANCES',
+    ctx.copy.suppliersBalances,
+    [
+      { key: 'name', label: ctx.copy.suppliersBalances, align: 'start' },
+      { key: 'phone', label: '', align: 'start' },
+      { key: 'purchased', label: '', align: 'end' },
+      { key: 'returned', label: '', align: 'end' },
+      { key: 'paid', label: '', align: 'end' },
+      { key: 'balance', label: ctx.copy.balanceDue, align: 'end' },
+    ],
+    data.rows.map((row) => ({
+      name: `${row.name} (${row.code})`,
+      phone: row.phone ?? '',
+      purchased: row.total_purchased,
+      returned: row.total_returned,
+      paid: row.total_paid,
+      balance: row.balance_due,
+    })),
+    [{ label: ctx.copy.balanceDue, value: data.totals.balance_due, emphasis: true }],
+  );
+}
+
+export function buildTrialBalanceModel(ctx: ReportPrintContext, data: TrialBalance): OfficialDocumentModel {
+  const accountName = (row: TrialBalance['rows'][number]): string => {
+    const byLocale = ctx.locale === 'fr' ? row.name_fr : ctx.locale === 'ar' ? row.name_ar : row.name_en;
+    return byLocale ?? row.name_fr ?? row.scf_code ?? '';
+  };
+  const model = buildReportModel(
+    ctx,
+    'TRIAL_BALANCE',
+    ctx.copy.trialBalance,
+    [
+      { key: 'scf_code', label: '', align: 'start' },
+      { key: 'name', label: '', align: 'start' },
+      { key: 'opening_debit', label: '', align: 'end' },
+      { key: 'opening_credit', label: '', align: 'end' },
+      { key: 'period_debit', label: '', align: 'end' },
+      { key: 'period_credit', label: '', align: 'end' },
+      { key: 'closing_debit', label: '', align: 'end' },
+      { key: 'closing_credit', label: '', align: 'end' },
+    ],
+    data.rows.map((row) => ({
+      scf_code: row.scf_code ?? '',
+      name: accountName(row),
+      opening_debit: row.opening_debit,
+      opening_credit: row.opening_credit,
+      period_debit: row.period_debit,
+      period_credit: row.period_credit,
+      closing_debit: row.closing_debit,
+      closing_credit: row.closing_credit,
+    })),
+    [
+      { label: 'Opening', value: `${data.totals.opening_debit} / ${data.totals.opening_credit}` },
+      { label: 'Period', value: `${data.totals.period_debit} / ${data.totals.period_credit}` },
+      { label: 'Closing', value: `${data.totals.closing_debit} / ${data.totals.closing_credit}`, emphasis: true },
+    ],
+  );
+  model.footerNote = data.totals.is_balanced
+    ? ctx.copy.balanced
+    : ctx.copy.notBalanced.replace('{x}', data.totals.difference);
+  return model;
+}
+
+export function buildAccountLedgerModel(ctx: ReportPrintContext, data: AccountLedger): OfficialDocumentModel {
+  const accountName = ctx.locale === 'fr' ? data.account.name_fr : ctx.locale === 'ar' ? data.account.name_ar : data.account.name_en;
+  return buildReportModel(
+    ctx,
+    'ACCOUNT_LEDGER',
+    `${ctx.copy.accountLedger} — ${data.account.scf_code} · ${accountName}`,
+    [
+      { key: 'date', label: '', align: 'start' },
+      { key: 'journal_number', label: '', align: 'start' },
+      { key: 'description', label: '', align: 'start' },
+      { key: 'debit', label: '', align: 'end' },
+      { key: 'credit', label: '', align: 'end' },
+      { key: 'balance', label: '', align: 'end' },
+    ],
+    [
+      { date: ctx.period.from, journal_number: '', description: ctx.copy.openingBalance, debit: '', credit: '', balance: data.opening_balance },
+      ...data.rows.map((row) => ({
+        date: row.date,
+        journal_number: row.journal_number ?? '',
+        description: row.description ?? '',
+        debit: row.debit,
+        credit: row.credit,
+        balance: row.balance,
+      })),
+      { date: ctx.period.to, journal_number: '', description: ctx.copy.closingBalance, debit: '', credit: '', balance: data.closing_balance },
+    ],
+    [{ label: ctx.copy.closingBalance, value: data.closing_balance, emphasis: true }],
   );
 }

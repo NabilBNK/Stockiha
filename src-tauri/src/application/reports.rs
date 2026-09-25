@@ -18,7 +18,6 @@ pub(crate) enum ReportBind {
     Text(Option<String>),
     Date(Option<Date>),
     Int(Option<i32>),
-    #[allow(dead_code)]
     BigInt(Option<i64>),
     Num(Option<Decimal>),
 }

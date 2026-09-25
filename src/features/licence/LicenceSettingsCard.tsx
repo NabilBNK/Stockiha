@@ -105,12 +105,17 @@ export function LicenceSettingsCard({ sessionToken }: { sessionToken: string }) 
 
   return (
     <section
-      className="sk-card"
+      className="sk-page sk-settings-page"
       id="licence-card"
       data-testid="licence-card"
       aria-labelledby="licence-card-title"
     >
-      <h2 id="licence-card-title">{t('licence.title')}</h2>
+      <div className="sk-settings-card">
+        <div className="sk-settings-card__header">
+          <div className="sk-settings-card__title-group">
+            <h2 id="licence-card-title" className="sk-settings-card__title">{t('licence.title')}</h2>
+          </div>
+        </div>
 
       {loading ? <Spinner /> : null}
 
@@ -245,6 +250,7 @@ export function LicenceSettingsCard({ sessionToken }: { sessionToken: string }) 
           busy={busy}
         />
       ) : null}
+      </div>
     </section>
   );
 }
