@@ -22,6 +22,8 @@ pub mod procurement;
 pub mod receivables;
 pub mod recovery;
 pub mod reference;
+// WS-I-1: reporting foundation (`reports.*` SQL functions).
+pub mod reports;
 pub mod safe_upgrade;
 pub mod sale_void;
 pub mod setup;

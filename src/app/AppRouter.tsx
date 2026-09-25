@@ -15,6 +15,9 @@ import { getOpeningStateOnboardingStatus } from '../shared/ipc/openingStateLifec
 import type { OpeningStateOnboardingStatusResult } from '../shared/ipc/openingStateLifecycleDto';
 import { getCustomerCapabilities } from '../shared/ipc/customerGateway';
 import type { CustomerCapabilities } from '../shared/ipc/customerDto';
+import { getReportsCapabilities } from '../shared/ipc/reportsGateway';
+import type { ReportsCapabilities } from '../shared/ipc/reportsDto';
+import { ReportsScreen } from '../features/reports/ReportsScreen';
 import { AppDataProvider, useAppData } from './AppDataContext';
 import { LiveRestoreScreen } from '../features/settings/recovery/LiveRestoreScreen';
 import { useRecoveryTakeover } from '../features/settings/recovery/RecoveryTakeoverContext';
@@ -209,6 +212,8 @@ function AuthenticatedApp() {
     useState<ProcurementCapabilities | null>(null);
   const [customerCapabilities, setCustomerCapabilities] =
     useState<CustomerCapabilities | null>(null);
+  const [reportsCapabilities, setReportsCapabilities] =
+    useState<ReportsCapabilities | null>(null);
   /**
    * WS-K-1 (correction 1) — a persistent, non-dismissible notice that
    * `database.json`'s on-disk permissions look broader than the current
@@ -377,6 +382,27 @@ function AuthenticatedApp() {
     };
   }, [user?.token]);
 
+  // WS-I-1 — read-only capability for the reporting screens; safe-deny like
+  // the other capability flags above (UI hiding only, not authorisation).
+  useEffect(() => {
+    const token = user?.token;
+    if (!token) {
+      setReportsCapabilities(null);
+      return;
+    }
+    let active = true;
+    void getReportsCapabilities(token)
+      .then((capabilities) => {
+        if (active) setReportsCapabilities(capabilities);
+      })
+      .catch(() => {
+        if (active) setReportsCapabilities({ can_view_reports: false });
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.token]);
+
   useEffect(() => {
     void refreshActiveCashSession();
   }, [refreshActiveCashSession]);
@@ -492,6 +518,7 @@ function AuthenticatedApp() {
       inventoryCorrectionsEnabled={inventoryCorrectionsEnabled}
       procurementCapabilities={procurementCapabilities}
       customerCapabilities={customerCapabilities}
+      reportsCapabilities={reportsCapabilities}
     >
       <UpdateBanner cashSessionOpen={activeCashSession !== null} />
       <LicenceBanner onOpenLicence={openLicenceCard} />
@@ -509,6 +536,7 @@ function AuthenticatedApp() {
         </Banner>
       ) : null}
       {view === 'dashboard' && <DashboardScreen />}
+      {view === 'reports' && <ReportsScreen setView={setView} />}
       {view === 'historical_finance' && (
         <HistoricalFinanceScreen sessionToken={user?.token ?? ''} />
       )}

@@ -27,6 +27,7 @@ import type {
   ProductListItemV2,
 } from '../shared/ipc/dto';
 import type { CustomerCapabilities } from '../shared/ipc/customerDto';
+import type { ReportsCapabilities } from '../shared/ipc/reportsDto';
 
 export type AppView =
   | 'dashboard'
@@ -45,7 +46,8 @@ export type AppView =
   | 'journals'
   | 'customers'
   | 'suppliers'
-  | 'purchases';
+  | 'purchases'
+  | 'reports';
 
 type NavGroup = 'main' | 'stock' | 'buy' | 'sales';
 type NavItem = {
@@ -58,6 +60,7 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { view: 'dashboard', labelKey: 'nav.dashboard', group: 'main', icon: '⌂' },
+  { view: 'reports', labels: { fr: 'Rapports', ar: 'التقارير', en: 'Reports' }, group: 'main', icon: '▦' },
   { view: 'journals', labels: { fr: 'Journaux', ar: 'اليومية', en: 'Journals' }, group: 'main', icon: '≡' },
   { view: 'historical_finance', labels: { fr: 'Finance historique', ar: 'المالية التاريخية', en: 'Historical finance' }, group: 'main', icon: '▥' },
   { view: 'settings', labels: { fr: 'Paramètres', ar: 'الإعدادات', en: 'Settings' }, group: 'main', icon: '⚙' },
@@ -130,6 +133,7 @@ export function AppShell({
   inventoryCorrectionsEnabled,
   procurementCapabilities,
   customerCapabilities,
+  reportsCapabilities,
   children,
 }: {
   currentView: AppView;
@@ -146,6 +150,7 @@ export function AppShell({
   inventoryCorrectionsEnabled: boolean | null;
   procurementCapabilities: ProcurementCapabilities | null;
   customerCapabilities: CustomerCapabilities | null;
+  reportsCapabilities: ReportsCapabilities | null;
   children: ReactNode;
 }) {
   const { t, locale, setLocale } = useI18n();
@@ -340,6 +345,8 @@ export function AppShell({
         return procurementCapabilities?.can_manage_procurement ?? false;
       case 'customers':
         return customerCapabilities?.can_view_customers ?? false;
+      case 'reports':
+        return reportsCapabilities?.can_view_reports ?? false;
       default:
         return true;
     }

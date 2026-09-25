@@ -146,6 +146,15 @@ pub(crate) const ALLOWED_IN_READ_ONLY: &[&str] = &[
     "list_customer_ledger",
     "list_open_customer_invoices",
     "list_refundable_customer_payments",
+    // WS-I-1: reporting foundation (reads only).
+    "get_reports_capabilities",
+    "get_sales_summary",
+    "get_sales_timeseries",
+    "get_sales_by_product",
+    "get_sales_by_category",
+    "get_sales_by_cashier",
+    "get_sales_by_hour",
+    "get_margin_alerts",
 ];
 
 #[cfg(test)]
@@ -200,7 +209,7 @@ mod tests {
 
         assert_eq!(
             registered.len(),
-            216,
+            224,
             "A command was added or removed: update licence::gate::ALLOWED_IN_READ_ONLY \
              deliberately (see WS-K-7 plan §6.3) and change this count."
         );

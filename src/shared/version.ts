@@ -8,4 +8,4 @@
  * A failed install round trip was spent on that ambiguity, so the setup
  * screen shows it too.
  */
-export const APP_VERSION_MARKER = 'WS-K-7-B.0';
+export const APP_VERSION_MARKER = 'WS-I-1.0';

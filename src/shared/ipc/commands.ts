@@ -131,6 +131,15 @@ export const COMMANDS = {
   SEARCH_JOURNALS: 'search_journals',
   SEARCH_BUSINESS_DOCUMENTS: 'search_business_documents',
   SAVE_BINARY_FILE: 'save_binary_file',
+  // WS-I reports
+  GET_REPORTS_CAPABILITIES: 'get_reports_capabilities',
+  GET_SALES_SUMMARY: 'get_sales_summary',
+  GET_SALES_TIMESERIES: 'get_sales_timeseries',
+  GET_SALES_BY_PRODUCT: 'get_sales_by_product',
+  GET_SALES_BY_CATEGORY: 'get_sales_by_category',
+  GET_SALES_BY_CASHIER: 'get_sales_by_cashier',
+  GET_SALES_BY_HOUR: 'get_sales_by_hour',
+  GET_MARGIN_ALERTS: 'get_margin_alerts',
   // Slice 2 — variant catalog
   ADD_VARIANT: 'add_variant',
   SET_VARIANT_ACTIVE: 'set_variant_active',
