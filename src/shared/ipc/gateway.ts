@@ -28,6 +28,8 @@ import type {
   QuickCreatedProduct,
   ReferenceLifecycleItem,
   ResolvedBarcode,
+  VariantPack,
+  PrimaryPack,
   SaleDocument,
   SaleLine,
   SetupStatus,
@@ -1095,5 +1097,106 @@ export function clearCompanyLogo(
     sessionToken,
   });
 }
+
+// ---------------------------------------------------------------------------
+// WS-O-1 Pack catalogue
+// ---------------------------------------------------------------------------
+
+export function createPack(
+  sessionToken: string,
+  variantId: number,
+  unitId: number,
+  conversionFactor: string,
+  salePrice: string | null,
+  makePrimary: boolean
+): Promise<number> {
+  return call<number>(COMMANDS.CREATE_PACK, {
+    sessionToken,
+    variantId,
+    unitId,
+    conversionFactor,
+    salePrice,
+    makePrimary,
+  });
+}
+
+export function updatePack(
+  sessionToken: string,
+  variantUnitId: number,
+  conversionFactor: string,
+  salePrice: string | null
+): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_PACK, {
+    sessionToken,
+    variantUnitId,
+    conversionFactor,
+    salePrice,
+  });
+}
+
+export function setPackPrimary(
+  sessionToken: string,
+  variantUnitId: number
+): Promise<void> {
+  return call<void>(COMMANDS.SET_PACK_PRIMARY, {
+    sessionToken,
+    variantUnitId,
+  });
+}
+
+export function setPackActive(
+  sessionToken: string,
+  variantUnitId: number,
+  isActive: boolean
+): Promise<void> {
+  return call<void>(COMMANDS.SET_PACK_ACTIVE, {
+    sessionToken,
+    variantUnitId,
+    isActive,
+  });
+}
+
+export function removePack(
+  sessionToken: string,
+  variantUnitId: number
+): Promise<void> {
+  return call<void>(COMMANDS.REMOVE_PACK, {
+    sessionToken,
+    variantUnitId,
+  });
+}
+
+export function addPackBarcode(
+  sessionToken: string,
+  variantUnitId: number,
+  barcode: string
+): Promise<number> {
+  return call<number>(COMMANDS.ADD_PACK_BARCODE, {
+    sessionToken,
+    variantUnitId,
+    barcode,
+  });
+}
+
+export function listVariantPacks(
+  sessionToken: string,
+  variantId: number
+): Promise<VariantPack[]> {
+  return call<VariantPack[]>(COMMANDS.LIST_VARIANT_PACKS, {
+    sessionToken,
+    variantId,
+  });
+}
+
+export function getPrimaryPacks(
+  sessionToken: string,
+  variantIds: number[]
+): Promise<PrimaryPack[]> {
+  return call<PrimaryPack[]>(COMMANDS.GET_PRIMARY_PACKS, {
+    sessionToken,
+    variantIds,
+  });
+}
+
 
 

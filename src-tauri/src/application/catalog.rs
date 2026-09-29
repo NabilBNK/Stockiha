@@ -2,6 +2,7 @@
 //! and product creation.
 
 use rust_decimal::Decimal;
+use serde::Serialize;
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 
@@ -201,6 +202,95 @@ pub(crate) struct ResolvedBarcode {
     pub unit_name: String,
     pub variant_is_active: bool,
     pub product_is_active: bool,
+    pub pack_variant_unit_id: Option<i64>,
+    pub pack_unit_id: Option<i64>,
+    pub pack_unit_code: Option<String>,
+    pub pack_unit_name: Option<String>,
+    pub pack_factor: Option<String>,
+    pub pack_sale_price: Option<String>,
+    pub pack_is_active: Option<bool>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub(crate) struct ResolvedBarcodeRow {
+    pub variant_id: i64,
+    pub product_id: i64,
+    pub sku: String,
+    pub name_override: Option<String>,
+    pub effective_variant_name: String,
+    pub primary_barcode: Option<String>,
+    pub operational_identifier: String,
+    pub identifier_type: String,
+    pub product_name: String,
+    pub sale_price: Decimal,
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub unit_name: String,
+    pub variant_is_active: bool,
+    pub product_is_active: bool,
+    pub pack_variant_unit_id: Option<i64>,
+    pub pack_unit_id: Option<i64>,
+    pub pack_unit_code: Option<String>,
+    pub pack_unit_name: Option<String>,
+    pub pack_factor: Option<Decimal>,
+    pub pack_sale_price: Option<Decimal>,
+    pub pack_is_active: Option<bool>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub(crate) struct VariantPackRow {
+    pub variant_unit_id: i64,
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub unit_name: String,
+    pub conversion_factor: Decimal,
+    pub sale_price: Option<Decimal>,
+    pub is_pack: bool,
+    pub is_primary: bool,
+    pub is_active: bool,
+    pub is_used: bool,
+    pub barcode_ids: Vec<i64>,
+    pub barcodes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct VariantPackDto {
+    pub variant_unit_id: i64,
+    pub unit_id: i64,
+    pub unit_code: String,
+    pub unit_name: String,
+    pub conversion_factor: String,
+    pub sale_price: Option<String>,
+    pub is_pack: bool,
+    pub is_primary: bool,
+    pub is_active: bool,
+    pub is_used: bool,
+    pub barcode_ids: Vec<i64>,
+    pub barcodes: Vec<String>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub(crate) struct PrimaryPackRow {
+    pub variant_id: i64,
+    pub variant_unit_id: i64,
+    pub unit_code: String,
+    pub unit_name: String,
+    pub conversion_factor: Decimal,
+    pub sale_price: Option<Decimal>,
+    pub base_unit_code: String,
+    pub base_unit_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct PrimaryPackDto {
+    pub variant_id: i64,
+    pub variant_unit_id: i64,
+    pub unit_code: String,
+    pub unit_name: String,
+    pub conversion_factor: String,
+    pub sale_price: Option<String>,
+    pub base_unit_code: String,
+    pub base_unit_name: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -554,7 +644,129 @@ pub(crate) async fn set_variant_base_unit(
 }
 
 // ---------------------------------------------------------------------------
-// S2-001 read queries
+// WS-O-1 Pack write commands
+// ---------------------------------------------------------------------------
+
+pub(crate) async fn create_pack(
+    pool: &PgPool,
+    session_token: &str,
+    variant_id: i64,
+    unit_id: i64,
+    conversion_factor: Decimal,
+    sale_price: Option<Decimal>,
+    make_primary: bool,
+) -> Result<i64, AppError> {
+    let (id,): (i64,) = sqlx::query_as(
+        "SELECT catalog.create_pack($1::text, $2::bigint, $3::bigint, $4::numeric, $5::numeric, $6::boolean)",
+    )
+    .bind(session_token)
+    .bind(variant_id)
+    .bind(unit_id)
+    .bind(conversion_factor)
+    .bind(sale_price)
+    .bind(make_primary)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(id)
+}
+
+pub(crate) async fn update_pack(
+    pool: &PgPool,
+    session_token: &str,
+    variant_unit_id: i64,
+    conversion_factor: Decimal,
+    sale_price: Option<Decimal>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "SELECT catalog.update_pack($1::text, $2::bigint, $3::numeric, $4::numeric)",
+    )
+    .bind(session_token)
+    .bind(variant_unit_id)
+    .bind(conversion_factor)
+    .bind(sale_price)
+    .execute(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(())
+}
+
+pub(crate) async fn set_pack_primary(
+    pool: &PgPool,
+    session_token: &str,
+    variant_unit_id: i64,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "SELECT catalog.set_pack_primary($1::text, $2::bigint)",
+    )
+    .bind(session_token)
+    .bind(variant_unit_id)
+    .execute(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(())
+}
+
+pub(crate) async fn set_pack_active(
+    pool: &PgPool,
+    session_token: &str,
+    variant_unit_id: i64,
+    is_active: bool,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "SELECT catalog.set_pack_active($1::text, $2::bigint, $3::boolean)",
+    )
+    .bind(session_token)
+    .bind(variant_unit_id)
+    .bind(is_active)
+    .execute(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(())
+}
+
+pub(crate) async fn remove_pack(
+    pool: &PgPool,
+    session_token: &str,
+    variant_unit_id: i64,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "SELECT catalog.remove_pack($1::text, $2::bigint)",
+    )
+    .bind(session_token)
+    .bind(variant_unit_id)
+    .execute(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(())
+}
+
+pub(crate) async fn add_pack_barcode(
+    pool: &PgPool,
+    session_token: &str,
+    variant_unit_id: i64,
+    barcode: &str,
+) -> Result<i64, AppError> {
+    let (id,): (i64,) = sqlx::query_as(
+        "SELECT catalog.add_pack_barcode($1::text, $2::bigint, $3::text)",
+    )
+    .bind(session_token)
+    .bind(variant_unit_id)
+    .bind(barcode)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(id)
+}
+
+// ---------------------------------------------------------------------------
+// S2-001 read queries & WS-O-1 pack read queries
 // ---------------------------------------------------------------------------
 
 /// `catalog.resolve_barcode` — 0 or 1 row.
@@ -563,30 +775,13 @@ pub(crate) async fn resolve_barcode(
     session_token: &str,
     barcode: &str,
 ) -> Result<Option<ResolvedBarcode>, AppError> {
-    let row = sqlx::query_as::<
-        _,
-        (
-            i64,
-            i64,
-            String,
-            Option<String>,
-            String,
-            Option<String>,
-            String,
-            String,
-            String,
-            Decimal,
-            i64,
-            String,
-            String,
-            bool,
-            bool,
-        ),
-    >(
+    let row = sqlx::query_as::<_, ResolvedBarcodeRow>(
         "SELECT variant_id, product_id, sku, name_override, effective_variant_name, \
          primary_barcode, operational_identifier, identifier_type, product_name, sale_price, \
-         unit_id, unit_code, unit_name, variant_is_active, product_is_active \
-         FROM catalog.resolve_barcode($1, $2)",
+         unit_id, unit_code, unit_name, variant_is_active, product_is_active, \
+         pack_variant_unit_id, pack_unit_id, pack_unit_code, pack_unit_name, \
+         pack_factor, pack_sale_price, pack_is_active \
+         FROM catalog.resolve_barcode($1::text, $2::text)",
     )
     .bind(session_token)
     .bind(barcode)
@@ -594,43 +789,106 @@ pub(crate) async fn resolve_barcode(
     .await
     .map_err(AppError::from_posting_error)?;
 
-    Ok(row.map(
-        |(
-            variant_id,
-            product_id,
-            sku,
-            name_override,
-            effective_variant_name,
-            primary_barcode,
-            operational_identifier,
-            identifier_type,
-            product_name,
-            sale_price,
-            unit_id,
-            unit_code,
-            unit_name,
-            variant_is_active,
-            product_is_active,
-        )| {
-            ResolvedBarcode {
-                variant_id,
-                product_id,
-                sku,
-                name_override,
-                effective_variant_name,
-                primary_barcode,
-                operational_identifier,
-                identifier_type,
-                product_name,
-                sale_price: sale_price.to_string(),
-                unit_id,
-                unit_code,
-                unit_name,
-                variant_is_active,
-                product_is_active,
-            }
-        },
-    ))
+    Ok(row.map(|r| ResolvedBarcode {
+        variant_id: r.variant_id,
+        product_id: r.product_id,
+        sku: r.sku,
+        name_override: r.name_override,
+        effective_variant_name: r.effective_variant_name,
+        primary_barcode: r.primary_barcode,
+        operational_identifier: r.operational_identifier,
+        identifier_type: r.identifier_type,
+        product_name: r.product_name,
+        sale_price: r.sale_price.to_string(),
+        unit_id: r.unit_id,
+        unit_code: r.unit_code,
+        unit_name: r.unit_name,
+        variant_is_active: r.variant_is_active,
+        product_is_active: r.product_is_active,
+        pack_variant_unit_id: r.pack_variant_unit_id,
+        pack_unit_id: r.pack_unit_id,
+        pack_unit_code: r.pack_unit_code,
+        pack_unit_name: r.pack_unit_name,
+        pack_factor: r.pack_factor.map(|f| f.to_string()),
+        pack_sale_price: r.pack_sale_price.map(|p| p.to_string()),
+        pack_is_active: r.pack_is_active,
+    }))
+}
+
+pub(crate) async fn list_variant_packs(
+    pool: &PgPool,
+    session_token: &str,
+    variant_id: i64,
+) -> Result<Vec<VariantPackDto>, AppError> {
+    let rows = sqlx::query_as::<_, VariantPackRow>(
+        "SELECT variant_unit_id, unit_id, unit_code, unit_name, conversion_factor, \
+         sale_price, is_pack, is_primary, is_active, is_used, barcode_ids, barcodes \
+         FROM catalog.list_variant_packs($1::text, $2::bigint)",
+    )
+    .bind(session_token)
+    .bind(variant_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| VariantPackDto {
+            variant_unit_id: r.variant_unit_id,
+            unit_id: r.unit_id,
+            unit_code: r.unit_code,
+            unit_name: r.unit_name,
+            conversion_factor: r.conversion_factor.to_string(),
+            sale_price: r.sale_price.map(|p| p.to_string()),
+            is_pack: r.is_pack,
+            is_primary: r.is_primary,
+            is_active: r.is_active,
+            is_used: r.is_used,
+            barcode_ids: r.barcode_ids,
+            barcodes: r.barcodes,
+        })
+        .collect())
+}
+
+pub(crate) async fn get_primary_packs(
+    pool: &PgPool,
+    session_token: &str,
+    variant_ids: Vec<i64>,
+) -> Result<Vec<PrimaryPackDto>, AppError> {
+    if variant_ids.len() > 500 {
+        return Err(AppError::ValidationError {
+            diagnostic: "PACK_REQUEST_TOO_LARGE: cannot request more than 500 variant packs at once".to_string(),
+        });
+    }
+
+    if variant_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let rows = sqlx::query_as::<_, PrimaryPackRow>(
+        "SELECT variant_id, variant_unit_id, unit_code, unit_name, conversion_factor, \
+         sale_price, base_unit_code, base_unit_name \
+         FROM catalog.get_primary_packs($1::text, $2::bigint[])",
+    )
+    .bind(session_token)
+    .bind(&variant_ids)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| PrimaryPackDto {
+            variant_id: r.variant_id,
+            variant_unit_id: r.variant_unit_id,
+            unit_code: r.unit_code,
+            unit_name: r.unit_name,
+            conversion_factor: r.conversion_factor.to_string(),
+            sale_price: r.sale_price.map(|p| p.to_string()),
+            base_unit_code: r.base_unit_code,
+            base_unit_name: r.base_unit_name,
+        })
+        .collect())
 }
 
 /// `catalog.list_catalog_products` — search may be None (all products).

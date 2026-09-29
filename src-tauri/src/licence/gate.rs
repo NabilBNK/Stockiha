@@ -108,6 +108,8 @@ pub(crate) const ALLOWED_IN_READ_ONLY: &[&str] = &[
     "list_attribute_values",
     "list_units_v2",
     "list_products_v2",
+    "list_variant_packs",
+    "get_primary_packs",
     "list_warehouses",
     "list_fiscal_periods",
     "get_open_fiscal_period",
@@ -226,7 +228,7 @@ mod tests {
 
         assert_eq!(
             registered.len(),
-            240,
+            248,
             "A command was added or removed: update licence::gate::ALLOWED_IN_READ_ONLY \
              deliberately (see WS-K-7 plan §6.3) and change this count."
         );

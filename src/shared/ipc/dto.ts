@@ -184,7 +184,56 @@ export interface AttributeDefinition { attribute_id: number; name: string; attri
 export interface Unit { id: number; code: string; name: string; }
 export interface CatalogProduct { product_id: number; name: string; unit_id: number; unit_code: string; unit_name: string; is_active: boolean; variant_count: number; active_variant_count: number; }
 
-export interface ResolvedBarcode { variant_id: number; product_id: number; sku: string; name_override: string | null; effective_variant_name: string; primary_barcode: string | null; operational_identifier: string; identifier_type: 'BARCODE' | 'SKU'; product_name: string; sale_price: string; unit_id: number; unit_code: string; unit_name: string; variant_is_active: boolean; product_is_active: boolean; }
+export interface VariantPack {
+  variant_unit_id: number;
+  unit_id: number;
+  unit_code: string;
+  unit_name: string;
+  conversion_factor: string;
+  sale_price: string | null;
+  is_pack: boolean;
+  is_primary: boolean;
+  is_active: boolean;
+  is_used: boolean;
+  barcode_ids: number[];
+  barcodes: string[];
+}
+
+export interface PrimaryPack {
+  variant_id: number;
+  variant_unit_id: number;
+  unit_code: string;
+  unit_name: string;
+  conversion_factor: string;
+  sale_price: string | null;
+  base_unit_code: string;
+  base_unit_name: string;
+}
+
+export interface ResolvedBarcode {
+  variant_id: number;
+  product_id: number;
+  sku: string;
+  name_override: string | null;
+  effective_variant_name: string;
+  primary_barcode: string | null;
+  operational_identifier: string;
+  identifier_type: 'BARCODE' | 'SKU';
+  product_name: string;
+  sale_price: string;
+  unit_id: number;
+  unit_code: string;
+  unit_name: string;
+  variant_is_active: boolean;
+  product_is_active: boolean;
+  pack_variant_unit_id: number | null;
+  pack_unit_id: number | null;
+  pack_unit_code: string | null;
+  pack_unit_name: string | null;
+  pack_factor: string | null;
+  pack_sale_price: string | null;
+  pack_is_active: boolean | null;
+}
 export interface VariantAttribute { attribute_id: number; attribute_name: string; attribute_value_id: number; value: string; }
 export interface VariantBarcode { id: number; barcode: string; is_primary: boolean; }
 // WS-D-5B: `minimum_stock` (variant) and `category_id` (product) were added to

@@ -138,6 +138,13 @@ pub(crate) struct ResolvedBarcodeResponse {
     pub unit_name: String,
     pub variant_is_active: bool,
     pub product_is_active: bool,
+    pub pack_variant_unit_id: Option<i64>,
+    pub pack_unit_id: Option<i64>,
+    pub pack_unit_code: Option<String>,
+    pub pack_unit_name: Option<String>,
+    pub pack_factor: Option<String>,
+    pub pack_sale_price: Option<String>,
+    pub pack_is_active: Option<bool>,
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +357,104 @@ pub(crate) async fn set_variant_base_unit(
 }
 
 // ---------------------------------------------------------------------------
+// WS-O-1 commands — pack writes
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub(crate) async fn create_pack(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    variant_id: i64,
+    unit_id: i64,
+    conversion_factor: Decimal,
+    sale_price: Option<Decimal>,
+    make_primary: bool,
+) -> Result<i64, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::create_pack(
+        pool,
+        &session_token,
+        variant_id,
+        unit_id,
+        conversion_factor,
+        sale_price,
+        make_primary,
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn update_pack(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    variant_unit_id: i64,
+    conversion_factor: Decimal,
+    sale_price: Option<Decimal>,
+) -> Result<(), IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::update_pack(
+        pool,
+        &session_token,
+        variant_unit_id,
+        conversion_factor,
+        sale_price,
+    )
+    .await
+    .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn set_pack_primary(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    variant_unit_id: i64,
+) -> Result<(), IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::set_pack_primary(pool, &session_token, variant_unit_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn set_pack_active(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    variant_unit_id: i64,
+    is_active: bool,
+) -> Result<(), IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::set_pack_active(pool, &session_token, variant_unit_id, is_active)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn remove_pack(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    variant_unit_id: i64,
+) -> Result<(), IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::remove_pack(pool, &session_token, variant_unit_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn add_pack_barcode(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    variant_unit_id: i64,
+    barcode: String,
+) -> Result<i64, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::add_pack_barcode(pool, &session_token, variant_unit_id, &barcode)
+        .await
+        .map_err(IpcError::from)
+}
+
+// ---------------------------------------------------------------------------
 // S2-001 commands — reads
 // ---------------------------------------------------------------------------
 
@@ -421,8 +526,39 @@ pub(crate) async fn resolve_barcode(
                 unit_name: r.unit_name,
                 variant_is_active: r.variant_is_active,
                 product_is_active: r.product_is_active,
+                pack_variant_unit_id: r.pack_variant_unit_id,
+                pack_unit_id: r.pack_unit_id,
+                pack_unit_code: r.pack_unit_code,
+                pack_unit_name: r.pack_unit_name,
+                pack_factor: r.pack_factor,
+                pack_sale_price: r.pack_sale_price,
+                pack_is_active: r.pack_is_active,
             })
         })
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn list_variant_packs(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    variant_id: i64,
+) -> Result<Vec<catalog::VariantPackDto>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::list_variant_packs(pool, &session_token, variant_id)
+        .await
+        .map_err(IpcError::from)
+}
+
+#[tauri::command]
+pub(crate) async fn get_primary_packs(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    variant_ids: Vec<i64>,
+) -> Result<Vec<catalog::PrimaryPackDto>, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::get_primary_packs(pool, &session_token, variant_ids)
+        .await
         .map_err(IpcError::from)
 }
 
