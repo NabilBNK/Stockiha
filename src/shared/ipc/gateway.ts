@@ -514,8 +514,19 @@ export function createUnit(
   sessionToken: string,
   name: string,
   allowsFractions: boolean,
+  code?: string | null,
+  baseUnitId?: number | null,
+  conversionFactor?: string | null,
 ): Promise<number> {
-  return call<number>(COMMANDS.CREATE_UNIT, { sessionToken, name, allowsFractions });
+  const payload: Record<string, unknown> = {
+    sessionToken,
+    name,
+    allowsFractions,
+  };
+  if (code != null) payload.code = code;
+  if (baseUnitId != null) payload.baseUnitId = baseUnitId;
+  if (conversionFactor != null) payload.conversionFactor = conversionFactor;
+  return call<number>(COMMANDS.CREATE_UNIT, payload);
 }
 
 export function listUnits(sessionToken: string): Promise<Unit[]> {
@@ -644,6 +655,26 @@ export function listUnitsV2(sessionToken: string): Promise<UnitLifecycleItem[]> 
  * WS-D-14 Part 3 removed `code`: the Owner ruled it non-editable, so renaming
  * a unit's name never touches its code — there is nothing left to pass.
  */
+export function updateUnit(
+  sessionToken: string,
+  unitId: number,
+  name: string,
+  allowsFractions: boolean,
+  code?: string | null,
+  baseUnitId?: number | null,
+  conversionFactor?: string | null,
+): Promise<void> {
+  return call<void>(COMMANDS.UPDATE_UNIT, {
+    sessionToken,
+    unitId,
+    name,
+    allowsFractions,
+    code: code ?? null,
+    baseUnitId: baseUnitId ?? null,
+    conversionFactor: conversionFactor ?? null,
+  });
+}
+
 export function renameUnit(
   sessionToken: string,
   unitId: number,

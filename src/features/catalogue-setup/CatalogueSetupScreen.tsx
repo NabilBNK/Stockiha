@@ -14,8 +14,8 @@ import { useEffect, useState } from 'react';
 import { Spinner } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
 import { AttributesManager } from './AttributesManager';
-import { CodedReferenceManager } from './CodedReferenceManager';
 import { SimpleReferenceManager } from './SimpleReferenceManager';
+import { UnitManager } from './UnitManager';
 import { useCatalogueSetup } from './useCatalogueSetup';
 
 type Tab = 'categories' | 'attributes' | 'units';
@@ -31,7 +31,7 @@ export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string })
     attributes, attributeValues, attributesLoading, attributesError,
     loadAll,
     createCategory, renameCategory, setCategoryActive, deleteCategory,
-    createUnit, renameUnit, setUnitActive, deleteUnit,
+    createUnit, updateUnit, renameUnit, setUnitActive, deleteUnit,
     createAttribute, renameAttribute, setAttributeActive, setAttributeVisibleOnReceipt, deleteAttribute,
     addAttributeValue, renameAttributeValue, setAttributeValueActive, deleteAttributeValue,
   } = setup;
@@ -116,22 +116,13 @@ export function CatalogueSetupScreen({ sessionToken }: { sessionToken: string })
             />
           )}
           {tab === 'units' && (
-            <CodedReferenceManager
-              // WS-D-13 Phase A: allows_fractions is surfaced as the widget's
-              // generic boolean `flag`, so a Kg can be marked decimal-capable
-              // and a Piece whole-number-only at create and at rename.
-              items={units.map((u) => ({ ...u, flag: u.allows_fractions }))}
+            <UnitManager
+              items={units}
               loading={unitsLoading}
               error={unitsError}
-              codeLabel={t('catalogueSetup.units.code')}
-              codeHint={t('catalogueSetup.units.codeGeneratedHint')}
-              nameLabel={t('catalogueSetup.units.name')}
-              createLabel={t('catalogueSetup.units.create')}
-              emptyText={t('catalogueSetup.units.empty')}
-              flagLabel={t('catalogueSetup.units.allowsFractions')}
-              flagHint={t('catalogueSetup.units.allowsFractionsHint')}
               onCreate={createUnit}
               onRename={renameUnit}
+              onUpdate={updateUnit}
               onToggleActive={setUnitActive}
               onDelete={deleteUnit}
             />

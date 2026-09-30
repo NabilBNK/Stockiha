@@ -85,7 +85,7 @@ import {
 } from 'react';
 
 import { Banner, Button, ConfirmDialog, Spinner, TextField } from '../../shared/components';
-import { useI18n } from '../../shared/i18n';
+import { useI18n, type MessageKey } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import * as ipc from '../../shared/ipc/gateway';
 import type {
@@ -96,6 +96,7 @@ import type {
   UnitLifecycleItem,
   VariantDetail,
   VariantInput,
+  VariantPack,
 } from '../../shared/ipc/dto';
 import { AttributeManagerForVariant } from './attributeSelection';
 import { BulkVariantGenerator } from './BulkVariantGenerator';
@@ -112,6 +113,8 @@ import {
 } from './VariantDraftFields';
 import { useDecimalFormat } from './useDecimalFormat';
 import { formatExactDecimal, isExactDecimalPositive } from '../inventory/exactDecimal';
+import { PackManager } from '../products/PackManager';
+import { normalizeDecimalInput, validatePackForm, type PackFormErrors } from '../products/packValidation';
 
 /**
  * P1 (WS-D-8b pre-phase) — a stable, empty `VariantDetail` shape handed to
@@ -213,6 +216,7 @@ export function CatalogPanel({
   const [confirmVariantDeactivate, setConfirmVariantDeactivate] = useState<VariantDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [packBarcodeIdsByVariant, setPackBarcodeIdsByVariant] = useState<Record<number, Set<number>>>({});
   const changedRef = useRef(false);
 
   const detailRef = useRef<ProductDetail | null>(null);
@@ -223,7 +227,24 @@ export function CatalogPanel({
     const fresh = await ipc.getProductDetail(token, productId);
     setDetail(fresh);
     detailRef.current = fresh;
-  }, [token, productId]);
+    if (selectedVariantId) {
+      try {
+        const packs = await ipc.listVariantPacks(token, selectedVariantId);
+        const ids = new Set<number>();
+        for (const p of packs) {
+          for (const id of p.barcode_ids) {
+            ids.add(id);
+          }
+        }
+        setPackBarcodeIdsByVariant((prev) => ({
+          ...prev,
+          [selectedVariantId]: ids,
+        }));
+      } catch {
+        // Barcode filtering falls back to empty set
+      }
+    }
+  }, [token, productId, selectedVariantId]);
 
   useEffect(() => {
     let active = true;
@@ -241,6 +262,29 @@ export function CatalogPanel({
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [token, productId, errorText]);
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedVariantId) return;
+    void ipc.listVariantPacks(token, selectedVariantId)
+      .then((packs) => {
+        if (!active) return;
+        const ids = new Set<number>();
+        for (const p of packs) {
+          for (const id of p.barcode_ids) {
+            ids.add(id);
+          }
+        }
+        setPackBarcodeIdsByVariant((prev) => ({
+          ...prev,
+          [selectedVariantId]: ids,
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [token, selectedVariantId]);
 
   const loadRefData = useCallback(async () => {
     setRefLoading(true);
@@ -349,6 +393,32 @@ export function CatalogPanel({
     changedRef.current = true;
     await refresh();
   }, [token, refresh]);
+
+  const handlePacksLoaded = useCallback((variantId: number, loadedPacks: VariantPack[]) => {
+    const ids = new Set<number>();
+    for (const p of loadedPacks) {
+      for (const id of p.barcode_ids) {
+        ids.add(id);
+      }
+    }
+    setPackBarcodeIdsByVariant((prev) => {
+      const existing = prev[variantId];
+      if (existing && existing.size === ids.size) {
+        let same = true;
+        for (const id of ids) {
+          if (!existing.has(id)) {
+            same = false;
+            break;
+          }
+        }
+        if (same) return prev;
+      }
+      return {
+        ...prev,
+        [variantId]: ids,
+      };
+    });
+  }, []);
 
   const handleCreateAttribute = useCallback(async (name: string) => {
     const id = await ipc.createAttribute(token, name);
@@ -801,11 +871,31 @@ export function CatalogPanel({
                       <BarcodeSection
                         token={token}
                         variant={selectedVariant}
+                        packBarcodeIds={packBarcodeIdsByVariant[selectedVariant.variant_id]}
                         busy={busy}
                         onChanged={async () => {
                           changedRef.current = true;
                           await refresh();
                         }}
+                      />
+                    )}
+                    packs={(
+                      <PackManager
+                        variantId={selectedVariant.variant_id}
+                        baseUnit={{
+                          id: detail.unit_id,
+                          code: detail.unit_code,
+                          name: detail.unit_name,
+                          isWhole: !units.find((u) => u.id === detail.unit_id)?.allows_fractions,
+                        }}
+                        pieceSalePrice={selectedVariant.sale_price}
+                        units={units}
+                        sessionToken={token}
+                        onChanged={async () => {
+                          changedRef.current = true;
+                          await refresh();
+                        }}
+                        onPacksLoaded={(loadedPacks) => handlePacksLoaded(selectedVariant.variant_id, loadedPacks)}
                       />
                     )}
                     altUnits={(
@@ -906,6 +996,35 @@ export function CatalogCreatePanel({
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
+  // WS-O-2.5: Box section
+  const [boxOpen, setBoxOpen] = useState(false);
+  const [boxUnitId, setBoxUnitId] = useState<number | null>(null);
+  const [boxHolds, setBoxHolds] = useState('');
+  const [boxPrice, setBoxPrice] = useState('');
+  const [boxBarcode, setBoxBarcode] = useState('');
+  const [boxErrors, setBoxErrors] = useState<PackFormErrors & { barcodeText?: string }>({});
+
+  const boxFilled =
+    boxUnitId != null ||
+    boxHolds.trim() !== '' ||
+    boxPrice.trim() !== '' ||
+    boxBarcode.trim() !== '';
+
+  const boxUnitOptions = useMemo(() => {
+    const hasPackUnitsForBase = units.some((u) => u.base_unit_id === unitId);
+    return units.filter(
+      (u) =>
+        u.is_active &&
+        u.id !== unitId &&
+        (hasPackUnitsForBase ? u.base_unit_id === unitId : true)
+    );
+  }, [units, unitId]);
+
+  const selectedBoxUnit = useMemo(
+    () => units.find((u) => u.id === boxUnitId) ?? null,
+    [units, boxUnitId]
+  );
+
   /**
    * R15 — the guard exists HERE and deliberately nowhere else. The edit panel
    * commits every field as you finish with it, so closing it can lose nothing.
@@ -918,7 +1037,8 @@ export function CatalogCreatePanel({
     || draft.barcode.trim() !== ''
     || draft.salePrice.trim() !== ''
     || draft.minimumStock !== EMPTY_VARIANT_DRAFT.minimumStock
-    || Object.keys(attrSelection).length > 0;
+    || Object.keys(attrSelection).length > 0
+    || boxFilled;
 
   function requestClose() {
     if (dirty && !submitting) {
@@ -1023,6 +1143,48 @@ export function CatalogCreatePanel({
     }
     setSubmitting(true);
     setError(null);
+    setBoxErrors({});
+
+    if (boxFilled) {
+      const chosenUnit = units.find((u) => u.id === unitId);
+      const baseIsWhole = chosenUnit ? !chosenUnit.allows_fractions : true;
+      const boxValidation = validatePackForm(
+        {
+          unitId: boxUnitId,
+          factorText: boxHolds,
+          priceText: boxPrice,
+          barcodeText: boxBarcode,
+        },
+        {
+          baseUnitId: unitId,
+          baseIsWhole,
+          usedUnitIds: [],
+          factorLocked: false,
+        }
+      );
+
+      if (Object.keys(boxValidation).length > 0) {
+        setBoxErrors(boxValidation);
+        setSubmitting(false);
+        return;
+      }
+
+      if (boxBarcode.trim()) {
+        try {
+          const resolved = await ipc.resolveBarcode(token, boxBarcode.trim());
+          if (resolved) {
+            setBoxErrors({
+              barcodeText: t('pack.error.barcodeUsed', { product: resolved.product_name }),
+            });
+            setSubmitting(false);
+            return;
+          }
+        } catch {
+          // Barcode not found - proceed
+        }
+      }
+    }
+
     let created: { product_id: number; variant_id: number };
     try {
       created = await ipc.quickCreateProduct(token, {
@@ -1042,19 +1204,37 @@ export function CatalogCreatePanel({
       return;
     }
 
+    let packWarning: string | undefined;
+    if (boxFilled && boxUnitId != null) {
+      try {
+        const normFactor = normalizeDecimalInput(boxHolds)!;
+        const normPrice = boxPrice.trim() ? normalizeDecimalInput(boxPrice) : null;
+        const packId = await ipc.createPack(token, created.variant_id, boxUnitId, normFactor, normPrice, true);
+        if (boxBarcode.trim()) {
+          try {
+            await ipc.addPackBarcode(token, packId, boxBarcode.trim());
+          } catch {
+            packWarning = t('pack.savedBarcodeFailed');
+          }
+        }
+      } catch {
+        packWarning = t('pack.quick.productSavedPackFailed');
+      }
+    }
+
+    let attrWarning: string | undefined;
     const attributeValueIds = Object.values(attrSelection).filter((id) => id > 0);
     if (attributeValueIds.length > 0) {
       try {
         await ipc.setVariantAttributes(token, created.variant_id, attributeValueIds);
       } catch (err) {
-        setSubmitting(false);
-        onCreated(created.product_id, `${t('catalog2.createdAttributesNotApplied')} ${errorText(err)}`);
-        return;
+        attrWarning = `${t('catalog2.createdAttributesNotApplied')} ${errorText(err)}`;
       }
     }
 
     setSubmitting(false);
-    onCreated(created.product_id);
+    const finalWarning = [packWarning, attrWarning].filter(Boolean).join(' · ') || undefined;
+    onCreated(created.product_id, finalWarning);
   }
 
   const categoryOptions = categories
@@ -1114,7 +1294,11 @@ export function CatalogCreatePanel({
               label={t('catalog.unit')}
               options={unitOptions}
               value={unitId}
-              onChange={setUnitId}
+              onChange={(nextUnitId) => {
+                setUnitId(nextUnitId);
+                setBoxUnitId(null);
+                setBoxHolds('');
+              }}
               onCreate={createUnit}
               createLabel={t('catalogueSetup.units.name')}
               newItemLabel={t('catalog.newShort')}
@@ -1163,6 +1347,146 @@ export function CatalogCreatePanel({
             onCreateAttribute={handleCreateAttribute}
             onAddValue={handleAddValue}
           />
+        </section>
+
+        {/* WS-O-2.5 — Sold by the box (optional) */}
+        <section
+          className="sk-catalog2__panel-section"
+          aria-label={t('pack.quick.title')}
+          data-testid="catalog2-create-box-section"
+        >
+          <div className="sk-catalog2__section-head">
+            <h3>{t('pack.quick.title')}</h3>
+            <Button
+              type="button"
+              variant="secondary"
+              aria-expanded={boxOpen}
+              onClick={() => setBoxOpen((prev) => !prev)}
+              data-testid="catalog2-create-box-toggle"
+            >
+              {boxOpen ? t('variants.collapse') : t('variants.expand')}
+            </Button>
+          </div>
+
+          {boxOpen ? (
+            <div className="sk-catalog2__panel-grid" style={{ marginTop: 12 }}>
+              {boxUnitOptions.length === 0 ? (
+                <div style={{ gridColumn: '1 / -1', marginBottom: 8 }}>
+                  <Banner tone="info">
+                    {t('pack.noPackUnitsConfigured' as MessageKey, {
+                      base: units.find((u) => u.id === unitId)?.name ?? '',
+                    }) || 'No pack units configured for this base unit.'}
+                  </Banner>
+                </div>
+              ) : null}
+
+              <div className="sk-catalog2__field">
+                <label className="sk-catalog2__label" htmlFor="catalog2-create-box-unit">
+                  {t('pack.unit')}
+                </label>
+                <select
+                  id="catalog2-create-box-unit"
+                  className="sk-catalog2__select"
+                  value={boxUnitId ?? ''}
+                  onChange={(e) => {
+                    const nextId = e.target.value ? Number(e.target.value) : null;
+                    setBoxUnitId(nextId);
+                    const matched = units.find((u) => u.id === nextId);
+                    if (matched?.conversion_factor) {
+                      setBoxHolds(formatExactDecimal(matched.conversion_factor));
+                    }
+                  }}
+                  disabled={submitting}
+                  data-testid="catalog2-create-box-unit"
+                >
+                  <option value="">{t('common.none')}</option>
+                  {boxUnitOptions.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.code})
+                    </option>
+                  ))}
+                </select>
+                {boxErrors.unitId ? (
+                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
+                    {t(boxErrors.unitId as MessageKey)}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="sk-catalog2__field">
+                <label className="sk-catalog2__label" htmlFor="catalog2-create-box-holds">
+                  {t('pack.holdsLabel', { base: units.find((u) => u.id === unitId)?.name ?? '' })}
+                </label>
+                <input
+                  id="catalog2-create-box-holds"
+                  className="sk-catalog2__input"
+                  inputMode="decimal"
+                  value={boxHolds}
+                  onChange={(e) => setBoxHolds(e.target.value)}
+                  disabled={submitting || Boolean(selectedBoxUnit?.conversion_factor)}
+                  readOnly={Boolean(selectedBoxUnit?.conversion_factor)}
+                  placeholder="12"
+                  data-testid="catalog2-create-box-holds"
+                />
+                {selectedBoxUnit && boxHolds ? (
+                  <p className="sk-muted" style={{ margin: '4px 0 0', fontWeight: 600, color: '#1e40af' }}>
+                    👉 1 {selectedBoxUnit.name} = {boxHolds} {units.find((u) => u.id === unitId)?.name ?? ''}
+                  </p>
+                ) : null}
+                {boxErrors.factor ? (
+                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
+                    {t(boxErrors.factor as MessageKey)}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="sk-catalog2__field">
+                <label className="sk-catalog2__label" htmlFor="catalog2-create-box-price">
+                  {t('pack.priceLabel')}
+                </label>
+                <input
+                  id="catalog2-create-box-price"
+                  className="sk-catalog2__input"
+                  inputMode="decimal"
+                  value={boxPrice}
+                  onChange={(e) => setBoxPrice(e.target.value)}
+                  disabled={submitting}
+                  placeholder="15000"
+                  data-testid="catalog2-create-box-price"
+                />
+                {boxErrors.price ? (
+                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
+                    {t(boxErrors.price as MessageKey)}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="sk-catalog2__field">
+                <label className="sk-catalog2__label" htmlFor="catalog2-create-box-barcode">
+                  {t('pack.barcodeLabel')}
+                </label>
+                <input
+                  id="catalog2-create-box-barcode"
+                  className="sk-catalog2__input"
+                  value={boxBarcode}
+                  onChange={(e) => setBoxBarcode(e.target.value)}
+                  disabled={submitting}
+                  placeholder="6131000000021"
+                  data-testid="catalog2-create-box-barcode"
+                />
+                {boxErrors.barcode ? (
+                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
+                    {t(boxErrors.barcode as MessageKey)}
+                  </p>
+                ) : null}
+                {boxErrors.barcodeText ? (
+                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
+                    {boxErrors.barcodeText}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <div className="sk-catalog2__actions sk-catalog2__actions--end">
@@ -1445,11 +1769,13 @@ function AlternateUnitsSection({
 function BarcodeSection({
   token,
   variant,
+  packBarcodeIds,
   busy,
   onChanged,
 }: {
   token: string;
   variant: VariantDetail;
+  packBarcodeIds?: Set<number>;
   busy: boolean;
   onChanged: () => Promise<void>;
 }) {
@@ -1460,6 +1786,10 @@ function BarcodeSection({
   const [error, setError] = useState<string | null>(null);
   const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
   const [removing, setRemoving] = useState(false);
+
+  const packIds = packBarcodeIds ?? new Set<number>();
+  const displayedBarcodes = variant.barcodes.filter((b) => !packIds.has(b.id));
+  const hasFilteredPackBarcodes = variant.barcodes.length > displayedBarcodes.length;
 
   async function add() {
     const barcode = draft.trim();
@@ -1496,11 +1826,11 @@ function BarcodeSection({
       <h3>{t('barcodes.title')}</h3>
       {error ? <Banner tone="error">{error}</Banner> : null}
 
-      {variant.barcodes.length === 0 ? (
+      {displayedBarcodes.length === 0 ? (
         <p className="sk-catalog2__note">{t('barcodes.empty')}</p>
       ) : (
         <ul className="sk-catalog2__barcode-list">
-          {variant.barcodes.map((b) => (
+          {displayedBarcodes.map((b) => (
             <li key={b.id} className="sk-catalog2__barcode-row">
               <span className="sk-catalog2__mono">{b.barcode}</span>
               <Button
@@ -1516,6 +1846,12 @@ function BarcodeSection({
           ))}
         </ul>
       )}
+
+      {hasFilteredPackBarcodes ? (
+        <p className="sk-catalog2__note" data-testid="pack-barcodes-elsewhere">
+          {t('pack.barcodesElsewhere')}
+        </p>
+      ) : null}
 
       <div className="sk-catalog2__field sk-catalog2__barcode-field">
         <label className="sk-catalog2__label" htmlFor={`catalog2-barcode-${variant.variant_id}`}>

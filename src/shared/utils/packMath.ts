@@ -173,3 +173,5 @@ export function formatPackQuantity(
   }
   return `${packs} ${pack.unitName} + ${rest} ${baseUnitName}`;
 }
+
+export { formatExactDecimal } from '../../features/inventory/exactDecimal';

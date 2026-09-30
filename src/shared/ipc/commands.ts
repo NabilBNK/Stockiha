@@ -202,6 +202,7 @@ export const COMMANDS = {
   DELETE_ATTRIBUTE_VALUE: 'delete_attribute_value',
   LIST_UNITS_V2: 'list_units_v2',
   RENAME_UNIT: 'rename_unit',
+  UPDATE_UNIT: 'update_unit',
   SET_UNIT_ACTIVE: 'set_unit_active',
   DELETE_UNIT: 'delete_unit',
   QUICK_CREATE_PRODUCT: 'quick_create_product',

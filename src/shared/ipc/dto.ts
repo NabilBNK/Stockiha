@@ -869,7 +869,18 @@ export interface AttributeValueLifecycleItem { id: number; attribute_id: number;
 // carry a fractional part (true for Kg/Litre, false for Piece/Box). It is UI
 // guidance, not a database constraint — see isQuantityValidForUnit in
 // src/features/inventory/exactDecimal.ts.
-export interface UnitLifecycleItem { id: number; code: string; name: string; is_active: boolean; allows_fractions: boolean; usage_count: number; }
+export interface UnitLifecycleItem {
+  id: number;
+  code: string;
+  name: string;
+  is_active: boolean;
+  allows_fractions: boolean;
+  usage_count: number;
+  base_unit_id?: number | null;
+  base_unit_code?: string | null;
+  base_unit_name?: string | null;
+  conversion_factor?: string | null;
+}
 
 export interface QuickCreatedProduct { product_id: number; variant_id: number; }
 

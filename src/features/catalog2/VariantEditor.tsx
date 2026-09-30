@@ -106,6 +106,7 @@ export function VariantEditor({
   onCreateAttribute,
   onAddValue,
   barcodes,
+  packs,
   altUnits,
 }: {
   variant: VariantDetail;
@@ -125,6 +126,8 @@ export function VariantEditor({
   onAddValue: (attributeId: number, value: string) => Promise<number>;
   /** The barcode section, supplied by the panel so IPC stays in one place. */
   barcodes: ReactNode;
+  /** The packs section (WS-O-2). */
+  packs?: ReactNode;
   /** The alternate-units section, supplied by the panel for the same reason. */
   altUnits: ReactNode;
 }) {
@@ -191,6 +194,18 @@ export function VariantEditor({
           {barcodes}
         </CollapsibleSection>
       </div>
+
+      {/* 3b. Packs (WS-O-2) */}
+      {packs ? (
+        <div className="sk-catalog2__veditor-section">
+          <CollapsibleSection
+            title={t('pack.title')}
+            testId={`catalog2-packs-toggle-${variant.variant_id}`}
+          >
+            {packs}
+          </CollapsibleSection>
+        </div>
+      ) : null}
 
       {/* 3b. Alternate units (WS-D-13 Phase B) — after Barcodes and before
           pricing, per the Owner's ordering. Collapsed by default like

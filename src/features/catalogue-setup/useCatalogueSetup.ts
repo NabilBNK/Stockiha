@@ -99,13 +99,27 @@ export function useCatalogueSetup(token: string) {
     await loadCategories();
   }, [token, loadCategories]);
 
-  // Units. WS-D-13 Phase A: both writers carry allows_fractions, and
-  // rename assigns it unconditionally — the row editor seeds it from the
-  // current row, so a rename that does not touch the toggle preserves it.
-  // WS-D-14 Part 3: the code is no longer a caller-supplied argument at all
-  // — it is generated server-side from the name, and stays fixed afterwards.
-  const createUnit = useCallback(async (name: string, allowsFractions: boolean) => {
-    await ipc.createUnit(token, name, allowsFractions);
+  // Units.
+  const createUnit = useCallback(async (
+    name: string,
+    allowsFractions: boolean,
+    code?: string | null,
+    baseUnitId?: number | null,
+    conversionFactor?: string | null,
+  ) => {
+    await ipc.createUnit(token, name, allowsFractions, code, baseUnitId, conversionFactor);
+    await loadUnits();
+  }, [token, loadUnits]);
+
+  const updateUnit = useCallback(async (
+    id: number,
+    name: string,
+    allowsFractions: boolean,
+    code?: string | null,
+    baseUnitId?: number | null,
+    conversionFactor?: string | null,
+  ) => {
+    await ipc.updateUnit(token, id, name, allowsFractions, code, baseUnitId, conversionFactor);
     await loadUnits();
   }, [token, loadUnits]);
 
@@ -181,7 +195,7 @@ export function useCatalogueSetup(token: string) {
     attributes, attributeValues, attributesLoading, attributesError,
     loadAll,
     createCategory, renameCategory, setCategoryActive, deleteCategory,
-    createUnit, renameUnit, setUnitActive, deleteUnit,
+    createUnit, updateUnit, renameUnit, setUnitActive, deleteUnit,
     createAttribute, renameAttribute, setAttributeActive, setAttributeVisibleOnReceipt, deleteAttribute,
     addAttributeValue, renameAttributeValue, setAttributeValueActive, deleteAttributeValue,
   };

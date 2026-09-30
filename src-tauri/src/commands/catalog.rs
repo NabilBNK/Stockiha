@@ -264,11 +264,22 @@ pub(crate) async fn create_unit(
     session_token: String,
     name: String,
     allows_fractions: bool,
+    code: Option<String>,
+    base_unit_id: Option<i64>,
+    conversion_factor: Option<Decimal>,
 ) -> Result<i64, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::create_unit(pool, &session_token, &name, allows_fractions)
-        .await
-        .map_err(IpcError::from)
+    catalog::create_unit(
+        pool,
+        &session_token,
+        &name,
+        allows_fractions,
+        code.as_deref(),
+        base_unit_id,
+        conversion_factor,
+    )
+    .await
+    .map_err(IpcError::from)
 }
 
 #[tauri::command]
@@ -641,6 +652,10 @@ pub(crate) struct UnitLifecycleItemResponse {
     pub is_active: bool,
     pub allows_fractions: bool,
     pub usage_count: i64,
+    pub base_unit_id: Option<i64>,
+    pub base_unit_code: Option<String>,
+    pub base_unit_name: Option<String>,
+    pub conversion_factor: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -910,10 +925,41 @@ pub(crate) async fn list_units_v2(
                     is_active: i.is_active,
                     allows_fractions: i.allows_fractions,
                     usage_count: i.usage_count,
+                    base_unit_id: i.base_unit_id,
+                    base_unit_code: i.base_unit_code,
+                    base_unit_name: i.base_unit_name,
+                    conversion_factor: i.conversion_factor.map(|d| d.normalize().to_string()),
                 })
                 .collect()
         })
         .map_err(IpcError::from)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn update_unit(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    unit_id: i64,
+    name: String,
+    allows_fractions: bool,
+    code: Option<String>,
+    base_unit_id: Option<i64>,
+    conversion_factor: Option<Decimal>,
+) -> Result<(), IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    catalog::update_unit(
+        pool,
+        &session_token,
+        unit_id,
+        &name,
+        allows_fractions,
+        code.as_deref(),
+        base_unit_id,
+        conversion_factor,
+    )
+    .await
+    .map_err(IpcError::from)
 }
 
 #[tauri::command]
@@ -924,10 +970,17 @@ pub(crate) async fn rename_unit(
     name: String,
     allows_fractions: bool,
 ) -> Result<(), IpcError> {
-    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
-    catalog::rename_unit(pool, &session_token, unit_id, &name, allows_fractions)
-        .await
-        .map_err(IpcError::from)
+    update_unit(
+        state,
+        session_token,
+        unit_id,
+        name,
+        allows_fractions,
+        None,
+        None,
+        None,
+    )
+    .await
 }
 
 #[tauri::command]

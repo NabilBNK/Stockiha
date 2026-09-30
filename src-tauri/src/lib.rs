@@ -487,6 +487,7 @@ pub fn run() {
         commands::catalog::delete_attribute_value,
         commands::catalog::list_units_v2,
         commands::catalog::rename_unit,
+        commands::catalog::update_unit,
         commands::catalog::set_unit_active,
         commands::catalog::delete_unit,
         commands::catalog::quick_create_product,

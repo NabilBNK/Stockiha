@@ -499,15 +499,22 @@ pub(crate) async fn create_unit(
     session_token: &str,
     name: &str,
     allows_fractions: bool,
+    code: Option<&str>,
+    base_unit_id: Option<i64>,
+    conversion_factor: Option<Decimal>,
 ) -> Result<i64, AppError> {
-    let (id,) =
-        sqlx::query_as::<_, (i64,)>("SELECT catalog.create_unit($1::text, $2::text, $3::boolean)")
-            .bind(session_token)
-            .bind(name)
-            .bind(allows_fractions)
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::from_posting_error)?;
+    let (id,) = sqlx::query_as::<_, (i64,)>(
+        "SELECT catalog.create_unit($1::text, $2::text, $3::boolean, $4::text, $5::bigint, $6::numeric)",
+    )
+    .bind(session_token)
+    .bind(name)
+    .bind(allows_fractions)
+    .bind(code)
+    .bind(base_unit_id)
+    .bind(conversion_factor)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
     Ok(id)
 }
 
@@ -679,16 +686,14 @@ pub(crate) async fn update_pack(
     conversion_factor: Decimal,
     sale_price: Option<Decimal>,
 ) -> Result<(), AppError> {
-    sqlx::query(
-        "SELECT catalog.update_pack($1::text, $2::bigint, $3::numeric, $4::numeric)",
-    )
-    .bind(session_token)
-    .bind(variant_unit_id)
-    .bind(conversion_factor)
-    .bind(sale_price)
-    .execute(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    sqlx::query("SELECT catalog.update_pack($1::text, $2::bigint, $3::numeric, $4::numeric)")
+        .bind(session_token)
+        .bind(variant_unit_id)
+        .bind(conversion_factor)
+        .bind(sale_price)
+        .execute(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     Ok(())
 }
@@ -698,14 +703,12 @@ pub(crate) async fn set_pack_primary(
     session_token: &str,
     variant_unit_id: i64,
 ) -> Result<(), AppError> {
-    sqlx::query(
-        "SELECT catalog.set_pack_primary($1::text, $2::bigint)",
-    )
-    .bind(session_token)
-    .bind(variant_unit_id)
-    .execute(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    sqlx::query("SELECT catalog.set_pack_primary($1::text, $2::bigint)")
+        .bind(session_token)
+        .bind(variant_unit_id)
+        .execute(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     Ok(())
 }
@@ -716,15 +719,13 @@ pub(crate) async fn set_pack_active(
     variant_unit_id: i64,
     is_active: bool,
 ) -> Result<(), AppError> {
-    sqlx::query(
-        "SELECT catalog.set_pack_active($1::text, $2::bigint, $3::boolean)",
-    )
-    .bind(session_token)
-    .bind(variant_unit_id)
-    .bind(is_active)
-    .execute(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    sqlx::query("SELECT catalog.set_pack_active($1::text, $2::bigint, $3::boolean)")
+        .bind(session_token)
+        .bind(variant_unit_id)
+        .bind(is_active)
+        .execute(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     Ok(())
 }
@@ -734,14 +735,12 @@ pub(crate) async fn remove_pack(
     session_token: &str,
     variant_unit_id: i64,
 ) -> Result<(), AppError> {
-    sqlx::query(
-        "SELECT catalog.remove_pack($1::text, $2::bigint)",
-    )
-    .bind(session_token)
-    .bind(variant_unit_id)
-    .execute(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    sqlx::query("SELECT catalog.remove_pack($1::text, $2::bigint)")
+        .bind(session_token)
+        .bind(variant_unit_id)
+        .execute(pool)
+        .await
+        .map_err(AppError::from_posting_error)?;
 
     Ok(())
 }
@@ -752,15 +751,14 @@ pub(crate) async fn add_pack_barcode(
     variant_unit_id: i64,
     barcode: &str,
 ) -> Result<i64, AppError> {
-    let (id,): (i64,) = sqlx::query_as(
-        "SELECT catalog.add_pack_barcode($1::text, $2::bigint, $3::text)",
-    )
-    .bind(session_token)
-    .bind(variant_unit_id)
-    .bind(barcode)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from_posting_error)?;
+    let (id,): (i64,) =
+        sqlx::query_as("SELECT catalog.add_pack_barcode($1::text, $2::bigint, $3::text)")
+            .bind(session_token)
+            .bind(variant_unit_id)
+            .bind(barcode)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
 
     Ok(id)
 }
@@ -857,7 +855,9 @@ pub(crate) async fn get_primary_packs(
 ) -> Result<Vec<PrimaryPackDto>, AppError> {
     if variant_ids.len() > 500 {
         return Err(AppError::ValidationError {
-            diagnostic: "PACK_REQUEST_TOO_LARGE: cannot request more than 500 variant packs at once".to_string(),
+            diagnostic:
+                "PACK_REQUEST_TOO_LARGE: cannot request more than 500 variant packs at once"
+                    .to_string(),
         });
     }
 
@@ -992,6 +992,10 @@ pub(crate) struct UnitLifecycleItem {
     /// WS-D-13 Phase A. Whether quantities in this unit may be fractional.
     pub allows_fractions: bool,
     pub usage_count: i64,
+    pub base_unit_id: Option<i64>,
+    pub base_unit_code: Option<String>,
+    pub base_unit_name: Option<String>,
+    pub conversion_factor: Option<Decimal>,
 }
 
 pub(crate) struct QuickCreatedProduct {
@@ -1329,11 +1333,22 @@ pub(crate) async fn list_units_v2(
     pool: &PgPool,
     session_token: &str,
 ) -> Result<Vec<UnitLifecycleItem>, AppError> {
-    // Columns are selected BY NAME from the function's RETURNS TABLE, so the
-    // tuple below is positional against THIS select list, not against the
-    // function's own column order. allows_fractions was appended in WS-D-13.
-    let rows = sqlx::query_as::<_, (i64, String, String, bool, bool, i64)>(
-        "SELECT id, code, name, is_active, allows_fractions, usage_count \
+    let rows = sqlx::query_as::<
+        _,
+        (
+            i64,
+            String,
+            String,
+            bool,
+            bool,
+            i64,
+            Option<i64>,
+            Option<String>,
+            Option<String>,
+            Option<Decimal>,
+        ),
+    >(
+        "SELECT id, code, name, is_active, allows_fractions, usage_count, base_unit_id, base_unit_code, base_unit_name, conversion_factor \
          FROM catalog.list_units_v2($1::text)",
     )
     .bind(session_token)
@@ -1343,13 +1358,28 @@ pub(crate) async fn list_units_v2(
     Ok(rows
         .into_iter()
         .map(
-            |(id, code, name, is_active, allows_fractions, usage_count)| UnitLifecycleItem {
+            |(
                 id,
                 code,
                 name,
                 is_active,
                 allows_fractions,
                 usage_count,
+                base_unit_id,
+                base_unit_code,
+                base_unit_name,
+                conversion_factor,
+            )| UnitLifecycleItem {
+                id,
+                code,
+                name,
+                is_active,
+                allows_fractions,
+                usage_count,
+                base_unit_id,
+                base_unit_code,
+                base_unit_name,
+                conversion_factor,
             },
         )
         .collect())
@@ -1368,6 +1398,33 @@ pub(crate) async fn list_units_v2(
 /// a unit's NAME never touches its code, deliberately — a code may already be
 /// printed on a document, and changing it silently on a name edit would break
 /// recognition of what that document refers to.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn update_unit(
+    pool: &PgPool,
+    session_token: &str,
+    unit_id: i64,
+    name: &str,
+    allows_fractions: bool,
+    code: Option<&str>,
+    base_unit_id: Option<i64>,
+    conversion_factor: Option<Decimal>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "SELECT catalog.update_unit($1::text, $2::bigint, $3::text, $4::boolean, $5::text, $6::bigint, $7::numeric)",
+    )
+    .bind(session_token)
+    .bind(unit_id)
+    .bind(name)
+    .bind(allows_fractions)
+    .bind(code)
+    .bind(base_unit_id)
+    .bind(conversion_factor)
+    .execute(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+    Ok(())
+}
+
 pub(crate) async fn rename_unit(
     pool: &PgPool,
     session_token: &str,
@@ -1375,15 +1432,17 @@ pub(crate) async fn rename_unit(
     name: &str,
     allows_fractions: bool,
 ) -> Result<(), AppError> {
-    sqlx::query("SELECT catalog.rename_unit($1::text, $2::bigint, $3::text, $4::boolean)")
-        .bind(session_token)
-        .bind(unit_id)
-        .bind(name)
-        .bind(allows_fractions)
-        .execute(pool)
-        .await
-        .map_err(AppError::from_posting_error)?;
-    Ok(())
+    update_unit(
+        pool,
+        session_token,
+        unit_id,
+        name,
+        allows_fractions,
+        None,
+        None,
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn set_unit_active(
@@ -1582,9 +1641,17 @@ mod tests {
 
     async fn seed_unit(pool: &PgPool, token: &str, suffix: u128) -> i64 {
         // WS-D-14 Part 3: create_unit no longer takes a code.
-        create_unit(pool, token, &format!("Unit {suffix}"), true)
-            .await
-            .expect("creating a fixture unit must succeed")
+        create_unit(
+            pool,
+            token,
+            &format!("Unit {suffix}"),
+            true,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("creating a fixture unit must succeed")
     }
 
     /// A fixed-format pseudo-UUID string, unique per test run, for the one
