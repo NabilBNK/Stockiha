@@ -8,7 +8,7 @@ SET ROLE stockiha_owner;
 -- ============================================================================
 
 ALTER TABLE procurement.purchase_receipt_lines
-    ADD COLUMN pack_rate_of_unit_id bigint NULL REFERENCES catalog.units(id);
+    ADD COLUMN IF NOT EXISTS pack_rate_of_unit_id bigint NULL REFERENCES catalog.units(id);
 
 -- ============================================================================
 -- 2. Helper function to expand direct purchase lines with extra loose pieces
