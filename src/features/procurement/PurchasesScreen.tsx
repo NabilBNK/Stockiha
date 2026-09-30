@@ -28,6 +28,7 @@ import { PurchasePaymentModal } from './PurchasePaymentModal';
 import { PurchaseReturnModal } from './PurchaseReturnModal';
 import { JournalDetailModal } from '../accounting/JournalsScreen';
 import { addExactDecimals, isPositiveDecimal, multiplyExactDecimals } from './procurementDecimal';
+import { formatExactDecimal } from '../inventory/exactDecimal';
 import { PROCUREMENT_COPY } from './procurementCopy';
 import './procurement.css';
 // WS-I-3 STEP I3-07 — the low-stock report's "Prepare purchase" prefill.
@@ -56,7 +57,7 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
   const [error, setError] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [lineErrors, setLineErrors] = useState<Record<number, { unit?: string; quantity?: string; unitCost?: string }>>({});
+  const [lineErrors, setLineErrors] = useState<Record<number, { unit?: string; quantity?: string; extra?: string; unitCost?: string }>>({});
   const [selectedReceipt, setSelectedReceipt] = useState<PurchaseReceiptSummary | null>(null);
   const [selectedJournalDocId, setSelectedJournalDocId] = useState<number | null>(null);
   const [paymentStatuses, setPaymentStatuses] = useState<PurchasePaymentStatusDto[]>([]);
@@ -134,13 +135,15 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
     void loadData();
   }, [sessionToken]);
 
-  const appendLineFromOption = (option: PurchaseProductOption) => {
+  const appendLineFromOption = (option: PurchaseProductOption, forceUnitId?: number) => {
+    const chosenUnitId = forceUnitId ?? option.primary_pack_unit_id ?? option.default_unit_id;
     setLines((prev) => [
       ...prev,
       {
         variant_id: option.variant_id,
-        unit_id: option.default_unit_id,
+        unit_id: chosenUnitId,
         quantity_ordered: '1',
+        extra_base_quantity: '',
         unit_cost: option.last_purchase_cost ?? option.default_unit_cost ?? '0',
       },
     ]);
@@ -188,8 +191,9 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
       }
       newLines.push({
         variant_id: option.variant_id,
-        unit_id: option.default_unit_id,
+        unit_id: option.primary_pack_unit_id ?? option.default_unit_id,
         quantity_ordered: String(line.quantity_base),
+        extra_base_quantity: '',
         unit_cost: line.unit_cost ?? '',
       });
       added += 1;
@@ -227,10 +231,17 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
       appendLineFromOption(option);
     } else {
       const index = pickerTargetIndex;
+      const chosenUnitId = option.primary_pack_unit_id ?? option.default_unit_id;
       setLines((prev) =>
         prev.map((line, idx) =>
           idx === index
-            ? { ...line, variant_id: option.variant_id, unit_id: option.default_unit_id }
+            ? {
+                ...line,
+                variant_id: option.variant_id,
+                unit_id: chosenUnitId,
+                extra_base_quantity: '',
+                unit_cost: option.last_purchase_cost ?? option.default_unit_cost ?? line.unit_cost,
+              }
             : line,
         ),
       );
@@ -242,18 +253,46 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
   const handleBarcodeSubmit = () => {
     const code = barcodeInput.trim();
     if (!code) return;
-    const match = products.find(
-      (item) => item.is_active && item.primary_barcode && item.primary_barcode === code,
-    );
-    if (!match) {
+
+    let matchedOption: PurchaseProductOption | undefined;
+    let matchedUnitId: number | undefined;
+
+    for (const p of products) {
+      if (!p.is_active) continue;
+      if (p.primary_barcode === code) {
+        matchedOption = p;
+        matchedUnitId = p.default_unit_id;
+        break;
+      }
+      const pack = p.alternate_units?.find((u) => u.barcode === code);
+      if (pack) {
+        matchedOption = p;
+        matchedUnitId = pack.unit_id;
+        break;
+      }
+    }
+
+    if (!matchedOption) {
       setBarcodeError(text.barcodeNotFound);
       return;
     }
-    if (lines.some((line) => line.variant_id === match.variant_id)) {
-      setBarcodeError(text.itemAlreadyAdded);
+
+    const existingIndex = lines.findIndex((line) => line.variant_id === matchedOption!.variant_id);
+    if (existingIndex >= 0) {
+      const existingLine = lines[existingIndex];
+      const currentQty = parseFloat(existingLine.quantity_ordered) || 0;
+      updateLine(existingIndex, {
+        ...existingLine,
+        quantity_ordered: String(currentQty + 1),
+        ...(matchedUnitId ? { unit_id: matchedUnitId } : {}),
+      });
+      setBarcodeError(null);
+      setBarcodeInput('');
+      barcodeInputRef.current?.focus();
       return;
     }
-    appendLineFromOption(match);
+
+    appendLineFromOption(matchedOption, matchedUnitId);
     setBarcodeError(null);
     setBarcodeInput('');
     barcodeInputRef.current?.focus();
@@ -270,17 +309,63 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
     setLineErrors((current) => ({ ...current, [index]: {} }));
   };
 
-  const calculateSubtotal = () => {
-    return addExactDecimals(
-      lines.map((l) => multiplyExactDecimals(l.quantity_ordered, l.unit_cost)),
-    );
+  const getLineAmounts = (line: CreatePoLinePayload) => {
+    const product = products.find((item) => item.variant_id === line.variant_id);
+    const selectedPack = product?.alternate_units.find((u) => u.unit_id === line.unit_id);
+    const mainCost = multiplyExactDecimals(line.quantity_ordered, line.unit_cost);
+
+    let extraCost = '0.00';
+    let pieceCost = '0.00';
+    let extraQty = 0;
+    let packFactor = 1;
+    let totalBaseUnits = 0;
+
+    if (selectedPack) {
+      packFactor = parseFloat(selectedPack.conversion_factor) || 1;
+      const unitCostNum = parseFloat(line.unit_cost) || 0;
+      pieceCost = (Math.round((unitCostNum / packFactor) * 100) / 100).toFixed(2);
+      if (line.extra_base_quantity?.trim()) {
+        extraQty = parseFloat(line.extra_base_quantity.trim()) || 0;
+        if (extraQty > 0) {
+          extraCost = (Math.round(extraQty * parseFloat(pieceCost) * 100) / 100).toFixed(2);
+        }
+      }
+      const mainQty = parseFloat(line.quantity_ordered) || 0;
+      totalBaseUnits = Math.round((mainQty * packFactor + extraQty) * 1000) / 1000;
+    } else {
+      totalBaseUnits = parseFloat(line.quantity_ordered) || 0;
+    }
+
+    const lineTotal = addExactDecimals([mainCost, extraCost]);
+    return {
+      mainCost,
+      extraCost,
+      pieceCost,
+      extraQty,
+      packFactor,
+      totalBaseUnits,
+      lineTotal,
+      isPack: Boolean(selectedPack),
+      packUnit: selectedPack,
+      baseUnitCode: product?.default_unit_code ?? '',
+    };
   };
 
-  const validateLines = (): { valid: boolean; errors: Record<number, { unit?: string; quantity?: string; unitCost?: string }> } => {
+  const calculateSubtotal = () => {
+    return addExactDecimals(lines.map((l) => getLineAmounts(l).lineTotal));
+  };
+
+  const validateLines = (): {
+    valid: boolean;
+    errors: Record<number, { unit?: string; quantity?: string; extra?: string; unitCost?: string }>;
+  } => {
     const effectiveLines = new Set<string>();
-    const nextLineErrors: Record<number, { unit?: string; quantity?: string; unitCost?: string }> = {};
+    const nextLineErrors: Record<
+      number,
+      { unit?: string; quantity?: string; extra?: string; unitCost?: string }
+    > = {};
     lines.forEach((line, index) => {
-      const errors: { unit?: string; quantity?: string; unitCost?: string } = {};
+      const errors: { unit?: string; quantity?: string; extra?: string; unitCost?: string } = {};
       const product = products.find((item) => item.variant_id === line.variant_id);
       const validUnits = product
         ? [product.default_unit_id, ...product.alternate_units.map((unit) => unit.unit_id)]
@@ -290,6 +375,17 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
       }
       if (!isPositiveDecimal(line.quantity_ordered)) {
         errors.quantity = 'Enter a quantity greater than 0, for example 1 or 1.500.';
+      }
+      const selectedPack = product?.alternate_units.find((u) => u.unit_id === line.unit_id);
+      if (selectedPack && line.extra_base_quantity?.trim()) {
+        const extraStr = line.extra_base_quantity.trim();
+        const extraVal = parseFloat(extraStr);
+        const factor = parseFloat(selectedPack.conversion_factor) || 1;
+        if (isNaN(extraVal) || extraVal < 0 || !/^\d+(?:\.\d+)?$/.test(extraStr)) {
+          errors.extra = 'Enter a valid non-negative number.';
+        } else if (extraVal >= factor) {
+          errors.extra = `${text.extraPiecesExceedFactor} (< ${formatExactDecimal(selectedPack.conversion_factor)}).`;
+        }
       }
       const parsedCost = parseFloat(line.unit_cost);
       if (isNaN(parsedCost) || parsedCost < 0 || !/^\d+(?:\.\d+)?$/.test(line.unit_cost.trim())) {
@@ -353,6 +449,7 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
           variant_id: l.variant_id,
           unit_id: l.unit_id,
           quantity_received: l.quantity_ordered,
+          extra_base_quantity: l.extra_base_quantity?.trim() ? l.extra_base_quantity.trim() : undefined,
           unit_cost: l.unit_cost,
         })),
       };
@@ -604,10 +701,11 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
             <table className="pr-items-table" data-testid="po-lines-input-table">
               <thead>
                 <tr>
-                  <th style={{ width: '38%' }}>{text.product}</th>
-                  <th style={{ width: '14%' }}>{text.unit}</th>
-                  <th style={{ width: '14%' }}>{text.quantity}</th>
-                  <th style={{ width: '16%' }}>{text.unitCost} (DZD)</th>
+                  <th style={{ width: '30%' }}>{text.product}</th>
+                  <th style={{ width: '16%' }}>{text.unit}</th>
+                  <th style={{ width: '11%' }}>{text.quantity}</th>
+                  <th style={{ width: '12%' }}>{text.extraPieces}</th>
+                  <th style={{ width: '13%' }}>{text.unitCost} (DZD)</th>
                   <th className="sk-num" style={{ width: '14%' }}>{text.total}</th>
                   <th style={{ width: '4%', textAlign: 'center' }}></th>
                 </tr>
@@ -615,7 +713,7 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: 0 }}>
+                    <td colSpan={7} style={{ padding: 0 }}>
                       <div className="pr-empty-table-state">
                         <div className="pr-empty-table-state__icon" aria-hidden>🛒</div>
                         <div style={{ fontWeight: 600, color: 'var(--sk-text)' }}>
@@ -634,13 +732,14 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
                 ) : (
                   lines.map((line, idx) => {
                     const product = products.find((item) => item.variant_id === line.variant_id);
+                    const lineAmounts = getLineAmounts(line);
                     const availableUnits = product
                       ? [
                           { id: product.default_unit_id, code: product.default_unit_code, name: product.default_unit_name },
                           ...product.alternate_units.map((unit) => ({
                             id: unit.unit_id,
-                            code: unit.unit_code,
-                            name: unit.unit_code,
+                            code: `${unit.unit_code} (×${formatExactDecimal(unit.conversion_factor)})`,
+                            name: unit.unit_name ?? unit.unit_code,
                           })),
                         ]
                       : [];
@@ -669,7 +768,15 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
                           <select
                             className="pr-cell-input"
                             value={line.unit_id}
-                            onChange={(e) => updateLine(idx, { ...line, unit_id: parseInt(e.target.value, 10) })}
+                            onChange={(e) => {
+                              const nextUnitId = parseInt(e.target.value, 10);
+                              updateLine(idx, {
+                                ...line,
+                                unit_id: nextUnitId,
+                                extra_base_quantity: '',
+                              });
+                            }}
+                            data-testid={`purchase-line-unit-${idx}`}
                           >
                             {availableUnits.map((u) => (
                               <option key={u.id} value={u.id}>
@@ -686,8 +793,27 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
                             aria-invalid={!!lineErrors[idx]?.quantity}
                             value={line.quantity_ordered}
                             onChange={(e) => updateLine(idx, { ...line, quantity_ordered: e.target.value })}
+                            data-testid={`purchase-line-qty-${idx}`}
                           />
                           {lineErrors[idx]?.quantity && <div className="sk-field-error">{lineErrors[idx].quantity}</div>}
+                        </td>
+                        <td>
+                          {lineAmounts.isPack ? (
+                            <div>
+                              <input
+                                type="text"
+                                className="pr-cell-input"
+                                placeholder={text.extraPiecesPlaceholder}
+                                aria-invalid={!!lineErrors[idx]?.extra}
+                                value={line.extra_base_quantity ?? ''}
+                                onChange={(e) => updateLine(idx, { ...line, extra_base_quantity: e.target.value })}
+                                data-testid={`purchase-line-extra-${idx}`}
+                              />
+                              {lineErrors[idx]?.extra && <div className="sk-field-error">{lineErrors[idx].extra}</div>}
+                            </div>
+                          ) : (
+                            <div style={{ textAlign: 'center', color: 'var(--sk-muted)', userSelect: 'none' }}>—</div>
+                          )}
                         </td>
                         <td>
                           <input
@@ -696,11 +822,20 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
                             aria-invalid={!!lineErrors[idx]?.unitCost}
                             value={line.unit_cost}
                             onChange={(e) => updateLine(idx, { ...line, unit_cost: e.target.value })}
+                            data-testid={`purchase-line-cost-${idx}`}
                           />
                           {lineErrors[idx]?.unitCost && <div className="sk-field-error">{lineErrors[idx].unitCost}</div>}
                         </td>
                         <td className="sk-num" style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                          {multiplyExactDecimals(line.quantity_ordered, line.unit_cost)} DZD
+                          <div>{lineAmounts.lineTotal} DZD</div>
+                          {lineAmounts.isPack && (
+                            <div style={{ fontSize: '0.74rem', color: 'var(--sk-muted)', fontWeight: 400 }}>
+                              = {lineAmounts.totalBaseUnits} {lineAmounts.baseUnitCode}
+                              {lineAmounts.extraQty > 0 && (
+                                <> · {lineAmounts.extraQty} @ {lineAmounts.pieceCost} DZD</>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           <button

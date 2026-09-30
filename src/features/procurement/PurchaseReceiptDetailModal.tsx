@@ -122,7 +122,9 @@ export function PurchaseReceiptDetailModal({
       lines: lines.map((l, idx) => ({
         lineNumber: idx + 1,
         sku: l.variant_sku,
-        productName: l.variant_name,
+        productName: l.pack_rate_unit_name
+          ? `${l.variant_name} (${text.packRatePrefix}: ${l.pack_rate_unit_name})`
+          : l.variant_name,
         variantName: undefined,
         unitCode: l.unit_code,
         quantity: parseFloat(l.quantity_received) || 0,
@@ -272,6 +274,14 @@ export function PurchaseReceiptDetailModal({
                         <td className="sk-muted">{idx + 1}</td>
                         <td>
                           <strong>{line.variant_name}</strong>
+                          {line.pack_rate_unit_name && (
+                            <span
+                              className="sk-muted"
+                              style={{ display: 'block', fontSize: '0.78rem', marginTop: 2 }}
+                            >
+                              ({text.packRatePrefix}: {line.pack_rate_unit_name})
+                            </span>
+                          )}
                         </td>
                         <td><code>{line.variant_sku}</code></td>
                         <td>{line.unit_code}</td>

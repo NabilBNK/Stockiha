@@ -195,6 +195,12 @@ export type ProcurementCopy = {
   returnNeedsLine: string;
   returned: string;
   supplierOwesYou: string;
+  extraPieces: string;
+  extraPiecesPlaceholder: string;
+  extraPiecesExceedFactor: string;
+  packRatePrefix: string;
+  packRateDetail: string;
+  basePieces: string;
 };
 
 export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
@@ -297,6 +303,12 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     returnNeedsLine: 'Enter a quantity on at least one line.',
     returned: 'Returned',
     supplierOwesYou: 'Supplier owes you',
+    extraPieces: 'Extra pcs',
+    extraPiecesPlaceholder: '0',
+    extraPiecesExceedFactor: 'Extra pieces must be less than pack size',
+    packRatePrefix: 'Pack rate',
+    packRateDetail: 'Box rate',
+    basePieces: 'Loose pieces',
   },
   fr: {
     newPurchase: 'Nouvel achat', confirmPurchase: 'Confirmer l’achat', purchaseConfirmed: 'Achat direct enregistré avec succès.',
@@ -397,6 +409,12 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     returnNeedsLine: 'Saisissez une quantité sur au moins une ligne.',
     returned: 'Retourné',
     supplierOwesYou: 'Le fournisseur vous doit',
+    extraPieces: '+ Pièces',
+    extraPiecesPlaceholder: '0',
+    extraPiecesExceedFactor: 'Les pièces supplémentaires doivent être inférieures à la taille du paquet',
+    packRatePrefix: 'Taux paquet',
+    packRateDetail: 'Taux boîte',
+    basePieces: 'Pièces en vrac',
   },
   ar: {
     newPurchase: 'شراء جديد', confirmPurchase: 'تأكيد الشراء', purchaseConfirmed: 'تم تسجيل الشراء المباشر بنجاح.',
@@ -497,5 +515,11 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     returnNeedsLine: 'أدخل كمية في سطر واحد على الأقل.',
     returned: 'مُرجع',
     supplierOwesYou: 'المورد مدين لك',
+    extraPieces: '+ قطع',
+    extraPiecesPlaceholder: '0',
+    extraPiecesExceedFactor: 'يجب أن يكون عدد القطع الإضافية أقل من حجم العلبة',
+    packRatePrefix: 'سعر العلبة',
+    packRateDetail: 'سعر العلبة',
+    basePieces: 'قطع مفردة',
   },
 };

@@ -387,6 +387,7 @@ export interface CreatePoLinePayload {
   variant_id: number;
   unit_id: number;
   quantity_ordered: string;
+  extra_base_quantity?: string;
   unit_cost: string;
 }
 
@@ -422,6 +423,7 @@ export interface ConfirmDirectPurchaseLinePayload {
   variant_id: number;
   unit_id: number;
   quantity_received: string;
+  extra_base_quantity?: string | null;
   unit_cost: string;
 }
 
@@ -486,6 +488,9 @@ export interface PurchaseReceiptLineDto {
   variant_name: string;
   unit_id: number;
   unit_code: string;
+  unit_name?: string;
+  pack_rate_of_unit_id?: number | null;
+  pack_rate_unit_name?: string | null;
   quantity_received: string;
   quantity_invoiced: string;
   quantity_available_to_invoice: string;
@@ -728,9 +733,14 @@ export interface VariantAttributeDto {
 }
 
 export interface AlternateUnitOptionDto {
+  variant_unit_id?: number;
   unit_id: number;
   unit_code: string;
+  unit_name?: string;
   conversion_factor: string;
+  is_primary?: boolean;
+  barcode?: string | null;
+  sale_price?: string | null;
 }
 
 export interface PurchaseProductOption {
@@ -744,6 +754,7 @@ export interface PurchaseProductOption {
   default_unit_id: number;
   default_unit_code: string;
   default_unit_name?: string | null;
+  primary_pack_unit_id?: number | null;
   alternate_units: AlternateUnitOptionDto[];
   attributes: VariantAttributeDto[];
   is_active: boolean;

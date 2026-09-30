@@ -108,6 +108,8 @@ pub struct ConfirmDirectPurchaseLinePayload {
     pub variant_id: i64,
     pub unit_id: i64,
     pub quantity_received: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_base_quantity: Option<String>,
     pub unit_cost: String,
 }
 

@@ -43,12 +43,17 @@ function buildModel(data: ReceiptPrintData, identity: OfficialDocumentIdentity) 
       supplierName: receipt.supplier_name,
       warehouseName: receipt.warehouse_name,
       purchaseOrderNumber: originText,
-      lines: lines.map((line) => ({
-        designation: line.variant_name,
-        quantity: line.quantity_received,
-        unitPrice: formatDisplayAmount(line.unit_cost),
-        lineTotal: formatDisplayAmount(line.line_total),
-      })),
+      lines: lines.map((line) => {
+        const rateSuffix = line.pack_rate_unit_name
+          ? ` (${text.packRatePrefix}: ${line.pack_rate_unit_name})`
+          : '';
+        return {
+          designation: `${line.variant_name}${rateSuffix}`,
+          quantity: `${line.quantity_received} ${line.unit_code}`,
+          unitPrice: formatDisplayAmount(line.unit_cost),
+          lineTotal: formatDisplayAmount(line.line_total),
+        };
+      }),
       total: formatDisplayAmount(receipt.total_amount),
       totalNumeric: receipt.total_amount,
     },
