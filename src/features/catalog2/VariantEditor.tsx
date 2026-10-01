@@ -107,7 +107,6 @@ export function VariantEditor({
   onAddValue,
   barcodes,
   packs,
-  altUnits,
 }: {
   variant: VariantDetail;
   attributes: AttributeDefinition[];
@@ -128,8 +127,6 @@ export function VariantEditor({
   barcodes: ReactNode;
   /** The packs section (WS-O-2). */
   packs?: ReactNode;
-  /** The alternate-units section, supplied by the panel for the same reason. */
-  altUnits: ReactNode;
 }) {
   const { t } = useI18n();
   const format = useDecimalFormat();
@@ -206,19 +203,6 @@ export function VariantEditor({
           </CollapsibleSection>
         </div>
       ) : null}
-
-      {/* 3b. Alternate units (WS-D-13 Phase B) — after Barcodes and before
-          pricing, per the Owner's ordering. Collapsed by default like
-          Barcodes: most variants have none. */}
-      <div className="sk-catalog2__veditor-section">
-        <CollapsibleSection
-          // `?? []`: a build running one migration behind gets no such key.
-          title={t('catalog2.altUnitsWithCount', { count: (variant.alt_units ?? []).length })}
-          testId={`catalog2-alt-units-toggle-${variant.variant_id}`}
-        >
-          {altUnits}
-        </CollapsibleSection>
-      </div>
 
       {/* 4. Sale price + Minimum stock, editable (C4, C5). Same InlineCell the
           table uses, same commitVariantFields payload underneath. */}

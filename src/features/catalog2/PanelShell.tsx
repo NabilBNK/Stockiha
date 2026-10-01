@@ -57,14 +57,16 @@ export function PanelShell({
   onClose,
   children,
   overlays,
+  defaultFullScreen = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   overlays?: ReactNode;
+  defaultFullScreen?: boolean;
 }) {
   const { t } = useI18n();
-  const { width, fullScreen, setWidth, toggleFullScreen } = usePanelLayout();
+  const { width, fullScreen, setWidth, toggleFullScreen } = usePanelLayout(defaultFullScreen);
 
   const panelRef = useRef<HTMLElement | null>(null);
   const measured = useElementWidth(panelRef);

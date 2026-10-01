@@ -85,11 +85,10 @@ import {
 } from 'react';
 
 import { Banner, Button, ConfirmDialog, Spinner, TextField } from '../../shared/components';
-import { useI18n, type MessageKey } from '../../shared/i18n';
+import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import * as ipc from '../../shared/ipc/gateway';
 import type {
-  AltUnitConversionDirection,
   AttributeDefinition,
   ProductDetail,
   ReferenceLifecycleItem,
@@ -112,9 +111,7 @@ import {
   type VariantDraft,
 } from './VariantDraftFields';
 import { useDecimalFormat } from './useDecimalFormat';
-import { formatExactDecimal, isExactDecimalPositive } from '../inventory/exactDecimal';
 import { PackManager } from '../products/PackManager';
-import { normalizeDecimalInput, validatePackForm, type PackFormErrors } from '../products/packValidation';
 
 /**
  * P1 (WS-D-8b pre-phase) — a stable, empty `VariantDetail` shape handed to
@@ -841,6 +838,13 @@ export function CatalogPanel({
                     attributes={attributes}
                     refLoading={refLoading}
                     existingVariants={detail.variants}
+                    units={units}
+                    baseUnit={{
+                      id: detail.unit_id,
+                      code: detail.unit_code,
+                      name: detail.unit_name,
+                      isWhole: !units.find((u) => u.id === detail.unit_id)?.allows_fractions,
+                    }}
                     onCancel={() => setGeneratingVariants(false)}
                     onCreated={async () => {
                       changedRef.current = true;
@@ -890,25 +894,13 @@ export function CatalogPanel({
                         }}
                         pieceSalePrice={selectedVariant.sale_price}
                         units={units}
+                        siblingVariants={detail.variants.filter((v) => v.variant_id !== selectedVariant.variant_id)}
                         sessionToken={token}
                         onChanged={async () => {
                           changedRef.current = true;
                           await refresh();
                         }}
                         onPacksLoaded={(loadedPacks) => handlePacksLoaded(selectedVariant.variant_id, loadedPacks)}
-                      />
-                    )}
-                    altUnits={(
-                      <AlternateUnitsSection
-                        token={token}
-                        variant={selectedVariant}
-                        units={units}
-                        baseUnitCode={detail.unit_code}
-                        busy={busy}
-                        onChanged={async () => {
-                          changedRef.current = true;
-                          await refresh();
-                        }}
                       />
                     )}
                   />
@@ -927,6 +919,7 @@ export function CatalogPanel({
     <PanelShell
       title={detail?.name ?? t('catalog2.panel')}
       onClose={close}
+      defaultFullScreen={true}
       overlays={<>
       {confirmProductDeactivate && detail ? (
         <ConfirmDialog
@@ -996,35 +989,6 @@ export function CatalogCreatePanel({
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
-  // WS-O-2.5: Box section
-  const [boxOpen, setBoxOpen] = useState(false);
-  const [boxUnitId, setBoxUnitId] = useState<number | null>(null);
-  const [boxHolds, setBoxHolds] = useState('');
-  const [boxPrice, setBoxPrice] = useState('');
-  const [boxBarcode, setBoxBarcode] = useState('');
-  const [boxErrors, setBoxErrors] = useState<PackFormErrors & { barcodeText?: string }>({});
-
-  const boxFilled =
-    boxUnitId != null ||
-    boxHolds.trim() !== '' ||
-    boxPrice.trim() !== '' ||
-    boxBarcode.trim() !== '';
-
-  const boxUnitOptions = useMemo(() => {
-    const hasPackUnitsForBase = units.some((u) => u.base_unit_id === unitId);
-    return units.filter(
-      (u) =>
-        u.is_active &&
-        u.id !== unitId &&
-        (hasPackUnitsForBase ? u.base_unit_id === unitId : true)
-    );
-  }, [units, unitId]);
-
-  const selectedBoxUnit = useMemo(
-    () => units.find((u) => u.id === boxUnitId) ?? null,
-    [units, boxUnitId]
-  );
-
   /**
    * R15 — the guard exists HERE and deliberately nowhere else. The edit panel
    * commits every field as you finish with it, so closing it can lose nothing.
@@ -1037,8 +1001,7 @@ export function CatalogCreatePanel({
     || draft.barcode.trim() !== ''
     || draft.salePrice.trim() !== ''
     || draft.minimumStock !== EMPTY_VARIANT_DRAFT.minimumStock
-    || Object.keys(attrSelection).length > 0
-    || boxFilled;
+    || Object.keys(attrSelection).length > 0;
 
   function requestClose() {
     if (dirty && !submitting) {
@@ -1142,49 +1105,6 @@ export function CatalogCreatePanel({
       return;
     }
     setSubmitting(true);
-    setError(null);
-    setBoxErrors({});
-
-    if (boxFilled) {
-      const chosenUnit = units.find((u) => u.id === unitId);
-      const baseIsWhole = chosenUnit ? !chosenUnit.allows_fractions : true;
-      const boxValidation = validatePackForm(
-        {
-          unitId: boxUnitId,
-          factorText: boxHolds,
-          priceText: boxPrice,
-          barcodeText: boxBarcode,
-        },
-        {
-          baseUnitId: unitId,
-          baseIsWhole,
-          usedUnitIds: [],
-          factorLocked: false,
-        }
-      );
-
-      if (Object.keys(boxValidation).length > 0) {
-        setBoxErrors(boxValidation);
-        setSubmitting(false);
-        return;
-      }
-
-      if (boxBarcode.trim()) {
-        try {
-          const resolved = await ipc.resolveBarcode(token, boxBarcode.trim());
-          if (resolved) {
-            setBoxErrors({
-              barcodeText: t('pack.error.barcodeUsed', { product: resolved.product_name }),
-            });
-            setSubmitting(false);
-            return;
-          }
-        } catch {
-          // Barcode not found - proceed
-        }
-      }
-    }
-
     let created: { product_id: number; variant_id: number };
     try {
       created = await ipc.quickCreateProduct(token, {
@@ -1204,24 +1124,6 @@ export function CatalogCreatePanel({
       return;
     }
 
-    let packWarning: string | undefined;
-    if (boxFilled && boxUnitId != null) {
-      try {
-        const normFactor = normalizeDecimalInput(boxHolds)!;
-        const normPrice = boxPrice.trim() ? normalizeDecimalInput(boxPrice) : null;
-        const packId = await ipc.createPack(token, created.variant_id, boxUnitId, normFactor, normPrice, true);
-        if (boxBarcode.trim()) {
-          try {
-            await ipc.addPackBarcode(token, packId, boxBarcode.trim());
-          } catch {
-            packWarning = t('pack.savedBarcodeFailed');
-          }
-        }
-      } catch {
-        packWarning = t('pack.quick.productSavedPackFailed');
-      }
-    }
-
     let attrWarning: string | undefined;
     const attributeValueIds = Object.values(attrSelection).filter((id) => id > 0);
     if (attributeValueIds.length > 0) {
@@ -1233,8 +1135,7 @@ export function CatalogCreatePanel({
     }
 
     setSubmitting(false);
-    const finalWarning = [packWarning, attrWarning].filter(Boolean).join(' · ') || undefined;
-    onCreated(created.product_id, finalWarning);
+    onCreated(created.product_id, attrWarning);
   }
 
   const categoryOptions = categories
@@ -1296,8 +1197,6 @@ export function CatalogCreatePanel({
               value={unitId}
               onChange={(nextUnitId) => {
                 setUnitId(nextUnitId);
-                setBoxUnitId(null);
-                setBoxHolds('');
               }}
               onCreate={createUnit}
               createLabel={t('catalogueSetup.units.name')}
@@ -1349,146 +1248,6 @@ export function CatalogCreatePanel({
           />
         </section>
 
-        {/* WS-O-2.5 — Sold by the box (optional) */}
-        <section
-          className="sk-catalog2__panel-section"
-          aria-label={t('pack.quick.title')}
-          data-testid="catalog2-create-box-section"
-        >
-          <div className="sk-catalog2__section-head">
-            <h3>{t('pack.quick.title')}</h3>
-            <Button
-              type="button"
-              variant="secondary"
-              aria-expanded={boxOpen}
-              onClick={() => setBoxOpen((prev) => !prev)}
-              data-testid="catalog2-create-box-toggle"
-            >
-              {boxOpen ? t('variants.collapse') : t('variants.expand')}
-            </Button>
-          </div>
-
-          {boxOpen ? (
-            <div className="sk-catalog2__panel-grid" style={{ marginTop: 12 }}>
-              {boxUnitOptions.length === 0 ? (
-                <div style={{ gridColumn: '1 / -1', marginBottom: 8 }}>
-                  <Banner tone="info">
-                    {t('pack.noPackUnitsConfigured' as MessageKey, {
-                      base: units.find((u) => u.id === unitId)?.name ?? '',
-                    }) || 'No pack units configured for this base unit.'}
-                  </Banner>
-                </div>
-              ) : null}
-
-              <div className="sk-catalog2__field">
-                <label className="sk-catalog2__label" htmlFor="catalog2-create-box-unit">
-                  {t('pack.unit')}
-                </label>
-                <select
-                  id="catalog2-create-box-unit"
-                  className="sk-catalog2__select"
-                  value={boxUnitId ?? ''}
-                  onChange={(e) => {
-                    const nextId = e.target.value ? Number(e.target.value) : null;
-                    setBoxUnitId(nextId);
-                    const matched = units.find((u) => u.id === nextId);
-                    if (matched?.conversion_factor) {
-                      setBoxHolds(formatExactDecimal(matched.conversion_factor));
-                    }
-                  }}
-                  disabled={submitting}
-                  data-testid="catalog2-create-box-unit"
-                >
-                  <option value="">{t('common.none')}</option>
-                  {boxUnitOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.code})
-                    </option>
-                  ))}
-                </select>
-                {boxErrors.unitId ? (
-                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
-                    {t(boxErrors.unitId as MessageKey)}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="sk-catalog2__field">
-                <label className="sk-catalog2__label" htmlFor="catalog2-create-box-holds">
-                  {t('pack.holdsLabel', { base: units.find((u) => u.id === unitId)?.name ?? '' })}
-                </label>
-                <input
-                  id="catalog2-create-box-holds"
-                  className="sk-catalog2__input"
-                  inputMode="decimal"
-                  value={boxHolds}
-                  onChange={(e) => setBoxHolds(e.target.value)}
-                  disabled={submitting || Boolean(selectedBoxUnit?.conversion_factor)}
-                  readOnly={Boolean(selectedBoxUnit?.conversion_factor)}
-                  placeholder="12"
-                  data-testid="catalog2-create-box-holds"
-                />
-                {selectedBoxUnit && boxHolds ? (
-                  <p className="sk-muted" style={{ margin: '4px 0 0', fontWeight: 600, color: '#1e40af' }}>
-                    👉 1 {selectedBoxUnit.name} = {boxHolds} {units.find((u) => u.id === unitId)?.name ?? ''}
-                  </p>
-                ) : null}
-                {boxErrors.factor ? (
-                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
-                    {t(boxErrors.factor as MessageKey)}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="sk-catalog2__field">
-                <label className="sk-catalog2__label" htmlFor="catalog2-create-box-price">
-                  {t('pack.priceLabel')}
-                </label>
-                <input
-                  id="catalog2-create-box-price"
-                  className="sk-catalog2__input"
-                  inputMode="decimal"
-                  value={boxPrice}
-                  onChange={(e) => setBoxPrice(e.target.value)}
-                  disabled={submitting}
-                  placeholder="15000"
-                  data-testid="catalog2-create-box-price"
-                />
-                {boxErrors.price ? (
-                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
-                    {t(boxErrors.price as MessageKey)}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="sk-catalog2__field">
-                <label className="sk-catalog2__label" htmlFor="catalog2-create-box-barcode">
-                  {t('pack.barcodeLabel')}
-                </label>
-                <input
-                  id="catalog2-create-box-barcode"
-                  className="sk-catalog2__input"
-                  value={boxBarcode}
-                  onChange={(e) => setBoxBarcode(e.target.value)}
-                  disabled={submitting}
-                  placeholder="6131000000021"
-                  data-testid="catalog2-create-box-barcode"
-                />
-                {boxErrors.barcode ? (
-                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
-                    {t(boxErrors.barcode as MessageKey)}
-                  </p>
-                ) : null}
-                {boxErrors.barcodeText ? (
-                  <p className="sk-catalog2__status sk-catalog2__status--error" role="alert">
-                    {boxErrors.barcodeText}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-        </section>
-
         <div className="sk-catalog2__actions sk-catalog2__actions--end">
           <Button variant="secondary" type="button" onClick={requestClose} disabled={submitting}>
             {t('common.cancel')}
@@ -1504,260 +1263,6 @@ export function CatalogCreatePanel({
         </div>
       </form>
     </PanelShell>
-  );
-}
-
-/**
- * WS-D-13 Phase B / WS-D-14 Part 2 — alternate units for ONE variant ("a BOX
- * that equals 6 pieces, or 50 Kg").
- *
- * Conversions are PER VARIANT and stay that way: a box of pillows and a box
- * of nails hold different counts, so a global "BOX = 6" would be wrong.
- *
- * DIRECTION (WS-D-14 Part 2). The Owner phrases these as "the main unit is
- * BOX, and alternative is pieces, and 1 box = 10 pieces" — the "1" can land
- * on EITHER side. Deriving one direction from the other by dividing in React
- * is exactly the trap this feature exists to avoid: "1 BOX = 3 PIECE" divided
- * would store "0.333333 BOX = 1 PIECE", a number the operator never typed.
- * So the operator picks which side is "1" (the swap button below), types the
- * quantity for the OTHER side, and that exact string is what gets sent and
- * what gets displayed back — never a computed reciprocal. `conversion_factor`
- * still exists on the wire (for the three transaction-time functions this
- * task does not touch) but nothing here reads it for display.
- *
- * `conversion_quantity` is an exact-decimal STRING end to end. Nothing here
- * parses it, rounds it or does arithmetic on it; `isExactDecimalPositive`
- * checks the string shape, which is what rejects a blank or a zero before
- * anything is sent.
- *
- * THE RULES LIVE IN SQL, NOT HERE. `catalog.add_variant_alt_unit` already
- * rejects a unit equal to the variant's base unit, a non-positive quantity,
- * and a duplicate unit for the same variant. This component does not restate
- * any of that — the base unit in particular is a variant-level column this
- * payload does not carry, so re-deriving it in React would be guesswork. The
- * backend decides and its rejection is surfaced through `useErrorText`, the
- * one path this codebase allows (raw diagnostics never reach the UI).
- *
- * Removing a conversion is structural, so it is confirmed (RULING 6), exactly
- * like removing a barcode.
- */
-function AlternateUnitsSection({
-  token,
-  variant,
-  units,
-  baseUnitCode,
-  busy,
-  onChanged,
-}: {
-  token: string;
-  variant: VariantDetail;
-  units: UnitLifecycleItem[];
-  /** The product's unit code, for the "1 BOX = 10 PIECE" reading. */
-  baseUnitCode: string;
-  busy: boolean;
-  onChanged: () => Promise<void>;
-}) {
-  const { t } = useI18n();
-  const errorText = useErrorText();
-  const [unitId, setUnitId] = useState('');
-  // Default matches the column default and the legacy meaning: "1 <alt> =
-  // quantity <base>".
-  const [direction, setDirection] = useState<AltUnitConversionDirection>('ALT_TO_BASE');
-  const [quantity, setQuantity] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
-  const [removing, setRemoving] = useState(false);
-
-  // `?? []`: a build running one migration behind receives no alt_units key.
-  const altUnitRows = variant.alt_units ?? [];
-  // Only active units may be newly assigned. Units this variant already uses
-  // are excluded from the picker because the backend rejects a duplicate
-  // anyway; offering them would be offering a guaranteed error.
-  const assigned = new Set(altUnitRows.map((a) => a.unit_id));
-  const options = units.filter((u) => u.is_active && !assigned.has(u.id));
-  const selectedUnitCode = options.find((u) => String(u.id) === unitId)?.code;
-
-  const quantityValid = isExactDecimalPositive(quantity.trim());
-  const canAdd = unitId !== '' && quantityValid && !adding && !busy;
-
-  /** "1 <left> = <right unit>", the unit that reads as "1" for this direction. */
-  function sides(dir: AltUnitConversionDirection, altCode: string): { left: string; right: string } {
-    return dir === 'BASE_TO_ALT' ? { left: baseUnitCode, right: altCode } : { left: altCode, right: baseUnitCode };
-  }
-
-  async function add() {
-    if (!canAdd) return;
-    setAdding(true);
-    setError(null);
-    try {
-      await ipc.addVariantAltUnit(token, variant.variant_id, Number(unitId), direction, quantity.trim());
-      setUnitId('');
-      setDirection('ALT_TO_BASE');
-      setQuantity('');
-      await onChanged();
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  async function remove(variantUnitId: number) {
-    setRemoving(true);
-    setError(null);
-    try {
-      await ipc.removeVariantAltUnit(token, variantUnitId);
-      setConfirmRemoveId(null);
-      await onChanged();
-    } catch (err) {
-      setError(errorText(err));
-      setConfirmRemoveId(null);
-    } finally {
-      setRemoving(false);
-    }
-  }
-
-  const confirmTarget = altUnitRows.find((a) => a.id === confirmRemoveId) ?? null;
-  const confirmSides = confirmTarget ? sides(confirmTarget.conversion_direction, confirmTarget.unit_code) : null;
-
-  return (
-    <div>
-      {error ? <Banner tone="error" testId="catalog2-alt-unit-error">{error}</Banner> : null}
-
-      {/* B3 — these conversions are DEFINABLE and VISIBLE only. Nothing in
-          Stock Receipt, Purchases or POS applies them yet, and the UI must
-          not imply otherwise. */}
-      <p className="sk-catalog2__note">{t('catalog2.altUnitsNotAppliedYet')}</p>
-
-      {altUnitRows.length === 0 ? (
-        <p className="sk-catalog2__note" data-testid={`catalog2-alt-units-empty-${variant.variant_id}`}>
-          {t('catalog2.altUnitsEmpty')}
-        </p>
-      ) : (
-        <ul className="sk-catalog2__barcode-list">
-          {altUnitRows.map((alt) => {
-            const row = sides(alt.conversion_direction, alt.unit_code);
-            return (
-              <li key={alt.id} className="sk-catalog2__barcode-row">
-                <span data-testid={`catalog2-alt-unit-${alt.id}`} data-direction={alt.conversion_direction}>
-                  {t('catalog2.altUnitSentence', {
-                    left: row.left,
-                    quantity: formatExactDecimal(alt.conversion_quantity),
-                    right: row.right,
-                  })}
-                </span>
-                <Button
-                  type="button"
-                  variant="danger"
-                  disabled={busy || removing}
-                  onClick={() => setConfirmRemoveId(alt.id)}
-                  data-testid={`catalog2-remove-alt-unit-${alt.id}`}
-                >
-                  {t('barcodes.remove')}
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      <div className="sk-catalog2__panel-grid">
-        <div className="sk-catalog2__field">
-          <label className="sk-catalog2__label" htmlFor={`catalog2-alt-unit-select-${variant.variant_id}`}>
-            {t('catalog2.altUnitUnit')}
-          </label>
-          <select
-            id={`catalog2-alt-unit-select-${variant.variant_id}`}
-            className="sk-catalog2__select"
-            value={unitId}
-            onChange={(e) => setUnitId(e.target.value)}
-            disabled={adding || busy}
-            data-testid={`catalog2-alt-unit-select-${variant.variant_id}`}
-          >
-            <option value="">{t('common.none')}</option>
-            {options.map((u) => (
-              <option key={u.id} value={u.id}>{u.code} — {u.name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* The relationship, in plain language, units named — never abstract.
-          Only shown once a unit is picked: before that there is nothing to
-          name on the alternate side. */}
-      {selectedUnitCode ? (
-        <div className="sk-catalog2__field">
-          <span className="sk-catalog2__label">{t('catalog2.altUnitRelationship')}</span>
-          <div
-            className="sk-catalog2__alt-unit-sentence"
-            data-testid={`catalog2-alt-unit-sentence-${variant.variant_id}`}
-            data-direction={direction}
-          >
-            <span>1 {sides(direction, selectedUnitCode).left} =</span>
-            <input
-              id={`catalog2-alt-unit-quantity-${variant.variant_id}`}
-              className="sk-catalog2__input"
-              inputMode="decimal"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              disabled={adding || busy}
-              aria-label={t('catalog2.altUnitQuantity')}
-              aria-invalid={quantity.trim() !== '' && !quantityValid}
-              data-testid={`catalog2-alt-unit-quantity-${variant.variant_id}`}
-            />
-            <span>{sides(direction, selectedUnitCode).right}</span>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setDirection((d) => (d === 'BASE_TO_ALT' ? 'ALT_TO_BASE' : 'BASE_TO_ALT'))}
-              disabled={adding || busy}
-              data-testid={`catalog2-alt-unit-direction-toggle-${variant.variant_id}`}
-            >
-              {t('catalog2.altUnitSwapDirection')}
-            </Button>
-          </div>
-          {quantity.trim() !== '' && !quantityValid ? (
-            <p
-              className="sk-catalog2__status sk-catalog2__status--error"
-              role="alert"
-              data-testid={`catalog2-alt-unit-quantity-error-${variant.variant_id}`}
-            >
-              {t('catalog2.altUnitInvalidQuantity')}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="sk-catalog2__actions sk-catalog2__actions--end">
-        <Button
-          type="button"
-          loading={adding}
-          disabled={!canAdd}
-          onClick={() => void add()}
-          data-testid={`catalog2-add-alt-unit-${variant.variant_id}`}
-        >
-          {t('catalog2.altUnitAdd')}
-        </Button>
-      </div>
-
-      {confirmTarget && confirmSides ? (
-        <ConfirmDialog
-          title={t('catalog2.altUnitConfirmRemoveTitle')}
-          body={t('catalog2.altUnitConfirmRemoveBody', {
-            left: confirmSides.left,
-            quantity: formatExactDecimal(confirmTarget.conversion_quantity),
-            right: confirmSides.right,
-          })}
-          confirmLabel={t('barcodes.remove')}
-          cancelLabel={t('common.cancel')}
-          confirmVariant="danger"
-          busy={removing}
-          onConfirm={() => void remove(confirmTarget.id)}
-          onCancel={() => setConfirmRemoveId(null)}
-        />
-      ) : null}
-    </div>
   );
 }
 

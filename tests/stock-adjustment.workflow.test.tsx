@@ -533,11 +533,13 @@ describe('Search Item Modal and Multi-Identifier Item Search', () => {
     expect(modal).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Choose item/i })).toBeInTheDocument();
 
-    // Select Bed 90x200 Black
+    // Select Bed 90x200 Black and confirm selection
     const resultItem = screen.getByTestId('purchase-item-option-101');
     expect(resultItem).toHaveTextContent('Bed 90x200 Black');
     expect(resultItem).toHaveTextContent('SKU-00000123');
     fireEvent.click(resultItem);
+    const confirmBtn = screen.getByTestId('purchase-picker-confirm-btn');
+    fireEvent.click(confirmBtn);
 
     // Modal closes
     await waitFor(() => expect(screen.queryByTestId('purchase-item-picker')).not.toBeInTheDocument());

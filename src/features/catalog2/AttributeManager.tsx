@@ -148,74 +148,76 @@ export function AttributeManager({
             const cleared = selected[attr.attribute_id] === undefined;
             return (
               <div key={attr.attribute_id} className="sk-attr__row">
-                <div className="sk-attr__name">{attr.name}</div>
+                <div className="sk-attr__row-header">
+                  <div className="sk-attr__name">{attr.name}</div>
 
-                {/* An inactive value only ever appears here when it is the one
-                    this variant already holds (merged in by
-                    mergeAssignedValues). It stays selectable so the user can
-                    keep it, and is marked retired so they understand why it is
-                    not offered elsewhere. */}
-                <div className="sk-attr__chips">
-                  {/* R10 */}
-                  <label
-                    className={`sk-attr__chip sk-attr__chip--none${cleared ? ' sk-attr__chip--selected' : ''}`}
-                  >
-                    <input
-                      type="radio"
-                      className="sk-attr__chip-input"
-                      name={`attr-${attr.attribute_id}`}
-                      value=""
-                      checked={cleared}
-                      onChange={() => handleClear(attr.attribute_id)}
+                  {/* An inactive value only ever appears here when it is the one
+                      this variant already holds (merged in by
+                      mergeAssignedValues). It stays selectable so the user can
+                      keep it, and is marked retired so they understand why it is
+                      not offered elsewhere. */}
+                  <div className="sk-attr__chips">
+                    {/* R10 */}
+                    <label
+                      className={`sk-attr__chip sk-attr__chip--none${cleared ? ' sk-attr__chip--selected' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        className="sk-attr__chip-input"
+                        name={`attr-${attr.attribute_id}`}
+                        value=""
+                        checked={cleared}
+                        onChange={() => handleClear(attr.attribute_id)}
+                        disabled={busy}
+                        data-testid={`attr-none-${attr.attribute_id}`}
+                      />
+                      {t('attrs.none')}
+                    </label>
+
+                    {attr.attribute_values.map((av) => {
+                      const isSelected = selected[attr.attribute_id] === av.id;
+                      return (
+                        <label
+                          key={av.id}
+                          className={[
+                            'sk-attr__chip',
+                            isSelected ? 'sk-attr__chip--selected' : '',
+                            av.is_active ? '' : 'sk-attr__chip--retired',
+                          ].filter(Boolean).join(' ')}
+                          title={av.is_active ? undefined : t('attrs.retainedInactive')}
+                        >
+                          <input
+                            type="radio"
+                            className="sk-attr__chip-input"
+                            name={`attr-${attr.attribute_id}`}
+                            value={av.id}
+                            checked={isSelected}
+                            onChange={() => handleSelect(attr.attribute_id, av.id)}
+                            disabled={busy}
+                          />
+                          {av.value}
+                          {av.is_active ? null : (
+                            <span className="sk-attr__retired" data-testid={`attr-value-inactive-${av.id}`}>
+                              {t('catalog.inactive')}
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+
+                    {/* R7 — compact inline "+", values only. */}
+                    <button
+                      type="button"
+                      className="sk-attr__chip sk-attr__chip--add"
+                      onClick={() => setOpenAdder((prev) => (prev === attr.attribute_id ? null : attr.attribute_id))}
+                      aria-expanded={openAdder === attr.attribute_id}
+                      aria-label={`${t('attrs.addValueShort')} — ${attr.name}`}
                       disabled={busy}
-                      data-testid={`attr-none-${attr.attribute_id}`}
-                    />
-                    {t('attrs.none')}
-                  </label>
-
-                  {attr.attribute_values.map((av) => {
-                    const isSelected = selected[attr.attribute_id] === av.id;
-                    return (
-                      <label
-                        key={av.id}
-                        className={[
-                          'sk-attr__chip',
-                          isSelected ? 'sk-attr__chip--selected' : '',
-                          av.is_active ? '' : 'sk-attr__chip--retired',
-                        ].filter(Boolean).join(' ')}
-                        title={av.is_active ? undefined : t('attrs.retainedInactive')}
-                      >
-                        <input
-                          type="radio"
-                          className="sk-attr__chip-input"
-                          name={`attr-${attr.attribute_id}`}
-                          value={av.id}
-                          checked={isSelected}
-                          onChange={() => handleSelect(attr.attribute_id, av.id)}
-                          disabled={busy}
-                        />
-                        {av.value}
-                        {av.is_active ? null : (
-                          <span className="sk-attr__retired" data-testid={`attr-value-inactive-${av.id}`}>
-                            {t('catalog.inactive')}
-                          </span>
-                        )}
-                      </label>
-                    );
-                  })}
-
-                  {/* R7 — compact inline "+", values only. */}
-                  <button
-                    type="button"
-                    className="sk-attr__chip sk-attr__chip--add"
-                    onClick={() => setOpenAdder((prev) => (prev === attr.attribute_id ? null : attr.attribute_id))}
-                    aria-expanded={openAdder === attr.attribute_id}
-                    aria-label={`${t('attrs.addValueShort')} — ${attr.name}`}
-                    disabled={busy}
-                    data-testid={`attr-add-value-${attr.attribute_id}`}
-                  >
-                    +
-                  </button>
+                      data-testid={`attr-add-value-${attr.attribute_id}`}
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
 
                 {openAdder === attr.attribute_id ? (

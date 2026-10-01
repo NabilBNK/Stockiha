@@ -141,6 +141,29 @@ export function addMoney(a: string, b: string): string {
 }
 
 /**
+ * Multiplies two non-negative decimal strings exactly using BigInt (no floating point).
+ * Trailing zeros in the fractional part are trimmed.
+ */
+export function multiplyExactDecimal(a: string, b: string): string {
+  const sA = a.trim();
+  const sB = b.trim();
+  if (!/^\d+(\.\d+)?$/.test(sA) || !/^\d+(\.\d+)?$/.test(sB)) {
+    return '';
+  }
+  const [intA, fracA = ''] = sA.split('.');
+  const [intB, fracB = ''] = sB.split('.');
+  const scale = fracA.length + fracB.length;
+  const bigA = BigInt(`${intA}${fracA}`);
+  const bigB = BigInt(`${intB}${fracB}`);
+  const product = bigA * bigB;
+  if (scale === 0) return product.toString();
+  const str = product.toString().padStart(scale + 1, '0');
+  const intPart = str.slice(0, str.length - scale);
+  const fracPart = str.slice(str.length - scale).replace(/0+$/, '');
+  return fracPart ? `${intPart}.${fracPart}` : intPart;
+}
+
+/**
  * Compares two decimal strings at scale 6.
  */
 export function compareDecimal(a: string, b: string): -1 | 0 | 1 {

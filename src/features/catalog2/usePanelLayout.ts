@@ -56,11 +56,13 @@ function readStoredWidth(): number | null {
   }
 }
 
-function readStoredFullScreen(): boolean {
+function readStoredFullScreen(defaultFullScreen = false): boolean {
   try {
-    return window.localStorage.getItem(FULLSCREEN_KEY) === 'true';
+    const raw = window.localStorage.getItem(FULLSCREEN_KEY);
+    if (raw === null) return defaultFullScreen;
+    return raw === 'true';
   } catch {
-    return false;
+    return defaultFullScreen;
   }
 }
 
@@ -72,9 +74,9 @@ export interface PanelLayout {
   toggleFullScreen: () => void;
 }
 
-export function usePanelLayout(): PanelLayout {
+export function usePanelLayout(defaultFullScreen = false): PanelLayout {
   const [width, setWidthState] = useState<number | null>(readStoredWidth);
-  const [fullScreen, setFullScreenState] = useState<boolean>(readStoredFullScreen);
+  const [fullScreen, setFullScreenState] = useState<boolean>(() => readStoredFullScreen(defaultFullScreen));
 
   const setWidth = useCallback((next: number) => {
     const clamped = clampPanelWidth(next);

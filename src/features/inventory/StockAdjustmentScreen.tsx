@@ -92,6 +92,17 @@ function initialDate(startsOn: string, endsOn: string): string {
   return isValidCorrectionDate(today, startsOn, endsOn) ? today : "";
 }
 
+export interface AdjustmentLine {
+  id: number;
+  variant: GenericPickerItem;
+  direction: Direction;
+  quantity: string;
+  unitId: number | null;
+  units: StockAdjustmentUnit[];
+  reasonCode: StockAdjustmentReasonCode;
+  note: string;
+}
+
 export function StockAdjustmentScreen() {
   const { t, locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
@@ -104,6 +115,7 @@ export function StockAdjustmentScreen() {
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [variantsError, setVariantsError] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<number | null>(null);
+  const [lines, setLines] = useState<AdjustmentLine[]>([]);
 
   // Fast item entry / picker state
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -207,6 +219,16 @@ export function StockAdjustmentScreen() {
   const handleSelectItem = useCallback((item: GenericPickerItem) => {
     setVariantId(item.variant_id);
     setUnitId(null);
+    setLines([{
+      id: item.variant_id,
+      variant: item,
+      direction: 'increase',
+      quantity: '',
+      unitId: null,
+      units: [],
+      reasonCode: 'FOUND_STOCK',
+      note: '',
+    }]);
     invalidateRequest();
     setPickerOpen(false);
     setBarcodeError(null);
@@ -220,6 +242,96 @@ export function StockAdjustmentScreen() {
       }
     }, 50);
   }, [invalidateRequest]);
+
+  const handleSelectMultiple = useCallback((selectedItems: GenericPickerItem[]) => {
+    if (selectedItems.length === 0) return;
+    if (selectedItems.length === 1 && lines.length === 0) {
+      handleSelectItem(selectedItems[0]);
+      return;
+    }
+    setLines((prev) => {
+      const existingIds = new Set(prev.map((l) => l.id));
+      const newLines: AdjustmentLine[] = selectedItems
+        .filter((it) => !existingIds.has(it.variant_id))
+        .map((it) => ({
+          id: it.variant_id,
+          variant: it,
+          direction,
+          quantity: '',
+          unitId: it.default_unit_id ?? null,
+          units: [],
+          reasonCode,
+          note: '',
+        }));
+      const combined = [...prev, ...newLines];
+      if (combined.length > 0 && variantId == null) {
+        setVariantId(combined[0].id);
+      }
+      return combined;
+    });
+    setPickerOpen(false);
+    invalidateRequest();
+  }, [direction, handleSelectItem, lines.length, reasonCode, variantId, invalidateRequest]);
+
+  const removeLine = useCallback((variantIdToRemove: number) => {
+    setLines((prev) => {
+      const next = prev.filter((l) => l.id !== variantIdToRemove);
+      if (next.length === 1) {
+        setVariantId(next[0].id);
+        setDirection(next[0].direction);
+        setQuantity(next[0].quantity);
+        setUnitId(next[0].unitId);
+        setReasonCode(next[0].reasonCode);
+        setNote(next[0].note);
+      } else if (next.length === 0) {
+        setVariantId(null);
+        setQuantity("");
+        setNote("");
+      }
+      return next;
+    });
+    invalidateRequest();
+  }, [invalidateRequest]);
+
+  const updateLine = useCallback(
+    <K extends keyof AdjustmentLine>(id: number, field: K, value: AdjustmentLine[K]) => {
+      setLines((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, [field]: value } : l))
+      );
+      if (lines.length <= 1) {
+        if (field === "direction") setDirection(value as Direction);
+        if (field === "quantity") setQuantity(value as string);
+        if (field === "unitId") setUnitId(value as number | null);
+        if (field === "reasonCode") setReasonCode(value as StockAdjustmentReasonCode);
+        if (field === "note") setNote(value as string);
+      }
+      invalidateRequest();
+    },
+    [lines.length, invalidateRequest],
+  );
+
+  useEffect(() => {
+    if (!token) return;
+    lines.forEach((line) => {
+      if (line.units.length === 0) {
+        ipc.listStockAdjustmentUnits(token, line.id)
+          .then((items) => {
+            setLines((current) =>
+              current.map((l) => {
+                if (l.id !== line.id) return l;
+                const defaultUnit = items.find((u) => u.is_base)?.unit_id ?? items[0]?.unit_id ?? null;
+                return {
+                  ...l,
+                  units: items,
+                  unitId: l.unitId ?? defaultUnit,
+                };
+              })
+            );
+          })
+          .catch(() => {});
+      }
+    });
+  }, [token, lines]);
 
   const handleBarcodeSubmit = useCallback(() => {
     const code = barcodeInput.trim();
@@ -323,16 +435,98 @@ export function StockAdjustmentScreen() {
     noteValid &&
     dateValid &&
     policyEnabled !== false;
+
+  const multiInputsValid =
+    lines.length > 1 &&
+    selectedWarehouseId != null &&
+    openFiscalPeriod != null &&
+    dateValid &&
+    policyEnabled !== false &&
+    lines.every((l) => {
+      const isPositive = isPositiveExactQuantity(l.quantity);
+      if (!isPositive) return false;
+      if (l.unitId == null) return false;
+      const allowsFrac = allowsFractionsById(l.unitId);
+      if (allowsFrac === false && !isQuantityValidForUnit(l.quantity, false)) {
+        return false;
+      }
+      if (l.reasonCode === "OTHER" && !l.note.trim()) {
+        return false;
+      }
+      return true;
+    });
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (
       submitting ||
-      !inputsValid ||
       !token ||
       selectedWarehouseId == null ||
-      variantId == null ||
-      unitId == null ||
       openFiscalPeriod == null
+    )
+      return;
+
+    // Handle Multi-Item Batch Submission
+    if (lines.length > 1) {
+      if (!multiInputsValid) return;
+      setSubmitting(true);
+      setBanner(null);
+      setResult(null);
+      const postedResults: StockAdjustmentResult[] = [];
+      try {
+        for (const line of lines) {
+          const rid = ipc.newRequestId();
+          const posted = await ipc.confirmStockAdjustment(token, {
+            requestId: rid,
+            warehouseId: selectedWarehouseId,
+            variantId: line.id,
+            unitId: line.unitId!,
+            quantityDelta: signedQuantityDelta(line.direction, line.quantity),
+            reasonCode: line.reasonCode,
+            note: line.note.trim() || undefined,
+            fiscalPeriodId: openFiscalPeriod.id,
+            documentDate,
+          });
+          postedResults.push(posted);
+        }
+        setResult(postedResults[postedResults.length - 1]);
+        setResultVariant(lines[lines.length - 1].variant);
+        const docNumbers = postedResults.map((r) => r.document_number).join(", ");
+        setBanner({
+          tone: "success",
+          text: locale === "ar"
+            ? `تم تصحيح ${postedResults.length} أصناف بنجاح (${docNumbers})`
+            : locale === "fr"
+            ? `${postedResults.length} articles corrigés avec succès (${docNumbers})`
+            : `Successfully adjusted ${postedResults.length} items (${docNumbers})`,
+        });
+        setLines([]);
+        setVariantId(null);
+        setQuantity("");
+        setNote("");
+        void loadVariants();
+      } catch (reason) {
+        const code = codeForError(reason);
+        if (code === "UNKNOWN_ERROR") {
+          setBanner({ tone: "warning", text: t("adjustment.retryPrompt") });
+        } else if (code === "UNSAFE_ZERO_STOCK_VALUATION") {
+          setBanner({
+            tone: "error",
+            text: t("errors.unsafeZeroStockValuation"),
+          });
+        } else {
+          setBanner({ tone: "error", text: errorText(reason) });
+        }
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (
+      !inputsValid ||
+      variantId == null ||
+      unitId == null
     )
       return;
     const rid = requestId ?? ipc.newRequestId();
@@ -534,208 +728,495 @@ export function StockAdjustmentScreen() {
             <p className="sk-field-help">{t("adjustment.variantEmpty")}</p>
           ) : null}
         </div>
-        {selectedVariant ? (
-          <div className="pr-selected-item-card" data-testid="stock-selected-item-card">
-            <div className="pr-selected-item-info">
-              <div className="pr-selected-item-eyebrow">
-                {t("adjustment.currentContext")}
+        {/* Multi-Item Batch Table vs Single-Item Form */}
+        {lines.length > 1 ? (
+          <div
+            className="sk-card"
+            style={{
+              padding: "16px",
+              marginBlock: "16px",
+              background: "var(--sk-surface)",
+            }}
+            data-testid="adjustment-multi-table"
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "14px",
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "1.05rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  {locale === "ar"
+                    ? `تصحيح متعدد (${lines.length} أصناف)`
+                    : locale === "fr"
+                    ? `Correction multiple (${lines.length} articles)`
+                    : `Batch Adjustment (${lines.length} items)`}
+                </h3>
+                <span
+                  style={{ fontSize: "0.82rem", color: "var(--sk-muted)" }}
+                >
+                  {locale === "ar"
+                    ? "حدد الاتجاه، الكمية، والسبب لكل صنف"
+                    : locale === "fr"
+                    ? "Indiquez le sens, la quantité et le motif pour chaque article"
+                    : "Enter direction, quantity, and reason for each item"}
+                </span>
               </div>
-              <div className="pr-selected-item-name">
-                {selectedVariant.product_name
-                  ? `${selectedVariant.product_name}${selectedVariant.variant_name ? ` — ${selectedVariant.variant_name}` : ""}`
-                  : selectedVariant.variant_name ?? selectedVariant.name}
+              <button
+                type="button"
+                className="sk-button sk-button--secondary sk-button--small"
+                onClick={() => {
+                  void loadVariants();
+                  setPickerOpen(true);
+                }}
+                data-testid="adjustment-add-more-lines-btn"
+              >
+                +{" "}
+                {locale === "ar"
+                  ? "إضافة أصناف أخرى"
+                  : locale === "fr"
+                  ? "Ajouter d’autres articles"
+                  : "Add more items"}
+              </button>
+            </div>
+
+            <div className="sk-table-wrap">
+              <table
+                className="sk-table"
+                style={{ width: "100%", fontSize: "0.88rem" }}
+              >
+                <thead>
+                  <tr>
+                    <th style={{ width: "26%" }}>
+                      {locale === "ar"
+                        ? "الصنف"
+                        : locale === "fr"
+                        ? "Article"
+                        : "Product / Variant"}
+                    </th>
+                    <th style={{ width: "12%" }}>
+                      {t("adjustment.direction")}
+                    </th>
+                    <th style={{ width: "10%" }}>
+                      {locale === "ar"
+                        ? "المخزون"
+                        : locale === "fr"
+                        ? "Stock"
+                        : "Stock"}
+                    </th>
+                    <th style={{ width: "14%" }}>
+                      {t("adjustment.quantity")}
+                    </th>
+                    <th style={{ width: "14%" }}>{t("adjustment.unit")}</th>
+                    <th style={{ width: "20%" }}>{t("adjustment.reason")}</th>
+                    <th style={{ width: "4%" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => {
+                    const allowsFrac = allowsFractionsById(line.unitId);
+                    const lineUnitError =
+                      line.quantity !== "" &&
+                      isPositiveExactQuantity(line.quantity) &&
+                      line.unitId != null &&
+                      allowsFrac === false &&
+                      !isQuantityValidForUnit(line.quantity, false);
+
+                    return (
+                      <tr
+                        key={line.id}
+                        data-testid={`adjustment-line-${line.id}`}
+                      >
+                        <td>
+                          <div style={{ fontWeight: 600 }}>
+                            {line.variant.product_name ?? line.variant.name}
+                            {line.variant.variant_name
+                              ? ` — ${line.variant.variant_name}`
+                              : ""}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "0.76rem",
+                              color: "var(--sk-muted)",
+                            }}
+                          >
+                            SKU: {line.variant.sku}{" "}
+                            {line.variant.primary_barcode
+                              ? `| ▦ ${line.variant.primary_barcode}`
+                              : ""}
+                          </div>
+                        </td>
+                        <td>
+                          <select
+                            className="sk-field__input"
+                            style={{
+                              height: "34px",
+                              fontSize: "0.85rem",
+                              padding: "2px 6px",
+                            }}
+                            value={line.direction}
+                            onChange={(e) =>
+                              updateLine(
+                                line.id,
+                                "direction",
+                                e.target.value as Direction,
+                              )
+                            }
+                          >
+                            <option value="increase">
+                              ➕ {t("adjustment.increase")}
+                            </option>
+                            <option value="decrease">
+                              ➖ {t("adjustment.decrease")}
+                            </option>
+                          </select>
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 600 }}>
+                            {formatExactDecimal(
+                              line.variant.quantity_on_hand ?? "0",
+                            )}
+                          </span>
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className="sk-field__input"
+                            style={{ height: "34px", fontSize: "0.88rem" }}
+                            value={line.quantity}
+                            placeholder="0"
+                            onChange={(e) =>
+                              updateLine(line.id, "quantity", e.target.value)
+                            }
+                            data-testid={`adjustment-quantity-${line.id}`}
+                            aria-invalid={
+                              lineUnitError ||
+                              (line.quantity !== "" &&
+                                !isPositiveExactQuantity(line.quantity))
+                            }
+                          />
+                        </td>
+                        <td>
+                          <select
+                            className="sk-field__input"
+                            style={{ height: "34px", fontSize: "0.85rem" }}
+                            value={line.unitId ?? ""}
+                            onChange={(e) =>
+                              updateLine(
+                                line.id,
+                                "unitId",
+                                Number(e.target.value),
+                              )
+                            }
+                          >
+                            {line.units.map((u) => (
+                              <option key={u.unit_id} value={u.unit_id}>
+                                {u.unit_code}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            className="sk-field__input"
+                            style={{ height: "34px", fontSize: "0.85rem" }}
+                            value={line.reasonCode}
+                            onChange={(e) =>
+                              updateLine(
+                                line.id,
+                                "reasonCode",
+                                e.target.value as StockAdjustmentReasonCode,
+                              )
+                            }
+                          >
+                            {REASONS.map((r) => (
+                              <option key={r.code} value={r.code}>
+                                {t(r.label)}
+                              </option>
+                            ))}
+                          </select>
+                          {line.reasonCode === "OTHER" && (
+                            <input
+                              type="text"
+                              className="sk-field__input"
+                              style={{
+                                height: "28px",
+                                fontSize: "0.8rem",
+                                marginTop: "4px",
+                              }}
+                              placeholder={t("adjustment.note")}
+                              value={line.note}
+                              onChange={(e) =>
+                                updateLine(line.id, "note", e.target.value)
+                              }
+                              required
+                            />
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="sk-button sk-button--small sk-button--secondary"
+                            onClick={() => removeLine(line.id)}
+                            style={{
+                              padding: "2px 8px",
+                              color: "var(--sk-danger)",
+                            }}
+                            title="Remove line"
+                            aria-label="Remove line"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div
+              style={{
+                marginTop: "16px",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <Button
+                type="submit"
+                loading={submitting}
+                disabled={!multiInputsValid}
+              >
+                {locale === "ar"
+                  ? `تأكيد التصحيح (${lines.length} أصناف)`
+                  : locale === "fr"
+                  ? `Confirmer (${lines.length} articles)`
+                  : `Confirm Adjustment (${lines.length} items)`}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {selectedVariant ? (
+              <div
+                className="pr-selected-item-card"
+                data-testid="stock-selected-item-card"
+              >
+                <div className="pr-selected-item-info">
+                  <div className="pr-selected-item-eyebrow">
+                    {t("adjustment.currentContext")}
+                  </div>
+                  <div className="pr-selected-item-name">
+                    {selectedVariant.product_name
+                      ? `${selectedVariant.product_name}${selectedVariant.variant_name ? ` — ${selectedVariant.variant_name}` : ""}`
+                      : selectedVariant.variant_name ?? selectedVariant.name}
+                  </div>
+                  <div className="pr-selected-item-meta">
+                    {selectedVariant.sku && (
+                      <span className="pr-meta-pill">
+                        <span>SKU:</span> <strong>{selectedVariant.sku}</strong>
+                      </span>
+                    )}
+                    {selectedVariant.primary_barcode && (
+                      <span className="pr-meta-pill pr-meta-pill--barcode">
+                        <span>▦</span> <strong>{selectedVariant.primary_barcode}</strong>
+                      </span>
+                    )}
+                    {selectedVariant.quantity_on_hand != null && (
+                      <span
+                        className={`pr-meta-pill ${
+                          isExactDecimalZero(selectedVariant.quantity_on_hand)
+                            ? "pr-meta-pill--stock-zero"
+                            : "pr-meta-pill--stock"
+                        }`}
+                      >
+                        <span>{t("adjustment.currentQuantity")}:</span>{" "}
+                        <strong>{formatExactDecimal(selectedVariant.quantity_on_hand ?? "0")}</strong>
+                      </span>
+                    )}
+                    {selectedVariant.last_known_wac != null && (
+                      <span className="pr-meta-pill pr-meta-pill--wac">
+                        <span>{t("adjustment.currentWac")}:</span>{" "}
+                        <strong>{formatExactDecimal(selectedVariant.last_known_wac ?? "0")} DZD</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="sk-button sk-button--secondary sk-button--small pr-change-item-btn"
+                  onClick={() => {
+                    void loadVariants();
+                    setPickerOpen(true);
+                  }}
+                  data-testid="adjustment-change-item-btn"
+                >
+                  {locale === "ar" ? "تغيير الصنف" : locale === "fr" ? "Changer d'article" : "Change item"}
+                </button>
               </div>
-              <div className="pr-selected-item-meta">
-                {selectedVariant.sku && (
-                  <span className="pr-meta-pill">
-                    <span>SKU:</span> <strong>{selectedVariant.sku}</strong>
-                  </span>
-                )}
-                {selectedVariant.primary_barcode && (
-                  <span className="pr-meta-pill pr-meta-pill--barcode">
-                    <span>▦</span> <strong>{selectedVariant.primary_barcode}</strong>
-                  </span>
-                )}
-                {selectedVariant.quantity_on_hand != null && (
-                  <span
-                    className={`pr-meta-pill ${
-                      isExactDecimalZero(selectedVariant.quantity_on_hand)
-                        ? "pr-meta-pill--stock-zero"
-                        : "pr-meta-pill--stock"
-                    }`}
+            ) : (
+              <div
+                className="pr-empty-selection-prompt"
+                data-testid="adjustment-empty-selection"
+              >
+                <span className="pr-empty-selection-icon" aria-hidden>📦</span>
+                <span>
+                  {locale === "ar"
+                    ? 'لم يتم تحديد صنف بعد. امسح الرمز الشريطي أعلاه أو انقر على "+ اختيار صنف".'
+                    : locale === "fr"
+                    ? 'Aucun article sélectionné. Scannez un code-barres ci-dessus ou cliquez sur "+ Choisir un article".'
+                    : 'No item selected yet. Scan a barcode above or click "+ Choose item".'}
+                </span>
+              </div>
+            )}
+            {selectedVariant && direction === "increase" && isZeroQty ? (
+              <ZeroQuantityWarning
+                variantName={selectedVariant.product_name ?? selectedVariant.name ?? ""}
+                hasUsableWAC={hasUsableWAC}
+              />
+            ) : null}
+            <fieldset className="sk-choice-group">
+              <legend className="sk-field__label">
+                {t("adjustment.direction")}
+              </legend>
+              <label>
+                <input
+                  type="radio"
+                  name="adjustment-direction"
+                  checked={direction === "increase"}
+                  onChange={() => {
+                    setDirection("increase");
+                    invalidateRequest();
+                  }}
+                />
+                {t("adjustment.increase")}
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="adjustment-direction"
+                  checked={direction === "decrease"}
+                  onChange={() => {
+                    setDirection("decrease");
+                    invalidateRequest();
+                  }}
+                />
+                {t("adjustment.decrease")}
+              </label>
+            </fieldset>
+            <div className="sk-form-grid">
+              <TextField
+                label={t("adjustment.quantity")}
+                value={quantity}
+                inputMode="decimal"
+                onChange={(event) => {
+                  setQuantity(event.target.value);
+                  invalidateRequest();
+                }}
+                error={
+                  quantity !== "" && !quantityValid
+                    ? t("adjustment.quantityError")
+                    : quantityUnitError ?? undefined
+                }
+                data-testid="adjustment-quantity"
+                required
+              />
+              <div className="sk-field">
+                <label className="sk-field__label" htmlFor="adjustment-unit">
+                  {t("adjustment.unit")}
+                </label>
+                {unitsLoading ? (
+                  <Spinner />
+                ) : unitsError ? (
+                  <Banner tone="error">
+                    {unitsError}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void loadUnits()}
+                    >
+                      {t("common.retry")}
+                    </Button>
+                  </Banner>
+                ) : (
+                  <select
+                    id="adjustment-unit"
+                    className="sk-field__input"
+                    value={unitId ?? ""}
+                    disabled={!selectedVariant}
+                    onChange={(event) => {
+                      setUnitId(Number(event.target.value));
+                      invalidateRequest();
+                    }}
                   >
-                    <span>{t("adjustment.currentQuantity")}:</span>{" "}
-                    <strong>{formatExactDecimal(selectedVariant.quantity_on_hand ?? "0")}</strong>
-                  </span>
-                )}
-                {selectedVariant.last_known_wac != null && (
-                  <span className="pr-meta-pill pr-meta-pill--wac">
-                    <span>{t("adjustment.currentWac")}:</span>{" "}
-                    <strong>{formatExactDecimal(selectedVariant.last_known_wac ?? "0")} DZD</strong>
-                  </span>
+                    <option value="">{t("adjustment.unitPlaceholder")}</option>
+                    {units.map((unit) => (
+                      <option key={unit.unit_id} value={unit.unit_id}>
+                        {unit.unit_code} — {unit.unit_name}
+                      </option>
+                    ))}
+                  </select>
                 )}
               </div>
             </div>
-            <button
-              type="button"
-              className="sk-button sk-button--secondary sk-button--small pr-change-item-btn"
-              onClick={() => {
-                void loadVariants();
-                setPickerOpen(true);
-              }}
-              data-testid="adjustment-change-item-btn"
-            >
-              {locale === "ar" ? "تغيير الصنف" : locale === "fr" ? "Changer d'article" : "Change item"}
-            </button>
-          </div>
-        ) : (
-          <div className="pr-empty-selection-prompt" data-testid="adjustment-empty-selection">
-            <span className="pr-empty-selection-icon" aria-hidden>📦</span>
-            <span>
-              {locale === "ar"
-                ? 'لم يتم تحديد صنف بعد. امسح الرمز الشريطي أعلاه أو انقر على "+ اختيار صنف".'
-                : locale === "fr"
-                ? 'Aucun article sélectionné. Scannez un code-barres ci-dessus ou cliquez sur "+ Choisir un article".'
-                : 'No item selected yet. Scan a barcode above or click "+ Choose item".'}
-            </span>
-          </div>
-        )}
-        {selectedVariant && direction === "increase" && isZeroQty ? (
-          <ZeroQuantityWarning
-            variantName={selectedVariant.product_name ?? selectedVariant.name ?? ""}
-            hasUsableWAC={hasUsableWAC}
-          />
-        ) : null}
-        <fieldset className="sk-choice-group">
-          <legend className="sk-field__label">
-            {t("adjustment.direction")}
-          </legend>
-          <label>
-            <input
-              type="radio"
-              name="adjustment-direction"
-              checked={direction === "increase"}
-              onChange={() => {
-                setDirection("increase");
-                invalidateRequest();
-              }}
-            />
-            {t("adjustment.increase")}
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="adjustment-direction"
-              checked={direction === "decrease"}
-              onChange={() => {
-                setDirection("decrease");
-                invalidateRequest();
-              }}
-            />
-            {t("adjustment.decrease")}
-          </label>
-        </fieldset>
-        <div className="sk-form-grid">
-          <TextField
-            label={t("adjustment.quantity")}
-            value={quantity}
-            inputMode="decimal"
-            onChange={(event) => {
-              setQuantity(event.target.value);
-              invalidateRequest();
-            }}
-            error={
-              quantity !== "" && !quantityValid
-                ? t("adjustment.quantityError")
-                : quantityUnitError ?? undefined
-            }
-            data-testid="adjustment-quantity"
-            required
-          />
-          <div className="sk-field">
-            <label className="sk-field__label" htmlFor="adjustment-unit">
-              {t("adjustment.unit")}
-            </label>
-            {unitsLoading ? (
-              <Spinner />
-            ) : unitsError ? (
-              <Banner tone="error">
-                {unitsError}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void loadUnits()}
+            <div className="sk-form-grid">
+              <div className="sk-field">
+                <label className="sk-field__label" htmlFor="adjustment-reason">
+                  {t("adjustment.reason")}
+                </label>
+                <select
+                  id="adjustment-reason"
+                  className="sk-field__input"
+                  value={reasonCode}
+                  onChange={(event) => {
+                    setReasonCode(event.target.value as StockAdjustmentReasonCode);
+                    invalidateRequest();
+                  }}
                 >
-                  {t("common.retry")}
-                </Button>
-              </Banner>
-            ) : (
-              <select
-                id="adjustment-unit"
-                className="sk-field__input"
-                value={unitId ?? ""}
-                disabled={!selectedVariant}
-                onChange={(event) => {
-                  setUnitId(Number(event.target.value));
-                  invalidateRequest();
-                }}
-              >
-                <option value="">{t("adjustment.unitPlaceholder")}</option>
-                {units.map((unit) => (
-                  <option key={unit.unit_id} value={unit.unit_id}>
-                    {unit.unit_code} — {unit.unit_name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
-        <div className="sk-form-grid">
-          <div className="sk-field">
-            <label className="sk-field__label" htmlFor="adjustment-reason">
-              {t("adjustment.reason")}
-            </label>
-            <select
-              id="adjustment-reason"
-              className="sk-field__input"
-              value={reasonCode}
-              onChange={(event) => {
-                setReasonCode(event.target.value as StockAdjustmentReasonCode);
-                invalidateRequest();
-              }}
-            >
-              {REASONS.map((reason) => (
-                <option key={reason.code} value={reason.code}>
-                  {t(reason.label)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="sk-field">
-            <label className="sk-field__label" htmlFor="adjustment-note">
-              {t("adjustment.note")}
-            </label>
-            <textarea
-              id="adjustment-note"
-              className="sk-field__input sk-field__textarea"
-              value={note}
-              onChange={(event) => {
-                setNote(event.target.value);
-                invalidateRequest();
-              }}
-              aria-invalid={!noteValid}
-              required={reasonCode === "OTHER"}
-            />
-            {!noteValid ? (
-              <p className="sk-field__error" role="alert">
-                {t("adjustment.otherNoteRequired")}
-              </p>
-            ) : null}
-          </div>
-        </div>
-        <Button type="submit" loading={submitting} disabled={!inputsValid}>
-          {t("adjustment.submit")}
-        </Button>
+                  {REASONS.map((reason) => (
+                    <option key={reason.code} value={reason.code}>
+                      {t(reason.label)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sk-field">
+                <label className="sk-field__label" htmlFor="adjustment-note">
+                  {t("adjustment.note")}
+                </label>
+                <textarea
+                  id="adjustment-note"
+                  className="sk-field__input sk-field__textarea"
+                  value={note}
+                  onChange={(event) => {
+                    setNote(event.target.value);
+                    invalidateRequest();
+                  }}
+                  aria-invalid={!noteValid}
+                  required={reasonCode === "OTHER"}
+                />
+                {!noteValid ? (
+                  <p className="sk-field__error" role="alert">
+                    {t("adjustment.otherNoteRequired")}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <Button type="submit" loading={submitting} disabled={!inputsValid}>
+              {t("adjustment.submit")}
+            </Button>
+          </>
+        )}
       </form>
       {result ? (
         <section
@@ -787,7 +1268,9 @@ export function StockAdjustmentScreen() {
         isOpen={pickerOpen}
         items={variants}
         showStock={true}
+        multiSelect={true}
         onSelect={handleSelectItem}
+        onSelectMultiple={handleSelectMultiple}
         onClose={() => setPickerOpen(false)}
       />
     </section>

@@ -4,6 +4,7 @@ import * as ipc from '../../shared/ipc/gateway';
 import { SessionContext } from '../../shared/session/SessionContext';
 import { PROCUREMENT_COPY } from './procurementCopy';
 import { useI18n } from '../../shared/i18n';
+import { isExactDecimalPositive } from '../inventory/exactDecimal';
 
 export interface GenericPickerItem {
   product_id: number;
@@ -52,7 +53,9 @@ interface Props<T extends GenericPickerItem = PurchaseProductOption> {
   items: T[];
   disabledVariantIds?: number[];
   showStock?: boolean;
-  onSelect: (item: T) => void;
+  multiSelect?: boolean;
+  onSelect?: (item: T) => void;
+  onSelectMultiple?: (items: T[]) => void;
   onClose: () => void;
 }
 
@@ -61,13 +64,19 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
   items,
   disabledVariantIds = [],
   showStock = false,
+  multiSelect = false,
   onSelect,
+  onSelectMultiple,
   onClose,
 }: Props<T>) {
   const { locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
+  const [selectedVariantIds, setSelectedVariantIds] = useState<Set<number>>(new Set());
+  const [inStockOnly, setInStockOnly] = useState<boolean>(true);
+
+  const isMulti = Boolean(multiSelect || onSelectMultiple);
 
   // Filter state
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
@@ -189,6 +198,9 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
       .filter((item) => item.is_active)
       .filter((item) => matchesPurchaseOption(item, query))
       .filter((item) => {
+        if (showStock && inStockOnly && !isExactDecimalPositive(item.quantity_on_hand ?? '0')) {
+          return false;
+        }
         if (selectedUnit && item.default_unit_code !== selectedUnit) {
           return false;
         }
@@ -211,7 +223,7 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
         return true;
       })
       .slice(0, 50);
-  }, [items, query, selectedUnit, selectedBrand, minCost, maxCost, selectedAttributes]);
+  }, [items, query, selectedUnit, selectedBrand, minCost, maxCost, selectedAttributes, showStock, inStockOnly]);
 
   if (!isOpen) return null;
 
@@ -278,6 +290,23 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
                 </button>
               )}
             </div>
+
+            {/* Stock Filter (when showStock is true) */}
+            {showStock && (
+              <div className="pr-filter-section">
+                <span className="pr-filter-section__label">{locale === 'ar' ? 'المخزون' : locale === 'fr' ? 'Disponibilité stock' : 'Stock Status'}</span>
+                <div className="pr-filter-chips">
+                  <button
+                    type="button"
+                    className={`pr-filter-chip ${inStockOnly ? 'pr-filter-chip--active' : ''}`}
+                    onClick={() => setInStockOnly((prev) => !prev)}
+                    data-testid="purchase-picker-filter-in-stock"
+                  >
+                    📦 {inStockOnly ? text.inStockOnly : text.allStock}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Cost Range Filter */}
             <div className="pr-filter-section">
@@ -435,14 +464,33 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
               ) : (
                 results.map((item) => {
                   const alreadyAdded = disabledVariantIds.includes(item.variant_id);
+                  const isSelected = selectedVariantIds.has(item.variant_id);
                   const cost = item.last_purchase_cost ?? item.default_unit_cost;
+
+                  const handleItemClick = () => {
+                    if (alreadyAdded) return;
+                    if (isMulti) {
+                      setSelectedVariantIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(item.variant_id)) {
+                          next.delete(item.variant_id);
+                        } else {
+                          next.add(item.variant_id);
+                        }
+                        return next;
+                      });
+                    } else {
+                      onSelect?.(item);
+                    }
+                  };
+
                   return (
                     <button
                       key={item.variant_id}
                       type="button"
-                      className="pr-picker-option-card"
+                      className={`pr-picker-option-card ${isSelected ? 'pr-picker-option-card--selected' : ''}`}
                       disabled={alreadyAdded}
-                      onClick={() => onSelect(item)}
+                      onClick={handleItemClick}
                       data-testid={`purchase-item-option-${item.variant_id}`}
                     >
                       <div className="pr-picker-option-info">
@@ -486,6 +534,13 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
                           <span className="sk-badge sk-badge--muted" style={{ fontSize: '0.75rem' }}>
                             {text.itemAlreadyAdded}
                           </span>
+                        ) : isMulti ? (
+                          <span
+                            className={`pr-picker-checkbox ${isSelected ? 'pr-picker-checkbox--checked' : ''}`}
+                            aria-hidden
+                          >
+                            {isSelected ? '✓' : ''}
+                          </span>
                         ) : (
                           <span
                             className="sk-button sk-button--small sk-button--secondary"
@@ -502,6 +557,53 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
             </div>
           </div>
         </div>
+
+        {isMulti && (
+          <div className="pr-picker-footer" data-testid="purchase-picker-footer">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                <strong>{selectedVariantIds.size}</strong> {text.selectedCount}
+              </span>
+              {selectedVariantIds.size > 0 && (
+                <button
+                  type="button"
+                  className="sk-button sk-button--small sk-button--secondary"
+                  onClick={() => setSelectedVariantIds(new Set())}
+                  data-testid="purchase-picker-clear-selected"
+                >
+                  {text.clearSelection}
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                className="sk-button sk-button--secondary"
+                onClick={onClose}
+                data-testid="purchase-picker-cancel-btn"
+              >
+                {text.cancel}
+              </button>
+              <button
+                type="button"
+                className="sk-button sk-button--primary"
+                disabled={selectedVariantIds.size === 0}
+                onClick={() => {
+                  const selectedItems = items.filter((it) => selectedVariantIds.has(it.variant_id));
+                  if (onSelectMultiple) {
+                    onSelectMultiple(selectedItems);
+                  } else if (onSelect && selectedItems.length > 0) {
+                    onSelect(selectedItems[0]);
+                  }
+                  onClose();
+                }}
+                data-testid="purchase-picker-confirm-btn"
+              >
+                + {text.addSelected} ({selectedVariantIds.size})
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

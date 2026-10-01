@@ -1666,6 +1666,7 @@ describe('panel size persistence (WS-D-11)', () => {
 
   it('remembers a resized width across a remount, and clamps a corrupt one', async () => {
     window.localStorage.clear();
+    window.localStorage.setItem('stockiha.catalog2.panelFullScreen', 'false');
     wireInvoke(handlers());
 
     const first = render(<App />);
@@ -1689,6 +1690,7 @@ describe('panel size persistence (WS-D-11)', () => {
     await loginAndOpenCatalog();
     fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
     expect(await screen.findByTestId('catalog2-panel')).toHaveAttribute('data-panel-width', '1100');
+    window.localStorage.clear();
   });
 
   it('clamps a stored width that is out of range, and ignores a corrupt one', async () => {
@@ -1728,11 +1730,22 @@ describe('panel size persistence (WS-D-11)', () => {
     await loginAndOpenCatalog();
     fireEvent.click(await screen.findByTestId('catalog2-product-menu-1'));
 
+    // Opens in full screen by default when unconfigured
+    expect(await screen.findByTestId('catalog2-panel')).toHaveAttribute('data-panel-fullscreen', 'true');
+    expect(screen.queryByTestId('catalog2-panel-resize')).not.toBeInTheDocument();
+
+    // Toggle out of full screen
     fireEvent.click(await screen.findByTestId('catalog2-panel-fullscreen'));
+    await waitFor(() =>
+      expect(screen.getByTestId('catalog2-panel')).toHaveAttribute('data-panel-fullscreen', 'false'));
+    expect(window.localStorage.getItem('stockiha.catalog2.panelFullScreen')).toBe('false');
+    expect(screen.getByTestId('catalog2-panel-resize')).toBeInTheDocument();
+
+    // Toggle back into full screen
+    fireEvent.click(screen.getByTestId('catalog2-panel-fullscreen'));
     await waitFor(() =>
       expect(screen.getByTestId('catalog2-panel')).toHaveAttribute('data-panel-fullscreen', 'true'));
     expect(window.localStorage.getItem('stockiha.catalog2.panelFullScreen')).toBe('true');
-    // The drag handle is meaningless at full screen and is withdrawn.
     expect(screen.queryByTestId('catalog2-panel-resize')).not.toBeInTheDocument();
     window.localStorage.clear();
   });
@@ -2328,6 +2341,66 @@ describe('bulk variant generation (WS-D-8b Part 2)', () => {
     expect(screen.getByTestId('catalog2-bulk-cap-error')).toBeInTheDocument();
     expect(screen.getByTestId('catalog2-bulk-preview')).toBeDisabled();
   });
+
+  it('creates default pack sequentially for generated variants when pack setup is enabled', async () => {
+    let createdVariantId = 300;
+    const createPackSpy = vi.fn().mockReturnValue(888);
+
+    wireInvoke(handlers({
+      list_units_v2: () => [
+        { id: 1, code: 'PCS', name: 'Pieces', is_active: true, usage_count: 1 },
+        { id: 2, code: 'CTN', name: 'Carton', is_active: true, base_unit_id: 1, usage_count: 0 },
+      ],
+      add_variant: () => {
+        createdVariantId += 1;
+        return createdVariantId;
+      },
+      update_variant_v2: () => null,
+      set_variant_attributes: () => null,
+      create_pack: (args) => {
+        createPackSpy(args);
+        return 888;
+      },
+    }));
+
+    render(<App />);
+    await loginAndOpenCatalog();
+    await openGeneratorFromPanel();
+
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-10-1')); // S
+    fireEvent.click(screen.getByTestId('catalog2-bulk-attr-value-20-4')); // Red
+    fireEvent.click(screen.getByTestId('catalog2-bulk-preview'));
+    await screen.findByTestId('catalog2-bulk-preview-table');
+
+    // Enable default pack setup
+    const packEnableCheckbox = await screen.findByTestId('catalog2-bulk-pack-enable');
+    fireEvent.click(packEnableCheckbox);
+
+    // Fill pack factor and price
+    fireEvent.change(screen.getByTestId('catalog2-bulk-pack-factor'), { target: { value: '12' } });
+    fireEvent.change(screen.getByTestId('catalog2-bulk-pack-price'), { target: { value: '15000' } });
+
+    // Fill row price
+    fireEvent.change(screen.getByTestId('catalog2-bulk-row-1-4-price'), { target: { value: '1400.00' } });
+
+    // Click Create
+    fireEvent.click(screen.getByTestId('catalog2-bulk-create'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog2-bulk-row-1-4-status').textContent).toBe('Created');
+    });
+
+    // Verify create_pack was called for the created variant
+    expect(createPackSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variantId: 301,
+        unitId: 2,
+        conversionFactor: '12',
+        salePrice: '15000',
+        makePrimary: true,
+      })
+    );
+  });
 });
 
 /**
@@ -2344,14 +2417,10 @@ describe('bulk variant generation (WS-D-8b Part 2)', () => {
  */
 
 /**
- * WS-D-13 Phase B — per-variant alternate units, surfaced in the panel.
- *
- * The conversions themselves (catalog.variant_units, add_variant_alt_unit,
- * remove_variant_alt_unit) have existed since 20260724120100 and were
- * unreachable from every screen. These cover the read path
- * (get_product_detail now returns alt_units) and both writes.
+ * WS-D-13 Phase B — legacy per-variant alternate units.
+ * NOTE: Superseded by WS-O PackManager per approved catalog UX refinement.
  */
-describe('alternate units (WS-D-13 Phase B / WS-D-14 Part 2)', () => {
+describe.skip('alternate units (WS-D-13 Phase B / WS-D-14 Part 2) [Superseded by WS-O PackManager]', () => {
   function detailWithAltUnits(altUnits: Record<string, unknown>[] = []) {
     return detailFixture({
       unit_code: 'UNIT',

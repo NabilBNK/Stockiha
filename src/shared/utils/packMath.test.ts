@@ -6,6 +6,7 @@ import {
   formatFixed,
   formatPackQuantity,
   formatScaled,
+  multiplyExactDecimal,
   multiplyMoney,
   packRate,
   packsToBase,
@@ -140,6 +141,28 @@ describe('packMath (Appendix B exact specification)', () => {
       expect(
         formatPackQuantity('7', { unitName: 'Piece', factor: '1' }, 'Unit')
       ).toBe('7 Unit');
+    });
+  });
+
+  describe('multiplyExactDecimal', () => {
+    it('multiplies integer strings accurately without floating point', () => {
+      expect(multiplyExactDecimal('1000', '36')).toBe('36000');
+      expect(multiplyExactDecimal('0', '36')).toBe('0');
+      expect(multiplyExactDecimal('1500', '12')).toBe('18000');
+    });
+
+    it('multiplies decimal strings accurately and trims trailing zeros', () => {
+      expect(multiplyExactDecimal('1000.00', '36')).toBe('36000');
+      expect(multiplyExactDecimal('1000.50', '36')).toBe('36018');
+      expect(multiplyExactDecimal('12.5', '3')).toBe('37.5');
+      expect(multiplyExactDecimal('0.5', '0.2')).toBe('0.1');
+      expect(multiplyExactDecimal('15.25', '4')).toBe('61');
+    });
+
+    it('returns empty string for invalid inputs', () => {
+      expect(multiplyExactDecimal('', '36')).toBe('');
+      expect(multiplyExactDecimal('abc', '36')).toBe('');
+      expect(multiplyExactDecimal('-10', '36')).toBe('');
     });
   });
 });

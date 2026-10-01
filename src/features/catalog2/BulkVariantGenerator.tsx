@@ -54,7 +54,7 @@ import { Banner, Button, TextField } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import * as ipc from '../../shared/ipc/gateway';
-import type { AttributeDefinition, VariantDetail, VariantInput } from '../../shared/ipc/dto';
+import type { AttributeDefinition, UnitLifecycleItem, VariantDetail, VariantInput } from '../../shared/ipc/dto';
 import { isValidMinimumStock, isValidPrice } from './catalogValidation';
 
 export const MAX_COMBINATIONS = 100;
@@ -127,6 +127,8 @@ export function BulkVariantGenerator({
   attributes,
   refLoading,
   existingVariants,
+  units,
+  baseUnit,
   onCancel,
   onCreated,
 }: {
@@ -135,6 +137,13 @@ export function BulkVariantGenerator({
   attributes: AttributeDefinition[];
   refLoading: boolean;
   existingVariants: VariantDetail[];
+  units?: UnitLifecycleItem[];
+  baseUnit?: {
+    id: number;
+    code: string;
+    name: string;
+    isWhole: boolean;
+  };
   onCancel: () => void;
   /** Called after EVERY row in a run settles, successes included. */
   onCreated: () => Promise<void>;
@@ -149,6 +158,24 @@ export function BulkVariantGenerator({
   const [bulkMinimumStock, setBulkMinimumStock] = useState('');
   const [creating, setCreating] = useState(false);
   const [runSummary, setRunSummary] = useState<string | null>(null);
+
+  // Default pack setup (optional)
+  const [packEnabled, setPackEnabled] = useState(false);
+  const [packUnitId, setPackUnitId] = useState<number | null>(null);
+  const [packFactor, setPackFactor] = useState('');
+  const [packPrice, setPackPrice] = useState('');
+  const [packIsPrimary, setPackIsPrimary] = useState(true);
+
+  const availablePackUnits = useMemo(() => {
+    if (!units || !baseUnit) return [];
+    const hasPackUnitsForBase = units.some((u) => u.base_unit_id === baseUnit.id);
+    return units.filter(
+      (u) =>
+        u.is_active &&
+        u.id !== baseUnit.id &&
+        (hasPackUnitsForBase ? u.base_unit_id === baseUnit.id : true)
+    );
+  }, [units, baseUnit]);
 
   const combinations = useMemo(() => buildCombinations(attributes, selection), [attributes, selection]);
   const overCap = combinations.length > MAX_COMBINATIONS;
@@ -206,14 +233,21 @@ export function BulkVariantGenerator({
   }
 
   const includedRows = rows.filter((r) => r.include);
-  const allValid = includedRows.every((r) => isValidPrice(r.salePrice) && isValidMinimumStock(r.minimumStock));
+  const isPackSetupValid = !packEnabled || (
+    packUnitId != null &&
+    isValidPrice(packPrice) &&
+    packFactor.trim().length > 0 &&
+    !isNaN(Number(packFactor)) &&
+    Number(packFactor) > 1
+  );
+  const allValid = includedRows.every((r) => isValidPrice(r.salePrice) && isValidMinimumStock(r.minimumStock)) && isPackSetupValid;
   const pendingCount = rows.filter((r) => r.include && r.status === 'pending').length;
   const failedCount = rows.filter((r) => r.status === 'failed').length;
   const createdCount = rows.filter((r) => r.status === 'created').length;
 
   /**
-   * C-B — one variant's up-to-three calls. addVariant failing is the only
-   * outcome that leaves the row retryable; a failure in either call after it
+   * C-B — one variant's up-to-four calls. addVariant failing is the only
+   * outcome that leaves the row retryable; a failure in any call after it
    * still means the variant EXISTS, so the row is 'created' with a warning,
    * never 'failed'.
    */
@@ -224,6 +258,7 @@ export function BulkVariantGenerator({
         ...(row.nameOverride.trim() ? { name_override: row.nameOverride.trim() } : {}),
         sale_price: row.salePrice,
         is_active: true,
+        attribute_value_ids: row.attributeValueIds,
         ...(row.barcode.trim() ? { barcodes: [row.barcode.trim()] } : {}),
       };
       variantId = await ipc.addVariant(token, productId, input);
@@ -242,6 +277,20 @@ export function BulkVariantGenerator({
         await ipc.setVariantAttributes(token, variantId, row.attributeValueIds);
       } catch (err) {
         warnings.push(`${t('catalog2.bulkAttributesFailed')} ${errorText(err)}`);
+      }
+    }
+    if (packEnabled && packUnitId != null && isValidPrice(packPrice) && packFactor.trim().length > 0) {
+      try {
+        await ipc.createPack(
+          token,
+          variantId,
+          packUnitId,
+          packFactor.trim(),
+          packPrice.trim(),
+          packIsPrimary
+        );
+      } catch (err) {
+        warnings.push(`${t('catalog2.bulkPackFailed')} ${errorText(err)}`);
       }
     }
     return {
@@ -295,40 +344,77 @@ export function BulkVariantGenerator({
   if (refLoading) return null;
 
   return (
-    <div className="sk-catalog2__panel-variant-body" data-testid="catalog2-bulk-generator">
+    <div className="sk-catalog2__bulk-generator" data-testid="catalog2-bulk-generator">
       {phase === 'select' ? (
         <>
-          <h3>{t('catalog2.bulkTitle')}</h3>
-          <p className="sk-catalog2__note">{t('catalog2.bulkHint')}</p>
+          <div className="sk-catalog2__bulk-head">
+            <h3>{t('catalog2.bulkTitle')}</h3>
+            <p className="sk-catalog2__note">{t('catalog2.bulkHint')}</p>
+          </div>
 
           {attributes.length === 0 ? (
             <Banner tone="info">{t('attrs.empty')}</Banner>
           ) : (
             <div className="sk-catalog2__bulk-attrs">
-              {attributes.map((attr) => (
-                <div key={attr.attribute_id} className="sk-catalog2__bulk-attr-row">
-                  <div className="sk-attr__name">{attr.name}</div>
-                  <div className="sk-catalog2__bulk-values">
-                    {attr.attribute_values.map((v) => (
-                      <label key={v.id} className="sk-catalog2__checkbox">
-                        <input
-                          type="checkbox"
-                          checked={(selection[attr.attribute_id] ?? []).includes(v.id)}
-                          onChange={() => toggleValue(attr.attribute_id, v.id)}
-                          data-testid={`catalog2-bulk-attr-value-${attr.attribute_id}-${v.id}`}
-                        />
-                        <span>{v.value}</span>
-                      </label>
-                    ))}
+              {attributes.map((attr) => {
+                const selectedCount = (selection[attr.attribute_id] ?? []).length;
+                return (
+                  <div key={attr.attribute_id} className="sk-catalog2__bulk-card">
+                    <div className="sk-catalog2__bulk-attr-header">
+                      <span className="sk-catalog2__bulk-attr-name">{attr.name}</span>
+                      {selectedCount > 0 ? (
+                        <span className="sk-catalog2__pill sk-catalog2__pill--accent" style={{ fontSize: 11, padding: '1px 8px' }}>
+                          {selectedCount} selected
+                        </span>
+                      ) : (
+                        <span className="sk-catalog2__bulk-attr-count">
+                          {attr.attribute_values.length} {attr.attribute_values.length === 1 ? 'option' : 'options'}
+                        </span>
+                      )}
+                    </div>
+                    {attr.attribute_values.length === 0 ? (
+                      <p className="sk-catalog2__note" style={{ fontStyle: 'italic', margin: 0 }}>
+                        {t('attrs.empty')}
+                      </p>
+                    ) : (
+                      <div className="sk-catalog2__bulk-chips">
+                        {attr.attribute_values.map((v) => {
+                          const isSelected = (selection[attr.attribute_id] ?? []).includes(v.id);
+                          return (
+                            <label
+                              key={v.id}
+                              className={`sk-catalog2__bulk-chip${isSelected ? ' sk-catalog2__bulk-chip--selected' : ''}`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="sk-attr__chip-input"
+                                checked={isSelected}
+                                onChange={() => toggleValue(attr.attribute_id, v.id)}
+                                data-testid={`catalog2-bulk-attr-value-${attr.attribute_id}-${v.id}`}
+                              />
+                              <span className="sk-catalog2__bulk-chip-icon" aria-hidden="true">
+                                {isSelected ? '✓' : '+'}
+                              </span>
+                              <span>{v.value}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
-          <p className="sk-catalog2__note" data-testid="catalog2-bulk-combination-count">
-            {t('catalog2.bulkCombinationCount', { count: combinations.length })}
-          </p>
+          <div className="sk-catalog2__bulk-summary-bar">
+            <span className="sk-catalog2__note" style={{ margin: 0, fontWeight: 600 }} data-testid="catalog2-bulk-combination-count">
+              {t('catalog2.bulkCombinationCount', { count: combinations.length })}
+            </span>
+            <span className={`sk-catalog2__pill ${combinations.length > 0 ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
+              {combinations.length} {combinations.length === 1 ? 'variant' : 'variants'}
+            </span>
+          </div>
 
           {overCap ? (
             <Banner tone="error" testId="catalog2-bulk-cap-error">
@@ -340,23 +426,33 @@ export function BulkVariantGenerator({
             </Banner>
           ) : null}
 
-          <div className="sk-catalog2__actions sk-catalog2__actions--end">
-            <Button type="button" variant="secondary" onClick={onCancel} data-testid="catalog2-bulk-cancel">
+          <div className="sk-catalog2__actions sk-catalog2__actions--end" style={{ marginTop: 8 }}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onCancel}
+              data-testid="catalog2-bulk-cancel"
+              style={{ minHeight: 40, padding: '0 18px' }}
+            >
               {t('common.cancel')}
             </Button>
             <Button
               type="button"
+              variant="primary"
               disabled={combinations.length === 0 || overCap}
               onClick={preview}
               data-testid="catalog2-bulk-preview"
+              style={{ minHeight: 40, padding: '0 20px' }}
             >
-              {t('catalog2.bulkPreview')}
+              {t('catalog2.bulkPreview')} →
             </Button>
           </div>
         </>
       ) : (
         <>
-          <h3>{t('catalog2.bulkPreviewTitle')}</h3>
+          <div className="sk-catalog2__bulk-head">
+            <h3>{t('catalog2.bulkPreviewTitle')}</h3>
+          </div>
 
           {runSummary ? (
             <Banner tone={failedCount > 0 ? 'warning' : 'success'} testId="catalog2-bulk-summary">
@@ -380,6 +476,7 @@ export function BulkVariantGenerator({
               disabled={!isValidPrice(bulkPrice) || creating}
               onClick={applyBulkPrice}
               data-testid="catalog2-bulk-fill-price-apply"
+              style={{ minHeight: 38, whiteSpace: 'nowrap' }}
             >
               {t('catalog2.bulkApplyToAll')}
             </Button>
@@ -398,12 +495,104 @@ export function BulkVariantGenerator({
               disabled={!isValidMinimumStock(bulkMinimumStock) || creating}
               onClick={applyBulkMinimumStock}
               data-testid="catalog2-bulk-fill-min-stock-apply"
+              style={{ minHeight: 38, whiteSpace: 'nowrap' }}
             >
               {t('catalog2.bulkApplyToAll')}
             </Button>
           </div>
 
-          <div className="sk-catalog2__table-wrap">
+          {availablePackUnits.length > 0 ? (
+            <div
+              className="sk-catalog2__bulk-pack-setup"
+              style={{
+                margin: '12px 0',
+                padding: '12px 14px',
+                background: 'var(--sk-surface-soft)',
+                border: '1px solid var(--sk-border)',
+                borderRadius: 'var(--sk-radius-sm)',
+              }}
+              data-testid="catalog2-bulk-pack-setup"
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={packEnabled}
+                  disabled={creating}
+                  onChange={(e) => {
+                    setPackEnabled(e.target.checked);
+                    if (e.target.checked && !packUnitId && availablePackUnits.length > 0) {
+                      setPackUnitId(availablePackUnits[0].id);
+                    }
+                  }}
+                  data-testid="catalog2-bulk-pack-enable"
+                />
+                <span>{t('catalog2.bulkDefaultPackEnable')}</span>
+              </label>
+
+              {packEnabled ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginTop: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <label style={{ fontSize: 12, color: 'var(--sk-text-muted)' }}>
+                      {t('catalog2.bulkDefaultPackUnit')}
+                    </label>
+                    <select
+                      className="sk-catalog2__input"
+                      value={packUnitId ?? ''}
+                      disabled={creating}
+                      onChange={(e) => setPackUnitId(Number(e.target.value))}
+                      data-testid="catalog2-bulk-pack-unit"
+                      style={{ minHeight: 36, minWidth: 130 }}
+                    >
+                      {availablePackUnits.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ width: 110 }}>
+                    <TextField
+                      id="catalog2-bulk-pack-factor"
+                      label={t('catalog2.bulkDefaultPackFactor')}
+                      value={packFactor}
+                      inputMode="decimal"
+                      disabled={creating}
+                      placeholder={baseUnit?.isWhole ? '12' : '10.5'}
+                      onChange={(e) => setPackFactor(e.target.value)}
+                      data-testid="catalog2-bulk-pack-factor"
+                    />
+                  </div>
+
+                  <div style={{ width: 130 }}>
+                    <TextField
+                      id="catalog2-bulk-pack-price"
+                      label={`${t('catalog2.bulkDefaultPackPrice')} (DZD)`}
+                      value={packPrice}
+                      inputMode="decimal"
+                      disabled={creating}
+                      placeholder="15000"
+                      onChange={(e) => setPackPrice(e.target.value)}
+                      data-testid="catalog2-bulk-pack-price"
+                    />
+                  </div>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 8, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={packIsPrimary}
+                      disabled={creating}
+                      onChange={(e) => setPackIsPrimary(e.target.checked)}
+                      data-testid="catalog2-bulk-pack-primary"
+                    />
+                    <span>{t('catalog2.bulkDefaultPackPrimary')}</span>
+                  </label>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="sk-catalog2__table-wrap" style={{ border: '1px solid var(--sk-border)', borderRadius: 'var(--sk-radius-sm)', margin: '14px 0' }}>
             <table className="sk-catalog2__table" data-testid="catalog2-bulk-preview-table">
               <thead>
                 <tr>
@@ -446,6 +635,7 @@ export function BulkVariantGenerator({
                         disabled={creating || row.status === 'created'}
                         onChange={(e) => patchRow(row.key, { nameOverride: e.target.value })}
                         data-testid={`catalog2-bulk-row-${row.key}-name`}
+                        style={{ minHeight: 32, padding: '2px 8px', fontSize: 13 }}
                       />
                     </td>
                     <td>
@@ -455,6 +645,7 @@ export function BulkVariantGenerator({
                         disabled={creating || row.status === 'created'}
                         onChange={(e) => patchRow(row.key, { barcode: e.target.value })}
                         data-testid={`catalog2-bulk-row-${row.key}-barcode`}
+                        style={{ minHeight: 32, padding: '2px 8px', fontSize: 13 }}
                       />
                     </td>
                     <td className="sk-catalog2__num">
@@ -465,6 +656,7 @@ export function BulkVariantGenerator({
                         disabled={creating || row.status === 'created'}
                         onChange={(e) => patchRow(row.key, { salePrice: e.target.value })}
                         data-testid={`catalog2-bulk-row-${row.key}-price`}
+                        style={{ minHeight: 32, padding: '2px 8px', fontSize: 13, width: 85, textAlign: 'end' }}
                       />
                     </td>
                     <td className="sk-catalog2__num">
@@ -475,17 +667,32 @@ export function BulkVariantGenerator({
                         disabled={creating || row.status === 'created'}
                         onChange={(e) => patchRow(row.key, { minimumStock: e.target.value })}
                         data-testid={`catalog2-bulk-row-${row.key}-min-stock`}
+                        style={{ minHeight: 32, padding: '2px 8px', fontSize: 13, width: 75, textAlign: 'end' }}
                       />
                     </td>
                     <td data-testid={`catalog2-bulk-row-${row.key}-status`}>
-                      {row.status === 'pending' && t('catalog2.bulkStatusPending')}
-                      {row.status === 'creating' && t('catalog2.bulkStatusCreating')}
-                      {row.status === 'created' && (
-                        row.error
-                          ? `${t('catalog2.bulkStatusCreatedWithWarning')} ${row.error}`
-                          : t('catalog2.bulkStatusCreated')
+                      {row.status === 'pending' && (
+                        <span className="sk-catalog2__pill sk-catalog2__pill--neutral" style={{ fontSize: 11 }}>
+                          {t('catalog2.bulkStatusPending')}
+                        </span>
                       )}
-                      {row.status === 'failed' && `${t('catalog2.bulkStatusFailed')} ${row.error ?? ''}`}
+                      {row.status === 'creating' && (
+                        <span className="sk-catalog2__pill sk-catalog2__pill--accent" style={{ fontSize: 11 }}>
+                          {t('catalog2.bulkStatusCreating')}
+                        </span>
+                      )}
+                      {row.status === 'created' && (
+                        <span className="sk-catalog2__pill" style={{ fontSize: 11, background: 'var(--sk-ok-soft, #dcfce7)', color: 'var(--sk-ok, #15803d)' }}>
+                          {row.error
+                            ? `${t('catalog2.bulkStatusCreatedWithWarning')} ${row.error}`
+                            : t('catalog2.bulkStatusCreated')}
+                        </span>
+                      )}
+                      {row.status === 'failed' && (
+                        <span className="sk-catalog2__pill sk-catalog2__pill--danger" style={{ fontSize: 11 }}>
+                          {`${t('catalog2.bulkStatusFailed')} ${row.error ?? ''}`}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

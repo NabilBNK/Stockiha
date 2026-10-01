@@ -1357,6 +1357,40 @@ fieldset.sk-form {
   flex-shrink: 0;
 }
 
+.sk-pos__stock-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  padding-inline: 14px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.sk-pos__stock-toggle-btn--active {
+  background: var(--sk-primary);
+  color: #fff;
+  border: 1px solid var(--sk-primary);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--sk-primary) 30%, transparent);
+}
+
+.sk-pos__stock-toggle-btn--inactive {
+  background: var(--sk-surface-soft);
+  color: var(--sk-muted);
+  border: 1px solid var(--sk-border-strong);
+}
+
+.sk-pos__stock-toggle-btn--inactive:hover {
+  background: var(--sk-surface);
+  color: var(--sk-text);
+  border-color: var(--sk-primary);
+}
+
 .sk-pos__search:focus-within {
   border-color: var(--sk-primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--sk-primary) 15%, transparent);

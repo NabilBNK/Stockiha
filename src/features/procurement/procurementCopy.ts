@@ -201,6 +201,11 @@ export type ProcurementCopy = {
   packRatePrefix: string;
   packRateDetail: string;
   basePieces: string;
+  inStockOnly: string;
+  allStock: string;
+  addSelected: string;
+  selectedCount: string;
+  clearSelection: string;
 };
 
 export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
@@ -309,6 +314,11 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     packRatePrefix: 'Pack rate',
     packRateDetail: 'Box rate',
     basePieces: 'Loose pieces',
+    inStockOnly: 'In Stock Only',
+    allStock: 'All Stock',
+    addSelected: 'Add Selected',
+    selectedCount: 'selected',
+    clearSelection: 'Clear',
   },
   fr: {
     newPurchase: 'Nouvel achat', confirmPurchase: 'Confirmer l’achat', purchaseConfirmed: 'Achat direct enregistré avec succès.',
@@ -415,6 +425,11 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     packRatePrefix: 'Taux paquet',
     packRateDetail: 'Taux boîte',
     basePieces: 'Pièces en vrac',
+    inStockOnly: 'En stock uniquement',
+    allStock: 'Tous les stocks',
+    addSelected: 'Ajouter la sélection',
+    selectedCount: 'sélectionné(s)',
+    clearSelection: 'Effacer',
   },
   ar: {
     newPurchase: 'شراء جديد', confirmPurchase: 'تأكيد الشراء', purchaseConfirmed: 'تم تسجيل الشراء المباشر بنجاح.',
@@ -521,5 +536,10 @@ export const PROCUREMENT_COPY: Record<Locale, ProcurementCopy> = {
     packRatePrefix: 'سعر العلبة',
     packRateDetail: 'سعر العلبة',
     basePieces: 'قطع مفردة',
+    inStockOnly: 'المتوفر فقط',
+    allStock: 'كل المخزون',
+    addSelected: 'إضافة المحدد',
+    selectedCount: 'محدد',
+    clearSelection: 'مسح',
   },
 };

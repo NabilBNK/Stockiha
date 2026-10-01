@@ -3,11 +3,27 @@ import { Banner, Button, ConfirmDialog } from '../../shared/components';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { useI18n, type MessageKey } from '../../shared/i18n';
 import * as ipc from '../../shared/ipc/gateway';
-import type { UnitLifecycleItem, VariantPack } from '../../shared/ipc/dto';
+import type { UnitLifecycleItem, VariantDetail, VariantPack } from '../../shared/ipc/dto';
 import { formatDisplayAmount } from '../../shared/utils/formatters';
-import { compareDecimal, packRate } from '../../shared/utils/packMath';
+import { compareDecimal, multiplyExactDecimal, packRate } from '../../shared/utils/packMath';
 import { formatExactDecimal } from '../inventory/exactDecimal';
 import { normalizeDecimalInput, validatePackForm, type PackFormErrors } from './packValidation';
+
+function variantDisplayLabel(v: VariantDetail): string {
+  if (v.effective_variant_name && v.effective_variant_name !== v.sku) {
+    return `${v.effective_variant_name} (${v.sku})`;
+  }
+  if (v.attribute_signature) {
+    return `${v.attribute_signature} (${v.sku})`;
+  }
+  return v.name_override || v.sku || `#${v.variant_id}`;
+}
+
+function variantSearchHaystack(v: VariantDetail): string {
+  const combo = v.attributes ? v.attributes.map((a) => a.value).join(' ') : '';
+  const barcodes = v.barcodes ? v.barcodes.map((b) => b.barcode).join(' ') : '';
+  return `${v.effective_variant_name} ${v.name_override ?? ''} ${v.sku} ${v.attribute_signature ?? ''} ${combo} ${barcodes}`.toLowerCase();
+}
 
 export interface PackManagerProps {
   variantId: number;
@@ -19,6 +35,7 @@ export interface PackManagerProps {
   };
   pieceSalePrice: string;
   units: UnitLifecycleItem[];
+  siblingVariants?: VariantDetail[];
   sessionToken: string;
   onChanged?: () => Promise<void> | void;
   onPacksLoaded?: (packs: VariantPack[]) => void;
@@ -29,6 +46,7 @@ export function PackManager({
   baseUnit,
   pieceSalePrice,
   units,
+  siblingVariants,
   sessionToken,
   onChanged,
   onPacksLoaded,
@@ -41,6 +59,22 @@ export function PackManager({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
+
+  // Apply pack to other variants dialog state
+  const [applyPack, setApplyPack] = useState<VariantPack | null>(null);
+  const [applySelectedVariantIds, setApplySelectedVariantIds] = useState<number[]>([]);
+  const [applyFilterText, setApplyFilterText] = useState('');
+  const [applySetPrimary, setApplySetPrimary] = useState(false);
+  const [applyBusy, setApplyBusy] = useState(false);
+  const [applyProgress, setApplyProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // Copy packs from another variant dialog state
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [copySourceVariantId, setCopySourceVariantId] = useState<number | null>(null);
+  const [copyFilterText, setCopyFilterText] = useState('');
+  const [copySourcePacks, setCopySourcePacks] = useState<VariantPack[]>([]);
+  const [copyLoadingPacks, setCopyLoadingPacks] = useState(false);
+  const [copyBusy, setCopyBusy] = useState(false);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -140,6 +174,28 @@ export function PackManager({
       return null;
     }
   }, [dialogFactor, dialogPrice, pieceSalePrice]);
+
+  // Suggested max pack price calculation: unit price * factor
+  const suggestedPriceInfo = useMemo(() => {
+    const normFactor = normalizeDecimalInput(dialogFactor);
+    const normPrice = normalizeDecimalInput(pieceSalePrice);
+    if (!normFactor || !normPrice) return null;
+    const factorInt = BigInt(normFactor.split('.')[0] || '0');
+    if (factorInt === 0n && normFactor.replace(/0+$/, '').split('.')[1]?.length === 0) return null;
+    const priceInt = BigInt(normPrice.split('.')[0] || '0');
+    if (priceInt === 0n && normPrice.replace(/0+$/, '').split('.')[1]?.length === 0) return null;
+    try {
+      const suggestedPrice = multiplyExactDecimal(normPrice, normFactor);
+      if (!suggestedPrice || suggestedPrice === '0') return null;
+      return {
+        suggestedPrice,
+        factor: normFactor,
+        unitPrice: normPrice,
+      };
+    } catch {
+      return null;
+    }
+  }, [dialogFactor, pieceSalePrice]);
 
   function openAddDialog() {
     setEditingPack(null);
@@ -358,25 +414,162 @@ export function PackManager({
     }
   }
 
+  function openApplyDialog(pack: VariantPack) {
+    setApplyPack(pack);
+    setApplySelectedVariantIds(siblingVariants ? siblingVariants.map((v) => v.variant_id) : []);
+    setApplyFilterText('');
+    setApplySetPrimary(pack.is_primary);
+    setApplyProgress(null);
+  }
+
+  async function handleApplyToVariants() {
+    if (!applyPack || applySelectedVariantIds.length === 0) return;
+    setApplyBusy(true);
+    setApplyProgress({ current: 0, total: applySelectedVariantIds.length });
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (let i = 0; i < applySelectedVariantIds.length; i++) {
+      const targetVariantId = applySelectedVariantIds[i];
+      try {
+        const targetPacks = await ipc.listVariantPacks(sessionToken, targetVariantId);
+        const alreadyHasUnit = targetPacks.some((p) => p.unit_id === applyPack.unit_id);
+        if (alreadyHasUnit) {
+          skippedCount++;
+        } else {
+          await ipc.createPack(
+            sessionToken,
+            targetVariantId,
+            applyPack.unit_id,
+            applyPack.conversion_factor,
+            applyPack.sale_price,
+            applySetPrimary
+          );
+          createdCount++;
+        }
+      } catch {
+        skippedCount++;
+      }
+      setApplyProgress({ current: i + 1, total: applySelectedVariantIds.length });
+    }
+
+    setApplyBusy(false);
+    setApplyPack(null);
+    setFeedback({
+      tone: 'success',
+      message: `${t('pack.applySuccess', { count: createdCount })}${
+        skippedCount > 0 ? ' ' + t('pack.applySkipped', { count: skippedCount }) : ''
+      }`,
+    });
+    await onChanged?.();
+  }
+
+  function openCopyDialog() {
+    setCopyDialogOpen(true);
+    setCopyFilterText('');
+    setCopySourceVariantId(null);
+    setCopySourcePacks([]);
+    if (siblingVariants && siblingVariants.length > 0) {
+      void handleSelectCopySource(siblingVariants[0].variant_id);
+    }
+  }
+
+  async function handleSelectCopySource(sourceVariantId: number) {
+    setCopySourceVariantId(sourceVariantId);
+    setCopyLoadingPacks(true);
+    try {
+      const rows = await ipc.listVariantPacks(sessionToken, sourceVariantId);
+      setCopySourcePacks(rows.filter((p) => p.is_pack && p.is_active));
+    } catch {
+      setCopySourcePacks([]);
+    } finally {
+      setCopyLoadingPacks(false);
+    }
+  }
+
+  async function handleCopyPacks() {
+    if (copySourcePacks.length === 0) return;
+    setCopyBusy(true);
+    let createdCount = 0;
+    for (const pack of copySourcePacks) {
+      if (!assignedUnitIds.has(pack.unit_id)) {
+        try {
+          await ipc.createPack(
+            sessionToken,
+            variantId,
+            pack.unit_id,
+            pack.conversion_factor,
+            pack.sale_price,
+            pack.is_primary
+          );
+          createdCount++;
+        } catch {
+          // ignore duplicate
+        }
+      }
+    }
+    setCopyBusy(false);
+    setCopyDialogOpen(false);
+    setFeedback({
+      tone: 'success',
+      message: t('pack.copySuccess', { count: createdCount }),
+    });
+    await loadPacks();
+    await onChanged?.();
+  }
+
+  const filteredSiblingsForApply = useMemo(() => {
+    if (!siblingVariants) return [];
+    const q = applyFilterText.trim().toLowerCase();
+    if (!q) return siblingVariants;
+    return siblingVariants.filter((v) => variantSearchHaystack(v).includes(q));
+  }, [siblingVariants, applyFilterText]);
+
+  const matchingApplyIds = useMemo(
+    () => filteredSiblingsForApply.map((v) => v.variant_id),
+    [filteredSiblingsForApply]
+  );
+
+  const filteredSiblingsForCopy = useMemo(() => {
+    if (!siblingVariants) return [];
+    const q = copyFilterText.trim().toLowerCase();
+    if (!q) return siblingVariants;
+    return siblingVariants.filter((v) => variantSearchHaystack(v).includes(q));
+  }, [siblingVariants, copyFilterText]);
+
   const dialogId = useId();
 
   return (
     <div className="sk-pack-manager" data-testid="pack-manager">
-      <div className="sk-catalog2__section-head">
-        <div>
-          <h3>{t('pack.title')}</h3>
-          <p className="sk-catalog2__note">{t('pack.help', { base: baseUnit.name })}</p>
-        </div>
+      <div className="sk-catalog2__section-head" style={{ marginBottom: 10, alignItems: 'center' }}>
+        <p className="sk-catalog2__note" style={{ margin: 0, fontSize: 13 }}>
+          {t('pack.help', { base: baseUnit.name })}
+        </p>
         {!loading && packRows.length > 0 ? (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            onClick={openAddDialog}
-            data-testid="pack-add-btn"
-          >
-            {t('pack.add')}
-          </Button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {siblingVariants && siblingVariants.length > 0 ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={openCopyDialog}
+                data-testid="pack-copy-header-btn"
+                style={{ minHeight: 34, padding: '0 12px', fontSize: 13, whiteSpace: 'nowrap' }}
+              >
+                {t('pack.copyFromVariant')}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={openAddDialog}
+              data-testid="pack-add-btn"
+              style={{ minHeight: 34, padding: '0 12px', fontSize: 13, whiteSpace: 'nowrap' }}
+            >
+              + {t('pack.add')}
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -407,29 +600,40 @@ export function PackManager({
           <p className="sk-catalog2__note" data-testid="pack-empty-text">
             {t('pack.empty', { base: baseUnit.name })}
           </p>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={busy}
-            onClick={openAddDialog}
-            data-testid="pack-add-empty-btn"
-          >
-            {t('pack.add')}
-          </Button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={busy}
+              onClick={openAddDialog}
+              data-testid="pack-add-empty-btn"
+            >
+              {t('pack.add')}
+            </Button>
+            {siblingVariants && siblingVariants.length > 0 ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={openCopyDialog}
+                data-testid="pack-copy-empty-btn"
+              >
+                {t('pack.copyFromVariant')}
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : (
-        <div className="sk-catalog2__table-wrap" style={{ margin: '12px 0' }}>
-          <table className="sk-catalog2__table" data-testid="pack-table">
+        <div className="sk-catalog2__table-wrap" style={{ margin: '10px 0', border: '1px solid var(--sk-border)', borderRadius: 'var(--sk-radius-sm)' }}>
+          <table className="sk-pack-table" data-testid="pack-table">
             <thead>
               <tr>
-                <th style={{ width: 60 }}>{t('pack.main')}</th>
+                <th style={{ width: 44, textAlign: 'center' }}>{t('pack.main')}</th>
                 <th>{t('pack.unit')}</th>
-                <th>{t('pack.holds')}</th>
                 <th>{t('pack.salePrice')}</th>
-                <th>{t('pack.perBase', { base: baseUnit.name })}</th>
                 <th>{t('pack.barcodes')}</th>
-                <th>{t('pack.status')}</th>
-                <th style={{ textAlign: 'end' }}>{t('pack.actions')}</th>
+                <th style={{ width: 80, textAlign: 'center' }}>{t('pack.status')}</th>
+                <th style={{ textAlign: 'end', minWidth: 180 }}>{t('pack.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -440,7 +644,7 @@ export function PackManager({
                 const perBaseStr =
                   pack.sale_price != null
                     ? formatDisplayAmount(packRate(pack.sale_price, pack.conversion_factor, 0))
-                    : '—';
+                    : null;
 
                 const isAddingBarcode = addingBarcodeForPackId === pack.variant_unit_id;
 
@@ -451,7 +655,7 @@ export function PackManager({
                     style={!pack.is_active ? { opacity: 0.6, background: 'var(--sk-surface-soft)' } : undefined}
                     data-testid={`pack-row-${pack.variant_unit_id}`}
                   >
-                    <td>
+                    <td style={{ textAlign: 'center' }}>
                       <input
                         type="radio"
                         name={`pack-main-${variantId}`}
@@ -460,14 +664,25 @@ export function PackManager({
                         onChange={() => void handleSetPrimary(pack.variant_unit_id)}
                         aria-label={`${t('pack.main')} ${pack.unit_name}`}
                         data-testid={`pack-primary-${pack.variant_unit_id}`}
+                        style={{ cursor: pack.is_active ? 'pointer' : 'default', width: 18, height: 18 }}
                       />
                     </td>
                     <td>
-                      <strong>{pack.unit_name}</strong>
+                      <strong style={{ display: 'block', fontSize: 14 }}>{pack.unit_name}</strong>
+                      <span style={{ fontSize: 12, color: 'var(--sk-muted)', whiteSpace: 'nowrap' }}>
+                        ({holdsStr})
+                      </span>
                     </td>
-                    <td>{holdsStr}</td>
-                    <td>{priceStr}</td>
-                    <td>{perBaseStr}</td>
+                    <td>
+                      <strong style={{ display: 'block', fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
+                        {priceStr}
+                      </strong>
+                      {perBaseStr ? (
+                        <span style={{ fontSize: 12, color: 'var(--sk-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                          {perBaseStr} / {baseUnit.name}
+                        </span>
+                      ) : null}
+                    </td>
                     <td>
                       <div className="sk-pack-barcodes" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
                         {pack.barcodes.map((bc, idx) => {
@@ -477,14 +692,14 @@ export function PackManager({
                               key={bcId ?? bc}
                               className="sk-catalog2__pill sk-catalog2__mono"
                               data-testid={`pack-barcode-${bcId}`}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13 }}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '1px 8px' }}
                             >
                               <span>{bc}</span>
                               <button
                                 type="button"
                                 disabled={busy}
                                 onClick={() => setConfirmRemoveBarcode({ barcodeId: bcId, barcode: bc })}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700 }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700, fontSize: 14, lineHeight: 1 }}
                                 aria-label={`${t('barcodes.remove')} ${bc}`}
                                 data-testid={`pack-remove-barcode-${bcId}`}
                               >
@@ -498,7 +713,7 @@ export function PackManager({
                           <div style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
                             <input
                               className="sk-catalog2__input"
-                              style={{ minHeight: 30, padding: '2px 6px', fontSize: 13, width: 140 }}
+                              style={{ minHeight: 28, padding: '2px 6px', fontSize: 12, width: 120 }}
                               value={inlineBarcodeText}
                               onChange={(e) => setInlineBarcodeText(e.target.value)}
                               placeholder={t('barcodes.barcode')}
@@ -510,7 +725,7 @@ export function PackManager({
                               loading={inlineBarcodeSaving}
                               disabled={!inlineBarcodeText.trim() || busy}
                               onClick={() => void handleAddInlineBarcode(pack.variant_unit_id)}
-                              style={{ minHeight: 30, padding: '2px 8px', fontSize: 13 }}
+                              style={{ minHeight: 28, padding: '0 8px', fontSize: 12 }}
                               data-testid={`pack-add-barcode-submit-${pack.variant_unit_id}`}
                             >
                               {t('common.save')}
@@ -524,12 +739,12 @@ export function PackManager({
                                 setInlineBarcodeText('');
                                 setInlineBarcodeError(null);
                               }}
-                              style={{ minHeight: 30, padding: '2px 6px', fontSize: 13 }}
+                              style={{ minHeight: 28, padding: '0 6px', fontSize: 12 }}
                             >
                               {t('common.cancel')}
                             </Button>
                             {inlineBarcodeError ? (
-                              <span style={{ color: 'var(--sk-danger)', fontSize: 12 }}>
+                              <span style={{ color: 'var(--sk-danger)', fontSize: 11 }}>
                                 {inlineBarcodeError}
                               </span>
                             ) : null}
@@ -544,7 +759,7 @@ export function PackManager({
                               setInlineBarcodeText('');
                               setInlineBarcodeError(null);
                             }}
-                            style={{ background: 'none', border: 'none', color: 'var(--sk-primary)', cursor: 'pointer', fontSize: 13 }}
+                            style={{ background: 'none', border: 'none', color: 'var(--sk-primary)', cursor: 'pointer', fontSize: 12, padding: '2px 4px' }}
                             data-testid={`pack-add-barcode-trigger-${pack.variant_unit_id}`}
                           >
                             {t('pack.addBarcode')}
@@ -552,19 +767,33 @@ export function PackManager({
                         )}
                       </div>
                     </td>
-                    <td>
-                      <span className={`sk-catalog2__pill ${pack.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`}>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={`sk-catalog2__pill ${pack.is_active ? 'sk-catalog2__pill--accent' : 'sk-catalog2__pill--neutral'}`} style={{ fontSize: 11, padding: '1px 8px' }}>
                         {pack.is_active ? t('pack.active') : t('pack.inactive')}
                       </span>
                     </td>
                     <td style={{ textAlign: 'end' }}>
-                      <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'inline-flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
+                        {siblingVariants && siblingVariants.length > 0 ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={busy || !pack.is_active}
+                            onClick={() => openApplyDialog(pack)}
+                            data-testid={`pack-apply-btn-${pack.variant_unit_id}`}
+                            style={{ minHeight: 30, padding: '0 8px', fontSize: 12 }}
+                            title={t('pack.applyToOthers')}
+                          >
+                            {t('pack.applyToOthers')}
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="secondary"
                           disabled={busy}
                           onClick={() => openEditDialog(pack)}
                           data-testid={`pack-edit-btn-${pack.variant_unit_id}`}
+                          style={{ minHeight: 30, padding: '0 8px', fontSize: 12 }}
                         >
                           {t('catalog2.edit')}
                         </Button>
@@ -574,6 +803,7 @@ export function PackManager({
                           disabled={busy}
                           onClick={() => void handleToggleActive(pack)}
                           data-testid={`pack-toggle-active-${pack.variant_unit_id}`}
+                          style={{ minHeight: 30, padding: '0 8px', fontSize: 12 }}
                         >
                           {pack.is_active ? t('pack.deactivate') : t('pack.activate')}
                         </Button>
@@ -584,6 +814,8 @@ export function PackManager({
                             disabled={busy}
                             onClick={() => setConfirmDeletePack(pack)}
                             data-testid={`pack-delete-btn-${pack.variant_unit_id}`}
+                            style={{ minHeight: 30, padding: '0 8px', fontSize: 12 }}
+                            title={t('pack.delete')}
                           >
                             {t('pack.delete')}
                           </Button>
@@ -724,9 +956,56 @@ export function PackManager({
                   value={dialogPrice}
                   onChange={(e) => setDialogPrice(e.target.value)}
                   disabled={dialogSaving}
-                  placeholder="15000"
+                  placeholder={suggestedPriceInfo?.suggestedPrice || '15000'}
                   data-testid="pack-dialog-price-input"
                 />
+                {suggestedPriceInfo ? (
+                  <div
+                    style={{
+                      margin: '6px 0 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'var(--sk-primary-subtle, #eff6ff)',
+                      border: '1px solid var(--sk-primary-border, #bfdbfe)',
+                      borderRadius: 'var(--sk-radius-sm, 6px)',
+                      padding: '6px 10px',
+                      fontSize: 12,
+                    }}
+                    data-testid="pack-dialog-price-suggestion-prompt"
+                  >
+                    <span style={{ color: '#1e40af', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span aria-hidden="true">💡</span>
+                      <span>
+                        <strong>{t('pack.suggestedMaxPrice')}:</strong>{' '}
+                        {formatDisplayAmount(suggestedPriceInfo.suggestedPrice)}{' '}
+                        <span style={{ opacity: 0.85, fontWeight: 'normal' }}>
+                          ({suggestedPriceInfo.factor} {baseUnit.name} × {formatDisplayAmount(pieceSalePrice)})
+                        </span>
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="sk-link-btn"
+                      onClick={() => setDialogPrice(suggestedPriceInfo.suggestedPrice)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#1d4ed8',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        padding: '2px 4px',
+                        textDecoration: 'underline',
+                        whiteSpace: 'nowrap',
+                        marginInlineStart: 8,
+                      }}
+                      data-testid="pack-dialog-use-suggested-price"
+                    >
+                      {t('pack.useSuggestedPrice')}
+                    </button>
+                  </div>
+                ) : null}
                 {dialogRateInfo ? (
                   <div style={{ marginTop: 4 }}>
                     <p className="sk-catalog2__note" data-testid="pack-dialog-rate-helper">
@@ -865,6 +1144,322 @@ export function PackManager({
           onConfirm={() => void handleRemoveSmallerUnit()}
           onCancel={() => setConfirmRemoveSmallerUnit(null)}
         />
+      ) : null}
+
+      {/* Apply Pack To Other Variants Dialog */}
+      {applyPack ? (
+        <div
+          className="sk-modal-backdrop"
+          role="presentation"
+          onClick={() => !applyBusy && setApplyPack(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            className="sk-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pack-apply-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: 'var(--sk-surface)', border: '1px solid var(--sk-border)', borderRadius: 'var(--sk-radius-md)', padding: 24, maxWidth: 540, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
+            data-testid="pack-apply-dialog"
+          >
+            <h3 id="pack-apply-title" style={{ margin: '0 0 8px 0', fontSize: 16 }}>
+              {t('pack.applyDialogTitle')}
+            </h3>
+            <p className="sk-catalog2__note" style={{ margin: '0 0 14px 0', fontSize: 13 }}>
+              {t('pack.applyDialogDesc', {
+                unit: applyPack.unit_name,
+                factor: formatExactDecimal(applyPack.conversion_factor),
+                price: applyPack.sale_price ? formatDisplayAmount(applyPack.sale_price) : t('pack.notSold'),
+              })}
+            </p>
+
+            <div style={{ marginBottom: 10 }}>
+              <input
+                className="sk-catalog2__input"
+                value={applyFilterText}
+                disabled={applyBusy}
+                onChange={(e) => setApplyFilterText(e.target.value)}
+                placeholder={t('pack.searchPlaceholder')}
+                data-testid="pack-apply-search-input"
+                style={{ width: '100%', minHeight: 32, padding: '4px 8px', fontSize: 13 }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>
+                {applySelectedVariantIds.length} / {siblingVariants?.length ?? 0}
+                {applyFilterText.trim() ? ` (${filteredSiblingsForApply.length} ${t('common.none') === 'None' ? 'matching' : 'correspondants'})` : ''}
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {applyFilterText.trim() ? (
+                  <>
+                    <button
+                      type="button"
+                      className="sk-link-btn"
+                      disabled={applyBusy || matchingApplyIds.length === 0}
+                      onClick={() => setApplySelectedVariantIds((prev) => Array.from(new Set([...prev, ...matchingApplyIds])))}
+                      style={{ background: 'none', border: 'none', color: 'var(--sk-primary)', cursor: 'pointer', fontSize: 12 }}
+                      data-testid="pack-apply-select-matching"
+                    >
+                      {t('pack.selectAllMatching', { count: matchingApplyIds.length })}
+                    </button>
+                    <span style={{ color: 'var(--sk-border)' }}>|</span>
+                    <button
+                      type="button"
+                      className="sk-link-btn"
+                      disabled={applyBusy || matchingApplyIds.length === 0}
+                      onClick={() => setApplySelectedVariantIds((prev) => prev.filter((id) => !matchingApplyIds.includes(id)))}
+                      style={{ background: 'none', border: 'none', color: 'var(--sk-primary)', cursor: 'pointer', fontSize: 12 }}
+                      data-testid="pack-apply-deselect-matching"
+                    >
+                      {t('pack.deselectAllMatching', { count: matchingApplyIds.length })}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="sk-link-btn"
+                      disabled={applyBusy}
+                      onClick={() => setApplySelectedVariantIds(siblingVariants ? siblingVariants.map((v) => v.variant_id) : [])}
+                      style={{ background: 'none', border: 'none', color: 'var(--sk-primary)', cursor: 'pointer', fontSize: 12 }}
+                    >
+                      {t('pack.applySelectAll')}
+                    </button>
+                    <span style={{ color: 'var(--sk-border)' }}>|</span>
+                    <button
+                      type="button"
+                      className="sk-link-btn"
+                      disabled={applyBusy}
+                      onClick={() => setApplySelectedVariantIds([])}
+                      style={{ background: 'none', border: 'none', color: 'var(--sk-primary)', cursor: 'pointer', fontSize: 12 }}
+                    >
+                      {t('pack.applyDeselectAll')}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                border: '1px solid var(--sk-border)',
+                borderRadius: 'var(--sk-radius-sm)',
+                maxHeight: 220,
+                overflowY: 'auto',
+                padding: '4px 8px',
+                marginBottom: 16,
+                background: 'var(--sk-surface-soft)',
+              }}
+              data-testid="pack-apply-variant-list"
+            >
+              {filteredSiblingsForApply.length === 0 ? (
+                <div style={{ padding: '16px 8px', textAlign: 'center', color: 'var(--sk-text-muted)', fontSize: 13 }}>
+                  {t('pack.noMatchingVariants')}
+                </div>
+              ) : (
+                filteredSiblingsForApply.map((v) => {
+                  const checked = applySelectedVariantIds.includes(v.variant_id);
+                  return (
+                    <label
+                      key={v.variant_id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 4px',
+                        borderBottom: '1px solid var(--sk-border-subtle)',
+                        cursor: 'pointer',
+                        fontSize: 13,
+                      }}
+                      data-testid={`pack-apply-row-${v.variant_id}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={applyBusy}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setApplySelectedVariantIds((prev) => [...prev, v.variant_id]);
+                          } else {
+                            setApplySelectedVariantIds((prev) => prev.filter((id) => id !== v.variant_id));
+                          }
+                        }}
+                      />
+                      <span>{variantDisplayLabel(v)}</span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 16, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={applySetPrimary}
+                disabled={applyBusy}
+                onChange={(e) => setApplySetPrimary(e.target.checked)}
+                data-testid="pack-apply-primary-checkbox"
+              />
+              <span>{t('pack.applyPrimaryCheckbox')}</span>
+            </label>
+
+            {applyProgress ? (
+              <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--sk-primary)' }}>
+                {t('pack.applyingProgress', { current: applyProgress.current, total: applyProgress.total })}
+              </div>
+            ) : null}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={applyBusy}
+                onClick={() => setApplyPack(null)}
+                data-testid="pack-apply-cancel-btn"
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                loading={applyBusy}
+                disabled={applyBusy || applySelectedVariantIds.length === 0}
+                onClick={() => void handleApplyToVariants()}
+                data-testid="pack-apply-submit-btn"
+              >
+                {t('pack.applyBtn', { count: applySelectedVariantIds.length })}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Copy Packs From Another Variant Dialog */}
+      {copyDialogOpen ? (
+        <div
+          className="sk-modal-backdrop"
+          role="presentation"
+          onClick={() => !copyBusy && setCopyDialogOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            className="sk-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pack-copy-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: 'var(--sk-surface)', border: '1px solid var(--sk-border)', borderRadius: 'var(--sk-radius-md)', padding: 24, maxWidth: 520, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
+            data-testid="pack-copy-dialog"
+          >
+            <h3 id="pack-copy-title" style={{ margin: '0 0 12px 0', fontSize: 16 }}>
+              {t('pack.copyDialogTitle')}
+            </h3>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 12, color: 'var(--sk-text-muted)', marginBottom: 4 }}>
+                {t('pack.copySelectSource')}
+              </label>
+              <input
+                className="sk-catalog2__input"
+                value={copyFilterText}
+                disabled={copyBusy}
+                onChange={(e) => setCopyFilterText(e.target.value)}
+                placeholder={t('pack.searchPlaceholder')}
+                data-testid="pack-copy-search-input"
+                style={{ width: '100%', minHeight: 32, padding: '4px 8px', fontSize: 13, marginBottom: 8 }}
+              />
+
+              <div
+                style={{
+                  border: '1px solid var(--sk-border)',
+                  borderRadius: 'var(--sk-radius-sm)',
+                  maxHeight: 160,
+                  overflowY: 'auto',
+                  background: 'var(--sk-surface-soft)',
+                }}
+                data-testid="pack-copy-variant-list"
+              >
+                {filteredSiblingsForCopy.length === 0 ? (
+                  <div style={{ padding: '12px 8px', textAlign: 'center', color: 'var(--sk-text-muted)', fontSize: 13 }}>
+                    {t('pack.noMatchingVariants')}
+                  </div>
+                ) : (
+                  filteredSiblingsForCopy.map((v) => {
+                    const isSelected = v.variant_id === copySourceVariantId;
+                    return (
+                      <div
+                        key={v.variant_id}
+                        onClick={() => !copyBusy && void handleSelectCopySource(v.variant_id)}
+                        style={{
+                          padding: '6px 10px',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                          background: isSelected ? 'var(--sk-primary-subtle, rgba(37,99,235,0.12))' : 'transparent',
+                          borderLeft: isSelected ? '3px solid var(--sk-primary)' : '3px solid transparent',
+                          borderBottom: '1px solid var(--sk-border-subtle)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                        data-testid={`pack-copy-candidate-${v.variant_id}`}
+                      >
+                        <span style={{ fontWeight: isSelected ? 600 : 400 }}>{variantDisplayLabel(v)}</span>
+                        {isSelected ? <span style={{ color: 'var(--sk-primary)', fontSize: 13, fontWeight: 700 }}>✓</span> : null}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {copyLoadingPacks ? (
+              <p className="sk-catalog2__note">{t('common.loading')}</p>
+            ) : copySourcePacks.length === 0 ? (
+              <p className="sk-catalog2__note" style={{ color: 'var(--sk-text-muted)' }}>
+                {t('pack.copyNoPacksOnSource')}
+              </p>
+            ) : (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                  {t('pack.barcodesElsewhere')}
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
+                  {copySourcePacks.map((p) => (
+                    <li key={p.variant_unit_id} style={{ marginBottom: 4 }}>
+                      <strong>{p.unit_name}</strong> (holds {formatExactDecimal(p.conversion_factor)} {baseUnit.name})
+                      {p.sale_price ? ` — ${formatDisplayAmount(p.sale_price)}` : ''}
+                      {p.is_primary ? ` ★` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={copyBusy}
+                onClick={() => setCopyDialogOpen(false)}
+                data-testid="pack-copy-cancel-btn"
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                loading={copyBusy}
+                disabled={copyBusy || copySourcePacks.length === 0}
+                onClick={() => void handleCopyPacks()}
+                data-testid="pack-copy-submit-btn"
+              >
+                {t('pack.copyCountPacks', { count: copySourcePacks.length })}
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

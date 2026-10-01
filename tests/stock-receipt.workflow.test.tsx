@@ -168,8 +168,10 @@ describe('Stock Receipt modern item search and picker workflow', () => {
     expect(screwOption).toHaveTextContent('Wood Screw 50mm');
     expect(screen.queryByTestId('purchase-item-option-10')).not.toBeInTheDocument();
 
-    // Select Screw
+    // Select Screw and confirm selection
     fireEvent.click(screwOption);
+    const confirmBtn = screen.getByTestId('purchase-picker-confirm-btn');
+    fireEvent.click(confirmBtn);
 
     // Modal closes
     await waitFor(() => expect(screen.queryByTestId('purchase-item-picker')).not.toBeInTheDocument());

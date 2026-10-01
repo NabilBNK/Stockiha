@@ -11,7 +11,7 @@ import { useI18n } from "../i18n";
 import type { AttributeDefinition, ProductListItem } from "../ipc/dto";
 import * as ipc from "../ipc/gateway";
 import { SessionContext } from "../session/SessionContext";
-import { formatExactDecimal, isExactDecimalZero } from "../../features/inventory/exactDecimal";
+import { formatExactDecimal, isExactDecimalPositive, isExactDecimalZero } from "../../features/inventory/exactDecimal";
 import "../../features/procurement/procurement.css";
 
 export interface ItemSearchModalProps {
@@ -95,6 +95,7 @@ export function ItemSearchModal({
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({});
   const [selectedCounts, setSelectedCounts] = useState<Record<number, number>>({});
+  const [inStockOnly, setInStockOnly] = useState(true);
   const [isMaximized, setIsMaximized] = useState(false);
   const serverControlled = onQueryChange != null;
 
@@ -208,6 +209,9 @@ export function ItemSearchModal({
 
     if (selectedCategory) {
       result = result.filter((item) => item.category_name === selectedCategory);
+    }
+    if (inStockOnly) {
+      result = result.filter((item) => isExactDecimalPositive(item.quantity_on_hand ?? '0'));
     }
     if (selectedUnit) {
       result = result.filter(
@@ -379,6 +383,23 @@ export function ItemSearchModal({
                     : "Clear all"}
                 </button>
               )}
+            </div>
+
+            {/* Stock Filter */}
+            <div className="pr-filter-section">
+              <span className="pr-filter-section__label">
+                {locale === "ar" ? "المخزون" : locale === "fr" ? "Disponibilité" : "Stock"}
+              </span>
+              <div className="pr-filter-chips">
+                <button
+                  type="button"
+                  className={`pr-filter-chip ${inStockOnly ? "pr-filter-chip--active" : ""}`}
+                  onClick={() => setInStockOnly((prev) => !prev)}
+                  data-testid="item-search-filter-in-stock"
+                >
+                  📦 {inStockOnly ? (locale === "ar" ? "المتوفر فقط" : locale === "fr" ? "En stock uniq." : "In Stock Only") : (locale === "ar" ? "كل المخزون" : locale === "fr" ? "Tous les stocks" : "All Stock")}
+                </button>
+              </div>
             </div>
 
             {/* Categories filter */}

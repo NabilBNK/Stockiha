@@ -18,7 +18,7 @@ import type { Customer, CustomerCapabilities } from '../../shared/ipc/customerDt
 import type { CreditSaleResult } from '../../shared/ipc/creditSaleDto';
 import type { ProductListItem, ProductListItemV2, ReferenceLifecycleItem, VariantAttributeDto } from '../../shared/ipc/dto';
 import { addExactMoney, compareExactMoney, isValidMoneyString, multiplyMoneyByQuantity } from '../../shared/money/exactMoney';
-import { formatExactDecimal, isExactDecimalZero } from '../inventory/exactDecimal';
+import { formatExactDecimal, isExactDecimalPositive, isExactDecimalZero } from '../inventory/exactDecimal';
 import { ReceiptView } from '../documents/ReceiptView';
 import { resolveBarcodeFirst } from '../../shared/search/barcodeFirstSearch';
 import { ItemSearchModal } from '../../shared/components/ItemSearchModal';
@@ -127,6 +127,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
   const [advancedSearchResults, setAdvancedSearchResults] = useState<ProductListItem[]>([]);
   const [advancedSearchLoading, setAdvancedSearchLoading] = useState(false);
   const [advancedSearchQuery, setAdvancedSearchQuery] = useState('');
+  const [inStockOnly, setInStockOnly] = useState(true);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
   const [customerId, setCustomerId] = useState<number | null>(null);
@@ -228,6 +229,11 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
       setCatalogBusy(false);
     }
   }, [token, posWarehouseId, search, categoryId, products.length, catalogBusy]);
+
+  const displayedProducts = useMemo(() => {
+    if (!inStockOnly) return products;
+    return products.filter((p) => isExactDecimalPositive(p.quantity_on_hand ?? '0'));
+  }, [products, inStockOnly]);
 
   const invalidateSaleIntent = useCallback(() => {
     setRequestId(null);
@@ -697,7 +703,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
           <div className="sk-pos__catalog-header">
             <div>
               <h2>{t('pos.catalog')}</h2>
-              <span>{t('pos.productsAvailable', { count: products.length })}</span>
+              <span>{t('pos.productsAvailable', { count: displayedProducts.length })}</span>
             </div>
             <div className="sk-pos__search-group">
               <label className="sk-pos__search">
@@ -728,6 +734,17 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
               >
                 <span aria-hidden>🔍</span>
               </button>
+              <button
+                type="button"
+                className={`sk-pos__stock-toggle-btn ${inStockOnly ? 'sk-pos__stock-toggle-btn--active' : 'sk-pos__stock-toggle-btn--inactive'}`}
+                onClick={() => setInStockOnly((prev) => !prev)}
+                aria-pressed={inStockOnly}
+                title={inStockOnly ? t('pos.inStockOnly') : t('pos.allStock')}
+                data-testid="pos-in-stock-toggle"
+              >
+                <span aria-hidden>📦</span>
+                <span>{inStockOnly ? t('pos.inStockOnly') : t('pos.allStock')}</span>
+              </button>
             </div>
           </div>
 
@@ -757,12 +774,12 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
 
           {loading ? (
             <Spinner />
-          ) : products.length === 0 ? (
+          ) : displayedProducts.length === 0 ? (
             <div className="sk-pos__empty">{catalogBusy ? t('pos.searching') : t('pos.noProducts')}</div>
           ) : (
             <div className="sk-pos__products-scroll">
               <div className="sk-pos__products" data-testid="pos-products">
-                {products.map((p) => (
+                {displayedProducts.map((p) => (
                   <button
                     key={p.variant_id}
                     type="button"

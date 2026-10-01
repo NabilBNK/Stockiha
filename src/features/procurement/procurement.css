@@ -1014,6 +1014,48 @@ div.sk-modal.pr-picker-modal.pr-picker-modal--maximized {
   font-size: 0.78rem;
 }
 
+.pr-picker-option-card--selected {
+  border-color: var(--sk-primary) !important;
+  background: color-mix(in srgb, var(--sk-primary) 9%, var(--sk-surface)) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sk-primary) 28%, transparent);
+}
+
+.pr-picker-checkbox {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid var(--sk-border-strong, #cbd5e1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 800;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  background: var(--sk-surface);
+  color: transparent;
+}
+
+.pr-picker-checkbox--checked {
+  background: var(--sk-primary);
+  border-color: var(--sk-primary);
+  color: #fff;
+}
+
+.pr-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid var(--sk-border);
+  background: var(--sk-surface);
+  border-radius: 0 0 var(--sk-radius) var(--sk-radius);
+  margin: 12px -24px -24px -24px;
+  gap: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.04);
+}
+
 /* History toolbar controls */
 .pr-history-toolbar {
   display: flex;
@@ -1340,4 +1382,226 @@ div.sk-modal.pr-picker-modal.pr-picker-modal--maximized {
   font-size: 1.35rem;
   opacity: 0.75;
   flex-shrink: 0;
+}
+
+/* Stock Receipt Screen — Compact ERP Layout & Symmetrical Results Grid */
+.sk-receipt-form-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-block-end: 16px;
+}
+
+@media (max-width: 680px) {
+  .sk-receipt-form-inputs {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sk-receipt-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--sk-border);
+  margin-block-start: 10px;
+}
+
+.sk-receipt-form-actions .sk-provisional {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--sk-muted);
+}
+
+.sk-receipt-form-actions .sk-provisional strong {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--sk-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.sk-receipt-result-section {
+  margin-block-start: 22px;
+}
+
+.sk-receipt-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block-end: 18px;
+  padding-block-end: 14px;
+  border-block-end: 1px solid var(--sk-border);
+}
+
+.sk-receipt-doc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: var(--sk-primary-subtle, #eff6ff);
+  border: 1px solid var(--sk-primary-border, #bfdbfe);
+  border-radius: var(--sk-radius-sm, 6px);
+  font-size: 0.85rem;
+}
+
+.sk-receipt-doc-badge__label {
+  color: var(--sk-muted, #64748b);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.sk-receipt-doc-badge__num {
+  font-family: var(--sk-font-mono, ui-monospace, monospace);
+  color: var(--sk-primary, #2563eb);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+}
+
+/* Symmetrical 3x2 grid of 6 cards on desktop, 2x3 on tablet, 1x6 on mobile */
+.sk-receipt-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .sk-receipt-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 580px) {
+  .sk-receipt-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Compact Card Override for Stock Receipt */
+.sk-receipt-card.sk-metric {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 84px;
+  padding: 14px 18px;
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+  background: var(--sk-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.sk-receipt-card.sk-metric:hover {
+  border-color: var(--sk-primary-border, #93c5fd);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06);
+}
+
+.sk-receipt-card .sk-metric__icon {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  font-weight: 800;
+  align-self: center;
+  grid-row: unset;
+}
+
+.sk-receipt-card__icon--doc {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.sk-receipt-card__icon--qty {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.sk-receipt-card__icon--val {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.sk-receipt-card__icon--stock {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.sk-receipt-card__icon--wac {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
+.sk-receipt-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sk-receipt-card .sk-metric__label {
+  align-self: unset;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sk-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sk-receipt-card .sk-metric__value {
+  align-self: unset;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--sk-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sk-receipt-card__val--doc {
+  font-family: var(--sk-font-mono, ui-monospace, monospace);
+  font-size: 1.15rem !important;
+  color: var(--sk-primary) !important;
+  letter-spacing: 0.02em;
+}
+
+.sk-receipt-card__val--qty {
+  color: #059669 !important;
+}
+
+.sk-receipt-card__val--money {
+  color: var(--sk-text) !important;
+}
+
+.sk-receipt-card__val--stock {
+  color: #16a34a !important;
+}
+
+.sk-receipt-card__val--wac {
+  color: #7c3aed !important;
+}
+
+.sk-receipt-card__unit {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--sk-muted);
+  margin-inline-start: 6px;
+  text-transform: none;
 }

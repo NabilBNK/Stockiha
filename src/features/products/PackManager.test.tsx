@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 import { I18nProvider } from '../../shared/i18n';
-import type { UnitLifecycleItem, VariantPack } from '../../shared/ipc/dto';
+import type { UnitLifecycleItem, VariantDetail, VariantPack } from '../../shared/ipc/dto';
 import { PackManager } from './PackManager';
 
 const mockUnits: UnitLifecycleItem[] = [
@@ -271,4 +271,248 @@ describe('PackManager (WS-O-2.2)', () => {
       );
     });
   });
+
+  it('opens Apply to other variants dialog and bulk-applies pack to sibling variants', async () => {
+    const existingPack = samplePack({ variant_unit_id: 101, unit_id: 2, conversion_factor: '12', sale_price: '15000.00' });
+    const createPackSpy = vi.fn().mockResolvedValue(999);
+
+    const mockSiblings: VariantDetail[] = [
+      {
+        variant_id: 11,
+        sku: 'SKU-11',
+        name_override: null,
+        effective_variant_name: 'Blue / L',
+        primary_barcode: null,
+        operational_identifier: 'SKU-11',
+        identifier_type: 'SKU',
+        sale_price: '1400.00',
+        minimum_stock: '0',
+        is_active: true,
+        attribute_signature: 'Blue · L',
+        attributes: [],
+        barcodes: [],
+      },
+      {
+        variant_id: 12,
+        sku: 'SKU-12',
+        name_override: null,
+        effective_variant_name: 'Blue / M',
+        primary_barcode: null,
+        operational_identifier: 'SKU-12',
+        identifier_type: 'SKU',
+        sale_price: '1400.00',
+        minimum_stock: '0',
+        is_active: true,
+        attribute_signature: 'Blue · M',
+        attributes: [],
+        barcodes: [],
+      },
+    ];
+
+    wireGateway({
+      list_variant_packs: (args) => {
+        if (args.variantId === 10) return [existingPack];
+        // Variant 11 has no packs, Variant 12 already has Carton (unit_id 2)
+        if (args.variantId === 12) return [samplePack({ variant_unit_id: 102, unit_id: 2 })];
+        return [];
+      },
+      create_pack: (args) => {
+        createPackSpy(args);
+        return 999;
+      },
+    });
+
+    renderManager({ siblingVariants: mockSiblings });
+
+    const applyBtn = await screen.findByTestId('pack-apply-btn-101');
+    expect(applyBtn).toBeInTheDocument();
+    fireEvent.click(applyBtn);
+
+    // Dialog opens
+    expect(await screen.findByTestId('pack-apply-dialog')).toBeInTheDocument();
+    expect(screen.getByText(/Blue \/ L/)).toBeInTheDocument();
+    expect(screen.getByText(/Blue \/ M/)).toBeInTheDocument();
+
+    // Submit
+    const submitBtn = screen.getByTestId('pack-apply-submit-btn');
+    fireEvent.click(submitBtn);
+
+    // Creates on variant 11, skips variant 12 (already has unit 2)
+    await waitFor(() => {
+      expect(createPackSpy).toHaveBeenCalledTimes(1);
+      expect(createPackSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variantId: 11,
+          unitId: 2,
+          conversionFactor: '12',
+          salePrice: '15000.00',
+        })
+      );
+    });
+
+    // Feedback shows 1 applied, 1 skipped
+    expect(await screen.findByTestId('pack-feedback-banner')).toHaveTextContent(/1 variant\(s\) skipped/);
+  });
+
+  it('renders Copy packs from another variant button on empty state and copies packs', async () => {
+    const createPackSpy = vi.fn().mockResolvedValue(888);
+    const mockSiblings: VariantDetail[] = [
+      {
+        variant_id: 11,
+        sku: 'SKU-11',
+        name_override: null,
+        effective_variant_name: 'Blue / L',
+        primary_barcode: null,
+        operational_identifier: 'SKU-11',
+        identifier_type: 'SKU',
+        sale_price: '1400.00',
+        minimum_stock: '0',
+        is_active: true,
+        attribute_signature: 'Blue · L',
+        attributes: [],
+        barcodes: [],
+      },
+    ];
+
+    wireGateway({
+      list_variant_packs: (args) => {
+        if (args.variantId === 11) {
+          return [samplePack({ variant_unit_id: 105, unit_id: 2, conversion_factor: '12', sale_price: '15000.00' })];
+        }
+        return [];
+      },
+      create_pack: (args) => {
+        createPackSpy(args);
+        return 888;
+      },
+    });
+
+    renderManager({ siblingVariants: mockSiblings });
+
+    // Empty state should have copy button
+    const copyBtn = await screen.findByTestId('pack-copy-empty-btn');
+    expect(copyBtn).toBeInTheDocument();
+    fireEvent.click(copyBtn);
+
+    // Dialog opens and lists packs from source variant
+    expect(await screen.findByTestId('pack-copy-dialog')).toBeInTheDocument();
+    expect(await screen.findByText(/Carton/)).toBeInTheDocument();
+
+    // Click Copy 1 pack(s)
+    const copySubmit = screen.getByTestId('pack-copy-submit-btn');
+    fireEvent.click(copySubmit);
+
+    await waitFor(() => {
+      expect(createPackSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variantId: 10,
+          unitId: 2,
+          conversionFactor: '12',
+          salePrice: '15000.00',
+        })
+      );
+    });
+  });
+
+  it('filters variants in Apply dialog and Copy dialog using search input', async () => {
+    const existingPack = samplePack({ variant_unit_id: 101, unit_id: 2 });
+    const mockSiblings: VariantDetail[] = [
+      {
+        variant_id: 11,
+        sku: 'SKU-RED-L',
+        name_override: null,
+        effective_variant_name: 'Zawra Red L',
+        primary_barcode: null,
+        operational_identifier: 'SKU-RED-L',
+        identifier_type: 'SKU',
+        sale_price: '1400.00',
+        minimum_stock: '0',
+        is_active: true,
+        attribute_signature: 'Red · L',
+        attributes: [{ attribute_id: 1, attribute_name: 'Color', attribute_value_id: 10, value: 'Red' }],
+        barcodes: [],
+      },
+      {
+        variant_id: 12,
+        sku: 'SKU-BLUE-M',
+        name_override: null,
+        effective_variant_name: 'Zawra Blue M',
+        primary_barcode: null,
+        operational_identifier: 'SKU-BLUE-M',
+        identifier_type: 'SKU',
+        sale_price: '1400.00',
+        minimum_stock: '0',
+        is_active: true,
+        attribute_signature: 'Blue · M',
+        attributes: [{ attribute_id: 1, attribute_name: 'Color', attribute_value_id: 20, value: 'Blue' }],
+        barcodes: [],
+      },
+    ];
+
+    wireGateway({
+      list_variant_packs: () => [existingPack],
+    });
+
+    renderManager({ siblingVariants: mockSiblings });
+
+    // 1. Test search in Apply dialog
+    fireEvent.click(await screen.findByTestId('pack-apply-btn-101'));
+    expect(await screen.findByTestId('pack-apply-dialog')).toBeInTheDocument();
+
+    const applySearch = screen.getByTestId('pack-apply-search-input');
+    fireEvent.change(applySearch, { target: { value: 'Blue' } });
+
+    // Zawra Blue M is shown, Zawra Red L is hidden
+    expect(screen.getByTestId('pack-apply-row-12')).toBeInTheDocument();
+    expect(screen.queryByTestId('pack-apply-row-11')).not.toBeInTheDocument();
+
+    // Select matching
+    fireEvent.click(screen.getByTestId('pack-apply-select-matching'));
+    // Close apply dialog
+    fireEvent.click(screen.getByTestId('pack-apply-cancel-btn'));
+
+    // 2. Test search in Copy dialog
+    fireEvent.click(await screen.findByTestId('pack-copy-header-btn'));
+    expect(await screen.findByTestId('pack-copy-dialog')).toBeInTheDocument();
+
+    const copySearch = screen.getByTestId('pack-copy-search-input');
+    fireEvent.change(copySearch, { target: { value: 'Red' } });
+
+    expect(screen.getByTestId('pack-copy-candidate-11')).toBeInTheDocument();
+    expect(screen.queryByTestId('pack-copy-candidate-12')).not.toBeInTheDocument();
+  });
+
+  it('displays suggested max price prompt and allows 1-click application', async () => {
+    wireGateway({
+      list_variant_packs: () => [],
+    });
+
+    renderManager({ pieceSalePrice: '1000' });
+    fireEvent.click(await screen.findByTestId('pack-add-empty-btn'));
+
+    expect(await screen.findByTestId('pack-dialog')).toBeInTheDocument();
+
+    // Select Carton (unitId 2) with holds 12
+    fireEvent.change(screen.getByTestId('pack-dialog-unit-select'), {
+      target: { value: '2' },
+    });
+    fireEvent.change(screen.getByTestId('pack-dialog-holds-input'), {
+      target: { value: '36' },
+    });
+
+    // 1000 * 36 = 36000
+    const prompt = await screen.findByTestId('pack-dialog-price-suggestion-prompt');
+    expect(prompt).toBeInTheDocument();
+    expect(prompt).toHaveTextContent('36,000');
+    expect(prompt).toHaveTextContent('36 Unit × 1,000');
+
+    // Click use suggested price button
+    const useBtn = screen.getByTestId('pack-dialog-use-suggested-price');
+    fireEvent.click(useBtn);
+
+    const priceInput = screen.getByTestId('pack-dialog-price-input') as HTMLInputElement;
+    expect(priceInput.value).toBe('36000');
+  });
 });
+
+
