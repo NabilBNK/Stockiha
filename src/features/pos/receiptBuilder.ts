@@ -13,6 +13,7 @@ export interface ReceiptLineInput {
   qty: number;
   unitPrice: string;
   lineTotal: string;
+  detail?: string;
 }
 
 export interface ReceiptInput {
@@ -215,7 +216,7 @@ export function buildThermalReceipt(
 
     input.lines.forEach((l) => {
       line(padEnd(l.name, width));
-      const calcLeft = `   ${l.qty} x ${l.unitPrice}`;
+      const calcLeft = l.detail ? `   ${l.detail}` : `   ${l.qty} x ${l.unitPrice}`;
       const calcRight = l.lineTotal;
       const gap = Math.max(1, width - calcLeft.length - calcRight.length);
       line(calcLeft + ' '.repeat(gap) + calcRight);
@@ -229,7 +230,7 @@ export function buildThermalReceipt(
 
     input.lines.forEach((l) => {
       line(padEnd(l.name, width));
-      const calcLeft = `  ${l.qty} x ${l.unitPrice}`;
+      const calcLeft = l.detail ? `  ${l.detail}` : `  ${l.qty} x ${l.unitPrice}`;
       const calcRight = l.lineTotal;
       const gap = Math.max(1, width - calcLeft.length - calcRight.length);
       line(calcLeft + ' '.repeat(gap) + calcRight);

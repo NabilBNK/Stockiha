@@ -3,7 +3,7 @@
  * adds customer-aware credit checkout and manager override escalation.
  * Financial eligibility and posted totals remain database-authoritative.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Banner, Button, ConfirmDialog, Spinner } from '../../shared/components';
 import { useI18n, type Locale } from '../../shared/i18n';
@@ -18,25 +18,71 @@ import type { Customer, CustomerCapabilities } from '../../shared/ipc/customerDt
 import type { CreditSaleResult } from '../../shared/ipc/creditSaleDto';
 import type { ProductListItem, ProductListItemV2, ReferenceLifecycleItem, VariantAttributeDto } from '../../shared/ipc/dto';
 import { addExactMoney, compareExactMoney, isValidMoneyString, multiplyMoneyByQuantity } from '../../shared/money/exactMoney';
-import { formatExactDecimal, isExactDecimalPositive, isExactDecimalZero } from '../inventory/exactDecimal';
+import { formatExactDecimal, isExactDecimalPositive, isExactDecimalZero, subtractExactDecimal } from '../inventory/exactDecimal';
 import { ReceiptView } from '../documents/ReceiptView';
 import { resolveBarcodeFirst } from '../../shared/search/barcodeFirstSearch';
 import { ItemSearchModal } from '../../shared/components/ItemSearchModal';
 import { printSaleReceipt, type PrintOutcome } from './printReceipt';
 import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
-import { formatReceiptItemName } from './receiptBuilder';
-import type { PrintingSettingsDto } from '../../shared/ipc/dto';
+import { formatReceiptItemName, type ReceiptLineInput } from './receiptBuilder';
+import { multiplyExactDecimal, packRate } from '../../shared/utils/packMath';
+import type { PrintingSettingsDto, SaleLineInput } from '../../shared/ipc/dto';
 
-interface CartLine {
+export interface SellablePack {
+  unitId: number;
+  unitName: string;
+  factor: string;
+  factorNum: number;
+  salePrice: string;
+  isPrimary?: boolean;
+}
+
+export interface BaseCartLine {
+  kind: 'BASE';
   variantId: number;
   sku: string;
   name: string;
   unitPrice: string;
+  listPrice: string;
   qty: number;
   productName?: string;
   variantName?: string;
   attributes?: VariantAttributeDto[];
+  productSalePrice?: string;
+  baseUnitName?: string;
+  baseIsWhole?: boolean;
+  wac?: string | null;
+  packs?: SellablePack[];
+  priceOverridden?: boolean;
+  editingPrice?: boolean;
+  tempPrice?: string;
 }
+
+export interface PackCartLine {
+  kind: 'PACK';
+  variantId: number;
+  sku: string;
+  name: string;
+  unitPrice: string;
+  listPrice: string;
+  qty: number;
+  packQuantity: number;
+  extraQuantity: number;
+  pack: SellablePack;
+  productName?: string;
+  variantName?: string;
+  attributes?: VariantAttributeDto[];
+  productSalePrice?: string;
+  baseUnitName?: string;
+  baseIsWhole?: boolean;
+  wac?: string | null;
+  packs?: SellablePack[];
+  priceOverridden?: boolean;
+  editingPrice?: boolean;
+  tempPrice?: string;
+}
+
+export type CartLine = BaseCartLine | PackCartLine;
 
 type PaymentMode = 'cash' | 'credit';
 
@@ -109,7 +155,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
   const { t, locale } = useI18n();
   const creditText = CREDIT_COPY[locale];
   const { user, activeCashSession, workstationId } = useSession();
-  const { selectedWarehouseId, openFiscalPeriod } = useAppData();
+  const { selectedWarehouseId, selectWarehouse, openFiscalPeriod } = useAppData();
   const errorText = useErrorText();
   const { readOnly } = useLicence();
   const token = user?.token ?? '';
@@ -173,7 +219,13 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
       .finally(() => setLoading(false));
   }, [token]);
 
-  const posWarehouseId = activeCashSession?.warehouse_id ?? selectedWarehouseId;
+  const posWarehouseId = activeCashSession?.warehouse_id ?? selectedWarehouseId ?? 1;
+
+  useEffect(() => {
+    if (activeCashSession && selectedWarehouseId !== activeCashSession.warehouse_id) {
+      selectWarehouse(activeCashSession.warehouse_id);
+    }
+  }, [activeCashSession, selectedWarehouseId, selectWarehouse]);
 
   // Products are fetched from the database for the current category and search
   // text, 60 at a time. The catalogue is never loaded into the browser whole.
@@ -230,10 +282,36 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
     }
   }, [token, posWarehouseId, search, categoryId, products.length, catalogBusy]);
 
+  const refreshCatalog = useCallback(async () => {
+    if (!token || posWarehouseId == null) return;
+    try {
+      const rows = await ipc.listProductsV2(token, posWarehouseId, {
+        search: search.trim() || null,
+        categoryId,
+        includeInactive: false,
+        limit: Math.max(PAGE_SIZE, products.length),
+        offset: 0,
+      });
+      setProducts(rows);
+      setHasMore(rows.length >= PAGE_SIZE);
+    } catch {
+      // ignore
+    }
+  }, [token, posWarehouseId, search, categoryId, products.length]);
+
   const displayedProducts = useMemo(() => {
     if (!inStockOnly) return products;
     return products.filter((p) => isExactDecimalPositive(p.quantity_on_hand ?? '0'));
   }, [products, inStockOnly]);
+
+  // When filtering in-stock only, auto-fetch subsequent pages until we have at least PAGE_SIZE in-stock products
+  // (or until there are no more pages in the catalog), so the operator isn't forced to click "Show more"
+  // just because in-stock variants happen to be scattered across multiple backend pages.
+  useEffect(() => {
+    if (inStockOnly && hasMore && !catalogBusy && displayedProducts.length < PAGE_SIZE) {
+      void loadMoreProducts();
+    }
+  }, [inStockOnly, hasMore, catalogBusy, displayedProducts.length, loadMoreProducts]);
 
   const invalidateSaleIntent = useCallback(() => {
     setRequestId(null);
@@ -288,6 +366,33 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
     invalidateSaleIntent();
   }
 
+  const packCacheRef = useRef<Map<number, { packs: SellablePack[]; primaryPack: SellablePack | null }>>(new Map());
+
+  const getPacksForVariant = useCallback(async (variantId: number): Promise<{ packs: SellablePack[]; primaryPack: SellablePack | null }> => {
+    const cached = packCacheRef.current.get(variantId);
+    if (cached) return cached;
+    if (!token) return { packs: [], primaryPack: null };
+    try {
+      const rows = await ipc.listVariantPacks(token, variantId);
+      const sellable: SellablePack[] = rows
+        .filter((r) => r.is_pack && r.is_active && r.sale_price !== null)
+        .map((r) => ({
+          unitId: r.unit_id,
+          unitName: r.unit_name,
+          factor: r.conversion_factor,
+          factorNum: Math.round(Number(r.conversion_factor)) || 1,
+          salePrice: r.sale_price!,
+          isPrimary: r.is_primary,
+        }));
+      const primary = sellable.find((p) => p.isPrimary) ?? null;
+      const res = { packs: sellable, primaryPack: primary };
+      packCacheRef.current.set(variantId, res);
+      return res;
+    } catch {
+      return { packs: [], primaryPack: null };
+    }
+  }, [token]);
+
   /**
    * WS-D-15 A4 — the POS search box, on Enter, routes through the SAME
    * barcode-first resolver the global shell search uses
@@ -326,7 +431,63 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
       return;
     }
 
-    addToCart(matchedProduct);
+    // WS-O-4 scanning behavior:
+    if (result.resolved.pack_unit_id != null) {
+      if (result.resolved.pack_is_active === false || result.resolved.pack_sale_price === null) {
+        setBanner({ tone: 'warning', text: t('sale.pack.error.notSold') });
+        return;
+      }
+      const targetPack: SellablePack = {
+        unitId: result.resolved.pack_unit_id,
+        unitName: result.resolved.pack_unit_name ?? '',
+        factor: result.resolved.pack_factor ?? '1',
+        factorNum: Math.round(Number(result.resolved.pack_factor)) || 1,
+        salePrice: result.resolved.pack_sale_price,
+      };
+      const { packs } = await getPacksForVariant(matchedProduct.variant_id);
+      mutateCart((prev) => {
+        const existing = prev.find(
+          (l) => l.variantId === matchedProduct.variant_id && l.kind === 'PACK' && l.pack.unitId === targetPack.unitId,
+        ) as PackCartLine | undefined;
+        if (existing) {
+          return prev.map((l) => {
+            if (l === existing) {
+              const nextQty = existing.packQuantity + 1;
+              return {
+                ...existing,
+                packQuantity: nextQty,
+                qty: nextQty,
+              };
+            }
+            return l;
+          });
+        }
+        const newLine: PackCartLine = {
+          kind: 'PACK',
+          variantId: matchedProduct.variant_id,
+          sku: matchedProduct.sku,
+          name: displayNameOf(matchedProduct),
+          unitPrice: targetPack.salePrice,
+          listPrice: targetPack.salePrice,
+          qty: 1,
+          packQuantity: 1,
+          extraQuantity: 0,
+          pack: targetPack,
+          productName: matchedProduct.product_name,
+          variantName: matchedProduct.variant_name,
+          attributes: matchedProduct.attributes,
+          productSalePrice: matchedProduct.sale_price,
+          wac: matchedProduct.last_known_wac || null,
+          packs,
+        };
+        return [...prev, newLine];
+      });
+      setSearch('');
+      setBanner(null);
+      return;
+    }
+
+    void addToCart(matchedProduct);
     setSearch('');
     setBanner(null);
   }
@@ -343,50 +504,188 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
     return pName ? `${pName} — ${vName}` : vName;
   }
 
-  function addToCart(p: ProductListItemV2) {
+  function applyAddToCart(
+    item: {
+      variant_id: number;
+      sku: string;
+      product_name: string;
+      variant_name?: string;
+      sale_price: string;
+      attributes?: VariantAttributeDto[];
+      last_known_wac?: string | null;
+    },
+    packs: SellablePack[],
+    primaryPack: SellablePack | null,
+  ) {
     mutateCart((prev) => {
-      const existing = prev.find((l) => l.variantId === p.variant_id);
-      if (existing) {
-        return prev.map((l) => (l.variantId === p.variant_id ? { ...l, qty: l.qty + 1 } : l));
-      }
-      return [
-        ...prev,
-        {
-          variantId: p.variant_id,
-          sku: p.sku,
-          name: displayNameOf(p),
-          unitPrice: p.sale_price,
+      if (primaryPack) {
+        const existing = prev.find(
+          (l) => l.variantId === item.variant_id && l.kind === 'PACK' && l.pack.unitId === primaryPack.unitId,
+        ) as PackCartLine | undefined;
+        if (existing) {
+          return prev.map((l) => {
+            if (l === existing) {
+              const nextQty = existing.packQuantity + 1;
+              return {
+                ...existing,
+                packQuantity: nextQty,
+                qty: nextQty,
+              };
+            }
+            return l;
+          });
+        }
+        const newLine: PackCartLine = {
+          kind: 'PACK',
+          variantId: item.variant_id,
+          sku: item.sku,
+          name: displayNameOf({ product_name: item.product_name, variant_name: item.variant_name }),
+          unitPrice: primaryPack.salePrice,
+          listPrice: primaryPack.salePrice,
           qty: 1,
-          productName: p.product_name,
-          variantName: p.variant_name,
-          attributes: p.attributes,
-        },
-      ];
+          packQuantity: 1,
+          extraQuantity: 0,
+          pack: primaryPack,
+          productName: item.product_name,
+          variantName: item.variant_name,
+          attributes: item.attributes,
+          productSalePrice: item.sale_price,
+          wac: item.last_known_wac || null,
+          packs,
+        };
+        return [...prev, newLine];
+      }
+
+      const existing = prev.find((l) => l.variantId === item.variant_id && l.kind === 'BASE');
+      if (existing) {
+        return prev.map((l) => (l === existing ? { ...l, qty: l.qty + 1 } : l));
+      }
+      const newLine: BaseCartLine = {
+        kind: 'BASE',
+        variantId: item.variant_id,
+        sku: item.sku,
+        name: displayNameOf({ product_name: item.product_name, variant_name: item.variant_name }),
+        unitPrice: item.sale_price,
+        listPrice: item.sale_price,
+        qty: 1,
+        productName: item.product_name,
+        variantName: item.variant_name,
+        attributes: item.attributes,
+        productSalePrice: item.sale_price,
+        wac: item.last_known_wac || null,
+        packs,
+      };
+      return [...prev, newLine];
     });
   }
 
-  function addProductListItemToCart(item: ProductListItem) {
-    mutateCart((prev) => {
-      const existing = prev.find((l) => l.variantId === item.variant_id);
-      if (existing) {
-        return prev.map((l) => (l.variantId === item.variant_id ? { ...l, qty: l.qty + 1 } : l));
-      }
-      const displayName = displayNameOf({ product_name: item.product_name, variant_name: item.name });
+  function addToCart(p: ProductListItemV2) {
+    const cached = packCacheRef.current.get(p.variant_id);
+    if (cached) {
+      applyAddToCart(p, cached.packs, cached.primaryPack);
+      return;
+    }
+    // Add synchronously first so UI is immediately responsive
+    applyAddToCart(p, [], null);
 
-      return [
-        ...prev,
-        {
-          variantId: item.variant_id,
-          sku: item.sku,
-          name: displayName,
-          unitPrice: item.sale_price,
-          qty: 1,
-          productName: item.product_name,
-          variantName: item.name,
-          attributes: item.attributes,
-        },
-      ];
-    });
+    // Fetch packs asynchronously and upgrade if primary pack exists
+    if (token) {
+      void getPacksForVariant(p.variant_id).then(({ packs, primaryPack }) => {
+        if (primaryPack) {
+          mutateCart((prev) =>
+            prev.map((l) => {
+              if (l.variantId === p.variant_id && l.kind === 'BASE' && l.qty === 1 && !l.priceOverridden) {
+                const packLine: PackCartLine = {
+                  kind: 'PACK',
+                  variantId: p.variant_id,
+                  sku: p.sku,
+                  name: displayNameOf(p),
+                  unitPrice: primaryPack.salePrice,
+                  listPrice: primaryPack.salePrice,
+                  qty: 1,
+                  packQuantity: 1,
+                  extraQuantity: 0,
+                  pack: primaryPack,
+                  productName: p.product_name,
+                  variantName: p.variant_name,
+                  attributes: p.attributes,
+                  productSalePrice: p.sale_price,
+                  wac: p.last_known_wac || null,
+                  packs,
+                };
+                return packLine;
+              }
+              if (l.variantId === p.variant_id && (!l.packs || l.packs.length === 0)) {
+                return { ...l, packs };
+              }
+              return l;
+            }),
+          );
+        } else if (packs.length > 0) {
+          mutateCart((prev) =>
+            prev.map((l) => (l.variantId === p.variant_id && (!l.packs || l.packs.length === 0) ? { ...l, packs } : l)),
+          );
+        }
+      });
+    }
+  }
+
+  function addProductListItemToCart(item: ProductListItem) {
+    const cached = packCacheRef.current.get(item.variant_id);
+    const itemAdapt = {
+      variant_id: item.variant_id,
+      sku: item.sku,
+      product_name: item.product_name ?? item.name,
+      variant_name: item.name,
+      sale_price: item.sale_price,
+      attributes: item.attributes,
+      last_known_wac: item.last_known_wac,
+    };
+    if (cached) {
+      applyAddToCart(itemAdapt, cached.packs, cached.primaryPack);
+      return;
+    }
+    applyAddToCart(itemAdapt, [], null);
+
+    if (token) {
+      void getPacksForVariant(item.variant_id).then(({ packs, primaryPack }) => {
+        if (primaryPack) {
+          mutateCart((prev) =>
+            prev.map((l) => {
+              if (l.variantId === item.variant_id && l.kind === 'BASE' && l.qty === 1 && !l.priceOverridden) {
+                const packLine: PackCartLine = {
+                  kind: 'PACK',
+                  variantId: item.variant_id,
+                  sku: item.sku,
+                  name: displayNameOf({ product_name: item.product_name, variant_name: item.name }),
+                  unitPrice: primaryPack.salePrice,
+                  listPrice: primaryPack.salePrice,
+                  qty: 1,
+                  packQuantity: 1,
+                  extraQuantity: 0,
+                  pack: primaryPack,
+                  productName: item.product_name,
+                  variantName: item.name,
+                  attributes: item.attributes,
+                  productSalePrice: item.sale_price,
+                  wac: item.last_known_wac || null,
+                  packs,
+                };
+                return packLine;
+              }
+              if (l.variantId === item.variant_id && (!l.packs || l.packs.length === 0)) {
+                return { ...l, packs };
+              }
+              return l;
+            }),
+          );
+        } else if (packs.length > 0) {
+          mutateCart((prev) =>
+            prev.map((l) => (l.variantId === item.variant_id && (!l.packs || l.packs.length === 0) ? { ...l, packs } : l)),
+          );
+        }
+      });
+    }
   }
 
   const loadAdvancedSearchResults = useCallback(
@@ -434,9 +733,176 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
     mutateCart((prev) => prev.filter((l) => l.variantId !== variantId));
   }
 
+  function switchToBase(variantId: number) {
+    mutateCart((prev) =>
+      prev.map((l) => {
+        if (l.variantId !== variantId) return l;
+        const pPrice = l.productSalePrice || l.unitPrice;
+        const baseLine: BaseCartLine = {
+          kind: 'BASE',
+          variantId: l.variantId,
+          sku: l.sku,
+          name: l.name,
+          unitPrice: pPrice,
+          listPrice: pPrice,
+          qty: 1,
+          productName: l.productName,
+          variantName: l.variantName,
+          attributes: l.attributes,
+          productSalePrice: l.productSalePrice,
+          baseUnitName: l.baseUnitName,
+          baseIsWhole: l.baseIsWhole,
+          wac: l.wac,
+          packs: l.packs,
+          priceOverridden: false,
+        };
+        return baseLine;
+      }),
+    );
+  }
+
+  function switchToPack(variantId: number, targetPack: SellablePack) {
+    mutateCart((prev) =>
+      prev.map((l) => {
+        if (l.variantId !== variantId) return l;
+        const packLine: PackCartLine = {
+          kind: 'PACK',
+          variantId: l.variantId,
+          sku: l.sku,
+          name: l.name,
+          unitPrice: targetPack.salePrice,
+          listPrice: targetPack.salePrice,
+          qty: 1,
+          packQuantity: 1,
+          extraQuantity: 0,
+          pack: targetPack,
+          productName: l.productName,
+          variantName: l.variantName,
+          attributes: l.attributes,
+          productSalePrice: l.productSalePrice,
+          baseUnitName: l.baseUnitName,
+          baseIsWhole: l.baseIsWhole,
+          wac: l.wac,
+          packs: l.packs,
+          priceOverridden: false,
+        };
+        return packLine;
+      }),
+    );
+  }
+
+  function changePackQty(variantId: number, delta: number) {
+    mutateCart((prev) =>
+      prev.map((l) => {
+        if (l.variantId !== variantId || l.kind !== 'PACK') return l;
+        const nextPackQty = l.packQuantity + delta;
+        if (nextPackQty < 1) return l;
+        return {
+          ...l,
+          packQuantity: nextPackQty,
+          qty: nextPackQty,
+        };
+      }),
+    );
+  }
+
+  function changeExtraQty(variantId: number, delta: number) {
+    mutateCart((prev) =>
+      prev.map((l) => {
+        if (l.variantId !== variantId || l.kind !== 'PACK') return l;
+        const nextRaw = l.extraQuantity + delta;
+        if (nextRaw < 0) return l;
+        const factor = l.pack.factorNum;
+        if (nextRaw >= factor) {
+          const carry = Math.floor(nextRaw / factor);
+          const rem = nextRaw % factor;
+          const nextPackQty = l.packQuantity + carry;
+          return {
+            ...l,
+            packQuantity: nextPackQty,
+            extraQuantity: rem,
+            qty: nextPackQty,
+          };
+        }
+        return {
+          ...l,
+          extraQuantity: nextRaw,
+        };
+      }),
+    );
+  }
+
+  function startEditPrice(variantId: number) {
+    mutateCart((prev) =>
+      prev.map((l) =>
+        l.variantId === variantId
+          ? { ...l, editingPrice: true, tempPrice: l.unitPrice }
+          : { ...l, editingPrice: false },
+      ),
+    );
+  }
+
+  function updateTempPrice(variantId: number, val: string) {
+    mutateCart((prev) =>
+      prev.map((l) => (l.variantId === variantId ? { ...l, tempPrice: val } : l)),
+    );
+  }
+
+  function savePrice(variantId: number) {
+    mutateCart((prev) =>
+      prev.map((l) => {
+        if (l.variantId !== variantId) return l;
+        const trimmed = (l.tempPrice ?? '').trim();
+        if (trimmed && isValidMoneyString(trimmed) && compareExactMoney(trimmed, '0.00') >= 0) {
+          const isOverridden = trimmed !== l.listPrice;
+          return {
+            ...l,
+            unitPrice: trimmed,
+            priceOverridden: isOverridden,
+            editingPrice: false,
+          };
+        }
+        return { ...l, editingPrice: false };
+      }),
+    );
+  }
+
+  function cancelPrice(variantId: number) {
+    mutateCart((prev) =>
+      prev.map((l) => (l.variantId === variantId ? { ...l, editingPrice: false } : l)),
+    );
+  }
+
+  function resetPrice(variantId: number) {
+    mutateCart((prev) =>
+      prev.map((l) => {
+        if (l.variantId !== variantId) return l;
+        return {
+          ...l,
+          unitPrice: l.listPrice,
+          priceOverridden: false,
+          editingPrice: false,
+        };
+      }),
+    );
+  }
+
+  const lineTotalOf = useCallback((line: CartLine): string => {
+    if (line.kind === 'PACK') {
+      const packPart = multiplyMoneyByQuantity(line.unitPrice, line.packQuantity);
+      if (line.extraQuantity > 0) {
+        const rate = packRate(line.unitPrice, line.pack.factor, 0);
+        const extraPart = multiplyMoneyByQuantity(rate, line.extraQuantity);
+        return addExactMoney([packPart, extraPart]);
+      }
+      return packPart;
+    }
+    return multiplyMoneyByQuantity(line.unitPrice, line.qty);
+  }, []);
+
   const provisionalTotal = useMemo(
-    () => addExactMoney(cart.map((l) => multiplyMoneyByQuantity(l.unitPrice, l.qty))),
-    [cart],
+    () => addExactMoney(cart.map(lineTotalOf)),
+    [cart, lineTotalOf],
   );
   const canApplyDiscount = useMemo(
     () => (capabilities?.can_apply_sale_discount ?? false) && paymentMode === 'cash',
@@ -461,7 +927,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
     return addExactMoney([provisionalTotal, `-${trimmedDiscount}`]);
   }, [hasDiscount, provisionalTotal, trimmedDiscount]);
 
-  const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart]);
+  const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + (line.kind === 'PACK' ? line.packQuantity : line.qty), 0), [cart]);
   const creditCustomers = useMemo(
     () => customers.filter((customer) => customer.is_active && customer.credit_enabled),
     [customers],
@@ -479,17 +945,68 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
     ]);
     return projected.startsWith('-') || projected === '0.00' ? null : projected;
   }, [paymentMode, selectedCustomer, netTotal]);
-  const saleLines = useMemo(
-    () => cart.map((line) => ({
-      variant_id: line.variantId,
-      quantity: String(line.qty),
-      unit_price: line.unitPrice,
-    })),
+  const saleLines: SaleLineInput[] = useMemo(
+    () => cart.map((line) => {
+      if (line.kind === 'PACK') {
+        return {
+          variant_id: line.variantId,
+          sale_unit: 'PACK',
+          pack_unit_id: line.pack.unitId,
+          pack_quantity: String(line.packQuantity),
+          ...(line.extraQuantity > 0 ? { extra_quantity: String(line.extraQuantity) } : {}),
+          pack_price: line.unitPrice,
+        };
+      }
+      return {
+        variant_id: line.variantId,
+        quantity: String(line.qty),
+        unit_price: line.unitPrice,
+      };
+    }),
     [cart],
   );
 
   const runReceiptPrint = useCallback(
     async (documentNumber: string, customerName: string | null) => {
+      const receiptLines: ReceiptLineInput[] = [];
+      for (const l of cart) {
+        const baseName = formatReceiptItemName({
+          productName: l.productName,
+          variantName: l.variantName,
+          fallbackName: l.name,
+          attributes: l.attributes,
+        });
+        if (l.kind === 'PACK') {
+          const packTotal = multiplyMoneyByQuantity(l.unitPrice, l.packQuantity);
+          receiptLines.push({
+            name: baseName,
+            qty: l.packQuantity,
+            unitPrice: l.unitPrice,
+            lineTotal: packTotal,
+            detail: `${l.packQuantity} ${l.pack.unitName} (×${l.pack.factor}) × ${l.unitPrice}`,
+          });
+          if (l.extraQuantity > 0) {
+            const rate = packRate(l.unitPrice, l.pack.factor, 0);
+            const extraTotal = multiplyMoneyByQuantity(rate, l.extraQuantity);
+            const baseUnit = l.baseUnitName || 'Unit';
+            receiptLines.push({
+              name: baseName,
+              qty: l.extraQuantity,
+              unitPrice: rate,
+              lineTotal: extraTotal,
+              detail: `${l.extraQuantity} ${baseUnit} × ${rate} (${l.pack.unitName} rate)`,
+            });
+          }
+        } else {
+          receiptLines.push({
+            name: baseName,
+            qty: l.qty,
+            unitPrice: l.unitPrice,
+            lineTotal: multiplyMoneyByQuantity(l.unitPrice, l.qty),
+          });
+        }
+      }
+
       const input = {
         documentNumber,
         documentDate: currentLocalDate(),
@@ -497,17 +1014,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
         cashierName: user?.username ?? '',
         paymentLabel: paymentMode === 'cash' ? creditText.cash : creditText.credit,
         customerName,
-        lines: cart.map((l) => ({
-          name: formatReceiptItemName({
-            productName: l.productName,
-            variantName: l.variantName,
-            fallbackName: l.name,
-            attributes: l.attributes,
-          }),
-          qty: l.qty,
-          unitPrice: l.unitPrice,
-          lineTotal: multiplyMoneyByQuantity(l.unitPrice, l.qty),
-        })),
+        lines: receiptLines,
         subtotal: provisionalTotal,
         discount: hasDiscount ? trimmedDiscount : null,
         total: netTotal,
@@ -550,6 +1057,18 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
           exposure_amount: result.exposure_amount,
           available_credit: result.available_credit,
         } : customer));
+        const soldCart = [...cart];
+        setProducts((prev) =>
+          prev.map((p) => {
+            const soldQty = soldCart
+              .filter((l) => l.variantId === p.variant_id)
+              .reduce((sum, l) => sum + (l.kind === 'PACK' ? l.packQuantity * l.pack.factorNum + l.extraQuantity : l.qty), 0);
+            if (soldQty === 0) return p;
+            const nextStock = subtractExactDecimal(p.quantity_on_hand ?? '0', String(soldQty));
+            return { ...p, quantity_on_hand: nextStock };
+          })
+        );
+        void refreshCatalog();
         setCart([]);
         setRequestId(null);
         setSaleIntentDate(null);
@@ -567,6 +1086,18 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
           lines: saleLines,
           discountAmount: hasDiscount ? trimmedDiscount : null,
         });
+        const soldCart = [...cart];
+        setProducts((prev) =>
+          prev.map((p) => {
+            const soldQty = soldCart
+              .filter((l) => l.variantId === p.variant_id)
+              .reduce((sum, l) => sum + (l.kind === 'PACK' ? l.packQuantity * l.pack.factorNum + l.extraQuantity : l.qty), 0);
+            if (soldQty === 0) return p;
+            const nextStock = subtractExactDecimal(p.quantity_on_hand ?? '0', String(soldQty));
+            return { ...p, quantity_on_hand: nextStock };
+          })
+        );
+        void refreshCatalog();
         setCart([]);
         setDiscount('');
         setDiscountOpen(false);
@@ -664,13 +1195,8 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
 
   return (
     <section className="sk-page sk-pos">
-      <div className="sk-pos__header">
-        <div className="sk-pos__header-title">
-          <h1>{t('pos.title')}</h1>
-          <p>{t('pos.subtitle')}</p>
-        </div>
-
-        {banner || creditOverBy ? (
+      {(banner || creditOverBy) && (
+        <div className="sk-pos__header" style={{ marginBottom: '12px' }}>
           <div className="sk-pos__header-alerts" data-testid="pos-alerts">
             {banner ? (
               <div
@@ -693,10 +1219,8 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
               </div>
             ) : null}
           </div>
-        ) : null}
-
-        <span className="sk-badge sk-badge--ok">{t('header.session.open')}</span>
-      </div>
+        </div>
+      )}
 
       <div className="sk-pos__workspace">
         <div className="sk-pos__catalog">
@@ -775,7 +1299,26 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
           {loading ? (
             <Spinner />
           ) : displayedProducts.length === 0 ? (
-            <div className="sk-pos__empty">{catalogBusy ? t('pos.searching') : t('pos.noProducts')}</div>
+            <div className="sk-pos__empty" data-testid="pos-empty-state">
+              {catalogBusy ? (
+                t('pos.searching')
+              ) : hasMore ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                  <span>{t('pos.searching')}</span>
+                  <button
+                    type="button"
+                    className="sk-button sk-button--secondary sk-pos__more"
+                    onClick={() => void loadMoreProducts()}
+                    disabled={catalogBusy}
+                    data-testid="pos-load-more"
+                  >
+                    {t('pos.showMore')}
+                  </button>
+                </div>
+              ) : (
+                t('pos.noProducts')
+              )}
+            </div>
           ) : (
             <div className="sk-pos__products-scroll">
               <div className="sk-pos__products" data-testid="pos-products">
@@ -894,14 +1437,241 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
               <div className="sk-cart__empty"><span aria-hidden>▤</span><strong>{t('pos.cartEmpty')}</strong><small>{t('pos.cartEmptyHint')}</small></div>
             ) : (
               <ul className="sk-cart" data-testid="pos-cart">
-                {cart.map((l) => (
-                  <li key={l.variantId} className="sk-cart__line">
-                    <div className="sk-cart__identity"><span className="sk-cart__name">{l.name}</span><span className="sk-cart__sku">{l.sku}</span></div>
-                    <span className="sk-cart__line-total sk-num">{multiplyMoneyByQuantity(l.unitPrice, l.qty)}</span>
-                    <div className="sk-cart__qty"><button type="button" className="sk-cart__qty-btn" aria-label={t('pos.decrement')} onClick={() => changeQty(l.variantId, -1)}>−</button><span data-testid={`qty-${l.variantId}`}>{l.qty}</span><button type="button" className="sk-cart__qty-btn" aria-label={t('pos.increment')} onClick={() => changeQty(l.variantId, 1)}>+</button></div>
-                    <button type="button" className="sk-cart__remove" onClick={() => removeLine(l.variantId)}>{t('pos.remove')}</button>
-                  </li>
-                ))}
+                {cart.map((l) => {
+                  const lineTotal = lineTotalOf(l);
+                  const rate = l.kind === 'PACK' ? packRate(l.unitPrice, l.pack.factor, 0) : '0';
+                  const baseQty = l.kind === 'PACK' ? l.packQuantity * l.pack.factorNum + l.extraQuantity : l.qty;
+                  const unitLabel = l.kind === 'PACK' ? l.pack.unitName : (l.baseUnitName || t('sale.pack.piece'));
+
+                  let isBelowCost = false;
+                  if (l.wac && isExactDecimalPositive(l.wac)) {
+                    if (l.kind === 'BASE') {
+                      isBelowCost = compareExactMoney(l.unitPrice, l.wac) < 0;
+                    } else {
+                      const packCost = multiplyExactDecimal(l.wac, String(l.pack.factorNum));
+                      isBelowCost = compareExactMoney(l.unitPrice, packCost) < 0 || (l.extraQuantity > 0 && compareExactMoney(rate, l.wac) < 0);
+                    }
+                  }
+
+                  return (
+                    <li key={l.variantId} className={l.kind === 'PACK' ? 'sk-cart__line sk-cart__line--pack' : 'sk-cart__line'}>
+                      <div className="sk-cart__line-header">
+                        <div className="sk-cart__identity">
+                          <span className="sk-cart__name">{l.name}</span>
+                          <span className="sk-cart__sku">{l.sku}</span>
+                        </div>
+                        <span className="sk-cart__line-total sk-num">
+                          {lineTotal}
+                        </span>
+                      </div>
+
+                      {l.kind === 'PACK' && (
+                        <div className="sk-cart__pack-badge">
+                          <span>📦 = {baseQty} {l.baseUnitName || t('sale.pack.piece')}</span>
+                          {l.extraQuantity > 0 && (
+                            <span> · {l.extraQuantity} {l.baseUnitName || t('sale.pack.piece')} à {rate}</span>
+                          )}
+                        </div>
+                      )}
+
+                      {l.packs && l.packs.length > 0 && (
+                        <div className="sk-cart__unit-chips">
+                          <button
+                            type="button"
+                            className={`sk-cart__chip ${l.kind === 'BASE' ? 'sk-cart__chip--active' : 'sk-cart__chip--inactive'}`}
+                            onClick={() => switchToBase(l.variantId)}
+                            data-testid={`unit-chip-base-${l.variantId}`}
+                          >
+                            {l.baseUnitName || t('sale.pack.piece')}
+                          </button>
+                          {l.packs.map((p) => {
+                            const isSelected = l.kind === 'PACK' && l.pack.unitId === p.unitId;
+                            return (
+                              <button
+                                key={p.unitId}
+                                type="button"
+                                className={`sk-cart__chip ${isSelected ? 'sk-cart__chip--active' : 'sk-cart__chip--inactive'}`}
+                                onClick={() => switchToPack(l.variantId, p)}
+                                data-testid={`unit-chip-pack-${l.variantId}-${p.unitId}`}
+                              >
+                                {p.unitName} ×{formatExactDecimal(p.factor)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {l.kind === 'BASE' ? (
+                        <div className="sk-cart__footer-row">
+                          <div className="sk-cart__qty">
+                            <button type="button" className="sk-cart__qty-btn" aria-label={t('pos.decrement')} onClick={() => changeQty(l.variantId, -1)} data-testid={`btn-decrease-base-${l.variantId}`}>−</button>
+                            <span data-testid={`qty-${l.variantId}`}>{l.qty}</span>
+                            <button type="button" className="sk-cart__qty-btn" aria-label={t('pos.increment')} onClick={() => changeQty(l.variantId, 1)} data-testid={`btn-increase-base-${l.variantId}`}>+</button>
+                          </div>
+
+                          <div className="sk-cart__footer-left" style={{ marginInlineStart: 'auto' }}>
+                            {l.editingPrice ? (
+                              <div className="sk-cart__price-edit-group">
+                                <input
+                                  type="text"
+                                  className="sk-cart__price-input"
+                                  value={l.tempPrice ?? l.unitPrice}
+                                  onChange={(e) => updateTempPrice(l.variantId, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') savePrice(l.variantId);
+                                    if (e.key === 'Escape') cancelPrice(l.variantId);
+                                  }}
+                                  autoFocus
+                                />
+                                <button type="button" className="sk-cart__price-confirm" onClick={() => savePrice(l.variantId)} title="Save">✓</button>
+                                <button type="button" className="sk-cart__price-cancel" onClick={() => cancelPrice(l.variantId)} title="Cancel">✕</button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="sk-cart__price-btn"
+                                onClick={() => startEditPrice(l.variantId)}
+                                title={t('pack.edit')}
+                              >
+                                <span>{l.unitPrice}</span>
+                                <span className="sk-cart__price-unit">/ {unitLabel}</span>
+                              </button>
+                            )}
+
+                            {l.priceOverridden && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span className="sk-cart__price-tag">
+                                  {t('sale.pack.edited')}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="sk-cart__price-reset"
+                                  onClick={() => resetPrice(l.variantId)}
+                                >
+                                  {t('sale.pack.reset')}
+                                </button>
+                              </div>
+                            )}
+
+                            <button type="button" className="sk-cart__remove" onClick={() => removeLine(l.variantId)}>{t('pos.remove')}</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="sk-cart__pack-grid">
+                            <div className="sk-cart__pack-col">
+                              <span className="sk-cart__pack-label">{l.pack.unitName}:</span>
+                              <div className="sk-cart__qty">
+                                <button
+                                  type="button"
+                                  className="sk-cart__qty-btn"
+                                  disabled={l.packQuantity <= 1}
+                                  aria-label={t('pos.decrement')}
+                                  onClick={() => changePackQty(l.variantId, -1)}
+                                  data-testid={`btn-decrease-pack-${l.variantId}`}
+                                >
+                                  −
+                                </button>
+                                <span data-testid={`qty-${l.variantId}`} data-testid-pack={`pack-qty-${l.variantId}`}>{l.packQuantity}</span>
+                                <button
+                                  type="button"
+                                  className="sk-cart__qty-btn"
+                                  aria-label={t('pos.increment')}
+                                  onClick={() => changePackQty(l.variantId, 1)}
+                                  data-testid={`btn-increase-pack-${l.variantId}`}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="sk-cart__pack-col">
+                              <span className="sk-cart__pack-label">+ {t('sale.pack.extra', { base: l.baseUnitName || t('sale.pack.piece') })}:</span>
+                              <div className="sk-cart__qty">
+                                <button
+                                  type="button"
+                                  className="sk-cart__qty-btn"
+                                  disabled={l.extraQuantity <= 0}
+                                  aria-label={t('pos.decrement')}
+                                  onClick={() => changeExtraQty(l.variantId, -1)}
+                                  data-testid={`btn-decrease-extra-${l.variantId}`}
+                                >
+                                  −
+                                </button>
+                                <span data-testid={`extra-qty-${l.variantId}`}>{l.extraQuantity}</span>
+                                <button
+                                  type="button"
+                                  className="sk-cart__qty-btn"
+                                  aria-label={t('pos.increment')}
+                                  onClick={() => changeExtraQty(l.variantId, 1)}
+                                  data-testid={`btn-increase-extra-${l.variantId}`}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="sk-cart__footer-row">
+                            <div className="sk-cart__footer-left">
+                              {l.editingPrice ? (
+                                <div className="sk-cart__price-edit-group">
+                                  <input
+                                    type="text"
+                                    className="sk-cart__price-input"
+                                    value={l.tempPrice ?? l.unitPrice}
+                                    onChange={(e) => updateTempPrice(l.variantId, e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') savePrice(l.variantId);
+                                      if (e.key === 'Escape') cancelPrice(l.variantId);
+                                    }}
+                                    autoFocus
+                                  />
+                                  <button type="button" className="sk-cart__price-confirm" onClick={() => savePrice(l.variantId)} title="Save">✓</button>
+                                  <button type="button" className="sk-cart__price-cancel" onClick={() => cancelPrice(l.variantId)} title="Cancel">✕</button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="sk-cart__price-btn"
+                                  onClick={() => startEditPrice(l.variantId)}
+                                  title={t('pack.edit')}
+                                >
+                                  <span>{l.unitPrice}</span>
+                                  <span className="sk-cart__price-unit">/ {unitLabel}</span>
+                                </button>
+                              )}
+
+                              {l.priceOverridden && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span className="sk-cart__price-tag">
+                                    {t('sale.pack.edited')}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="sk-cart__price-reset"
+                                    onClick={() => resetPrice(l.variantId)}
+                                  >
+                                    {t('sale.pack.reset')}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            <button type="button" className="sk-cart__remove" onClick={() => removeLine(l.variantId)}>{t('pos.remove')}</button>
+                          </div>
+                        </>
+                      )}
+
+                      {isBelowCost && (
+                        <div style={{ color: 'var(--sk-warn, #d97706)', background: 'var(--sk-warn-soft, #fff6df)', padding: '5px 10px', borderRadius: '6px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>⚠️</span>
+                          <span>{t('sale.pack.warn.belowCost', { cost: formatExactDecimal(l.wac || '0.00'), base: l.baseUnitName || t('sale.pack.piece') })}</span>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

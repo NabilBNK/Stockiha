@@ -107,8 +107,7 @@ export function StockAdjustmentScreen() {
   const { t, locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
   const { user } = useSession();
-  const { warehouses, selectedWarehouseId, selectWarehouse, openFiscalPeriod } =
-    useAppData();
+  const { selectedWarehouseId, openFiscalPeriod } = useAppData();
   const errorText = useErrorText();
   const token = user?.token ?? "";
   const [variants, setVariants] = useState<GenericPickerItem[]>([]);
@@ -600,26 +599,7 @@ export function StockAdjustmentScreen() {
           </Banner>
         ) : null}
         <div className="sk-form-grid">
-          <div className="sk-field">
-            <label className="sk-field__label" htmlFor="adjustment-warehouse">
-              {t("adjustment.warehouse")}
-            </label>
-            <select
-              id="adjustment-warehouse"
-              className="sk-field__input"
-              value={selectedWarehouseId ?? ""}
-              onChange={(event) => {
-                selectWarehouse(Number(event.target.value));
-                invalidateRequest();
-              }}
-            >
-              {warehouses.map((warehouse) => (
-                <option key={warehouse.id} value={warehouse.id}>
-                  {warehouse.code} — {warehouse.name}
-                </option>
-              ))}
-            </select>
-          </div>
+
           <TextField
             label={t("adjustment.date")}
             type="date"

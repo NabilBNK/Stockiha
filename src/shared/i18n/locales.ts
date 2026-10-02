@@ -840,6 +840,16 @@ const fr = {
   'pack.deselectAllMatching': 'Tout décocher ({count})',
   'pack.noMatchingVariants': 'Aucune variante correspondante.',
   'pack.searchPlaceholder': 'Rechercher par nom, attribut, SKU\u2026',
+  'sale.pack.loadFailed': 'Impossible de charger les cartons ; ajouté en {base}.',
+  'sale.pack.error.notSold': 'Ce code-barres correspond à un carton non vendu.',
+  'sale.pack.edited': 'modifié',
+  'sale.pack.error.price': 'Saisissez un prix valide',
+  'sale.pack.warn.belowCost': 'En dessous du coût ({cost} par {base})',
+  'sale.pack.error.noLongerSold': 'Ce carton n’est plus vendu — changez d’unité.',
+  'sale.pack.reset': 'Rétablir',
+  'sale.pack.extra': 'Extra {base}',
+  'sale.pack.perUnit': 'par {unit}',
+  'sale.pack.piece': 'Pièce',
 };
 
 export type MessageKey = keyof typeof fr;
@@ -1674,6 +1684,16 @@ const ar: Record<MessageKey, string> = {
   'pack.deselectAllMatching': 'إلغاء تحديد المطابق ({count})',
   'pack.noMatchingVariants': 'لا توجد متغيرات مطابقة.',
   'pack.searchPlaceholder': 'بحث بالاسم، السمة، أو الرمز\u2026',
+  'sale.pack.loadFailed': 'تعذر تحميل الحزم؛ تمت الإضافة بـ {base}.',
+  'sale.pack.error.notSold': 'الباركود يخص حزمة غير مخصصة للبيع.',
+  'sale.pack.edited': 'معدل',
+  'sale.pack.error.price': 'أدخل سعراً صالحاً',
+  'sale.pack.warn.belowCost': 'أقل من سعر التكلفة ({cost} لكل {base})',
+  'sale.pack.error.noLongerSold': 'هذه الحزمة لم تعد تباع — غيّر الوحدة.',
+  'sale.pack.reset': 'إعادة تعيين',
+  'sale.pack.extra': 'إضافي {base}',
+  'sale.pack.perUnit': 'لكل {unit}',
+  'sale.pack.piece': 'قطعة',
 };
 
 const en: Record<MessageKey, string> = {
@@ -2507,6 +2527,16 @@ const en: Record<MessageKey, string> = {
   'pack.deselectAllMatching': 'Deselect matching ({count})',
   'pack.noMatchingVariants': 'No matching variants.',
   'pack.searchPlaceholder': 'Search by name, attribute, SKU\u2026',
+  'sale.pack.loadFailed': 'Boxes could not be loaded; added by the {base}.',
+  'sale.pack.error.notSold': 'This box barcode belongs to a pack that is not sold.',
+  'sale.pack.edited': 'edited',
+  'sale.pack.error.price': 'Enter a valid price',
+  'sale.pack.warn.belowCost': 'Below cost ({cost} per {base})',
+  'sale.pack.error.noLongerSold': 'This box is no longer sold — change the unit.',
+  'sale.pack.reset': 'Reset',
+  'sale.pack.extra': 'Extra {base}',
+  'sale.pack.perUnit': 'per {unit}',
+  'sale.pack.piece': 'Piece',
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { fr, ar, en };

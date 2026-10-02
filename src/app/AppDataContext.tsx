@@ -44,13 +44,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [ws, period] = await Promise.all([
+      const [rawWs, period] = await Promise.all([
         ipc.listWarehouses(user.token),
         ipc.getOpenFiscalPeriod(user.token),
       ]);
+      const activeWs = rawWs.filter((w) => w.is_active);
+      const ws = activeWs.length > 0 ? activeWs : rawWs;
       setWarehouses(ws);
       setOpenFiscalPeriod(period);
-      setSelectedWarehouseId((current) => current ?? ws[0]?.id ?? null);
+      setSelectedWarehouseId(ws[0]?.id ?? null);
     } catch (err) {
       setError(err);
     } finally {

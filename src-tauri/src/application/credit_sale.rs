@@ -6,11 +6,104 @@ use time::Date;
 
 use crate::error::AppError;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct CreditSaleLineInput {
     pub variant_id: i64,
-    pub quantity: Decimal,
-    pub unit_price: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantity: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit_price: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sale_unit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pack_unit_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pack_quantity: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra_quantity: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pack_price: Option<Decimal>,
+}
+
+impl CreditSaleLineInput {
+    pub fn new_base(variant_id: i64, quantity: Decimal, unit_price: Decimal) -> Self {
+        Self {
+            variant_id,
+            quantity: Some(quantity),
+            unit_price: Some(unit_price),
+            sale_unit: None,
+            pack_unit_id: None,
+            pack_quantity: None,
+            extra_quantity: None,
+            pack_price: None,
+        }
+    }
+
+    pub fn new_pack(
+        variant_id: i64,
+        pack_unit_id: i64,
+        pack_quantity: Decimal,
+        extra_quantity: Option<Decimal>,
+        pack_price: Decimal,
+    ) -> Self {
+        Self {
+            variant_id,
+            quantity: None,
+            unit_price: None,
+            sale_unit: Some("PACK".to_string()),
+            pack_unit_id: Some(pack_unit_id),
+            pack_quantity: Some(pack_quantity),
+            extra_quantity,
+            pack_price: Some(pack_price),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.variant_id <= 0 {
+            return Err(AppError::validation("variant_id must be positive"));
+        }
+        let is_base = self.sale_unit.is_none()
+            && self.quantity.is_some()
+            && self.unit_price.is_some()
+            && self.pack_unit_id.is_none()
+            && self.pack_quantity.is_none()
+            && self.extra_quantity.is_none()
+            && self.pack_price.is_none();
+
+        let is_pack = self.sale_unit.as_deref() == Some("PACK")
+            && self.quantity.is_none()
+            && self.unit_price.is_none()
+            && self.pack_unit_id.is_some()
+            && self.pack_quantity.is_some()
+            && self.pack_price.is_some();
+
+        if !is_base && !is_pack {
+            return Err(AppError::validation(
+                "sale line must be either pure base or pure pack shape",
+            ));
+        }
+        if let Some(qty) = self.quantity {
+            if qty <= Decimal::ZERO {
+                return Err(AppError::validation("base quantity must be positive"));
+            }
+        }
+        if let Some(price) = self.unit_price {
+            if price < Decimal::ZERO {
+                return Err(AppError::validation("unit price cannot be negative"));
+            }
+        }
+        if let Some(pqty) = self.pack_quantity {
+            if pqty < Decimal::ONE {
+                return Err(AppError::validation("pack quantity must be at least 1"));
+            }
+        }
+        if let Some(pprice) = self.pack_price {
+            if pprice < Decimal::ZERO {
+                return Err(AppError::validation("pack price cannot be negative"));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -61,12 +154,9 @@ fn validate_draft(draft: &CreditSaleDraft) -> Result<(), AppError> {
         });
     }
     for (index, line) in draft.lines.iter().enumerate() {
-        if line.variant_id <= 0 || line.quantity <= Decimal::ZERO || line.unit_price < Decimal::ZERO
-        {
-            return Err(AppError::ValidationError {
-                diagnostic: format!("credit sale line {} is invalid", index + 1),
-            });
-        }
+        line.validate().map_err(|e| AppError::ValidationError {
+            diagnostic: format!("credit sale line {} is invalid: {e}", index + 1),
+        })?;
     }
     Ok(())
 }
@@ -178,18 +268,18 @@ mod tests {
             warehouse_id: 1,
             fiscal_period_id: 1,
             document_date: Date::from_calendar_date(2026, Month::July, 30).unwrap(),
-            lines: vec![CreditSaleLineInput {
-                variant_id: 1,
-                quantity: Decimal::ONE,
-                unit_price: Decimal::new(10_000, 2),
-            }],
+            lines: vec![CreditSaleLineInput::new_base(
+                1,
+                Decimal::ONE,
+                Decimal::new(10_000, 2),
+            )],
         }
     }
 
     #[test]
     fn rejects_invalid_line_before_database_call() {
         let mut invalid = draft();
-        invalid.lines[0].quantity = Decimal::ZERO;
+        invalid.lines[0].quantity = Some(Decimal::ZERO);
         assert!(validate_draft(&invalid).is_err());
     }
 
@@ -205,5 +295,57 @@ mod tests {
             "insufficient stock for variant 7"
         ));
         assert!(!is_credit_policy_message("fiscal period is not open"));
+    }
+
+    #[test]
+    fn test_credit_sale_line_base_serialization() {
+        let line = CreditSaleLineInput::new_base(1, Decimal::new(3000, 3), Decimal::new(140000, 2));
+        assert!(line.validate().is_ok());
+
+        let json_val = serde_json::to_value(&line).unwrap();
+        assert_eq!(
+            json_val,
+            serde_json::json!({
+                "variant_id": 1,
+                "quantity": "3.000",
+                "unit_price": "1400.00"
+            })
+        );
+    }
+
+    #[test]
+    fn test_credit_sale_line_pack_serialization() {
+        let line = CreditSaleLineInput::new_pack(
+            12,
+            7,
+            Decimal::new(2, 0),
+            Some(Decimal::new(5, 0)),
+            Decimal::new(1500000, 2),
+        );
+        assert!(line.validate().is_ok());
+
+        let json_val = serde_json::to_value(&line).unwrap();
+        assert_eq!(
+            json_val,
+            serde_json::json!({
+                "variant_id": 12,
+                "sale_unit": "PACK",
+                "pack_unit_id": 7,
+                "pack_quantity": "2",
+                "extra_quantity": "5",
+                "pack_price": "15000.00"
+            })
+        );
+    }
+
+    #[test]
+    fn test_credit_sale_line_invalid_shapes() {
+        let mut invalid_base = CreditSaleLineInput::new_base(1, Decimal::ONE, Decimal::ONE);
+        invalid_base.unit_price = None;
+        assert!(invalid_base.validate().is_err());
+
+        let mut mixed = CreditSaleLineInput::new_base(1, Decimal::ONE, Decimal::ONE);
+        mixed.pack_price = Some(Decimal::new(100, 0));
+        assert!(mixed.validate().is_err());
     }
 }

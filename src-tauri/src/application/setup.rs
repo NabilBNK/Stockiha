@@ -238,11 +238,11 @@ mod tests {
                 warehouse_id,
                 fiscal_period_id: period.id,
                 document_date: day(2026, Month::January, 15),
-                lines: vec![crate::application::cash_sale::CashSaleLineInput {
-                    variant_id: created.variant_id,
-                    quantity: Decimal::new(2000, 3),
-                    unit_price: Decimal::new(10000, 2),
-                }],
+                lines: vec![crate::application::cash_sale::CashSaleLineInput::new_base(
+                    created.variant_id,
+                    Decimal::new(2000, 3),
+                    Decimal::new(10000, 2),
+                )],
                 discount_amount: None,
             },
         )

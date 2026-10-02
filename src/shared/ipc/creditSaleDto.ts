@@ -1,8 +1,6 @@
-export interface CreditSaleLineInput {
-  variant_id: number;
-  quantity: string;
-  unit_price: string;
-}
+import type { SaleLineInput } from './dto';
+
+export type CreditSaleLineInput = SaleLineInput;
 
 export interface CreditSaleInput {
   request_id: string;

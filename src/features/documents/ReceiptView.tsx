@@ -247,6 +247,16 @@ export function ReceiptView({
                     <td>
                       <div className="sk-receipt__line-name">{l.variant_name_snapshot}</div>
                       <code className="sk-receipt__line-sku">{l.variant_sku_snapshot}</code>
+                      {l.price_basis === 'PACK' && l.pack_unit_name_snapshot && (
+                        <div className="sk-receipt__line-pack-detail" style={{ fontSize: '0.85em', color: '#6b7280', marginTop: '2px' }}>
+                          {l.pack_quantity} {l.pack_unit_name_snapshot} (×{l.pack_factor_snapshot}) × {formatDisplayAmount(l.pack_price ?? l.unit_price)}
+                        </div>
+                      )}
+                      {l.price_basis === 'PACK_RATE' && l.pack_unit_name_snapshot && (
+                        <div className="sk-receipt__line-pack-detail" style={{ fontSize: '0.85em', color: '#6b7280', marginTop: '2px' }}>
+                          {l.quantity} × {formatDisplayAmount(l.unit_price)} ({l.pack_unit_name_snapshot} rate)
+                        </div>
+                      )}
                     </td>
                     <td className="sk-num sk-receipt__cell-qty">{l.quantity}</td>
                     <td className="sk-num">{formatDisplayAmount(l.unit_price)}</td>

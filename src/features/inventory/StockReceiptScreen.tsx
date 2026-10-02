@@ -37,7 +37,7 @@ export function StockReceiptScreen() {
   const { t, locale } = useI18n();
   const text = PROCUREMENT_COPY[locale];
   const { user } = useSession();
-  const { warehouses, selectedWarehouseId, selectWarehouse, openFiscalPeriod } = useAppData();
+  const { selectedWarehouseId, openFiscalPeriod } = useAppData();
   const errorText = useErrorText();
   const token = user?.token ?? '';
 
@@ -417,24 +417,7 @@ export function StockReceiptScreen() {
           </Banner>
         ) : null}
 
-        <div className="sk-field">
-          <label className="sk-field__label" htmlFor="stock-wh">{t('stock.warehouse')}</label>
-          <select
-            id="stock-wh"
-            className="sk-field__input"
-            value={selectedWarehouseId ?? ''}
-            onChange={(e) => {
-              selectWarehouse(Number(e.target.value));
-              invalidateRequest();
-            }}
-          >
-            {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.code} — {w.name}
-              </option>
-            ))}
-          </select>
-        </div>
+
 
         {/* Item Selection Toolbar (Barcode Scanner + + Choose Item) */}
         <div className="sk-field">

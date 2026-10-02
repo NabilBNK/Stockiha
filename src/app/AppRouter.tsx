@@ -523,7 +523,9 @@ function AuthenticatedApp() {
       reportsCapabilities={reportsCapabilities}
     >
       <UpdateBanner cashSessionOpen={activeCashSession !== null} />
-      <LicenceBanner onOpenLicence={openLicenceCard} />
+      {(view === 'dashboard' || view === 'settings') && (
+        <LicenceBanner onOpenLicence={openLicenceCard} />
+      )}
       {configWarning === 'INSECURE_PERMISSIONS' ? (
         <Banner tone="warning" testId="db-config-permission-warning">
           {t('backend.configWarning.insecurePermissions')}

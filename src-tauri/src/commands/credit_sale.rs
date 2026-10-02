@@ -13,8 +13,13 @@ use crate::infrastructure::db::{self, DatabaseState};
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct CreditSaleLineRequest {
     pub variant_id: i64,
-    pub quantity: Decimal,
-    pub unit_price: Decimal,
+    pub quantity: Option<Decimal>,
+    pub unit_price: Option<Decimal>,
+    pub sale_unit: Option<String>,
+    pub pack_unit_id: Option<i64>,
+    pub pack_quantity: Option<Decimal>,
+    pub extra_quantity: Option<Decimal>,
+    pub pack_price: Option<Decimal>,
 }
 
 fn map_lines(lines: Vec<CreditSaleLineRequest>) -> Vec<CreditSaleLineInput> {
@@ -24,6 +29,11 @@ fn map_lines(lines: Vec<CreditSaleLineRequest>) -> Vec<CreditSaleLineInput> {
             variant_id: line.variant_id,
             quantity: line.quantity,
             unit_price: line.unit_price,
+            sale_unit: line.sale_unit,
+            pack_unit_id: line.pack_unit_id,
+            pack_quantity: line.pack_quantity,
+            extra_quantity: line.extra_quantity,
+            pack_price: line.pack_price,
         })
         .collect()
 }

@@ -235,6 +235,12 @@ impl AppError {
         AppError::Internal(diagnostic.into())
     }
 
+    pub fn validation(diagnostic: impl Into<String>) -> Self {
+        AppError::ValidationError {
+            diagnostic: diagnostic.into(),
+        }
+    }
+
     pub fn database_configuration(diagnostic: impl Into<String>) -> Self {
         AppError::DatabaseConfiguration {
             diagnostic: diagnostic.into(),

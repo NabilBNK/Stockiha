@@ -29,6 +29,12 @@ pub(crate) struct SaleLineResponse {
     pub quantity: String,
     pub unit_price: String,
     pub line_total: String,
+    pub price_basis: Option<String>,
+    pub pack_unit_name_snapshot: Option<String>,
+    pub pack_factor_snapshot: Option<String>,
+    pub pack_quantity: Option<String>,
+    pub pack_price: Option<String>,
+    pub base_unit_name: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -101,6 +107,12 @@ pub(crate) async fn list_sale_lines(
                     quantity: l.quantity,
                     unit_price: l.unit_price,
                     line_total: l.line_total,
+                    price_basis: l.price_basis,
+                    pack_unit_name_snapshot: l.pack_unit_name_snapshot,
+                    pack_factor_snapshot: l.pack_factor_snapshot,
+                    pack_quantity: l.pack_quantity,
+                    pack_price: l.pack_price,
+                    base_unit_name: l.base_unit_name,
                 })
                 .collect()
         })

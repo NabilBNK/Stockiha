@@ -21,8 +21,21 @@ function splitDecimal(value: string): { negative: boolean; digits: string; scale
 
 function toScaledBigInt(value: string, scale: number): bigint {
   const parts = splitDecimal(value);
-  const padded = parts.digits + '0'.repeat(scale - parts.scale);
-  const magnitude = BigInt(padded === '' ? '0' : padded);
+  const diff = scale - parts.scale;
+  let magnitude: bigint;
+  if (diff >= 0) {
+    const padded = parts.digits + '0'.repeat(diff);
+    magnitude = BigInt(padded === '' ? '0' : padded);
+  } else {
+    const drop = -diff;
+    const wholeDigits = parts.digits.slice(0, parts.digits.length - drop) || '0';
+    const droppedDigits = parts.digits.slice(parts.digits.length - drop);
+    let base = BigInt(wholeDigits);
+    if (droppedDigits[0] >= '5') {
+      base += 1n;
+    }
+    magnitude = base;
+  }
   return parts.negative ? -magnitude : magnitude;
 }
 
@@ -57,8 +70,11 @@ export function isValidMoneyString(value: string): boolean {
 
 /** Compares two decimal money strings. Returns -1 if a < b, 1 if a > b, 0 if equal. */
 export function compareExactMoney(a: string, b: string): number {
-  const bigA = toScaledBigInt(a, 2);
-  const bigB = toScaledBigInt(b, 2);
+  const partsA = splitDecimal(a);
+  const partsB = splitDecimal(b);
+  const maxScale = Math.max(partsA.scale, partsB.scale);
+  const bigA = toScaledBigInt(a, maxScale);
+  const bigB = toScaledBigInt(b, maxScale);
   if (bigA < bigB) return -1;
   if (bigA > bigB) return 1;
   return 0;

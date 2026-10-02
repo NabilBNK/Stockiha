@@ -86,6 +86,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     search: 'Search',
     searchPlaceholder: 'Number, customer or supplier…',
     reset: 'Clear Filters',
+    close: 'Close',
     totalDocs: 'Total Documents',
     postedDocs: 'Posted',
     draftDocs: 'Draft',
@@ -147,6 +148,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     search: 'Rechercher',
     searchPlaceholder: 'Numéro, client ou fournisseur…',
     reset: 'Réinitialiser les filtres',
+    close: 'Fermer',
     totalDocs: 'Total Documents',
     postedDocs: 'Validés',
     draftDocs: 'Brouillons',
@@ -208,6 +210,7 @@ const COPY: Record<Locale, Record<string, string>> = {
     search: 'بحث',
     searchPlaceholder: 'الرقم أو العميل أو المورد…',
     reset: 'مسح الفلاتر',
+    close: 'إغلاق',
     totalDocs: 'إجمالي المستندات',
     postedDocs: 'المرحّلة',
     draftDocs: 'مسودة',
@@ -677,13 +680,14 @@ export const DocumentsScreen: React.FC = () => {
                           <Button
                             variant="secondary"
                             onClick={() => {
-                              setInspectDocId(doc.document_id);
                               if (
-                                ['CASH_SALE', 'CREDIT_SALE', 'CUSTOMER_PAYMENT'].includes(
+                                ['CREDIT_SALE', 'CUSTOMER_PAYMENT'].includes(
                                   doc.document_type
                                 )
                               ) {
                                 setSelectedPrintable(doc as unknown as PrintableDocument);
+                              } else {
+                                setInspectDocId(doc.document_id);
                               }
                             }}
                             data-testid={`view-doc-${doc.document_id}`}
@@ -1079,7 +1083,7 @@ export const DocumentsScreen: React.FC = () => {
             </div>
             <footer className="sk-detail-dialog__footer">
               <Button variant="secondary" onClick={() => setSelectedPrintable(null)}>
-                {text.reset}
+                {text.close}
               </Button>
             </footer>
           </div>

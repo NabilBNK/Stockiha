@@ -126,6 +126,69 @@ const GROUP_LABELS: Record<Locale, Record<NavGroup, string>> = {
   en: { main: 'Overview', stock: 'Catalog & stock', buy: 'Purchasing', sales: 'Sales & cash' },
 };
 
+const VIEW_HEADERS: Record<Locale, Record<AppView, { title: string; subtitle?: string }>> = {
+  en: {
+    pos: { title: 'Point of sale', subtitle: 'Select products and complete the sale from the cart.' },
+    dashboard: { title: 'Dashboard', subtitle: 'Overview of operations and catalog' },
+    products: { title: 'Products', subtitle: 'Manage items, variants, packs, and barcodes' },
+    catalogueSetup: { title: 'Catalogue setup', subtitle: 'Categories, units, and attributes' },
+    inventory: { title: 'Inventory', subtitle: 'Stock balances and warehouse tracking' },
+    stock: { title: 'Stock receipt', subtitle: 'Receive goods and update stock valuation' },
+    adjustment: { title: 'Stock adjustment', subtitle: 'Reconcile stock and log adjustments' },
+    suppliers: { title: 'Suppliers', subtitle: 'Manage vendors and procurement contacts' },
+    purchases: { title: 'Purchases', subtitle: 'Purchase orders and receipts' },
+    customers: { title: 'Customers', subtitle: 'Client records and credit limits' },
+    session: { title: 'Cash session', subtitle: 'Open, inspect, and close cash drawer sessions' },
+    documents: { title: 'Documents', subtitle: 'Sales invoices, receipts, and void slips' },
+    journals: { title: 'Journals', subtitle: 'Financial accounting ledger entries' },
+    reports: { title: 'Reports', subtitle: 'Business performance and analytics' },
+    settings: { title: 'Settings', subtitle: 'Workstation, licence, and system configuration' },
+    historical_finance: { title: 'Historical finance', subtitle: 'Past financial trends and imported records' },
+    opening_state: { title: 'Opening state', subtitle: 'Initial balances and setup wizard' },
+    opening_state_application: { title: 'Opening state', subtitle: 'Apply initial ledger and stock entries' },
+  },
+  fr: {
+    pos: { title: 'Point de vente', subtitle: 'Sélectionnez les produits et validez la vente depuis le panier.' },
+    dashboard: { title: 'Tableau de bord', subtitle: 'Aperçu des opérations et du catalogue' },
+    products: { title: 'Produits', subtitle: 'Gérer les articles, variantes, paquets et codes-barres' },
+    catalogueSetup: { title: 'Configuration catalogue', subtitle: 'Catégories, unités et attributs' },
+    inventory: { title: 'Inventaire', subtitle: 'Soldes de stock et suivi par entrepôt' },
+    stock: { title: 'Réception de stock', subtitle: 'Réceptionner des marchandises et actualiser le PUMP' },
+    adjustment: { title: 'Ajustement de stock', subtitle: 'Régulariser le stock et consigner les écarts' },
+    suppliers: { title: 'Fournisseurs', subtitle: 'Gérer les fournisseurs et contacts' },
+    purchases: { title: 'Achats', subtitle: 'Commandes et bons de réception' },
+    customers: { title: 'Clients', subtitle: 'Fiches clients et limites de crédit' },
+    session: { title: 'Session de caisse', subtitle: 'Ouvrir, inspecter et clôturer les sessions' },
+    documents: { title: 'Documents', subtitle: 'Factures de vente, tickets et annulations' },
+    journals: { title: 'Journaux', subtitle: 'Écritures comptables' },
+    reports: { title: 'Rapports', subtitle: 'Analyses et performances' },
+    settings: { title: 'Paramètres', subtitle: 'Poste, licence et configuration système' },
+    historical_finance: { title: 'Finance historique', subtitle: 'Tendances passées et historique' },
+    opening_state: { title: 'État d’ouverture', subtitle: 'Soldes initiaux et configuration' },
+    opening_state_application: { title: 'État d’ouverture', subtitle: 'Application des écritures initiales' },
+  },
+  ar: {
+    pos: { title: 'نقطة البيع', subtitle: 'اختر المنتجات وأتمم عملية البيع من السلة.' },
+    dashboard: { title: 'لوحة التحكم', subtitle: 'نظرة عامة على العمليات والكتالوج' },
+    products: { title: 'المنتجات', subtitle: 'إدارة السلع والمتغيرات والعلب والباركود' },
+    catalogueSetup: { title: 'إعداد الكتالوج', subtitle: 'الفئات والوحدات والسمات' },
+    inventory: { title: 'المخزون', subtitle: 'أرصدة المخزون وتتبع المستودعات' },
+    stock: { title: 'استلام المخزون', subtitle: 'استلام البضائع وتحديث متوسط التكلفة' },
+    adjustment: { title: 'تسوية المخزون', subtitle: 'تسوية الكميات وتسجيل الفروقات' },
+    suppliers: { title: 'الموردون', subtitle: 'إدارة الموردين وجهات الاتصال' },
+    purchases: { title: 'المشتريات', subtitle: 'أوامر وإيصالات الشراء' },
+    customers: { title: 'العملاء', subtitle: 'سجلات العملاء والحدود الائتمانية' },
+    session: { title: 'جلسة الصندوق', subtitle: 'فتح ومراجعة وإغلاق جلسات الصندوق' },
+    documents: { title: 'المستندات', subtitle: 'فواتير البيع والإيصالات ومستندات الإلغاء' },
+    journals: { title: 'اليومية', subtitle: 'قيود دفتر اليومية المحاسبية' },
+    reports: { title: 'التقارير', subtitle: 'تقارير الأداء وتحليلات الأعمال' },
+    settings: { title: 'الإعدادات', subtitle: 'محطة العمل والترخيص وإعدادات النظام' },
+    historical_finance: { title: 'المالية التاريخية', subtitle: 'السجلات والبيانات المالية السابقة' },
+    opening_state: { title: 'حالة الافتتاح', subtitle: 'الأرصدة الافتتاحية والإعداد' },
+    opening_state_application: { title: 'حالة الافتتاح', subtitle: 'تطبيق القيود الافتتاحية والمخزون' },
+  },
+};
+
 export function AppShell({
   currentView,
   onNavigate,
@@ -382,6 +445,18 @@ export function AppShell({
             </span>
           </div>
         </div>
+
+        <div className="sk-shell__header-center" data-testid="shell-header-title">
+          {currentView === 'pos' ? (
+            <h1 className="sk-shell__page-title">{VIEW_HEADERS[locale]?.[currentView]?.title ?? t('app.name')}</h1>
+          ) : (
+            <span className="sk-shell__page-title">{VIEW_HEADERS[locale]?.[currentView]?.title ?? t('app.name')}</span>
+          )}
+          {VIEW_HEADERS[locale]?.[currentView]?.subtitle ? (
+            <p className="sk-shell__page-subtitle">{VIEW_HEADERS[locale]?.[currentView]?.subtitle}</p>
+          ) : null}
+        </div>
+
         <div className="sk-shell__header-right">
           {/* WS-D-15 A1 — the visible control. Reuses the existing
               sk-shell__icon-button styling verbatim (no new CSS); the

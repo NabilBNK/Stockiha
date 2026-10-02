@@ -181,3 +181,25 @@ export function formatDecimalDisplay(value: string, locale = 'en'): string {
 
   return fraction ? `${grouped}${decimal}${fraction}` : grouped;
 }
+
+/**
+ * Subtracts two exact non-negative decimal strings: a - b.
+ * Returns exact decimal string with trailing zeroes trimmed. Clamps at '0'.
+ */
+export function subtractExactDecimal(a: string, b: string): string {
+  const cleanA = a.trim();
+  const cleanB = b.trim();
+  if (!EXACT_DECIMAL.test(cleanA) || !EXACT_DECIMAL.test(cleanB)) return cleanA;
+  const [va, vf = ''] = cleanA.split('.');
+  const [la, lf = ''] = cleanB.split('.');
+  const scale = Math.max(vf.length, lf.length);
+  const left = BigInt(`${va}${vf}`) * 10n ** BigInt(scale - vf.length);
+  const right = BigInt(`${la}${lf}`) * 10n ** BigInt(scale - lf.length);
+  if (left <= right) return '0';
+  const diff = left - right;
+  if (scale === 0) return diff.toString();
+  const padded = diff.toString().padStart(scale + 1, '0');
+  const fraction = padded.slice(-scale).replace(/0+$/, '');
+  const integer = padded.slice(0, -scale);
+  return fraction ? `${integer}.${fraction}` : integer;
+}

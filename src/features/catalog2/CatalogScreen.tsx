@@ -59,10 +59,11 @@ export function CatalogScreen({
 
   const list = useCatalogList(token);
   const {
-    warehouses, selectedWarehouseId, selectWarehouse,
+    selectedWarehouseId,
     search, setSearch, submitSearch,
     categoryId, changeCategory,
     includeInactive, changeIncludeInactive,
+    inStockOnly, setInStockOnly,
     categories,
     groups, totalCount, rowCount, loading, error,
     pageIndex, setPageIndex, pageSize,
@@ -207,23 +208,6 @@ export function CatalogScreen({
         </div>
 
         <div className="sk-catalog2__field">
-          <label className="sk-catalog2__label" htmlFor="catalog2-warehouse">
-            {t('inventory.warehouse')}
-          </label>
-          <select
-            id="catalog2-warehouse"
-            className="sk-catalog2__select"
-            value={selectedWarehouseId ?? ''}
-            onChange={(e) => selectWarehouse(Number(e.target.value))}
-            data-testid="catalog2-warehouse"
-          >
-            {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>{w.code} — {w.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="sk-catalog2__field">
           <label className="sk-catalog2__label" htmlFor="catalog2-category">
             {t('productsList.category')}
           </label>
@@ -240,6 +224,19 @@ export function CatalogScreen({
             ))}
           </select>
         </div>
+
+        <button
+          type="button"
+          className={`sk-pos__stock-toggle-btn ${inStockOnly ? 'sk-pos__stock-toggle-btn--active' : 'sk-pos__stock-toggle-btn--inactive'}`}
+          onClick={() => setInStockOnly((prev) => !prev)}
+          aria-pressed={inStockOnly}
+          title={inStockOnly ? t('pos.inStockOnly') : t('pos.allStock')}
+          data-testid="catalog2-in-stock-toggle"
+          style={{ height: '36px', alignSelf: 'flex-end', marginBottom: '2px' }}
+        >
+          <span aria-hidden>📦</span>
+          <span>{inStockOnly ? t('pos.inStockOnly') : t('pos.allStock')}</span>
+        </button>
 
         <label className="sk-catalog2__checkbox">
           <input

@@ -5,6 +5,7 @@ import {
   formatDecimalDisplay,
   isDecimalLessThanOrEqual,
   isLowStock,
+  subtractExactDecimal,
   sumExactDecimals,
 } from '../src/features/inventory/exactDecimal';
 
@@ -120,5 +121,18 @@ describe('formatDecimalDisplay (WS-D-10)', () => {
     // French does not group with a comma or point with a period.
     expect(formatDecimalDisplay('1999.50', 'fr')).not.toBe('1,999.50');
     expect(formatDecimalDisplay('1999.50', 'en')).toBe('1,999.50');
+  });
+});
+
+describe('subtractExactDecimal', () => {
+  it('subtracts quantities without floating point drift and trims trailing zeroes', () => {
+    expect(subtractExactDecimal('130', '12')).toBe('118');
+    expect(subtractExactDecimal('120.000', '36')).toBe('84');
+    expect(subtractExactDecimal('10.500', '0.250')).toBe('10.25');
+  });
+
+  it('clamps at zero when subtracting more than available', () => {
+    expect(subtractExactDecimal('10', '15')).toBe('0');
+    expect(subtractExactDecimal('0', '1')).toBe('0');
   });
 });

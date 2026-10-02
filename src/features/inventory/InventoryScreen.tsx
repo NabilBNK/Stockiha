@@ -13,7 +13,7 @@ export function InventoryScreen() {
   const { t } = useI18n();
   const errorText = useErrorText();
   const { user } = useSession();
-  const { warehouses, selectedWarehouseId, selectWarehouse } = useAppData();
+  const { selectedWarehouseId } = useAppData();
   const token = user?.token ?? '';
 
   const [items, setItems] = useState<InventorySnapshotItem[]>([]);
@@ -75,23 +75,7 @@ export function InventoryScreen() {
 
       <form className="sk-card sk-form" onSubmit={submitSearch} aria-label={t('inventory.filters')}>
         <div className="sk-form__grid">
-          <div className="sk-field">
-            <label className="sk-field__label" htmlFor="inventory-warehouse">
-              {t('inventory.warehouse')}
-            </label>
-            <select
-              id="inventory-warehouse"
-              className="sk-field__input"
-              value={selectedWarehouseId ?? ''}
-              onChange={(event) => selectWarehouse(Number(event.target.value))}
-            >
-              {warehouses.map((warehouse) => (
-                <option key={warehouse.id} value={warehouse.id}>
-                  {warehouse.code} — {warehouse.name}
-                </option>
-              ))}
-            </select>
-          </div>
+
 
           <TextField
             label={t('inventory.search')}

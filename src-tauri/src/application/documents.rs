@@ -30,6 +30,12 @@ pub(crate) struct SaleLine {
     pub quantity: String,
     pub unit_price: String,
     pub line_total: String,
+    pub price_basis: Option<String>,
+    pub pack_unit_name_snapshot: Option<String>,
+    pub pack_factor_snapshot: Option<String>,
+    pub pack_quantity: Option<String>,
+    pub pack_price: Option<String>,
+    pub base_unit_name: Option<String>,
 }
 
 pub(crate) struct DocumentJob {
@@ -104,9 +110,26 @@ pub(crate) async fn list_sale_lines(
     session_token: &str,
     document_id: i64,
 ) -> Result<Vec<SaleLine>, AppError> {
-    let rows = sqlx::query_as::<_, (i32, String, String, Decimal, Decimal, Decimal)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            i32,
+            String,
+            String,
+            Decimal,
+            Decimal,
+            Decimal,
+            Option<String>,
+            Option<String>,
+            Option<Decimal>,
+            Option<Decimal>,
+            Option<Decimal>,
+            Option<String>,
+        ),
+    >(
         "SELECT line_number, variant_sku_snapshot, variant_name_snapshot, quantity, \
-         unit_price, line_total FROM sales.list_sale_lines($1, $2)",
+         unit_price, line_total, price_basis, pack_unit_name_snapshot, pack_factor_snapshot, \
+         pack_quantity, pack_price, base_unit_name FROM sales.list_sale_lines($1, $2)",
     )
     .bind(session_token)
     .bind(document_id)
@@ -116,14 +139,37 @@ pub(crate) async fn list_sale_lines(
 
     Ok(rows
         .into_iter()
-        .map(|(line_number, sku, name, qty, price, total)| SaleLine {
-            line_number,
-            variant_sku_snapshot: sku,
-            variant_name_snapshot: name,
-            quantity: qty.to_string(),
-            unit_price: price.to_string(),
-            line_total: total.to_string(),
-        })
+        .map(
+            |(
+                line_number,
+                sku,
+                name,
+                qty,
+                price,
+                total,
+                basis,
+                p_unit,
+                p_factor,
+                p_qty,
+                p_price,
+                base_unit,
+            )| {
+                SaleLine {
+                    line_number,
+                    variant_sku_snapshot: sku,
+                    variant_name_snapshot: name,
+                    quantity: qty.to_string(),
+                    unit_price: price.to_string(),
+                    line_total: total.to_string(),
+                    price_basis: basis,
+                    pack_unit_name_snapshot: p_unit,
+                    pack_factor_snapshot: p_factor.map(|d| d.to_string()),
+                    pack_quantity: p_qty.map(|d| d.to_string()),
+                    pack_price: p_price.map(|d| d.to_string()),
+                    base_unit_name: base_unit,
+                }
+            },
+        )
         .collect())
 }
 

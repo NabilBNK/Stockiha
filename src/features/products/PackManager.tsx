@@ -201,8 +201,25 @@ export function PackManager({
     setEditingPack(null);
     const defaultUnit = availableUnitOptions[0] ?? null;
     setDialogUnitId(defaultUnit?.id ?? null);
-    setDialogFactor(defaultUnit?.conversion_factor ? formatExactDecimal(defaultUnit.conversion_factor) : '');
-    setDialogPrice('');
+    const factorStr = defaultUnit?.conversion_factor ? formatExactDecimal(defaultUnit.conversion_factor) : '';
+    setDialogFactor(factorStr);
+
+    let defaultPrice = '';
+    if (pieceSalePrice && factorStr) {
+      try {
+        const normP = normalizeDecimalInput(pieceSalePrice);
+        const normF = normalizeDecimalInput(factorStr);
+        if (normP && normF) {
+          const mult = multiplyExactDecimal(normP, normF);
+          if (mult && mult !== '0') {
+            defaultPrice = mult;
+          }
+        }
+      } catch {
+        defaultPrice = '';
+      }
+    }
+    setDialogPrice(defaultPrice);
     setDialogBarcode('');
     setDialogIsPrimary(activePacks.length === 0);
     setDialogErrors({});
@@ -365,7 +382,8 @@ export function PackManager({
       if (!editingPack) {
         // Create pack
         const normFactor = normalizeDecimalInput(dialogFactor)!;
-        const normPrice = dialogPrice.trim() ? normalizeDecimalInput(dialogPrice) : null;
+        const autoPrice = suggestedPriceInfo?.suggestedPrice ?? null;
+        const normPrice = dialogPrice.trim() ? normalizeDecimalInput(dialogPrice) : autoPrice;
         const newPackId = await ipc.createPack(
           sessionToken,
           variantId,
@@ -398,7 +416,8 @@ export function PackManager({
         const factor = editingPack.is_used
           ? editingPack.conversion_factor
           : normalizeDecimalInput(dialogFactor)!;
-        const price = dialogPrice.trim() ? normalizeDecimalInput(dialogPrice) : null;
+        const autoPrice = suggestedPriceInfo?.suggestedPrice ?? null;
+        const price = dialogPrice.trim() ? normalizeDecimalInput(dialogPrice) : autoPrice;
 
         await ipc.updatePack(sessionToken, editingPack.variant_unit_id, factor, price);
 
@@ -639,11 +658,16 @@ export function PackManager({
             <tbody>
               {sortedPackRows.map((pack) => {
                 const holdsStr = `${formatExactDecimal(pack.conversion_factor)} ${baseUnit.name}`;
+                const effectivePackPrice =
+                  pack.sale_price ??
+                  (pieceSalePrice
+                    ? multiplyExactDecimal(pieceSalePrice, formatExactDecimal(pack.conversion_factor))
+                    : null);
                 const priceStr =
-                  pack.sale_price != null ? formatDisplayAmount(pack.sale_price) : t('pack.notSold');
+                  effectivePackPrice != null ? formatDisplayAmount(effectivePackPrice) : formatDisplayAmount('0');
                 const perBaseStr =
-                  pack.sale_price != null
-                    ? formatDisplayAmount(packRate(pack.sale_price, pack.conversion_factor, 0))
+                  effectivePackPrice != null
+                    ? formatDisplayAmount(packRate(effectivePackPrice, pack.conversion_factor, 0))
                     : null;
 
                 const isAddingBarcode = addingBarcodeForPackId === pack.variant_unit_id;
@@ -893,7 +917,22 @@ export function PackManager({
                     setDialogUnitId(val);
                     const matched = units.find((u) => u.id === val);
                     if (matched?.conversion_factor) {
-                      setDialogFactor(formatExactDecimal(matched.conversion_factor));
+                      const fStr = formatExactDecimal(matched.conversion_factor);
+                      setDialogFactor(fStr);
+                      if (pieceSalePrice) {
+                        try {
+                          const normP = normalizeDecimalInput(pieceSalePrice);
+                          const normF = normalizeDecimalInput(fStr);
+                          if (normP && normF) {
+                            const mult = multiplyExactDecimal(normP, normF);
+                            if (mult && mult !== '0') {
+                              setDialogPrice(mult);
+                            }
+                          }
+                        } catch {
+                          // ignore
+                        }
+                      }
                     }
                   }}
                   disabled={editingPack != null || dialogSaving}
@@ -1170,7 +1209,14 @@ export function PackManager({
               {t('pack.applyDialogDesc', {
                 unit: applyPack.unit_name,
                 factor: formatExactDecimal(applyPack.conversion_factor),
-                price: applyPack.sale_price ? formatDisplayAmount(applyPack.sale_price) : t('pack.notSold'),
+                price: (() => {
+                  const effectiveApplyPrice =
+                    applyPack.sale_price ??
+                    (pieceSalePrice
+                      ? multiplyExactDecimal(pieceSalePrice, formatExactDecimal(applyPack.conversion_factor))
+                      : null);
+                  return effectiveApplyPrice ? formatDisplayAmount(effectiveApplyPrice) : formatDisplayAmount('0');
+                })(),
               })}
             </p>
 

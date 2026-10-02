@@ -154,6 +154,12 @@ export interface SaleLine {
   quantity: string;
   unit_price: string;
   line_total: string;
+  price_basis?: 'BASE' | 'PACK' | 'PACK_RATE';
+  pack_unit_name_snapshot?: string | null;
+  pack_factor_snapshot?: string | null;
+  pack_quantity?: string | null;
+  pack_price?: string | null;
+  base_unit_name?: string | null;
 }
 
 export type DocumentJobKind = 'GENERATION' | 'PRINT' | 'DRAWER';
@@ -165,11 +171,18 @@ export interface DocumentJob {
   attempt_count: number;
 }
 
-export interface CashSaleLineInput {
-  variant_id: number;
-  quantity: string;
-  unit_price: string;
-}
+export type SaleLineInput =
+  | { variant_id: number; quantity: string; unit_price: string }
+  | {
+      variant_id: number;
+      sale_unit: 'PACK';
+      pack_unit_id: number;
+      pack_quantity: string;
+      extra_quantity?: string;
+      pack_price: string;
+    };
+
+export type CashSaleLineInput = SaleLineInput;
 
 // Slice 2 — variant catalog DTOs (snake_case, decimals as strings)
 

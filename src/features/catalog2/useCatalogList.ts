@@ -20,7 +20,7 @@ import { useAppData } from '../../app/AppDataContext';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import * as ipc from '../../shared/ipc/gateway';
 import type { ProductListItemV2, ReferenceLifecycleItem } from '../../shared/ipc/dto';
-import { isDecimalLessThanOrEqual, sumExactDecimals } from '../inventory/exactDecimal';
+import { isDecimalLessThanOrEqual, isExactDecimalPositive, sumExactDecimals } from '../inventory/exactDecimal';
 import { commitVariantFields, type VariantFieldPatch } from './variantCommit';
 
 export const CATALOG2_PAGE_SIZE = 50;
@@ -91,6 +91,7 @@ export function useCatalogList(token: string) {
   const [appliedSearch, setAppliedSearch] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [includeInactive, setIncludeInactive] = useState(false);
+  const [inStockOnly, setInStockOnly] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
 
   const [rows, setRows] = useState<ProductListItemV2[]>([]);
@@ -177,9 +178,14 @@ export function useCatalogList(token: string) {
   const hasPreviousPage = pageIndex > 0;
   const hasNextPage = pageIndex * CATALOG2_PAGE_SIZE + rows.length < totalCount;
 
+  const filteredRows = useMemo(() => {
+    if (!inStockOnly) return rows;
+    return rows.filter((r) => isExactDecimalPositive(r.quantity_on_hand ?? '0'));
+  }, [rows, inStockOnly]);
+
   const groups = useMemo(
-    () => groupByProduct(rows, { hasPreviousPage, hasNextPage }),
-    [rows, hasPreviousPage, hasNextPage],
+    () => groupByProduct(filteredRows, { hasPreviousPage, hasNextPage }),
+    [filteredRows, hasPreviousPage, hasNextPage],
   );
 
   /**
@@ -237,6 +243,7 @@ export function useCatalogList(token: string) {
     search, setSearch, submitSearch,
     categoryId, changeCategory,
     includeInactive, changeIncludeInactive,
+    inStockOnly, setInStockOnly,
     categories,
     groups, totalCount, rowCount: rows.length,
     loading, error,
