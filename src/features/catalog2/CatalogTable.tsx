@@ -5,7 +5,9 @@
  * variant lines, indented. The table keeps FULL WIDTH at all times — the
  * detail panel overlays it rather than splitting the screen (RULING 4).
  */
+import { useMemo } from 'react';
 import { useI18n } from '../../shared/i18n';
+import { usePrimaryPacks } from '../../shared/hooks/usePrimaryPacks';
 import { ProductGroupRow } from './ProductGroupRow';
 import { VariantLine } from './VariantLine';
 import type { CatalogProductGroup } from './useCatalogList';
@@ -72,6 +74,12 @@ export function CatalogTable({
 }) {
   const { t } = useI18n();
 
+  const visibleVariantIds = useMemo(() => {
+    return groups.flatMap((g) => g.variants.map((v) => v.variant_id));
+  }, [groups]);
+
+  const { packs } = usePrimaryPacks(visibleVariantIds);
+
   return (
     <div className="sk-catalog2__table-wrap" tabIndex={0} aria-label={t('catalog2.table')}>
       <table className="sk-catalog2__table" data-testid="catalog2-table">
@@ -113,6 +121,7 @@ export function CatalogTable({
                   <VariantLine
                     key={`v-${variant.variant_id}`}
                     variant={variant}
+                    pack={packs.get(variant.variant_id)}
                     onCommitField={onCommitField}
                     onOpenPanel={onOpenPanel}
                   />

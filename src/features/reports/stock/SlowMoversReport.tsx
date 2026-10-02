@@ -15,8 +15,8 @@ import { ReportFrame } from '../common/ReportFrame';
 import { ReportTable } from '../common/ReportTable';
 import { csvBytes, toCsv } from '../common/csv';
 import { fetchAllPages } from '../common/exportAll';
-import { formatQuantityWithPack } from '../common/quantity';
 import { buildSlowMoversModel } from '../common/printModels';
+import { PackQuantity } from '../../../shared/components';
 
 type Days = 30 | 60 | 90 | 180;
 const LIMIT = 50;
@@ -209,7 +209,26 @@ export function SlowMoversReport() {
                 key: 'on_hand',
                 label: copy.onHand,
                 align: 'end',
-                render: (r) => formatQuantityWithPack(r.on_hand, r.base_unit_name, r.pack_unit_name, r.pack_factor, locale),
+                render: (r) => (
+                  <PackQuantity
+                    baseQuantity={r.on_hand}
+                    baseUnitName={r.base_unit_name}
+                    pack={
+                      r.pack_unit_name && r.pack_factor
+                        ? {
+                            variant_id: r.variant_id,
+                            variant_unit_id: 0,
+                            unit_code: r.pack_unit_name,
+                            unit_name: r.pack_unit_name,
+                            conversion_factor: r.pack_factor,
+                            sale_price: null,
+                            base_unit_code: r.base_unit_name,
+                            base_unit_name: r.base_unit_name,
+                          }
+                        : null
+                    }
+                  />
+                ),
               },
               { key: 'stock_value', label: copy.stockValue, align: 'end' },
               { key: 'last_sale_date', label: copy.lastSale, align: 'start', render: (r) => r.last_sale_date ?? copy.neverSold },

@@ -17,9 +17,9 @@ import { ReportFrame } from '../common/ReportFrame';
 import { ReportTable } from '../common/ReportTable';
 import { csvBytes, toCsv } from '../common/csv';
 import { fetchAllPages } from '../common/exportAll';
-import { formatQuantityWithPack } from '../common/quantity';
 import { buildStockValuationModel } from '../common/printModels';
 import { useReportCopy } from '../common/reportCopy';
+import { PackQuantity } from '../../../shared/components';
 
 const LIMIT = 50;
 const DEBOUNCE_MS = 400;
@@ -218,7 +218,26 @@ export function StockValuationReport() {
                 key: 'quantity_base',
                 label: '',
                 align: 'end',
-                render: (r) => formatQuantityWithPack(r.quantity_base, r.base_unit_name, r.pack_unit_name, r.pack_factor, locale),
+                render: (r) => (
+                  <PackQuantity
+                    baseQuantity={r.quantity_base}
+                    baseUnitName={r.base_unit_name}
+                    pack={
+                      r.pack_unit_name && r.pack_factor
+                        ? {
+                            variant_id: r.variant_id,
+                            variant_unit_id: 0,
+                            unit_code: r.pack_unit_name,
+                            unit_name: r.pack_unit_name,
+                            conversion_factor: r.pack_factor,
+                            sale_price: null,
+                            base_unit_code: r.base_unit_name,
+                            base_unit_name: r.base_unit_name,
+                          }
+                        : null
+                    }
+                  />
+                ),
               },
               { key: 'wac', label: copy.avgCost, align: 'end', render: (r) => r.wac ?? '—' },
               { key: 'stock_value', label: copy.stockValue, align: 'end' },

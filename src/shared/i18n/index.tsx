@@ -32,7 +32,7 @@ interface I18nContextValue {
   t: (key: MessageKey | ErrorMessageKey, vars?: TranslateVars) => string;
 }
 
-const I18nContext = createContext<I18nContextValue | null>(null);
+export const I18nContext = createContext<I18nContextValue | null>(null);
 
 function dirFor(locale: Locale): 'ltr' | 'rtl' {
   return RTL_LOCALES.includes(locale) ? 'rtl' : 'ltr';

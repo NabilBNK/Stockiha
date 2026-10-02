@@ -1,12 +1,13 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
 } from "react";
 
-import { Banner, Button, Spinner, TextField } from "../../shared/components";
+import { Banner, Button, PackQuantity, Spinner, TextField } from "../../shared/components";
 import { useI18n, type MessageKey } from "../../shared/i18n";
 import { codeForError, useErrorText } from "../../shared/hooks/useErrorText";
 import { useSession } from "../../shared/session/SessionContext";
@@ -30,6 +31,8 @@ import {
   localIsoDate,
 } from "./exactDecimal";
 import { useUnitFractionRules } from "./useUnitFractionRules";
+import { usePrimaryPacks } from "../../shared/hooks/usePrimaryPacks";
+import { compareDecimal, packsToBase } from "../../shared/utils/packMath";
 
 type Direction = "increase" | "decrease";
 
@@ -136,6 +139,16 @@ export function StockAdjustmentScreen() {
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [unitsError, setUnitsError] = useState<string | null>(null);
   const [unitId, setUnitId] = useState<number | null>(null);
+
+  const variantIds = useMemo(() => {
+    const ids: number[] = [];
+    if (variantId != null) ids.push(variantId);
+    for (const l of lines) {
+      ids.push(l.id);
+    }
+    return Array.from(new Set(ids));
+  }, [variantId, lines]);
+  const { packs } = usePrimaryPacks(variantIds);
   // WS-D-13 Phase A. The quantity is typed in the SELECTED unit, so the flag
   // consulted is that unit's own, not the variant's base.
   const { allowsFractionsById } = useUnitFractionRules(token);
@@ -318,7 +331,9 @@ export function StockAdjustmentScreen() {
             setLines((current) =>
               current.map((l) => {
                 if (l.id !== line.id) return l;
-                const defaultUnit = items.find((u) => u.is_base)?.unit_id ?? items[0]?.unit_id ?? null;
+                const pack = packs.get(l.id);
+                const packUnit = pack ? items.find((u) => u.unit_code === pack.unit_code) : null;
+                const defaultUnit = packUnit?.unit_id ?? items.find((u) => u.is_base)?.unit_id ?? items[0]?.unit_id ?? null;
                 return {
                   ...l,
                   units: items,
@@ -330,7 +345,7 @@ export function StockAdjustmentScreen() {
           .catch(() => {});
       }
     });
-  }, [token, lines]);
+  }, [token, lines, packs]);
 
   const handleBarcodeSubmit = useCallback(() => {
     const code = barcodeInput.trim();
@@ -353,8 +368,11 @@ export function StockAdjustmentScreen() {
     try {
       const items = await ipc.listStockAdjustmentUnits(token, variantId);
       setUnits(items);
+      const pack = packs.get(variantId);
+      const packUnit = pack ? items.find((u) => u.unit_code === pack.unit_code) : null;
       setUnitId(
-        items.find((item) => item.is_base)?.unit_id ??
+        packUnit?.unit_id ??
+          items.find((item) => item.is_base)?.unit_id ??
           items[0]?.unit_id ??
           null,
       );
@@ -365,7 +383,25 @@ export function StockAdjustmentScreen() {
     } finally {
       setUnitsLoading(false);
     }
-  }, [errorText, token, variantId]);
+  }, [errorText, packs, token, variantId]);
+
+  useEffect(() => {
+    if (variantId != null && units.length > 0) {
+      const pack = packs.get(variantId);
+      if (pack) {
+        const packUnit = units.find((u) => u.unit_code === pack.unit_code);
+        if (packUnit) {
+          setUnitId((curr) => {
+            const currentUnit = units.find((u) => u.unit_id === curr);
+            if (!curr || currentUnit?.is_base) {
+              return packUnit.unit_id;
+            }
+            return curr;
+          });
+        }
+      }
+    }
+  }, [packs, variantId, units]);
   useEffect(() => {
     setVariantId(null);
     setUnits([]);
@@ -408,6 +444,17 @@ export function StockAdjustmentScreen() {
    * to `listUnitsV2` by unit_id — frontend only, no backend change.
    */
   const selectedUnit = units.find((u) => u.unit_id === unitId) ?? null;
+  const isSelectedUnitPack = Boolean(selectedUnit && !selectedUnit.is_base && compareDecimal(selectedUnit.conversion_factor, '1') > 0);
+  const packBaseQty = useMemo(() => {
+    if (!isSelectedUnitPack || !selectedUnit || !isPositiveExactQuantity(quantity)) return null;
+    try {
+      return packsToBase(quantity, selectedUnit.conversion_factor, '0');
+    } catch {
+      return null;
+    }
+  }, [isSelectedUnitPack, selectedUnit, quantity]);
+  const baseUnit = units.find((u) => u.is_base);
+  const baseUnitName = baseUnit?.unit_name || baseUnit?.unit_code || packs.get(variantId ?? 0)?.base_unit_name || '';
   const selectedUnitAllowsFractions = allowsFractionsById(unitId);
   const quantityUnitError =
     quantity !== "" &&
@@ -862,9 +909,11 @@ export function StockAdjustmentScreen() {
                         </td>
                         <td>
                           <span style={{ fontWeight: 600 }}>
-                            {formatExactDecimal(
-                              line.variant.quantity_on_hand ?? "0",
-                            )}
+                            <PackQuantity
+                              baseQuantity={line.variant.quantity_on_hand ?? "0"}
+                              baseUnitName={packs.get(line.id)?.base_unit_name || line.variant.default_unit_name || line.variant.default_unit_code || 'Unit'}
+                              pack={packs.get(line.id)}
+                            />
                           </span>
                         </td>
                         <td>
@@ -885,6 +934,22 @@ export function StockAdjustmentScreen() {
                                 !isPositiveExactQuantity(line.quantity))
                             }
                           />
+                          {(() => {
+                            const u = line.units.find((unit) => unit.unit_id === line.unitId);
+                            if (!u || u.is_base || compareDecimal(u.conversion_factor, '1') <= 0 || !isPositiveExactQuantity(line.quantity)) return null;
+                            try {
+                              const eq = packsToBase(line.quantity, u.conversion_factor, '0');
+                              const baseU = line.units.find((unit) => unit.is_base);
+                              const bName = baseU?.unit_name || baseU?.unit_code || '';
+                              return (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--sk-muted, #6b7280)', marginTop: '2px' }}>
+                                  {t('pack.display.equals', { baseQty: eq, base: bName })}
+                                </div>
+                              );
+                            } catch {
+                              return null;
+                            }
+                          })()}
                         </td>
                         <td>
                           <select
@@ -1021,7 +1086,13 @@ export function StockAdjustmentScreen() {
                         }`}
                       >
                         <span>{t("adjustment.currentQuantity")}:</span>{" "}
-                        <strong>{formatExactDecimal(selectedVariant.quantity_on_hand ?? "0")}</strong>
+                        <strong>
+                          <PackQuantity
+                            baseQuantity={selectedVariant.quantity_on_hand ?? "0"}
+                            baseUnitName={packs.get(selectedVariant.variant_id)?.base_unit_name || selectedVariant.default_unit_name || selectedVariant.default_unit_code || 'Unit'}
+                            pack={packs.get(selectedVariant.variant_id)}
+                          />
+                        </strong>
                       </span>
                     )}
                     {selectedVariant.last_known_wac != null && (
@@ -1095,22 +1166,29 @@ export function StockAdjustmentScreen() {
               </label>
             </fieldset>
             <div className="sk-form-grid">
-              <TextField
-                label={t("adjustment.quantity")}
-                value={quantity}
-                inputMode="decimal"
-                onChange={(event) => {
-                  setQuantity(event.target.value);
-                  invalidateRequest();
-                }}
-                error={
-                  quantity !== "" && !quantityValid
-                    ? t("adjustment.quantityError")
-                    : quantityUnitError ?? undefined
-                }
-                data-testid="adjustment-quantity"
-                required
-              />
+              <div>
+                <TextField
+                  label={t("adjustment.quantity")}
+                  value={quantity}
+                  inputMode="decimal"
+                  onChange={(event) => {
+                    setQuantity(event.target.value);
+                    invalidateRequest();
+                  }}
+                  error={
+                    quantity !== "" && !quantityValid
+                      ? t("adjustment.quantityError")
+                      : quantityUnitError ?? undefined
+                  }
+                  data-testid="adjustment-quantity"
+                  required
+                />
+                {packBaseQty && baseUnitName ? (
+                  <p style={{ margin: '-0.5rem 0 0.5rem 0', fontSize: '0.8125rem', color: 'var(--sk-muted, #6b7280)' }}>
+                    {t('pack.display.equals', { baseQty: packBaseQty, base: baseUnitName })}
+                  </p>
+                ) : null}
+              </div>
               <div className="sk-field">
                 <label className="sk-field__label" htmlFor="adjustment-unit">
                   {t("adjustment.unit")}

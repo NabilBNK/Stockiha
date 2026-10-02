@@ -19,6 +19,7 @@ import { fetchAllPages } from '../common/exportAll';
 import { formatQuantityWithPack } from '../common/quantity';
 import { buildLowStockModel } from '../common/printModels';
 import { useReportCopy } from '../common/reportCopy';
+import { PackQuantity } from '../../../shared/components';
 import type { AppView } from '../../../app/AppShell';
 
 const LIMIT = 50;
@@ -283,7 +284,31 @@ export function LowStockReport({ setView }: { setView: (v: AppView) => void }) {
                 },
                 { key: 'product_name', label: copy.lowStock, align: 'start' },
                 { key: 'sku', label: 'SKU', align: 'start' },
-                { key: 'on_hand', label: copy.onHand, align: 'end' },
+                {
+                  key: 'on_hand',
+                  label: copy.onHand,
+                  align: 'end',
+                  render: (r) => (
+                    <PackQuantity
+                      baseQuantity={r.on_hand}
+                      baseUnitName={r.base_unit_name}
+                      pack={
+                        r.pack_unit_name && r.pack_factor
+                          ? {
+                              variant_id: r.variant_id,
+                              variant_unit_id: 0,
+                              unit_code: r.pack_unit_name,
+                              unit_name: r.pack_unit_name,
+                              conversion_factor: r.pack_factor,
+                              sale_price: null,
+                              base_unit_code: r.base_unit_name,
+                              base_unit_name: r.base_unit_name,
+                            }
+                          : null
+                      }
+                    />
+                  ),
+                },
                 { key: 'minimum_stock', label: copy.minimumStock, align: 'end' },
                 {
                   key: 'suggested_qty_base',

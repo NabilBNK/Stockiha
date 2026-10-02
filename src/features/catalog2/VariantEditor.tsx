@@ -44,9 +44,11 @@
  */
 import { useCallback, useState, type ReactNode } from 'react';
 
-import { Banner, Button } from '../../shared/components';
+import { Banner, Button, PackQuantity } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
-import type { AttributeDefinition, VariantDetail } from '../../shared/ipc/dto';
+import type { AttributeDefinition, PrimaryPack, VariantDetail } from '../../shared/ipc/dto';
+import { formatPackQuantity } from '../../shared/utils/packMath';
+import { isExactDecimalPositive } from '../inventory/exactDecimal';
 import { AttributeManagerForVariant } from './attributeSelection';
 import { InlineCell } from './InlineCell';
 import { isValidMinimumStock, isValidPrice } from './catalogValidation';
@@ -96,6 +98,8 @@ export function VariantEditor({
   attributes,
   refLoading,
   stock,
+  primaryPack,
+  baseUnitName,
   busy,
   onCommitName,
   onCommitPrice,
@@ -113,6 +117,10 @@ export function VariantEditor({
   refLoading: boolean;
   /** From the list row; undefined when this variant is not on the loaded page. */
   stock?: string;
+  /** Primary pack if configured for this variant (WS-O-5). */
+  primaryPack?: PrimaryPack | null;
+  /** Name of base unit (e.g. Piece) for pack formatting. */
+  baseUnitName?: string;
   /** True while a structural action (deactivate/activate) is in flight. */
   busy: boolean;
   onCommitName: (nameOverride: string | null) => Promise<void>;
@@ -225,8 +233,13 @@ export function VariantEditor({
             testId={`catalog2-panel-min-${variant.variant_id}`}
           />
         </div>
+        {primaryPack && isExactDecimalPositive(variant.minimum_stock) ? (
+          <p className="sk-catalog2__note" style={{ marginTop: '0.25rem', fontSize: '0.8125rem' }}>
+            = {formatPackQuantity(variant.minimum_stock, { unitName: primaryPack.unit_name, factor: primaryPack.conversion_factor }, baseUnitName || primaryPack.base_unit_name)}
+          </p>
+        ) : null}
         <p className="sk-catalog2__note">
-          {t('productsList.stock')}: <strong>{stock !== undefined ? format(stock) : '—'}</strong>
+          {t('productsList.stock')}: <strong>{stock !== undefined ? <PackQuantity baseQuantity={stock} baseUnitName={baseUnitName || primaryPack?.base_unit_name || ''} pack={primaryPack} /> : '—'}</strong>
         </p>
       </div>
 

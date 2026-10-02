@@ -12,6 +12,8 @@ import type { AttributeDefinition, ProductListItem } from "../ipc/dto";
 import * as ipc from "../ipc/gateway";
 import { SessionContext } from "../session/SessionContext";
 import { formatExactDecimal, isExactDecimalPositive, isExactDecimalZero } from "../../features/inventory/exactDecimal";
+import { PackQuantity } from "./PackQuantity";
+import { usePrimaryPacks } from "../hooks/usePrimaryPacks";
 import "../../features/procurement/procurement.css";
 
 export interface ItemSearchModalProps {
@@ -243,6 +245,12 @@ export function ItemSearchModal({
     selectedUnit,
     selectedAttributes,
   ]);
+
+  const visibleVariantIds = useMemo(
+    () => (isOpen ? filteredItems.map((item) => item.variant_id) : []),
+    [isOpen, filteredItems]
+  );
+  const { packs } = usePrimaryPacks(visibleVariantIds);
 
   function handleQueryChange(value: string) {
     setSearchQuery(value);
@@ -745,7 +753,12 @@ export function ItemSearchModal({
                                    : "var(--sk-success, #059669)",
                               }}
                             >
-                              Stock: {formatExactDecimal(item.quantity_on_hand)}
+                              Stock:{" "}
+                              <PackQuantity
+                                baseQuantity={item.quantity_on_hand}
+                                baseUnitName={packs.get(item.variant_id)?.base_unit_name || item.default_unit_code || "Unit"}
+                                pack={packs.get(item.variant_id)}
+                              />
                             </span>
                           )}
                           {(item.sale_price || item.last_known_wac) && (

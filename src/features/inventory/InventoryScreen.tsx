@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import { useAppData } from '../../app/AppDataContext';
-import { Banner, Button, Spinner, TextField } from '../../shared/components';
+import { Banner, Button, PackQuantity, Spinner, TextField } from '../../shared/components';
 import { useErrorText } from '../../shared/hooks/useErrorText';
+import { usePrimaryPacks } from '../../shared/hooks/usePrimaryPacks';
 import { useI18n } from '../../shared/i18n';
 import * as ipc from '../../shared/ipc/gateway';
 import type { InventorySnapshotItem } from '../../shared/ipc/dto';
@@ -22,6 +23,9 @@ export function InventoryScreen() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const variantIds = useMemo(() => items.map((i) => i.variant_id), [items]);
+  const { packs } = usePrimaryPacks(variantIds);
 
   const load = useCallback(async () => {
     if (!token || selectedWarehouseId == null) {
@@ -146,7 +150,11 @@ export function InventoryScreen() {
                       </span>
                     </td>
                     <td className="sk-num">
-                      {formatExactDecimal(item.quantity_on_hand)} {item.base_unit_code}
+                      <PackQuantity
+                        baseQuantity={item.quantity_on_hand}
+                        baseUnitName={packs.get(item.variant_id)?.base_unit_name || item.base_unit_code}
+                        pack={packs.get(item.variant_id)}
+                      />
                     </td>
                     <td className="sk-num">{formatExactDecimal(item.last_known_wac)} DZD</td>
                     <td className="sk-num">{formatExactDecimal(item.total_value)} DZD</td>

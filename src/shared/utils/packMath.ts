@@ -183,18 +183,18 @@ export function formatPackQuantity(
 ): string {
   if (!pack || compareDecimal(pack.factor, '1') <= 0) {
     const qty = formatScaled(parseScaled(baseQty, 6), 6);
-    return `${qty} ${baseUnitName}`;
+    return baseUnitName ? `${qty} ${baseUnitName}` : qty;
   }
 
   const { packs, rest } = splitBaseQuantity(baseQty, pack.factor);
 
   if (packs === '0') {
-    return `${rest} ${baseUnitName}`;
+    return baseUnitName ? `${rest} ${baseUnitName}` : rest;
   }
   if (rest === '0') {
     return `${packs} ${pack.unitName}`;
   }
-  return `${packs} ${pack.unitName} + ${rest} ${baseUnitName}`;
+  return `${packs} ${pack.unitName} + ${baseUnitName ? `${rest} ${baseUnitName}` : rest}`;
 }
 
 export { formatExactDecimal } from '../../features/inventory/exactDecimal';

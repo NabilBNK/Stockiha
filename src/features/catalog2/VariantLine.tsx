@@ -32,7 +32,8 @@
  * string, so nothing formatted ever reaches the gateway.
  */
 import { useI18n } from '../../shared/i18n';
-import type { ProductListItemV2 } from '../../shared/ipc/dto';
+import type { PrimaryPack, ProductListItemV2 } from '../../shared/ipc/dto';
+import { PackQuantity } from '../../shared/components';
 import { isExactDecimalZero, isLowStock } from '../inventory/exactDecimal';
 import { InlineCell } from './InlineCell';
 import { isValidMinimumStock, isValidPrice } from './catalogValidation';
@@ -40,10 +41,12 @@ import { useDecimalFormat } from './useDecimalFormat';
 
 export function VariantLine({
   variant,
+  pack,
   onCommitField,
   onOpenPanel,
 }: {
   variant: ProductListItemV2;
+  pack?: PrimaryPack | null;
   onCommitField: (
     variantId: number,
     productId: number,
@@ -91,7 +94,12 @@ export function VariantLine({
           reserved space beside them. */}
       <td className="sk-catalog2__num">
         <span className="sk-catalog2__stock">
-          <span className="sk-catalog2__stock-value">{format(variant.quantity_on_hand)}</span>
+          <PackQuantity
+            baseQuantity={variant.quantity_on_hand}
+            baseUnitName={pack?.base_unit_name || ''}
+            pack={pack}
+            className="sk-catalog2__stock-value"
+          />
           <span className="sk-catalog2__stock-badge">
             {outOfStock ? (
               <span className="sk-catalog2__pill sk-catalog2__pill--danger">{t('productsList.outOfStock')}</span>

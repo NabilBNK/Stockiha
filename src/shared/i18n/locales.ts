@@ -850,6 +850,8 @@ const fr = {
   'sale.pack.extra': 'Extra {base}',
   'sale.pack.perUnit': 'par {unit}',
   'sale.pack.piece': 'Pièce',
+  'pack.display.tooltip': '= {baseQuantity} {base}',
+  'pack.display.equals': '= {baseQty} {base}',
 };
 
 export type MessageKey = keyof typeof fr;
@@ -1694,6 +1696,8 @@ const ar: Record<MessageKey, string> = {
   'sale.pack.extra': 'إضافي {base}',
   'sale.pack.perUnit': 'لكل {unit}',
   'sale.pack.piece': 'قطعة',
+  'pack.display.tooltip': '= {baseQuantity} {base}',
+  'pack.display.equals': '= {baseQty} {base}',
 };
 
 const en: Record<MessageKey, string> = {
@@ -2537,6 +2541,8 @@ const en: Record<MessageKey, string> = {
   'sale.pack.extra': 'Extra {base}',
   'sale.pack.perUnit': 'per {unit}',
   'sale.pack.piece': 'Piece',
+  'pack.display.tooltip': '= {baseQuantity} {base}',
+  'pack.display.equals': '= {baseQty} {base}',
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { fr, ar, en };

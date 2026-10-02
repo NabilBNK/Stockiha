@@ -8,6 +8,7 @@ import { formatDisplayAmount } from '../../shared/utils/formatters';
 import { compareDecimal, multiplyExactDecimal, packRate } from '../../shared/utils/packMath';
 import { formatExactDecimal } from '../inventory/exactDecimal';
 import { normalizeDecimalInput, validatePackForm, type PackFormErrors } from './packValidation';
+import { invalidatePrimaryPacks } from '../../shared/hooks/usePrimaryPacks';
 
 function variantDisplayLabel(v: VariantDetail): string {
   if (v.effective_variant_name && v.effective_variant_name !== v.sku) {
@@ -244,6 +245,7 @@ export function PackManager({
     setError(null);
     try {
       await ipc.setPackPrimary(sessionToken, variantUnitId);
+      invalidatePrimaryPacks();
       await loadPacks();
       await onChanged?.();
     } catch (err) {
@@ -258,6 +260,7 @@ export function PackManager({
     setError(null);
     try {
       await ipc.setPackActive(sessionToken, pack.variant_unit_id, !pack.is_active);
+      invalidatePrimaryPacks();
       await loadPacks();
       await onChanged?.();
     } catch (err) {
@@ -272,6 +275,7 @@ export function PackManager({
     setDeletingPack(true);
     try {
       await ipc.removePack(sessionToken, confirmDeletePack.variant_unit_id);
+      invalidatePrimaryPacks();
       setConfirmDeletePack(null);
       await loadPacks();
       await onChanged?.();
@@ -403,6 +407,7 @@ export function PackManager({
         }
 
         setDialogOpen(false);
+        invalidatePrimaryPacks();
         await loadPacks();
         await onChanged?.();
 
@@ -422,6 +427,7 @@ export function PackManager({
         await ipc.updatePack(sessionToken, editingPack.variant_unit_id, factor, price);
 
         setDialogOpen(false);
+        invalidatePrimaryPacks();
         await loadPacks();
         await onChanged?.();
         setFeedback({ tone: 'success', message: t('pack.saved') });
@@ -472,6 +478,9 @@ export function PackManager({
       setApplyProgress({ current: i + 1, total: applySelectedVariantIds.length });
     }
 
+    if (createdCount > 0) {
+      invalidatePrimaryPacks();
+    }
     setApplyBusy(false);
     setApplyPack(null);
     setFeedback({
@@ -526,6 +535,9 @@ export function PackManager({
           // ignore duplicate
         }
       }
+    }
+    if (createdCount > 0) {
+      invalidatePrimaryPacks();
     }
     setCopyBusy(false);
     setCopyDialogOpen(false);
