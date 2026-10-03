@@ -17,6 +17,7 @@ const mockUnits: UnitLifecycleItem[] = [
     base_unit_code: null,
     base_unit_name: null,
     conversion_factor: null,
+    is_pack: false,
   },
   {
     id: 2,
@@ -29,6 +30,7 @@ const mockUnits: UnitLifecycleItem[] = [
     base_unit_code: null,
     base_unit_name: null,
     conversion_factor: null,
+    is_pack: false,
   },
   {
     id: 3,
@@ -41,6 +43,7 @@ const mockUnits: UnitLifecycleItem[] = [
     base_unit_code: 'PC',
     base_unit_name: 'Piece',
     conversion_factor: '12.000000',
+    is_pack: true,
   },
   {
     id: 4,
@@ -53,6 +56,7 @@ const mockUnits: UnitLifecycleItem[] = [
     base_unit_code: 'PC',
     base_unit_name: 'Piece',
     conversion_factor: '24',
+    is_pack: true,
   },
 ];
 
@@ -141,7 +145,8 @@ describe('UnitManager (Catalogue Setup Pack Units)', () => {
       false, // packs do not allow fractions
       null,
       1, // base unit id
-      '48' // conversion factor
+      '48', // conversion factor
+      true // is_pack
     );
   });
 
@@ -185,7 +190,8 @@ describe('UnitManager (Catalogue Setup Pack Units)', () => {
       false,
       null,
       1,
-      '36'
+      '36',
+      true
     );
   });
 

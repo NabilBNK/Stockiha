@@ -118,8 +118,9 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
       if (suppsData.length > 0 && supplierId === 0) {
         setSupplierId(suppsData[0].id);
       }
-      if (whsData.length > 0 && warehouseId === 0) {
-        setWarehouseId(whsData[0].id);
+      if (whsData.length > 0) {
+        const mainWh = whsData.find((w) => w.id === 1) ?? whsData[0];
+        setWarehouseId(mainWh.id);
       }
     } catch (err: unknown) {
       setError(errorText(err));
@@ -245,9 +246,9 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
             : line,
         ),
       );
+      setPickerOpen(false);
+      setPickerTargetIndex(null);
     }
-    setPickerOpen(false);
-    setPickerTargetIndex(null);
   };
 
   const handleBarcodeSubmit = () => {
@@ -613,21 +614,25 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
 
             <div className="pr-order-field">
               <label htmlFor="po-warehouse-select">
-                {text.destinationWarehouse} *
+                {text.destinationWarehouse}
               </label>
-              <select
+              <input
                 id="po-warehouse-select"
-                value={warehouseId}
-                onChange={(e) => setWarehouseId(parseInt(e.target.value, 10))}
-                required
+                type="text"
+                readOnly
+                value={warehouses.find((w) => w.id === (warehouseId || 1))?.name ?? 'Main Warehouse'}
+                style={{
+                  height: 38,
+                  padding: '0 12px',
+                  borderRadius: 'var(--sk-radius-sm)',
+                  border: '1px solid var(--sk-border)',
+                  background: 'var(--sk-surface-soft)',
+                  color: 'var(--sk-text)',
+                  cursor: 'default',
+                  fontWeight: 500,
+                }}
                 data-testid="po-warehouse-select"
-              >
-                {warehouses.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name} ({w.code})
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div className="pr-order-field">
@@ -892,7 +897,13 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
             isOpen={pickerOpen}
             items={products}
             disabledVariantIds={pickerTargetIndex === null ? lines.map((line) => line.variant_id) : []}
+            multiSelect={pickerTargetIndex === null}
             onSelect={handlePickerSelect}
+            onSelectMultiple={(options) => {
+              for (const opt of options) {
+                appendLineFromOption(opt);
+              }
+            }}
             onClose={() => {
               setPickerOpen(false);
               setPickerTargetIndex(null);

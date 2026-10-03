@@ -106,8 +106,9 @@ export function useCatalogueSetup(token: string) {
     code?: string | null,
     baseUnitId?: number | null,
     conversionFactor?: string | null,
+    isPack?: boolean | null,
   ) => {
-    await ipc.createUnit(token, name, allowsFractions, code, baseUnitId, conversionFactor);
+    await ipc.createUnit(token, name, allowsFractions, code, baseUnitId, conversionFactor, isPack);
     await loadUnits();
   }, [token, loadUnits]);
 
@@ -118,8 +119,9 @@ export function useCatalogueSetup(token: string) {
     code?: string | null,
     baseUnitId?: number | null,
     conversionFactor?: string | null,
+    isPack?: boolean | null,
   ) => {
-    await ipc.updateUnit(token, id, name, allowsFractions, code, baseUnitId, conversionFactor);
+    await ipc.updateUnit(token, id, name, allowsFractions, code, baseUnitId, conversionFactor, isPack);
     await loadUnits();
   }, [token, loadUnits]);
 

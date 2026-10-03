@@ -277,7 +277,7 @@ export function AppShell({
     setSearchLoading(true);
     setSearchError(null);
     try {
-      const rows = await ipc.listProductsV2(token, selectedWarehouseId, { search: query, limit: 25, offset: 0 });
+      const rows = await ipc.listProductsV2(token, selectedWarehouseId, { search: query, limit: 100, offset: 0 });
       setSearchResults(rows.map(toProductListItem));
     } catch (err) {
       setSearchError(errorText(err));

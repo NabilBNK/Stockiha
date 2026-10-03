@@ -517,6 +517,7 @@ export function createUnit(
   code?: string | null,
   baseUnitId?: number | null,
   conversionFactor?: string | null,
+  isPack?: boolean | null,
 ): Promise<number> {
   const payload: Record<string, unknown> = {
     sessionToken,
@@ -526,6 +527,7 @@ export function createUnit(
   if (code != null) payload.code = code;
   if (baseUnitId != null) payload.baseUnitId = baseUnitId;
   if (conversionFactor != null) payload.conversionFactor = conversionFactor;
+  if (isPack != null) payload.isPack = isPack;
   return call<number>(COMMANDS.CREATE_UNIT, payload);
 }
 
@@ -663,6 +665,7 @@ export function updateUnit(
   code?: string | null,
   baseUnitId?: number | null,
   conversionFactor?: string | null,
+  isPack?: boolean | null,
 ): Promise<void> {
   return call<void>(COMMANDS.UPDATE_UNIT, {
     sessionToken,
@@ -672,6 +675,7 @@ export function updateUnit(
     code: code ?? null,
     baseUnitId: baseUnitId ?? null,
     conversionFactor: conversionFactor ?? null,
+    isPack: isPack ?? null,
   });
 }
 
@@ -719,6 +723,7 @@ export interface ListProductsV2Filters {
   search?: string | null;
   categoryId?: number | null;
   includeInactive?: boolean;
+  inStockOnly?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -734,6 +739,7 @@ export function listProductsV2(
     search: filters.search ?? null,
     categoryId: filters.categoryId ?? null,
     includeInactive: filters.includeInactive ?? false,
+    inStockOnly: filters.inStockOnly ?? false,
     limit: filters.limit ?? 100,
     offset: filters.offset ?? 0,
   });

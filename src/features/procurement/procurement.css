@@ -1107,17 +1107,28 @@ div.sk-modal.pr-picker-modal.pr-picker-modal--maximized {
   padding: 0 4px;
 }
 
-/* Purchase Receipt Detail Modal: wide comfortable dialog */
+/* Purchase Receipt Detail Modal: full comfortable dialog */
 .sk-detail-dialog.pr-receipt-detail-dialog {
-  width: min(1040px, calc(100vw - 36px)) !important;
+  width: calc(100vw - 32px) !important;
+  height: calc(100vh - 32px) !important;
+  max-height: calc(100vh - 32px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  transition: width 0.2s ease, height 0.2s ease;
+}
+
+.sk-detail-dialog.pr-receipt-detail-dialog--normal {
+  width: min(1120px, calc(100vw - 48px)) !important;
+  height: min(94vh, 900px) !important;
   max-height: calc(100vh - 48px) !important;
 }
 
-.sk-detail-dialog__body {
+.sk-detail-dialog.pr-receipt-detail-dialog .sk-detail-dialog__body {
   min-height: 0 !important;
   flex: 1 1 auto !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
+  padding-bottom: 56px !important;
 }
 
 .pr-receipt-table {

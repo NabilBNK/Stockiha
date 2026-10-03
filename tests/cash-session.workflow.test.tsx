@@ -168,8 +168,7 @@ describe('S4-002 cash-session workflow', () => {
     expect(screen.queryByText('Expected cash')).not.toBeInTheDocument();
     expect(screen.getByText(/Expected cash stays hidden until you submit/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('1000.00 DZD'), { target: { value: '0' } });
-    fireEvent.change(screen.getByLabelText('100.00 DZD'), { target: { value: '9' } });
+    fireEvent.change(screen.getByLabelText('Total counted cash (DZD)'), { target: { value: '900.00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Submit blind count' }));
 
     await waitFor(() => expect(submittedCounts).toEqual([

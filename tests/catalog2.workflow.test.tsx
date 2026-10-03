@@ -52,7 +52,7 @@ function makeHandlers(extra: Handlers = {}): Handlers {
     list_categories: () => [],
     list_attributes: () => [],
     list_units: () => [{ id: 1, code: 'PCS', name: 'Pieces' }],
-    list_units_v2: () => [{ id: 1, code: 'PCS', name: 'Pieces', is_active: true, usage_count: 1 }],
+    list_units_v2: () => [{ id: 1, code: 'PCS', name: 'Pieces', is_active: true, usage_count: 1, is_pack: false }],
     ...extra,
   };
 }
@@ -2348,8 +2348,8 @@ describe('bulk variant generation (WS-D-8b Part 2)', () => {
 
     wireInvoke(handlers({
       list_units_v2: () => [
-        { id: 1, code: 'PCS', name: 'Pieces', is_active: true, usage_count: 1 },
-        { id: 2, code: 'CTN', name: 'Carton', is_active: true, base_unit_id: 1, usage_count: 0 },
+        { id: 1, code: 'PCS', name: 'Pieces', is_active: true, usage_count: 1, is_pack: false },
+        { id: 2, code: 'CTN', name: 'Carton', is_active: true, base_unit_id: 1, usage_count: 0, is_pack: true },
       ],
       add_variant: () => {
         createdVariantId += 1;

@@ -904,6 +904,7 @@ export interface UnitLifecycleItem {
   base_unit_code?: string | null;
   base_unit_name?: string | null;
   conversion_factor?: string | null;
+  is_pack: boolean;
 }
 
 export interface QuickCreatedProduct { product_id: number; variant_id: number; }

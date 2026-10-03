@@ -502,9 +502,10 @@ pub(crate) async fn create_unit(
     code: Option<&str>,
     base_unit_id: Option<i64>,
     conversion_factor: Option<Decimal>,
+    is_pack: bool,
 ) -> Result<i64, AppError> {
     let (id,) = sqlx::query_as::<_, (i64,)>(
-        "SELECT catalog.create_unit($1::text, $2::text, $3::boolean, $4::text, $5::bigint, $6::numeric)",
+        "SELECT catalog.create_unit($1::text, $2::text, $3::boolean, $4::text, $5::bigint, $6::numeric, $7::boolean)",
     )
     .bind(session_token)
     .bind(name)
@@ -512,6 +513,7 @@ pub(crate) async fn create_unit(
     .bind(code)
     .bind(base_unit_id)
     .bind(conversion_factor)
+    .bind(is_pack)
     .fetch_one(pool)
     .await
     .map_err(AppError::from_posting_error)?;
@@ -996,6 +998,7 @@ pub(crate) struct UnitLifecycleItem {
     pub base_unit_code: Option<String>,
     pub base_unit_name: Option<String>,
     pub conversion_factor: Option<Decimal>,
+    pub is_pack: bool,
 }
 
 pub(crate) struct QuickCreatedProduct {
@@ -1346,9 +1349,10 @@ pub(crate) async fn list_units_v2(
             Option<String>,
             Option<String>,
             Option<Decimal>,
+            bool,
         ),
     >(
-        "SELECT id, code, name, is_active, allows_fractions, usage_count, base_unit_id, base_unit_code, base_unit_name, conversion_factor \
+        "SELECT id, code, name, is_active, allows_fractions, usage_count, base_unit_id, base_unit_code, base_unit_name, conversion_factor, is_pack \
          FROM catalog.list_units_v2($1::text)",
     )
     .bind(session_token)
@@ -1369,6 +1373,7 @@ pub(crate) async fn list_units_v2(
                 base_unit_code,
                 base_unit_name,
                 conversion_factor,
+                is_pack,
             )| UnitLifecycleItem {
                 id,
                 code,
@@ -1380,6 +1385,7 @@ pub(crate) async fn list_units_v2(
                 base_unit_code,
                 base_unit_name,
                 conversion_factor,
+                is_pack,
             },
         )
         .collect())
@@ -1408,9 +1414,10 @@ pub(crate) async fn update_unit(
     code: Option<&str>,
     base_unit_id: Option<i64>,
     conversion_factor: Option<Decimal>,
+    is_pack: Option<bool>,
 ) -> Result<(), AppError> {
     sqlx::query(
-        "SELECT catalog.update_unit($1::text, $2::bigint, $3::text, $4::boolean, $5::text, $6::bigint, $7::numeric)",
+        "SELECT catalog.update_unit($1::text, $2::bigint, $3::text, $4::boolean, $5::text, $6::bigint, $7::numeric, $8::boolean)",
     )
     .bind(session_token)
     .bind(unit_id)
@@ -1419,6 +1426,7 @@ pub(crate) async fn update_unit(
     .bind(code)
     .bind(base_unit_id)
     .bind(conversion_factor)
+    .bind(is_pack)
     .execute(pool)
     .await
     .map_err(AppError::from_posting_error)?;
@@ -1438,6 +1446,7 @@ pub(crate) async fn rename_unit(
         unit_id,
         name,
         allows_fractions,
+        None,
         None,
         None,
         None,
@@ -1525,6 +1534,7 @@ pub(crate) async fn list_products_v2(
     search: Option<&str>,
     category_id: Option<i64>,
     include_inactive: bool,
+    in_stock_only: bool,
     limit: i32,
     offset: i32,
 ) -> Result<Vec<ProductListItemV2>, AppError> {
@@ -1535,13 +1545,14 @@ pub(crate) async fn list_products_v2(
                 quantity_on_hand, last_known_wac, attributes, total_count \
          FROM catalog.list_products_v2( \
                 $1::text, $2::bigint, $3::text, $4::bigint, \
-                $5::boolean, $6::integer, $7::integer)",
+                $5::boolean, $6::boolean, $7::integer, $8::integer)",
     )
     .bind(session_token)
     .bind(warehouse_id)
     .bind(search)
     .bind(category_id)
     .bind(include_inactive)
+    .bind(in_stock_only)
     .bind(limit)
     .bind(offset)
     .fetch_all(pool)
@@ -1649,6 +1660,7 @@ mod tests {
             None,
             None,
             None,
+            false,
         )
         .await
         .expect("creating a fixture unit must succeed")
@@ -1771,6 +1783,7 @@ mod tests {
             Some("50%"),
             None,
             false,
+            false,
             100,
             0,
         )
@@ -1799,6 +1812,7 @@ mod tests {
             Some(barcode_1.as_str()),
             None,
             false,
+            false,
             100,
             0,
         )
@@ -1822,6 +1836,7 @@ mod tests {
             Some(plain_tee_name.as_str()),
             None,
             false,
+            false,
             100,
             0,
         )
@@ -1841,6 +1856,7 @@ mod tests {
             warehouse_id,
             Some(cotton_shirt_name.as_str()),
             None,
+            false,
             false,
             1,
             0,
@@ -1920,6 +1936,7 @@ mod tests {
             warehouse_id,
             Some(renamed.as_str()),
             None,
+            false,
             false,
             100,
             0,

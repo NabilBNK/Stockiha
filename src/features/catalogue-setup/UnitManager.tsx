@@ -16,6 +16,7 @@ export interface UnitManagerProps {
     code?: string | null,
     baseUnitId?: number | null,
     conversionFactor?: string | null,
+    isPack?: boolean | null,
   ) => Promise<void>;
   onRename?: (id: number, name: string, allowsFractions: boolean) => Promise<void>;
   onUpdate: (
@@ -25,6 +26,7 @@ export interface UnitManagerProps {
     code?: string | null,
     baseUnitId?: number | null,
     conversionFactor?: string | null,
+    isPack?: boolean | null,
   ) => Promise<void>;
   onToggleActive: (id: number, isActive: boolean) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
@@ -46,7 +48,7 @@ export function UnitManager({
 
   // Create state
   const [newName, setNewName] = useState('');
-  const [isPack, setIsPack] = useState(false);
+  const [unitKind, setUnitKind] = useState<'BASE' | 'PRECONFIGURED_PACK' | 'FLEXIBLE_PACK'>('BASE');
   // Default to permissive (true), matching the column default
   const [newAllowsFractions, setNewAllowsFractions] = useState(true);
   const [newBaseUnitId, setNewBaseUnitId] = useState<number | null>(null);
@@ -58,7 +60,7 @@ export function UnitManager({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editAllowsFractions, setEditAllowsFractions] = useState(false);
-  const [editIsPack, setEditIsPack] = useState(false);
+  const [editUnitKind, setEditUnitKind] = useState<'BASE' | 'PRECONFIGURED_PACK' | 'FLEXIBLE_PACK'>('BASE');
   const [editBaseUnitId, setEditBaseUnitId] = useState<number | null>(null);
   const [editFactor, setEditFactor] = useState('');
   const [editFactorLocked, setEditFactorLocked] = useState(false);
@@ -67,15 +69,15 @@ export function UnitManager({
   const [rowError, setRowError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
-  // Base units available for selection (units without a base_unit_id)
+  // Base units available for selection (units where is_pack is false)
   const availableBaseUnits = useMemo(
-    () => items.filter((u) => u.base_unit_id == null && u.is_active),
+    () => items.filter((u) => !u.is_pack && u.is_active),
     [items]
   );
 
   const selectedBaseUnit = useMemo(
-    () => items.find((u) => u.id === (isPack ? newBaseUnitId : null)),
-    [items, isPack, newBaseUnitId]
+    () => items.find((u) => u.id === (unitKind === 'PRECONFIGURED_PACK' ? newBaseUnitId : null)),
+    [items, unitKind, newBaseUnitId]
   );
 
   function handleNameChange(val: string) {
@@ -84,7 +86,7 @@ export function UnitManager({
 
   function resetCreateForm() {
     setNewName('');
-    setIsPack(false);
+    setUnitKind('BASE');
     setNewAllowsFractions(true);
     setNewBaseUnitId(null);
     setNewFactor('');
@@ -96,7 +98,7 @@ export function UnitManager({
     const name = newName.trim();
     if (!name || creating) return;
 
-    if (isPack) {
+    if (unitKind === 'PRECONFIGURED_PACK') {
       if (!newBaseUnitId) {
         setCreateError(t('catalogueSetup.units.baseUnitRequired' as MessageKey) || 'Please select a base unit.');
         return;
@@ -113,10 +115,11 @@ export function UnitManager({
     try {
       await onCreate(
         name,
-        isPack ? false : newAllowsFractions,
+        unitKind === 'BASE' ? newAllowsFractions : false,
         null,
-        isPack ? newBaseUnitId : null,
-        isPack ? newFactor.trim() : null
+        unitKind === 'PRECONFIGURED_PACK' ? newBaseUnitId : null,
+        unitKind === 'PRECONFIGURED_PACK' ? newFactor.trim() : null,
+        unitKind !== 'BASE'
       );
       resetCreateForm();
     } catch (err) {
@@ -130,8 +133,12 @@ export function UnitManager({
     setEditingId(item.id);
     setEditName(item.name);
     setEditAllowsFractions(item.allows_fractions);
-    const itemIsPack = item.base_unit_id != null;
-    setEditIsPack(itemIsPack);
+    const kind = !item.is_pack
+      ? 'BASE'
+      : item.base_unit_id != null
+      ? 'PRECONFIGURED_PACK'
+      : 'FLEXIBLE_PACK';
+    setEditUnitKind(kind);
     setEditBaseUnitId(item.base_unit_id ?? null);
     setEditFactor(item.conversion_factor ? formatExactDecimal(item.conversion_factor) : '');
     setEditFactorLocked(item.usage_count > 0);
@@ -142,7 +149,7 @@ export function UnitManager({
     const name = editName.trim();
     if (!name || busyId != null) return;
 
-    if (editIsPack) {
+    if (editUnitKind === 'PRECONFIGURED_PACK') {
       if (!editBaseUnitId) {
         setRowError(t('catalogueSetup.units.baseUnitRequired' as MessageKey) || 'Please select a base unit.');
         return;
@@ -157,16 +164,17 @@ export function UnitManager({
     setBusyId(id);
     setRowError(null);
     try {
-      if (onRename && !editIsPack) {
+      if (editUnitKind === 'BASE' && onRename) {
         await onRename(id, name, editAllowsFractions);
-      } else if (onUpdate) {
+      } else {
         await onUpdate(
           id,
           name,
-          editIsPack ? false : editAllowsFractions,
+          editUnitKind === 'BASE' ? editAllowsFractions : false,
           null,
-          editIsPack ? editBaseUnitId : null,
-          editIsPack ? editFactor.trim() : null
+          editUnitKind === 'PRECONFIGURED_PACK' ? editBaseUnitId : null,
+          editUnitKind === 'PRECONFIGURED_PACK' ? editFactor.trim() : null,
+          editUnitKind !== 'BASE'
         );
       }
       setEditingId(null);
@@ -231,9 +239,9 @@ export function UnitManager({
             <input
               type="radio"
               name="unitType"
-              checked={!isPack}
+              checked={unitKind === 'BASE'}
               onChange={() => {
-                setIsPack(false);
+                setUnitKind('BASE');
                 setNewBaseUnitId(null);
                 setNewFactor('');
               }}
@@ -241,7 +249,7 @@ export function UnitManager({
               data-testid="unit-type-standard"
             />
             <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>
-              {t('catalogueSetup.units.typeStandard' as MessageKey) || 'Unité standard'}
+              {t('catalogueSetup.units.typeStandard' as MessageKey) || 'Unité de base (Pièce, Kg...)'}
             </span>
           </label>
 
@@ -249,9 +257,9 @@ export function UnitManager({
             <input
               type="radio"
               name="unitType"
-              checked={isPack}
+              checked={unitKind === 'PRECONFIGURED_PACK'}
               onChange={() => {
-                setIsPack(true);
+                setUnitKind('PRECONFIGURED_PACK');
                 if (!newBaseUnitId && availableBaseUnits.length > 0) {
                   setNewBaseUnitId(availableBaseUnits[0].id);
                 }
@@ -260,13 +268,31 @@ export function UnitManager({
               data-testid="unit-type-pack"
             />
             <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>
-              {t('catalogueSetup.units.typePack' as MessageKey) || "Boîte / Pack d'une autre unité"}
+              {t('catalogueSetup.units.typePack' as MessageKey) || 'Pack prédéfini (ex: Carton = 50 Pièces)'}
+            </span>
+          </label>
+
+          <label className="sk-checkbox-row" style={{ cursor: 'pointer', margin: 0 }}>
+            <input
+              type="radio"
+              name="unitType"
+              checked={unitKind === 'FLEXIBLE_PACK'}
+              onChange={() => {
+                setUnitKind('FLEXIBLE_PACK');
+                setNewBaseUnitId(null);
+                setNewFactor('');
+              }}
+              disabled={creating}
+              data-testid="unit-type-flexible-pack"
+            />
+            <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>
+              {t('catalogueSetup.units.typeFlexiblePack' as MessageKey) || 'Emballage flexible (Boîte, Caisse - quantité par produit)'}
             </span>
           </label>
         </div>
 
-        {/* Standard Unit Input Row */}
-        {!isPack ? (
+        {/* Base Unit Input Row */}
+        {unitKind === 'BASE' ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '0.75rem 1rem' }}>
             <div style={{ flex: '1 1 260px', maxWidth: '340px' }}>
               <TextField
@@ -304,8 +330,8 @@ export function UnitManager({
               </Button>
             </div>
           </div>
-        ) : (
-          /* Pack Unit Input Row */
+        ) : unitKind === 'PRECONFIGURED_PACK' ? (
+          /* Preconfigured Pack Unit Input Row */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '0.75rem 1rem' }}>
               <div style={{ flex: '1 1 220px', maxWidth: '300px' }}>
@@ -315,7 +341,7 @@ export function UnitManager({
                   value={newName}
                   onChange={(e) => handleNameChange(e.target.value)}
                   disabled={creating}
-                  placeholder="ex: Boîte de 12, Carton de 24..."
+                  placeholder="ex: Carton de 50, Boîte de 12..."
                   required
                 />
               </div>
@@ -344,11 +370,11 @@ export function UnitManager({
               <div style={{ width: '110px' }}>
                 <TextField
                   id={`${formId}-factor`}
-                  label={t('catalogueSetup.units.conversionFactor' as MessageKey) || 'Quantité'}
+                  label={t('catalogueSetup.units.conversionFactor' as MessageKey) || 'Quantité fixe'}
                   value={newFactor}
                   onChange={(e) => setNewFactor(e.target.value)}
                   disabled={creating}
-                  placeholder="12"
+                  placeholder="50"
                   inputMode="decimal"
                 />
               </div>
@@ -383,9 +409,40 @@ export function UnitManager({
                 }}
                 data-testid="unit-create-preview"
               >
-                👉 1 {newName.trim() || 'Boîte'} = {newFactor.trim()} {selectedBaseUnit.name}
+                👉 1 {newName.trim() || 'Carton'} = {newFactor.trim()} {selectedBaseUnit.name}
               </div>
             )}
+          </div>
+        ) : (
+          /* Flexible Pack Unit Input Row */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '0.75rem 1rem' }}>
+              <div style={{ flex: '1 1 260px', maxWidth: '340px' }}>
+                <TextField
+                  id={`${formId}-name`}
+                  label={t('catalogueSetup.units.name')}
+                  value={newName}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  disabled={creating}
+                  placeholder="ex: Boîte, Caisse, Palette..."
+                  required
+                />
+              </div>
+
+              <div style={{ paddingBottom: '3px' }}>
+                <Button
+                  type="submit"
+                  loading={creating}
+                  disabled={!newName.trim()}
+                  data-testid="unit-create-submit"
+                >
+                  {t('catalogueSetup.units.create')}
+                </Button>
+              </div>
+            </div>
+            <p className="sk-muted" style={{ margin: '4px 0 0', fontSize: '0.82rem' }}>
+              💡 {t('catalogueSetup.units.flexiblePackNote' as MessageKey) || "Emballage générique. La quantité contenue sera définie sur chaque produit (ex: Boîte de 12 pour un produit, Boîte de 24 pour un autre)."}
+            </p>
           </div>
         )}
       </form>
@@ -410,7 +467,6 @@ export function UnitManager({
                 const isEditing = editingId === item.id;
                 const isBusy = busyId === item.id;
                 const canDelete = item.usage_count === 0;
-                const itemIsPack = item.base_unit_id != null;
 
                 return (
                   <tr key={item.id} className={item.is_active ? '' : 'sk-row--inactive'}>
@@ -434,7 +490,7 @@ export function UnitManager({
                     {/* Type and specification column */}
                     <td>
                       {isEditing ? (
-                        editIsPack ? (
+                        editUnitKind === 'PRECONFIGURED_PACK' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <span>1 =</span>
@@ -466,6 +522,10 @@ export function UnitManager({
                               </span>
                             ) : null}
                           </div>
+                        ) : editUnitKind === 'FLEXIBLE_PACK' ? (
+                          <span className="sk-badge sk-badge--secondary">
+                            📦 {t('catalogueSetup.units.typeFlexiblePack' as MessageKey) || 'Emballage flexible'}
+                          </span>
                         ) : (
                           <label className="sk-checkbox-row">
                             <input
@@ -478,10 +538,16 @@ export function UnitManager({
                             <span>{t('catalogueSetup.units.allowsFractions')}</span>
                           </label>
                         )
-                      ) : itemIsPack ? (
-                        <span className="sk-badge sk-badge--info" data-testid={`unit-pack-badge-${item.id}`}>
-                          📦 1 = {item.conversion_factor ? formatExactDecimal(item.conversion_factor) : ''} × {item.base_unit_name ?? item.base_unit_code}
-                        </span>
+                      ) : item.is_pack ? (
+                        item.base_unit_id != null ? (
+                          <span className="sk-badge sk-badge--info" data-testid={`unit-pack-badge-${item.id}`}>
+                            📦 1 = {item.conversion_factor ? formatExactDecimal(item.conversion_factor) : ''} × {item.base_unit_name ?? item.base_unit_code}
+                          </span>
+                        ) : (
+                          <span className="sk-badge sk-badge--secondary" data-testid={`unit-pack-badge-${item.id}`}>
+                            📦 {t('catalogueSetup.units.typeFlexiblePack' as MessageKey) || 'Emballage flexible'}
+                          </span>
+                        )
                       ) : (
                         <span data-testid={`coded-ref-flag-${item.id}`}>
                           {item.allows_fractions
@@ -525,7 +591,7 @@ export function UnitManager({
                             disabled={busyId != null}
                             data-testid={`unit-edit-btn-${item.id}`}
                           >
-                            {t('catalogueSetup.actions.rename')}
+                            {t('catalogueSetup.actions.edit')}
                           </Button>
                           <Button
                             variant="secondary"

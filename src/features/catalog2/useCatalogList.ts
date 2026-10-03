@@ -156,6 +156,7 @@ export function useCatalogList(token: string) {
         search: appliedSearch || null,
         categoryId,
         includeInactive,
+        inStockOnly,
         limit: CATALOG2_PAGE_SIZE,
         offset: pageIndex * CATALOG2_PAGE_SIZE,
       });
@@ -169,19 +170,23 @@ export function useCatalogList(token: string) {
     } finally {
       setLoading(false);
     }
-  }, [token, selectedWarehouseId, appliedSearch, categoryId, includeInactive, pageIndex, errorText]);
+  }, [token, selectedWarehouseId, appliedSearch, categoryId, includeInactive, inStockOnly, pageIndex, errorText]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const hasPreviousPage = pageIndex > 0;
-  const hasNextPage = pageIndex * CATALOG2_PAGE_SIZE + rows.length < totalCount;
-
   const filteredRows = useMemo(() => {
     if (!inStockOnly) return rows;
     return rows.filter((r) => isExactDecimalPositive(r.quantity_on_hand ?? '0'));
   }, [rows, inStockOnly]);
+
+  const distinctProductCount = useMemo(() => {
+    return new Set(filteredRows.map((r) => r.product_id)).size;
+  }, [filteredRows]);
+
+  const hasPreviousPage = pageIndex > 0;
+  const hasNextPage = pageIndex * CATALOG2_PAGE_SIZE + distinctProductCount < totalCount;
 
   const groups = useMemo(
     () => groupByProduct(filteredRows, { hasPreviousPage, hasNextPage }),
@@ -238,14 +243,19 @@ export function useCatalogList(token: string) {
     [token],
   );
 
+  const changeInStockOnly = useCallback((val: boolean | ((prev: boolean) => boolean)) => {
+    setInStockOnly(val);
+    setPageIndex(0);
+  }, []);
+
   return {
     warehouses, selectedWarehouseId, selectWarehouse,
     search, setSearch, submitSearch,
     categoryId, changeCategory,
     includeInactive, changeIncludeInactive,
-    inStockOnly, setInStockOnly,
+    inStockOnly, setInStockOnly: changeInStockOnly,
     categories,
-    groups, totalCount, rowCount: rows.length,
+    groups, totalCount, rowCount: groups.length,
     loading, error,
     pageIndex, setPageIndex, pageSize: CATALOG2_PAGE_SIZE,
     hasPreviousPage, hasNextPage,

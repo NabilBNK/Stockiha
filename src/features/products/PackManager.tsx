@@ -103,8 +103,6 @@ export function PackManager({
     barcode: string;
   } | null>(null);
   const [removingBarcode, setRemovingBarcode] = useState(false);
-  const [confirmRemoveSmallerUnit, setConfirmRemoveSmallerUnit] = useState<VariantPack | null>(null);
-  const [removingSmallerUnit, setRemovingSmallerUnit] = useState(false);
 
   const onPacksLoadedRef = useRef(onPacksLoaded);
   onPacksLoadedRef.current = onPacksLoaded;
@@ -127,9 +125,8 @@ export function PackManager({
     void loadPacks();
   }, [loadPacks]);
 
-  // Split into packs (is_pack = true) and smaller units (is_pack = false)
+  // Packs (is_pack = true)
   const packRows = useMemo(() => packs.filter((p) => p.is_pack), [packs]);
-  const smallerRows = useMemo(() => packs.filter((p) => !p.is_pack), [packs]);
 
   // Sort packs: active rows first, then inactive rows
   const sortedPackRows = useMemo(() => {
@@ -145,12 +142,12 @@ export function PackManager({
 
   // Dialog unit select options: active pack units for this base unit, not already used
   const availableUnitOptions = useMemo(() => {
-    const hasPackUnitsForBase = units.some((u) => u.base_unit_id === baseUnit.id);
     return units.filter(
       (u) =>
         u.is_active &&
+        u.is_pack &&
         u.id !== baseUnit.id &&
-        (hasPackUnitsForBase ? u.base_unit_id === baseUnit.id : true) &&
+        (u.base_unit_id == null || u.base_unit_id === baseUnit.id) &&
         (!assignedUnitIds.has(u.id) || (editingPack != null && editingPack.unit_id === u.id))
     );
   }, [units, baseUnit.id, assignedUnitIds, editingPack]);
@@ -301,22 +298,6 @@ export function PackManager({
       setConfirmRemoveBarcode(null);
     } finally {
       setRemovingBarcode(false);
-    }
-  }
-
-  async function handleRemoveSmallerUnit() {
-    if (!confirmRemoveSmallerUnit) return;
-    setRemovingSmallerUnit(true);
-    try {
-      await ipc.removeVariantAltUnit(sessionToken, confirmRemoveSmallerUnit.variant_unit_id);
-      setConfirmRemoveSmallerUnit(null);
-      await loadPacks();
-      await onChanged?.();
-    } catch (err) {
-      setError(errorText(err));
-      setConfirmRemoveSmallerUnit(null);
-    } finally {
-      setRemovingSmallerUnit(false);
     }
   }
 
@@ -866,30 +847,6 @@ export function PackManager({
         </div>
       )}
 
-      {/* Smaller Units (is_pack = false) */}
-      {smallerRows.length > 0 ? (
-        <div className="sk-pack-smaller-units" style={{ marginTop: 16 }} data-testid="pack-smaller-units">
-          <h4>{t('pack.smallerUnits')}</h4>
-          <ul className="sk-catalog2__barcode-list">
-            {smallerRows.map((sr) => (
-              <li key={sr.variant_unit_id} className="sk-catalog2__barcode-row">
-                <span>
-                  {sr.unit_name} (×{formatExactDecimal(sr.conversion_factor)})
-                </span>
-                <Button
-                  type="button"
-                  variant="danger"
-                  disabled={busy}
-                  onClick={() => setConfirmRemoveSmallerUnit(sr)}
-                  data-testid={`pack-remove-smaller-unit-${sr.variant_unit_id}`}
-                >
-                  {t('barcodes.remove')}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
 
       {/* Add / Edit Pack Dialog */}
       {dialogOpen ? (
@@ -1183,19 +1140,6 @@ export function PackManager({
         />
       ) : null}
 
-      {/* Confirm Remove Smaller Unit Dialog */}
-      {confirmRemoveSmallerUnit ? (
-        <ConfirmDialog
-          title={t('barcodes.remove')}
-          body={t('pack.confirmDelete')}
-          confirmLabel={t('barcodes.remove')}
-          cancelLabel={t('common.cancel')}
-          confirmVariant="danger"
-          busy={removingSmallerUnit}
-          onConfirm={() => void handleRemoveSmallerUnit()}
-          onCancel={() => setConfirmRemoveSmallerUnit(null)}
-        />
-      ) : null}
 
       {/* Apply Pack To Other Variants Dialog */}
       {applyPack ? (

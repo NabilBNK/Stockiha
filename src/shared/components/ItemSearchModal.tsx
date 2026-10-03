@@ -97,7 +97,7 @@ export function ItemSearchModal({
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({});
   const [selectedCounts, setSelectedCounts] = useState<Record<number, number>>({});
-  const [inStockOnly, setInStockOnly] = useState(true);
+  const [inStockOnly, setInStockOnly] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const serverControlled = onQueryChange != null;
 

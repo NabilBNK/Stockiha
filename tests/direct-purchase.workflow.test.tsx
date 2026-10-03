@@ -221,6 +221,7 @@ describe('Direct Purchasing Workflow (Part 1)', () => {
     // Add item via picker
     fireEvent.click(screen.getByTestId('add-purchase-line-btn'));
     fireEvent.click(await screen.findByTestId('purchase-item-option-7'));
+    fireEvent.click(screen.getByTestId('purchase-picker-confirm-btn'));
 
     // Set quantity and unit cost
     const quantityInput = screen.getByDisplayValue('1');
@@ -269,10 +270,12 @@ describe('Direct Purchasing Workflow (Part 1)', () => {
     // Add line 0 with variant 7
     fireEvent.click(screen.getByTestId('add-purchase-line-btn'));
     fireEvent.click(await screen.findByTestId('purchase-item-option-7'));
+    fireEvent.click(screen.getByTestId('purchase-picker-confirm-btn'));
 
     // Add line 1 with variant 8
     fireEvent.click(screen.getByTestId('add-purchase-line-btn'));
     fireEvent.click(await screen.findByTestId('purchase-item-option-8'));
+    fireEvent.click(screen.getByTestId('purchase-picker-confirm-btn'));
 
     // Reopen picker on line 1 and select variant 7 to create duplicate
     fireEvent.click(screen.getByTestId('purchase-line-product-1'));
@@ -301,6 +304,7 @@ describe('Direct Purchasing Workflow (Part 1)', () => {
 
     fireEvent.click(screen.getByTestId('add-purchase-line-btn'));
     fireEvent.click(await screen.findByTestId('purchase-item-option-7'));
+    fireEvent.click(screen.getByTestId('purchase-picker-confirm-btn'));
 
     const quantityInput = screen.getByDisplayValue('1');
     const costInput = screen.getByDisplayValue('0');

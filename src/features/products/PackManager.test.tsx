@@ -15,9 +15,9 @@ import type { UnitLifecycleItem, VariantDetail, VariantPack } from '../../shared
 import { PackManager } from './PackManager';
 
 const mockUnits: UnitLifecycleItem[] = [
-  { id: 1, code: 'UNIT', name: 'Unit', is_active: true, allows_fractions: false, usage_count: 5 },
-  { id: 2, code: 'CTN', name: 'Carton', is_active: true, allows_fractions: false, usage_count: 2 },
-  { id: 3, code: 'BAL', name: 'Bale', is_active: true, allows_fractions: false, usage_count: 0 },
+  { id: 1, code: 'UNIT', name: 'Unit', is_active: true, allows_fractions: false, usage_count: 5, is_pack: false },
+  { id: 2, code: 'CTN', name: 'Carton', is_active: true, allows_fractions: false, usage_count: 2, is_pack: true },
+  { id: 3, code: 'BAL', name: 'Bale', is_active: true, allows_fractions: false, usage_count: 0, is_pack: true },
 ];
 
 function samplePack(overrides: Partial<VariantPack> = {}): VariantPack {
@@ -512,6 +512,34 @@ describe('PackManager (WS-O-2.2)', () => {
 
     const priceInput = screen.getByTestId('pack-dialog-price-input') as HTMLInputElement;
     expect(priceInput.value).toBe('36000');
+  });
+
+  it('pack unit dropdown excludes atomic base units and incompatible packs', async () => {
+    const mixedUnits: UnitLifecycleItem[] = [
+      { id: 1, code: 'UNIT', name: 'Unit', is_active: true, allows_fractions: false, usage_count: 5, is_pack: false },
+      { id: 2, code: 'KG', name: 'Kilogram', is_active: true, allows_fractions: true, usage_count: 3, is_pack: false },
+      { id: 3, code: 'CTN50', name: 'Carton 50', is_active: true, allows_fractions: false, usage_count: 2, is_pack: true, base_unit_id: 1, conversion_factor: '50' },
+      { id: 4, code: 'CTN_KG', name: 'Carton Kg', is_active: true, allows_fractions: false, usage_count: 1, is_pack: true, base_unit_id: 2, conversion_factor: '10' },
+      { id: 5, code: 'BOX_FLEX', name: 'Flexible Box', is_active: true, allows_fractions: false, usage_count: 0, is_pack: true, base_unit_id: null, conversion_factor: null },
+    ];
+
+    wireGateway({
+      list_variant_packs: () => [],
+    });
+
+    renderManager({ units: mixedUnits, baseUnit: { id: 1, code: 'UNIT', name: 'Unit', isWhole: true } });
+    fireEvent.click(await screen.findByTestId('pack-add-empty-btn'));
+    expect(await screen.findByTestId('pack-dialog')).toBeInTheDocument();
+
+    const select = screen.getByTestId('pack-dialog-unit-select') as HTMLSelectElement;
+    const optionValues = Array.from(select.options).map((opt) => opt.value);
+
+    // "" (None), "3" (CTN50 - pre-configured for UNIT), "5" (BOX_FLEX - flexible pack)
+    expect(optionValues).toEqual(['', '3', '5']);
+    // Base units UNIT (1) and KG (2), and pack pre-configured for KG (4) must NOT be present
+    expect(optionValues).not.toContain('1');
+    expect(optionValues).not.toContain('2');
+    expect(optionValues).not.toContain('4');
   });
 });
 

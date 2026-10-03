@@ -755,8 +755,10 @@ async fn schema_compatibility_cached(
         return *cached;
     }
     let computed = schema_version::check_schema_compatibility(conn).await;
-    let _ = cache.set(computed);
-    *cache.get().unwrap_or(&computed)
+    if computed == SchemaCompatibility::UpToDate {
+        let _ = cache.set(computed);
+    }
+    computed
 }
 
 /// Gate a command's pool acquisition on schema compatibility, not just raw

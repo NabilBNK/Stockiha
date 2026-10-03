@@ -74,7 +74,7 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
   const [selectedVariantIds, setSelectedVariantIds] = useState<Set<number>>(new Set());
-  const [inStockOnly, setInStockOnly] = useState<boolean>(true);
+  const [inStockOnly, setInStockOnly] = useState<boolean>(false);
 
   const isMulti = Boolean(multiSelect || onSelectMultiple);
 
@@ -558,52 +558,50 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
           </div>
         </div>
 
-        {isMulti && (
-          <div className="pr-picker-footer" data-testid="purchase-picker-footer">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                <strong>{selectedVariantIds.size}</strong> {text.selectedCount}
-              </span>
-              {selectedVariantIds.size > 0 && (
-                <button
-                  type="button"
-                  className="sk-button sk-button--small sk-button--secondary"
-                  onClick={() => setSelectedVariantIds(new Set())}
-                  data-testid="purchase-picker-clear-selected"
-                >
-                  {text.clearSelection}
-                </button>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
+        <div className="pr-picker-footer" data-testid="purchase-picker-footer">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+              <strong>{selectedVariantIds.size}</strong> {text.selectedCount}
+            </span>
+            {selectedVariantIds.size > 0 && (
               <button
                 type="button"
-                className="sk-button sk-button--secondary"
-                onClick={onClose}
-                data-testid="purchase-picker-cancel-btn"
+                className="sk-button sk-button--small sk-button--secondary"
+                onClick={() => setSelectedVariantIds(new Set())}
+                data-testid="purchase-picker-clear-selected"
               >
-                {text.cancel}
+                {text.clearSelection}
               </button>
-              <button
-                type="button"
-                className="sk-button sk-button--primary"
-                disabled={selectedVariantIds.size === 0}
-                onClick={() => {
-                  const selectedItems = items.filter((it) => selectedVariantIds.has(it.variant_id));
-                  if (onSelectMultiple) {
-                    onSelectMultiple(selectedItems);
-                  } else if (onSelect && selectedItems.length > 0) {
-                    onSelect(selectedItems[0]);
-                  }
-                  onClose();
-                }}
-                data-testid="purchase-picker-confirm-btn"
-              >
-                + {text.addSelected} ({selectedVariantIds.size})
-              </button>
-            </div>
+            )}
           </div>
-        )}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              type="button"
+              className="sk-button sk-button--secondary"
+              onClick={onClose}
+              data-testid="purchase-picker-cancel-btn"
+            >
+              {text.cancel}
+            </button>
+            <button
+              type="button"
+              className="sk-button sk-button--primary"
+              disabled={selectedVariantIds.size === 0}
+              onClick={() => {
+                const selectedItems = items.filter((it) => selectedVariantIds.has(it.variant_id));
+                if (onSelectMultiple) {
+                  onSelectMultiple(selectedItems);
+                } else if (onSelect && selectedItems.length > 0) {
+                  onSelect(selectedItems[0]);
+                }
+                onClose();
+              }}
+              data-testid="purchase-picker-confirm-btn"
+            >
+              + {text.addSelected} ({selectedVariantIds.size})
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

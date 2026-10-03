@@ -1,21 +1,23 @@
 # Stockiha — WS-O Complete Manual Test Guide (Step-by-Step)
 
-**Target Build Version:** `[ version = WS-O-6.1 ]`  
+**Target Build Version:** `[ version = WS-O-6.2 ]`  
 **Target Environment:** Windows Desktop (Tauri v2, WebView2, PostgreSQL 18.x)  
-**Scope:** WS-O Workstream (Buy and Sell by the Box — Sub-plans O-1 through O-6)  
+**Scope:** WS-O Workstream (Buy and Sell by the Box — Sub-plans O-1 through O-7)  
 **Authoritative Specification:** `Plans and tasks/WS-O-boxes-and-pieces-spec.md`
 
 ---
 
 ## Table of Contents
 1. [Pre-Flight & Version Verification](#1-pre-flight--version-verification)
-2. [Phase 1: Unit & Pack Configuration in Catalog (O-1 & O-2)](#2-phase-1-unit--pack-configuration-in-catalog-o-1--o-2)
-3. [Phase 2: Purchasing & Stock Receipts by the Box (O-3)](#3-phase-2-purchasing--stock-receipts-by-the-box-o-3)
-4. [Phase 3: Stock Adjustments with Packs (O-5)](#4-phase-3-stock-adjustments-with-packs-o-5)
-5. [Phase 4: Inventory Display Everywhere (O-5)](#5-phase-4-inventory-display-everywhere-o-5)
-6. [Phase 5: POS Till Selling by the Box (O-4)](#6-phase-5-pos-till-selling-by-the-box-o-4)
-7. [Phase 6: Multi-Language & RTL Verification (O-6)](#7-phase-6-multi-language--rtl-verification-o-6)
-8. [Comprehensive Verification Results Checklist](#8-comprehensive-verification-results-checklist)
+2. [Phase 1: Catalogue Setup — 3-Way Unit Classification (O-7)](#2-phase-1-catalogue-setup--3-way-unit-classification-o-7)
+3. [Phase 2: Product & Pack Configuration (O-1, O-2, O-7)](#3-phase-2-product--pack-configuration-o-1-o-2-o-7)
+4. [Phase 3: Purchasing & Stock Receipts by the Box (O-3)](#4-phase-3-purchasing--stock-receipts-by-the-box-o-3)
+5. [Phase 4: Stock Adjustments with Packs (O-5)](#5-phase-4-stock-adjustments-with-packs-o-5)
+6. [Phase 5: Inventory Display Everywhere (O-5)](#6-phase-5-inventory-display-everywhere-o-5)
+7. [Phase 6: POS Till Selling by the Box (O-4)](#7-phase-6-pos-till-selling-by-the-box-o-4)
+8. [Phase 7: Multi-Language & RTL Verification (O-6)](#8-phase-7-multi-language--rtl-verification-o-6)
+9. [Phase 8: Startup & Database Migration Resilience](#9-phase-8-startup--database-migration-resilience)
+10. [Comprehensive Verification Results Checklist](#10-comprehensive-verification-results-checklist)
 
 ---
 
@@ -25,313 +27,377 @@
 Ensure the application is running the correct build and connected to the active database.
 
 ### Steps
-1. Launch Stockiha on Windows or inspect the active development window.
+1. Launch Stockiha on Windows using `.\run.bat` or inspect the active development window.
 2. Sign in as Administrator if not already logged in.
 3. Look at the bottom-right corner of the **Dashboard** screen and the **Setup / Login** screens.
 4. **Expected Result:**
-   - The version marker displays exactly: `[ version = WS-O-6.1 ]`.
+   - The version marker displays exactly: `[ version = WS-O-6.2 ]`.
 
 ---
 
-## 2. Phase 1: Unit & Pack Configuration in Catalog (O-1 & O-2)
+## 2. Phase 1: Catalogue Setup — 3-Way Unit Classification (O-7)
 
 ### Objective
-Verify that products can have secondary packaging units (boxes, cartons, bales) defined with custom conversion factors, independent sale prices, and barcodes.
+Verify that units are strictly categorized into three distinct kinds, preventing logical confusion between atomic measurement units and packaging containers.
 
-### Step 1.1: Verify Reference Units
-1. Navigate to **Catalogue Setup → Units** (`/catalog/units`).
-2. Verify that **Carton** exists (Code: `CTN`, allows fractions: `false`).
-3. If not present, create it:
-   - Name: `Carton`
-   - Code: `CTN`
-   - Whole numbers only (no decimals).
+### Step 1.1: Navigate to Catalogue Setup
+1. In the sidebar, click **Catalogue Setup** (`/catalogue-setup`).
+2. Click the **Units / Unités / الوحدات** tab.
+3. Observe the "Add Unit" form: it offers three distinct radio options:
+   - **Base Unit** (Unité de base / وحدة أساسية)
+   - **Pre-configured Pack Unit** (Conditionnement préconfiguré / تعبئة محددة مسبقاً)
+   - **Flexible Pack Unit** (Conditionnement flexible / تعبئة مرنة)
 
-### Step 1.2: Configure Main Pack on a Product
-1. Navigate to **Products / Catalog** (`/catalog` or `/products`).
-2. Locate or create a product counted in pieces, e.g. **Pillow** (*Oreiller*), base unit **Piece** (*Pièce* / *Unit*), base price `1,250.00 DZD`.
-3. Open the product detail/edit panel by clicking the **Edit** button.
-4. Scroll to the **Packs (boxes, cartons, bales) / Conditionnements / التعبئات** section.
-5. Click **+ Add Pack** (`+ Ajouter un conditionnement` / `+ إضافة تعبئة`).
-6. In the modal:
-   - **Unit:** Select `Carton`.
-   - **Holds (Factor):** Enter `12`.
-   - Notice the suggested price helper shows `= 15,000.00 DZD (12 × 1,250.00)`.
-   - **Sale Price:** Enter `15,000.00`.
-   - **Main Pack:** Ensure checkbox is checked.
-   - **Barcode:** Enter a dedicated box barcode, e.g. `6130009990011`.
-7. Click **Save**.
-8. **Expected Result:**
-   - Pack saves without error.
-   - The pack table shows:
-     - Unit: `Carton`
-     - Factor: `12 Piece`
-     - Price: `15,000.00 DZD`
-     - Per Unit Rate: `= 1,250.00 per Piece`
-     - Status: `Active`
-     - Main indicator: Filled star / `Main` badge
-     - Barcode: `6130009990011`
+### Step 1.2: Create an Atomic Base Unit
+1. Select **Base Unit**:
+   - **Name:** `Piece` (or `Pièce` / `قطعة`)
+   - Notice that the "Target Base Unit" and "Holds (Factor)" fields are completely hidden.
+   - Leave "Allow decimal quantities" checked or unchecked as appropriate.
+2. Click **Create Unit**.
+3. **Expected Result:**
+   - Unit is created. In the table, the unit has a clean **Base Unit** badge.
 
-### Step 1.3: Add a Buy-Only Pack
-1. In the same Packs section, click **+ Add Pack**.
-2. Select unit: `Bale` (or `Box`).
-3. Set holds / factor: `50`.
-4. Leave **Sale Price** completely empty (NULL).
-5. Click **Save**.
-6. **Expected Result:**
-   - Pack is created.
-   - The price column displays: **`Not sold (buy only) / Non vendu (achat uniquement) / غير مباع (للشراء فقط)`**.
+### Step 1.3: Create a Pre-Configured Pack Unit
+1. Select **Pre-configured Pack Unit**:
+   - **Name:** `Carton 50`
+   - Notice that the **Target Base Unit** dropdown appears, listing **only** atomic base units (e.g. `Piece`, `Kg`). Pack units do not appear.
+   - **Target Base Unit:** Select `Piece`.
+   - **Holds (Factor):** Enter `50`.
+   - Sentence preview shows: `👉 1 Carton 50 = 50 Piece`.
+2. Click **Create Unit**.
+3. **Expected Result:**
+   - Unit is created.
+   - In the table, the unit displays a badge: **`Pack: 50 Piece`**.
+   - Products using this unit will have their holds factor locked to 50.
 
-### Step 1.4: Validation Checks (Negative Testing)
-1. Click **+ Add Pack** again:
-   - Try to select the base unit `Piece`: **Expected:** Blocked or validation error *"A pack cannot use the base unit"*.
-   - Select `Carton` again: **Expected:** Validation error *"This unit is already used by another pack"*.
-   - Enter factor `12.5` on this whole-number product: **Expected:** Validation error *"This product is counted in whole units; enter a whole number"*.
-   - Enter factor `1`: **Expected:** Validation error *"A pack must hold more than 1 base unit"*.
-   - Enter price `15000.555`: **Expected:** Validation error *"Enter a valid price with at most 2 decimal places"*.
-   - Enter the product's piece barcode in the box barcode input: **Expected:** Pre-check error *"This barcode is already used by Pillow"*.
-2. Close the modal without saving.
+### Step 1.4: Create a Flexible Pack Unit
+1. Select **Flexible Pack Unit**:
+   - **Name:** `Box` (or `Generic Carton` / `صندوق`)
+   - Notice that neither Target Base Unit nor Factor is required (the quantity will be defined per product).
+2. Click **Create Unit**.
+3. **Expected Result:**
+   - Unit is created.
+   - In the table, the unit displays a badge: **`Flexible Pack`**.
 
-### Step 1.5: Replicate Packs to Sibling Variants
-1. If the product has multiple variants (e.g. Red, Blue):
-   - In the pack row, click the **Apply to other variants** button.
-   - In the dialog, select sibling variants and confirm.
-2. **Expected Result:**
-   - Sibling variants now have the `Carton` pack configured without copying the barcode (preserving barcode uniqueness).
-
-### Step 1.6: Quick Product Creation with Default Box
-1. Click **+ Add Product** (`+ Nouveau produit` / `+ منتج جديد`).
-2. In the quick-create panel, enter:
-   - Name: `Blanket Luxury`
-   - SKU: `BLK-LUX`
-   - Price: `3,000.00 DZD`
-3. Expand **Sold by the box (optional) / Vendu par carton (optionnel) / البيع بالكرتون (اختياري)**:
-   - Check the enable checkbox.
-   - Unit: `Carton`
-   - Holds: `6`
-   - Box Price: `17,000.00 DZD`
-4. Click **Create Product**.
-5. **Expected Result:**
-   - Product is created and immediately opened with its `Carton` pack set as main.
+### Step 1.5: Edit & Kind Switching Verification
+1. Click **Edit** on `Carton 50`.
+2. Verify that the radio selection is locked to Pre-configured Pack, preserving data integrity.
+3. Verify that you cannot save a factor `<= 1`.
 
 ---
 
-## 3. Phase 2: Purchasing & Stock Receipts by the Box (O-3)
+## 3. Phase 2: Product & Pack Configuration (O-1, O-2, O-7)
+
+### Objective
+Verify that products can **only** have atomic base units, and that packs strictly enforce container multiples (`factor > 1`) without allowing inverted relationships.
+
+### Step 2.1: Product Creation Strict Base Unit Check
+1. Navigate to **Products / Catalog** (`/catalog`).
+2. Click **+ Add Product** (`+ Nouveau produit`).
+3. In the creation form, open the **Unit** dropdown:
+   - **Expected:** Only atomic base units appear (`Piece`, `Kg`, `Liter`).
+   - **Crucial:** Pack units (`Carton 50`, `Box`) **never** appear in the product base unit dropdown.
+
+### Step 2.2: Quick Box Creation during Product Create
+1. Fill product fields:
+   - **Name:** `Pillow Luxury`
+   - **Unit:** `Piece`
+   - **Price:** `1,250.00 DZD`
+2. Expand the **Sold by the box (optional)** section:
+   - Open the Box Unit dropdown:
+     - **Expected:** Shows `Carton 50` (pre-configured for Piece) and `Box` (flexible).
+     - Does **not** show `Piece` or packs belonging to `Kg`.
+   - Select `Carton 50`:
+     - **Expected:** The Holds input automatically fills `50` and is read-only.
+     - Sentence preview shows: `👉 1 Carton 50 = 50 Piece`.
+   - Enter Box Price: `60,000.00 DZD`.
+3. Click **Create Product**.
+4. **Expected Result:**
+   - Product is created with base unit `Piece` and a main pack `Carton 50` holding 50 pieces.
+
+### Step 2.3: Pack Manager Inside Product Detail
+1. Open the created product detail panel.
+2. In the **Packs** section, observe the pack row:
+   - Unit: `Carton 50`
+   - Holds: `50 Piece` (Holds field is locked because it is pre-configured).
+   - Price: `60,000.00 DZD`
+   - Per-piece rate: `= 1,200.00 per Piece`
+   - Main pack indicator: Star / `Main` badge.
+
+### Step 2.4: Add a Flexible Pack
+1. Click **+ Add Pack**:
+2. In the modal:
+   - Select unit: `Box` (Flexible Pack).
+   - Notice the Holds input is editable. Enter `12`.
+   - Sentence preview shows: `👉 1 Box = 12 Piece`.
+   - Suggested max price prompt appears: `💡 Suggested max: 15,000.00 (12 Piece × 1,250.00)`.
+   - Click the suggested price link: Price input populates with `15,000.00`.
+   - Enter dedicated barcode: `6130009990011`.
+3. Click **Save**.
+4. **Expected Result:**
+   - Pack saves cleanly. Both `Carton 50` and `Box (×12)` are listed in the table.
+   - Legacy "Smaller Units" list does **not** exist anywhere.
+
+### Step 2.5: Logical Bug Prevention & Negative Testing
+1. Click **+ Add Pack** again:
+   - Check the Unit dropdown:
+     - **Verify:** `Piece` is **not** in the dropdown. (A product cannot sell its own base unit as a pack).
+     - **Verify:** Packs already assigned (`Carton 50`, `Box`) are **not** offered.
+   - Enter factor `1`:
+     - **Expected:** Validation error *"A pack must hold more than 1 base unit"*.
+   - Enter factor `0` or negative:
+     - **Expected:** Validation error.
+   - Enter duplicate barcode already assigned to another product:
+     - **Expected:** Pre-check error *"This barcode is already used by [Product Name]"*.
+
+### Step 2.6: Replicate Packs to Sibling Variants
+1. On a product with variants (e.g. Red, Blue):
+   - In the pack row, click **Apply to other variants**.
+   - Filter and select target variants.
+   - Click **Apply**.
+2. **Expected Result:**
+   - Target variants now have the pack configured with price and factor, but barcodes remain unique.
+
+---
+
+## 4. Phase 3: Purchasing & Stock Receipts by the Box (O-3)
 
 ### Objective
 Verify receiving inventory in packs with optional extra pieces, where extra pieces are costed at the carton rate and added to base stock and WAC.
 
-### Step 2.1: Open Stock Receipt
+### Step 3.1: Open Stock Receipt
 1. Navigate to **Stock Receipts / Direct Purchase** (`/purchases/receipts`).
-2. Select your warehouse (e.g. *Main Warehouse*).
-3. Select supplier and invoice reference.
+2. Select warehouse (e.g. *Main Warehouse*), supplier, and invoice reference.
 
-### Step 2.2: Add Pack Line with Extra Pieces
-1. Select *Pillow*.
-2. **Expected:** The unit dropdown automatically defaults to **`Carton (×12)`**.
-3. Set **Cartons Received:** `3`.
-4. Set **Extra Pieces:** `4`.
-5. Set **Unit Cost per Carton:** `12,000.00 DZD`.
-6. Observe the calculated values:
-   - Total base units received: `3 × 12 + 4 = 40 Pieces`.
-   - Cost rate for extra pieces: `12,000.00 ÷ 12 = 1,000.00 DZD / piece`.
-   - Line subtotal: `(3 × 12,000.00) + (4 × 1,000.00) = 40,000.00 DZD`.
+### Step 3.2: Add Pack Line with Extra Pieces
+1. Select *Pillow Luxury*.
+2. **Expected:** The unit dropdown automatically defaults to the main pack: **`Carton 50 (×50)`**.
+3. Set **Cartons Received:** `2`.
+4. Set **Extra Pieces:** `10`.
+5. Set **Unit Cost per Carton:** `50,000.00 DZD`.
+6. Observe calculated values:
+   - Total base units received: `(2 × 50) + 10 = 110 Pieces`.
+   - Cost rate for extra pieces: `50,000.00 ÷ 50 = 1,000.00 DZD / piece`.
+   - Line subtotal: `(2 × 50,000.00) + (10 × 1,000.00) = 110,000.00 DZD`.
 7. **Expected Result:**
-   - Line displays `3 Carton + 4 Piece` at total `40,000.00 DZD`.
+   - Line displays `2 Carton 50 + 10 Piece` at total `110,000.00 DZD`.
 
-### Step 2.3: Confirm & Post Purchase
+### Step 3.3: Confirm & Post Purchase
 1. Click **Confirm Receipt / Réceptionner**.
 2. **Expected Result:**
-   - Transaction posts cleanly and atomically.
+   - Transaction posts atomically.
    - An official receipt document number is assigned.
-   - Stored stock increases by exactly **40 Pieces**.
-   - Warehouse WAC is updated based on `40,000.00 DZD` for 40 pieces (`1,000.00 DZD/piece`).
+   - Stored stock increases by exactly **110 Pieces**.
+   - Warehouse WAC is updated based on `1,000.00 DZD / piece`.
 
 ---
 
-## 4. Phase 3: Stock Adjustments with Packs (O-5)
+## 5. Phase 4: Stock Adjustments with Packs (O-5)
 
 ### Objective
-Verify that stock adjustment screens assist the operator by defaulting to the main pack and calculating base equivalents.
+Verify that inventory adjustments support pack entry and compute base equivalents in real time.
 
 ### Steps
 1. Navigate to **Inventory Corrections / Stock Adjustments** (`/inventory/adjustments`).
-2. Select *Pillow*.
-3. **Expected:** The unit selector automatically defaults to **`Carton`**.
-4. In the quantity field, enter `2`.
+2. Select *Pillow Luxury*.
+3. **Expected:** Unit selector defaults to **`Carton 50`**.
+4. In quantity, enter `1`.
 5. **Expected Result:**
-   - Below the input, an indicator displays: **`= 24 Piece`** (or `= 24 Unit` / `= 24 قطعة`).
-6. Switch the unit dropdown to **`Piece`**:
-   - **Expected:** The indicator updates or clears, showing standard base unit behavior.
+   - Indicator below input shows: **`= 50 Piece`** (or `= 50 Unit` / `= 50 قطعة`).
+6. Change unit to `Box` (holds 12):
+   - In quantity, enter `3`.
+   - Indicator updates to: **`= 36 Piece`**.
 7. Cancel or post the adjustment as desired.
 
 ---
 
-## 5. Phase 4: Inventory Display Everywhere (O-5)
+## 6. Phase 5: Inventory Display Everywhere (O-5)
 
 ### Objective
-Ensure that on every screen showing inventory on-hand, quantities for products with a main pack are rendered in pack-decomposed format.
+Ensure on-hand inventory for products with a main pack is consistently rendered in decomposed pack format across all screens.
 
-### Step 4.1: Products / Catalog Table
-1. Navigate to **Products / Catalog** (`/catalog` or `/products`).
-2. Locate *Pillow* (currently holding e.g. 29 or 40 pieces).
+### Step 5.1: Products / Catalog Table
+1. Navigate to **Products / Catalog** (`/catalog`).
+2. Locate *Pillow Luxury* (holding 110 pieces).
 3. **Expected Result:**
-   - If stock is `29`: Displays **`2 Carton + 5 Piece`** (tabular digits).
-   - If stock is `40`: Displays **`3 Carton + 4 Piece`**.
-   - Hover your mouse over the quantity text:
-     - Tooltip displays: **`= 29 Piece`** (or `= 40 Piece`).
+   - Stock column displays: **`2 Carton 50 + 10 Piece`**.
+   - Hovering over the quantity shows tooltip: **`= 110 Piece`**.
 
-### Step 4.2: Inventory Screen (`/inventory`)
-1. Navigate to **Inventory** (`/inventory`).
-2. Locate *Pillow*.
-3. **Expected Result:**
-   - Stock on-hand column renders `X Carton + Y Piece`.
-   - Tooltip `= Total Piece` appears on hover.
-
-### Step 4.3: Item Search Modal
-1. Press `Ctrl+K` or click the Item Search trigger from anywhere in the app.
-2. Search for `Pillow`.
-3. **Expected Result:**
-   - The search results list displays available stock as `X Carton + Y Piece`.
-
-### Step 4.4: Stock Reports
-1. Navigate to **Reports → Stock Valuation / Low Stock / Slow Movers**.
+### Step 5.2: Inventory Screen (`/inventory`)
+1. Navigate to **Inventory**.
 2. **Expected Result:**
-   - The on-screen stock columns display the decomposed pack format with tooltip.
+   - Stock on-hand column displays `2 Carton 50 + 10 Piece`.
+   - Tooltip `= 110 Piece` on hover.
+
+### Step 5.3: Global Item Search (`Ctrl+K`)
+1. Press `Ctrl+K`.
+2. Type `Pillow`.
+3. **Expected Result:**
+   - Result item preview displays available stock as `2 Carton 50 + 10 Piece`.
+
+### Step 5.4: Stock Reports
+1. Navigate to **Reports → Stock Valuation / Low Stock**.
+2. **Expected Result:**
+   - On-screen report tables display the decomposed pack format with hover tooltip.
 
 ---
 
-## 6. Phase 5: POS Till Selling by the Box (O-4)
+## 7. Phase 6: POS Till Selling by the Box (O-4)
 
 ### Objective
-Verify cash and credit sales at the POS till: default pack selection, scanning pack barcodes, mixed quantities, custom price overrides with below-cost warnings, and receipt printing.
+Verify point-of-sale checkout: default pack selection, scanning pack barcodes, mixed quantities, custom price overrides with below-cost warnings, and thermal receipts.
 
 ### Step 6.1: Default Unit in POS Cart
 1. Navigate to **Point of Sale** (`/pos`).
 2. Ensure an active cash session is open.
-3. Click the *Pillow* product card or search for it.
+3. Click the *Pillow Luxury* product card.
 4. **Expected Result:**
-   - Added to cart defaulting to **1 Carton** at `15,000.00 DZD`.
-   - Total = `15,000.00 DZD`.
+   - Added to cart defaulting to **1 Carton 50** at `60,000.00 DZD`.
+   - Total = `60,000.00 DZD`.
 
 ### Step 6.2: Scan Box Barcode
-1. In the barcode search input, enter or scan the box barcode: `6130009990011`.
+1. In the barcode search input, scan or enter the Box barcode: `6130009990011`.
 2. Press Enter.
 3. **Expected Result:**
-   - Automatically increments the existing *Pillow* line by 1 Carton (now 2 Cartons) or adds a 1 Carton line.
+   - Adds a line for **1 Box** (holding 12 pieces) at `15,000.00 DZD`.
 
 ### Step 6.3: Sell Mixed Quantity (Cartons + Extra Pieces)
-1. On the *Pillow* cart line:
-   - Quantity of cartons: `1`.
-   - In the **Extra Pieces** field, enter `5`.
-2. Observe the rate computation:
-   - 1 Carton = `15,000.00 DZD`.
-   - 1 Extra piece at carton rate = `round_half_up(15,000.00 / 12) = 1,250.00 DZD`.
-   - 5 Extra pieces = `5 × 1,250.00 = 6,250.00 DZD`.
-   - Total line price = `15,000.00 + 6,250.00 = 21,250.00 DZD`.
+1. On the `Box` line (holds 12 pieces):
+   - Quantity of boxes: `1`.
+   - In the **Extra Pieces** field, enter `4`.
+2. Observe calculation:
+   - 1 Box = `15,000.00 DZD`.
+   - Extra piece rate = `15,000.00 ÷ 12 = 1,250.00 DZD`.
+   - 4 Extra pieces = `4 × 1,250.00 = 5,000.00 DZD`.
+   - Total line price = `15,000.00 + 5,000.00 = 20,000.00 DZD`.
 3. **Expected Result:**
-   - Line description shows: **`= 17 Piece · 5 Piece at 1,250.00 (Carton rate)`**.
-   - Subtotal = **`21,250.00 DZD`**.
+   - Line description: **`= 16 Piece · 4 Piece at 1,250.00 (Box rate)`**.
+   - Subtotal = **`20,000.00 DZD`**.
 
-### Step 6.4: Overflow Extra Pieces into Cartons
-1. Click the `+` button on the extra pieces input until it exceeds 11 pieces:
+### Step 6.4: Extra Piece Carry-Over (Overflow)
+1. On the `Box` line, click `+` on extra pieces until it reaches 12:
 2. **Expected Result:**
-   - At 12 pieces, the line automatically carries over to **`2 Carton + 0 Piece`**.
+   - At 12 pieces, the line carries over to **`2 Box + 0 Piece`**.
 
-### Step 6.5: Switch Line to Base Unit (Pieces alone)
-1. On a line with cartons, click the unit toggle to switch to **`Piece`**:
-2. **Expected Result:**
-   - Line resets to base unit selling (e.g. `1 Piece` at `1,250.00 DZD`).
-   - Pieces sold alone use the standard piece price, not the carton rate.
-
-### Step 6.6: Price Override & Below-Cost Warning
-1. On a 1 Carton line, click the price edit button.
-2. Change the carton price to `9,000.00 DZD` (which is below the cost of `12,000.00 DZD`).
+### Step 6.5: Below-Cost Price Override
+1. On a `Box` line, click the price edit icon.
+2. Enter `10,000.00 DZD` (below cost of `12,000.00 DZD`).
 3. **Expected Result:**
-   - An amber warning appears: **`Below cost / Sous le coût / أقل من التكلفة (1,000.00 per Piece)`**.
+   - Amber warning appears: **`Below cost / Sous le coût / أقل من التكلفة`**.
    - An indicator badge **`edited / modifié / معدّل`** appears.
    - **Crucial:** Sale checkout is **NOT** blocked (owner ruling R5).
 
-### Step 6.7: Complete Sale & Print Receipt
-1. Click **Pay Cash** (or Credit Sale).
-2. Enter received amount and confirm checkout.
+### Step 6.6: Checkout & Receipt Printing
+1. Click **Pay Cash**.
+2. Enter received payment and confirm checkout.
 3. **Expected Result:**
    - Sale posts atomically.
    - Inventory decrements accurately in base units.
-   - Receipt preview / physical thermal print displays:
-     - `1 Carton` at `15,000.00 DZD`
-     - Extra pieces line: `5 Piece at 1,250.00 (Carton rate)`
-     - Total = `21,250.00 DZD`.
+   - Thermal receipt / print preview shows:
+     - Pack lines with pack name, holds, and extra pieces clearly detailed.
 
-### Step 6.8: Void Sale & Stock Restoration
-1. Open the recent sales / cash session drawer.
-2. Select the sale just made and click **Void Sale**.
+### Step 6.7: Void Sale & Stock Restoration
+1. Open the cash session sales drawer.
+2. Select the sale and click **Void Sale**.
 3. **Expected Result:**
    - Void slip prints with pack details and void stamp.
    - All pieces are restored to inventory stock on-hand.
 
 ---
 
-## 7. Phase 6: Multi-Language & RTL Verification (O-6)
+## 8. Phase 7: Multi-Language & RTL Verification (O-6)
 
 ### Objective
-Verify that all packaging terms are cleanly translated without missing keys, placeholder corruption, or layout clipping in French and Arabic.
+Verify that packaging terms are cleanly translated without missing keys, placeholder corruption, or layout clipping in French and Arabic.
 
-### Step 7.1: French (`fr`) Language Test
-1. In the app header/settings, switch language to **Français**.
-2. Navigate to Products, POS, and Inventory.
-3. **Expected Terminology:**
+### Step 7.1: French (`fr`)
+1. Switch language to **Français**.
+2. Navigate to Catalogue Setup, Products, and POS.
+3. **Expected Terms:**
+   - Base Unit: `Unité de base`
+   - Pre-configured Pack: `Conditionnement préconfiguré`
+   - Flexible Pack: `Conditionnement flexible`
    - Pack / Packs: `Conditionnement` / `Conditionnements`
    - Main Pack: `Conditionnement principal`
-   - Carton: `Carton`
-   - Unit / Piece: `Pièce`
    - Holds {n} {base}: `Contient {n} {base}`
    - Extra {base}: `{base} en plus`
    - Below Cost: `Sous le coût`
-   - Edited badge: `modifié`
+   - Edited: `modifié`
    - Buy Only: `Non vendu (achat uniquement)`
 
-### Step 7.2: Arabic (`ar`) & RTL Test
+### Step 7.2: Arabic (`ar`) & RTL Layout
 1. Switch language to **العربية**.
-2. **Expected Terminology & Layout:**
-   - Entire application flips to **Right-to-Left (RTL)** layout.
-   - Quantities and tabular numbers align to the left side of cells as appropriate.
-   - Terminology:
-     - Pack: `تعبئة / تعبئات`
+2. **Expected Terms & Layout:**
+   - Entire application switches to **Right-to-Left (RTL)** layout.
+   - Numbers and prices format cleanly.
+   - Terms:
+     - Base Unit: `وحدة أساسية`
+     - Pre-configured Pack: `تعبئة محددة مسبقاً`
+     - Flexible Pack: `تعبئة مرنة`
+     - Pack / Packs: `تعبئة / تعبئات`
      - Main Pack: `التعبئة الرئيسية`
-     - Carton: `كرتون`
-     - Piece: `قطعة`
      - Holds: `يحتوي على {n} {base}`
      - Extra pieces: `{base} إضافية`
      - Below Cost: `أقل من التكلفة`
-     - Edited badge: `معدّل`
+     - Edited: `معدّل`
      - Buy Only: `غير مباع (للشراء فقط)`
-   - No placeholder tokens (e.g. `{base}`) are displayed raw; they are replaced with localized names.
 
 ---
 
-## 8. Comprehensive Verification Results Checklist
+## 9. Phase 8: Startup & Database Migration Resilience
+
+### Objective
+Verify that launching the application or adding migrations is completely self-healing.
+
+### Step 8.1: Launch via `run.bat`
+1. Close any running Stockiha window.
+2. Double-click `run.bat` or run:
+   ```cmd
+   .\run.bat
+   ```
+3. **Expected Output in Console:**
+   - `[1/5] Ensuring PostgreSQL is accepting connections on port 5433...` -> `[OK]`
+   - `[2/5] Running SQLx migrations...` -> `Total migrations applied: 170` -> `Database migrations: PASS`
+   - `[3/5] Checking database credentials and building URL...` -> `[OK] Credentials loaded.`
+   - `[4/5] Compiling Stockiha...` -> Clean compilation.
+   - `[5/5] Launching Tauri dev window...`
+4. **Expected Result:**
+   - Stockiha opens directly to the Dashboard or Login screen with **zero** "Database needs an update" errors.
+
+### Step 8.2: Dynamic Retry Verification
+1. If the database is ever behind:
+   - The app displays the informative "Database needs an update" card.
+   - Applying migrations via `run-sqlx-migrations.ps1` and clicking **Retry** immediately succeeds without restarting the app (due to non-caching of mismatch states).
+
+---
+
+## 10. Comprehensive Verification Results Checklist
 
 | Area | Checkpoint | Status | Notes |
 |---|---|---|---|
-| **Version** | `[ version = WS-O-6.1 ]` on dashboard & setup | [ ] Pass | |
-| **Catalog** | Create pack with holds, price, barcode | [ ] Pass | |
-| **Catalog** | Suggested max price helper works | [ ] Pass | |
-| **Catalog** | Negative validations (decimals, factor <= 1, duplicate barcode) | [ ] Pass | |
-| **Catalog** | Replicate packs to sibling variants | [ ] Pass | |
+| **Version** | `[ version = WS-O-6.2 ]` on dashboard & setup | [ ] Pass | |
+| **Catalogue Setup** | 3-way unit kinds (Base, Pre-configured, Flexible) | [ ] Pass | |
+| **Catalogue Setup** | Pre-configured pack locks holds factor across products | [ ] Pass | |
+| **Catalog** | Product base unit strictly allows atomic units only | [ ] Pass | |
+| **Catalog** | Pack dropdown excludes base units & incompatible packs | [ ] Pass | |
+| **Catalog** | Pack holds factor strictly `> 1` (integers for whole base units) | [ ] Pass | |
+| **Catalog** | Quick box creation during product create works | [ ] Pass | |
+| **Catalog** | Replicate packs to sibling variants works | [ ] Pass | |
 | **Purchasing** | Default unit is main pack in stock receipt | [ ] Pass | |
 | **Purchasing** | Extra pieces costed at carton rate | [ ] Pass | |
-| **Purchasing** | WAC and base inventory update accurately | [ ] Pass | |
-| **Adjustments**| Default unit is main pack; shows `= {baseQty} {base}` | [ ] Pass | |
-| **Display** | Products list shows `2 Carton + 5 Piece` + tooltip | [ ] Pass | |
+| **Purchasing** | Stored stock & WAC update accurately in base units | [ ] Pass | |
+| **Adjustments** | Adjustment unit defaults to main pack with base equivalent | [ ] Pass | |
+| **Display** | Products list shows `2 Carton 50 + 10 Piece` + tooltip | [ ] Pass | |
 | **Display** | Inventory screen shows `X Pack + Y Unit` | [ ] Pass | |
-| **Display** | Item search modal shows pack quantities | [ ] Pass | |
+| **Display** | Item search modal (`Ctrl+K`) shows pack quantities | [ ] Pass | |
 | **POS Till** | Auto-defaults to main pack upon tile click | [ ] Pass | |
 | **POS Till** | Scanning box barcode increments pack quantity | [ ] Pass | |
 | **POS Till** | Mixed line: carton + extra pieces at carton rate | [ ] Pass | |
-| **POS Till** | Overflow carry: 12 extra pieces becomes +1 pack | [ ] Pass | |
-| **POS Till** | Price override shows `edited` badge and below-cost warning | [ ] Pass | |
+| **POS Till** | Extra pieces overflow into cartons automatically | [ ] Pass | |
 | **POS Till** | Below-cost warning does NOT block sale checkout | [ ] Pass | |
 | **Receipts** | Thermal receipt prints carton & extra piece lines | [ ] Pass | |
 | **Void** | Void restores stock in base units; void slip prints | [ ] Pass | |
-| **French** | Accurate French copy (`Conditionnement`, `Sous le coût`, etc.) | [ ] Pass | |
-| **Arabic** | Clean RTL alignment, no clipping, correct glossary | [ ] Pass | |
+| **French** | Accurate French copy (`Conditionnement`, `Sous le coût`) | [ ] Pass | |
+| **Arabic** | Clean RTL alignment, no clipping, correct terminology | [ ] Pass | |
+| **Launcher** | `run.bat` automatically migrates database before launch | [ ] Pass | |
+| **Retry** | Clicking Retry re-checks live database and proceeds | [ ] Pass | |

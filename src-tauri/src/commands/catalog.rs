@@ -267,8 +267,10 @@ pub(crate) async fn create_unit(
     code: Option<String>,
     base_unit_id: Option<i64>,
     conversion_factor: Option<Decimal>,
+    is_pack: Option<bool>,
 ) -> Result<i64, IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let is_pack_val = is_pack.unwrap_or(base_unit_id.is_some());
     catalog::create_unit(
         pool,
         &session_token,
@@ -277,6 +279,7 @@ pub(crate) async fn create_unit(
         code.as_deref(),
         base_unit_id,
         conversion_factor,
+        is_pack_val,
     )
     .await
     .map_err(IpcError::from)
@@ -656,6 +659,7 @@ pub(crate) struct UnitLifecycleItemResponse {
     pub base_unit_code: Option<String>,
     pub base_unit_name: Option<String>,
     pub conversion_factor: Option<String>,
+    pub is_pack: bool,
 }
 
 #[derive(Serialize)]
@@ -929,6 +933,7 @@ pub(crate) async fn list_units_v2(
                     base_unit_code: i.base_unit_code,
                     base_unit_name: i.base_unit_name,
                     conversion_factor: i.conversion_factor.map(|d| d.normalize().to_string()),
+                    is_pack: i.is_pack,
                 })
                 .collect()
         })
@@ -946,6 +951,7 @@ pub(crate) async fn update_unit(
     code: Option<String>,
     base_unit_id: Option<i64>,
     conversion_factor: Option<Decimal>,
+    is_pack: Option<bool>,
 ) -> Result<(), IpcError> {
     let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
     catalog::update_unit(
@@ -957,6 +963,7 @@ pub(crate) async fn update_unit(
         code.as_deref(),
         base_unit_id,
         conversion_factor,
+        is_pack,
     )
     .await
     .map_err(IpcError::from)
@@ -976,6 +983,7 @@ pub(crate) async fn rename_unit(
         unit_id,
         name,
         allows_fractions,
+        None,
         None,
         None,
         None,
@@ -1052,6 +1060,7 @@ pub(crate) async fn list_products_v2(
     search: Option<String>,
     category_id: Option<i64>,
     include_inactive: bool,
+    in_stock_only: Option<bool>,
     limit: i32,
     offset: i32,
 ) -> Result<Vec<ProductListItemV2Response>, IpcError> {
@@ -1063,6 +1072,7 @@ pub(crate) async fn list_products_v2(
         search.as_deref(),
         category_id,
         include_inactive,
+        in_stock_only.unwrap_or(false),
         limit,
         offset,
     )

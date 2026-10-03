@@ -56,6 +56,7 @@ import { useErrorText } from '../../shared/hooks/useErrorText';
 import * as ipc from '../../shared/ipc/gateway';
 import type { AttributeDefinition, UnitLifecycleItem, VariantDetail, VariantInput } from '../../shared/ipc/dto';
 import { isValidMinimumStock, isValidPrice } from './catalogValidation';
+import { formatExactDecimal } from '../inventory/exactDecimal';
 
 export const MAX_COMBINATIONS = 100;
 export const WARN_THRESHOLD = 25;
@@ -168,14 +169,29 @@ export function BulkVariantGenerator({
 
   const availablePackUnits = useMemo(() => {
     if (!units || !baseUnit) return [];
-    const hasPackUnitsForBase = units.some((u) => u.base_unit_id === baseUnit.id);
     return units.filter(
       (u) =>
         u.is_active &&
+        u.is_pack &&
         u.id !== baseUnit.id &&
-        (hasPackUnitsForBase ? u.base_unit_id === baseUnit.id : true)
+        (u.base_unit_id == null || u.base_unit_id === baseUnit.id)
     );
   }, [units, baseUnit]);
+
+  const selectedPackUnit = useMemo(() => {
+    if (!packUnitId) return null;
+    return availablePackUnits.find((u) => u.id === packUnitId) ?? null;
+  }, [availablePackUnits, packUnitId]);
+
+  const isPreconfiguredPack = selectedPackUnit?.conversion_factor != null;
+
+  function handlePackUnitChange(unitId: number) {
+    setPackUnitId(unitId);
+    const target = availablePackUnits.find((u) => u.id === unitId);
+    if (target?.conversion_factor != null) {
+      setPackFactor(formatExactDecimal(target.conversion_factor));
+    }
+  }
 
   const combinations = useMemo(() => buildCombinations(attributes, selection), [attributes, selection]);
   const overCap = combinations.length > MAX_COMBINATIONS;
@@ -519,9 +535,10 @@ export function BulkVariantGenerator({
                   checked={packEnabled}
                   disabled={creating}
                   onChange={(e) => {
-                    setPackEnabled(e.target.checked);
-                    if (e.target.checked && !packUnitId && availablePackUnits.length > 0) {
-                      setPackUnitId(availablePackUnits[0].id);
+                    const enabled = e.target.checked;
+                    setPackEnabled(enabled);
+                    if (enabled && !packUnitId && availablePackUnits.length > 0) {
+                      handlePackUnitChange(availablePackUnits[0].id);
                     }
                   }}
                   data-testid="catalog2-bulk-pack-enable"
@@ -539,7 +556,7 @@ export function BulkVariantGenerator({
                       className="sk-catalog2__input"
                       value={packUnitId ?? ''}
                       disabled={creating}
-                      onChange={(e) => setPackUnitId(Number(e.target.value))}
+                      onChange={(e) => handlePackUnitChange(Number(e.target.value))}
                       data-testid="catalog2-bulk-pack-unit"
                       style={{ minHeight: 36, minWidth: 130 }}
                     >
@@ -557,7 +574,7 @@ export function BulkVariantGenerator({
                       label={t('catalog2.bulkDefaultPackFactor')}
                       value={packFactor}
                       inputMode="decimal"
-                      disabled={creating}
+                      disabled={creating || isPreconfiguredPack}
                       placeholder={baseUnit?.isWhole ? '12' : '10.5'}
                       onChange={(e) => setPackFactor(e.target.value)}
                       data-testid="catalog2-bulk-pack-factor"
@@ -587,6 +604,12 @@ export function BulkVariantGenerator({
                     />
                     <span>{t('catalog2.bulkDefaultPackPrimary')}</span>
                   </label>
+
+                  {selectedPackUnit && packFactor && baseUnit ? (
+                    <div style={{ width: '100%', fontSize: '0.82rem', color: 'var(--sk-primary)', fontWeight: 600 }}>
+                      👉 1 {selectedPackUnit.name} = {packFactor} {baseUnit.name}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

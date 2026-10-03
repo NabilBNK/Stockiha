@@ -173,7 +173,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
   const [advancedSearchResults, setAdvancedSearchResults] = useState<ProductListItem[]>([]);
   const [advancedSearchLoading, setAdvancedSearchLoading] = useState(false);
   const [advancedSearchQuery, setAdvancedSearchQuery] = useState('');
-  const [inStockOnly, setInStockOnly] = useState(true);
+  const [inStockOnly, setInStockOnly] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
   const [customerId, setCustomerId] = useState<number | null>(null);
@@ -228,7 +228,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
   }, [activeCashSession, selectedWarehouseId, selectWarehouse]);
 
   // Products are fetched from the database for the current category and search
-  // text, 60 at a time. The catalogue is never loaded into the browser whole.
+  // text, 60 at a time. When inStockOnly is toggled, it is queried server-side.
   useEffect(() => {
     if (!token || posWarehouseId == null) return;
     let active = true;
@@ -239,6 +239,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
           search: search.trim() || null,
           categoryId,
           includeInactive: false,
+          inStockOnly,
           limit: PAGE_SIZE,
           offset: 0,
         })
@@ -260,7 +261,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
       active = false;
       clearTimeout(timer);
     };
-  }, [token, posWarehouseId, search, categoryId]);
+  }, [token, posWarehouseId, search, categoryId, inStockOnly]);
 
   const loadMoreProducts = useCallback(async () => {
     if (!token || posWarehouseId == null || catalogBusy) return;
@@ -270,6 +271,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
         search: search.trim() || null,
         categoryId,
         includeInactive: false,
+        inStockOnly,
         limit: PAGE_SIZE,
         offset: products.length,
       });
@@ -280,7 +282,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
     } finally {
       setCatalogBusy(false);
     }
-  }, [token, posWarehouseId, search, categoryId, products.length, catalogBusy]);
+  }, [token, posWarehouseId, search, categoryId, inStockOnly, products.length, catalogBusy]);
 
   const refreshCatalog = useCallback(async () => {
     if (!token || posWarehouseId == null) return;
@@ -289,6 +291,7 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
         search: search.trim() || null,
         categoryId,
         includeInactive: false,
+        inStockOnly,
         limit: Math.max(PAGE_SIZE, products.length),
         offset: 0,
       });
@@ -297,21 +300,12 @@ export function PosScreen({ onOpenLicence }: { onOpenLicence?: () => void } = {}
     } catch {
       // ignore
     }
-  }, [token, posWarehouseId, search, categoryId, products.length]);
+  }, [token, posWarehouseId, search, categoryId, inStockOnly, products.length]);
 
   const displayedProducts = useMemo(() => {
     if (!inStockOnly) return products;
     return products.filter((p) => isExactDecimalPositive(p.quantity_on_hand ?? '0'));
   }, [products, inStockOnly]);
-
-  // When filtering in-stock only, auto-fetch subsequent pages until we have at least PAGE_SIZE in-stock products
-  // (or until there are no more pages in the catalog), so the operator isn't forced to click "Show more"
-  // just because in-stock variants happen to be scattered across multiple backend pages.
-  useEffect(() => {
-    if (inStockOnly && hasMore && !catalogBusy && displayedProducts.length < PAGE_SIZE) {
-      void loadMoreProducts();
-    }
-  }, [inStockOnly, hasMore, catalogBusy, displayedProducts.length, loadMoreProducts]);
 
   const invalidateSaleIntent = useCallback(() => {
     setRequestId(null);

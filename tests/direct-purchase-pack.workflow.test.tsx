@@ -202,6 +202,7 @@ describe('WS-O-3 Buy by the pack workflow', () => {
     // Add item via picker
     fireEvent.click(screen.getByTestId('add-purchase-line-btn'));
     fireEvent.click(await screen.findByTestId('purchase-item-option-7'));
+    fireEvent.click(screen.getByTestId('purchase-picker-confirm-btn'));
 
     // Verify unit defaults to primary pack unit BX12 (id 2)
     const unitSelect = screen.getByTestId('purchase-line-unit-0') as HTMLSelectElement;

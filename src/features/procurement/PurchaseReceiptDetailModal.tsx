@@ -33,6 +33,7 @@ export function PurchaseReceiptDetailModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(true);
 
   // Close on Escape key press
   useEffect(() => {
@@ -143,7 +144,7 @@ export function PurchaseReceiptDetailModal({
       }}
     >
       <div
-        className="sk-detail-dialog pr-receipt-detail-dialog"
+        className={`sk-detail-dialog pr-receipt-detail-dialog ${isMaximized ? 'pr-receipt-detail-dialog--maximized' : 'pr-receipt-detail-dialog--normal'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="receipt-detail-title"
@@ -176,6 +177,17 @@ export function PurchaseReceiptDetailModal({
                 ? text.directPurchase
                 : `${text.purchaseOrderOrigin}: ${receipt.purchase_order_number ?? `#${receipt.purchase_order_id}`}`}
             </span>
+            <button
+              type="button"
+              className="sk-button sk-button--icon sk-button--ghost"
+              onClick={() => setIsMaximized((prev) => !prev)}
+              aria-label={isMaximized ? "Restore window" : "Maximize window"}
+              title={isMaximized ? "Restore window" : "Maximize window"}
+              data-testid="toggle-receipt-maximize-btn"
+              style={{ padding: '4px 8px', fontSize: '1rem', lineHeight: 1, minWidth: '32px', height: '32px' }}
+            >
+              {isMaximized ? '🗗' : '🗖'}
+            </button>
             <button
               type="button"
               className="sk-modal-close"

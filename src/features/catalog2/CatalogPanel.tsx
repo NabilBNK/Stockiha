@@ -559,7 +559,7 @@ export function CatalogPanel({
     const categoryOptions = (heldCategory ? [...activeCategories, heldCategory] : activeCategories)
       .map((c) => ({ value: String(c.id), label: c.name }));
 
-    const activeUnits = units.filter((u) => u.is_active);
+    const activeUnits = units.filter((u) => u.is_active && !u.is_pack);
     const heldUnit = !activeUnits.some((u) => u.id === detail.unit_id)
       ? units.find((u) => u.id === detail.unit_id)
       : undefined;
@@ -1022,12 +1022,12 @@ export function CatalogCreatePanel({
     boxBarcode.trim() !== '';
 
   const boxUnitOptions = useMemo(() => {
-    const hasPackUnitsForBase = units.some((u) => u.base_unit_id === unitId);
+    const hasPackUnits = units.some((u) => u.is_pack);
     return units.filter(
       (u) =>
         u.is_active &&
         u.id !== unitId &&
-        (hasPackUnitsForBase ? u.base_unit_id === unitId : true)
+        (hasPackUnits ? (u.is_pack && (u.base_unit_id == null || u.base_unit_id === unitId)) : true)
     );
   }, [units, unitId]);
 
@@ -1070,7 +1070,7 @@ export function CatalogCreatePanel({
       setCategories(cats);
       setUnits(us);
       setAttributes(attrs);
-      setUnitId((current) => current ?? us.find((u) => u.is_active)?.id ?? null);
+      setUnitId((current) => current ?? us.find((u) => u.is_active && !u.is_pack)?.id ?? null);
     } catch {
       // The pickers stay empty; the form still reports its own submit errors.
     } finally {
@@ -1102,7 +1102,7 @@ export function CatalogCreatePanel({
    * operator has not explicitly asked to have blocked.
    */
   const createUnit = useCallback(async (label: string) => {
-    const id = await ipc.createUnit(token, label, true);
+    const id = await ipc.createUnit(token, label, true, null, null, null, false);
     await loadRefData();
     return id;
   }, [token, loadRefData]);
@@ -1252,7 +1252,7 @@ export function CatalogCreatePanel({
     .filter((c) => c.is_active)
     .map((c) => ({ id: c.id, label: c.name }));
   const unitOptions = units
-    .filter((u) => u.is_active)
+    .filter((u) => u.is_active && !u.is_pack)
     .map((u) => ({ id: u.id, label: `${u.name} (${u.code})` }));
 
   return (

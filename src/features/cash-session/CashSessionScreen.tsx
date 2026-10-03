@@ -28,12 +28,13 @@ import { buildThermalSessionReport } from './sessionReportBuilder';
 import { formatDisplayDate } from '../../shared/utils/formatters';
 
 const AMOUNT_RE = /^\d+(\.\d{1,2})?$/;
-const INTEGER_RE = /^\d+$/;
 
 const COPY: Record<Locale, Record<string, string>> = {
   en: {
     currentCashier: 'Current cashier', state: 'State', beginClose: 'Begin blind close',
-    blindTitle: 'Blind denomination count', blindHelp: 'Count the drawer by denomination. Expected cash stays hidden until you submit.',
+    blindTitle: 'Blind cash count', blindHelp: 'Enter the total counted cash in the drawer (e.g. 620 DA). Expected cash stays hidden until you submit.',
+    totalCountedLabel: 'Total counted cash (DZD)', totalCountedPlaceholder: 'e.g. 620.00',
+    totalCountedInvalid: 'Enter a valid positive cash amount (e.g. 620 or 620.50).',
     cancelClose: 'Cancel close', submitCount: 'Submit blind count', expected: 'Expected cash', counted: 'Counted cash',
     variance: 'Variance', pendingApproval: 'Manager approval required', approvalHelp: 'A manager or administrator must authorize this exact close attempt.',
     managerUsername: 'Manager username', managerPassword: 'Manager password', approvalReason: 'Approval reason', approve: 'Approve and close',
@@ -81,7 +82,9 @@ const COPY: Record<Locale, Record<string, string>> = {
   },
   fr: {
     currentCashier: 'Caissier actuel', state: 'État', beginClose: 'Commencer la clôture à l’aveugle',
-    blindTitle: 'Comptage à l’aveugle par coupure', blindHelp: 'Comptez la caisse par coupure. Le montant attendu reste masqué jusqu’à l’envoi.',
+    blindTitle: 'Comptage à l’aveugle', blindHelp: 'Saisissez le montant total physique compté dans la caisse (ex: 620 DA). Le montant attendu reste masqué jusqu’à l’envoi.',
+    totalCountedLabel: 'Montant total compté (DZD)', totalCountedPlaceholder: 'ex: 620.00',
+    totalCountedInvalid: 'Saisissez un montant valide supérieur ou égal à zéro (ex: 620 ou 620.50).',
     cancelClose: 'Annuler la clôture', submitCount: 'Envoyer le comptage', expected: 'Espèces attendues', counted: 'Espèces comptées',
     variance: 'Écart', pendingApproval: 'Validation responsable requise', approvalHelp: 'Un responsable ou administrateur doit valider cette tentative exacte de clôture.',
     managerUsername: 'Utilisateur responsable', managerPassword: 'Mot de passe responsable', approvalReason: 'Motif de validation', approve: 'Valider et clôturer',
@@ -129,7 +132,9 @@ const COPY: Record<Locale, Record<string, string>> = {
   },
   ar: {
     currentCashier: 'أمين الصندوق الحالي', state: 'الحالة', beginClose: 'بدء الإغلاق بالجرد الأعمى',
-    blindTitle: 'الجرد الأعمى حسب الفئة', blindHelp: 'عدّ محتوى الصندوق حسب كل فئة. المبلغ المتوقع يبقى مخفياً حتى إرسال الجرد.',
+    blindTitle: 'الجرد الأعمى للصندوق', blindHelp: 'أدخل المبلغ الإجمالي الفعلي المحسوب في الصندوق (مثال: 620 د.ج). المبلغ المتوقع يبقى مخفياً حتى إرسال الجرد.',
+    totalCountedLabel: 'المبلغ الإجمالي المحسوب (د.ج)', totalCountedPlaceholder: 'مثال: 620.00',
+    totalCountedInvalid: 'أدخل مبلغاً صحيحاً أكبر من أو يساوي الصفر (مثال 620 أو 620.50).',
     cancelClose: 'إلغاء الإغلاق', submitCount: 'إرسال الجرد', expected: 'النقد المتوقع', counted: 'النقد المعدود',
     variance: 'الفارق', pendingApproval: 'موافقة المسؤول مطلوبة', approvalHelp: 'يجب على مسؤول أو مدير الموافقة على محاولة الإغلاق هذه تحديداً.',
     managerUsername: 'اسم مستخدم المسؤول', managerPassword: 'كلمة مرور المسؤول', approvalReason: 'سبب الموافقة', approve: 'موافقة وإغلاق',
@@ -177,8 +182,39 @@ const COPY: Record<Locale, Record<string, string>> = {
   },
 };
 
-function initialCounts(denominations: CashDenomination[]): Record<number, string> {
-  return Object.fromEntries(denominations.map((denomination) => [denomination.id, '0']));
+function parseToCents(amountStr: string): number {
+  const parts = amountStr.trim().split('.');
+  const whole = parseInt(parts[0] || '0', 10);
+  const frac = (parts[1] || '').padEnd(2, '0').slice(0, 2);
+  const cents = whole * 100 + parseInt(frac || '0', 10);
+  return isNaN(cents) ? 0 : cents;
+}
+
+export function decomposeTotalIntoDenominations(
+  totalAmountStr: string,
+  denominations: CashDenomination[],
+): DenominationCountInput[] {
+  let remainingCents = parseToCents(totalAmountStr);
+  const sorted = [...denominations].sort((a, b) => parseToCents(b.value) - parseToCents(a.value));
+  const result: DenominationCountInput[] = [];
+
+  for (let i = 0; i < sorted.length; i++) {
+    const denom = sorted[i];
+    const denomCents = parseToCents(denom.value);
+    if (denomCents <= 0) {
+      result.push({ denomination_id: denom.id, quantity: 0 });
+      continue;
+    }
+    const isSmallest = i === sorted.length - 1;
+    let qty = Math.floor(remainingCents / denomCents);
+    if (isSmallest && remainingCents > 0) {
+      qty = Math.round(remainingCents / denomCents);
+    }
+    remainingCents -= qty * denomCents;
+    result.push({ denomination_id: denom.id, quantity: Math.max(0, qty) });
+  }
+
+  return result;
 }
 
 export function CashSessionScreen() {
@@ -192,7 +228,7 @@ export function CashSessionScreen() {
 
   const [current, setCurrent] = useState<CurrentCashSession | null>(null);
   const [denominations, setDenominations] = useState<CashDenomination[]>([]);
-  const [counts, setCounts] = useState<Record<number, string>>({});
+  const [totalCountedCash, setTotalCountedCash] = useState('');
   const [openingFloat, setOpeningFloat] = useState('0');
   const [suspensionReason, setSuspensionReason] = useState('');
   const [managerUsername, setManagerUsername] = useState('');
@@ -245,15 +281,14 @@ export function CashSessionScreen() {
       refreshLifecycle(),
       cashIpc.listCashDenominations(token).then((rows) => {
         setDenominations(rows);
-        setCounts(initialCounts(rows));
       }),
       cashIpc.getCashCapabilities(token).then(setCashCapabilities).catch(() => setCashCapabilities(null)),
     ]).catch((err) => setError(errorText(err)));
   }, [token, refreshLifecycle, errorText]);
 
-  const countsValid = useMemo(
-    () => denominations.length > 0 && denominations.every((d) => INTEGER_RE.test(counts[d.id] ?? '')),
-    [denominations, counts],
+  const totalCountValid = useMemo(
+    () => denominations.length > 0 && AMOUNT_RE.test(totalCountedCash.trim()),
+    [denominations, totalCountedCash],
   );
 
   const needsCashOutApproval =
@@ -341,7 +376,7 @@ export function CashSessionScreen() {
     if (!current) return;
     await run(async () => {
       await cashIpc.beginCashSessionClose(token, current.id);
-      setCounts(initialCounts(denominations));
+      setTotalCountedCash('');
       await sync();
     });
   }
@@ -350,18 +385,19 @@ export function CashSessionScreen() {
     if (!current) return;
     await run(async () => {
       await cashIpc.cancelCashSessionClose(token, current.id);
+      setTotalCountedCash('');
       await sync();
     });
   }
 
   async function submitCount(event: FormEvent) {
     event.preventDefault();
-    if (!current || !countsValid) return;
+    if (!current || !totalCountValid) return;
 
-    const payload: DenominationCountInput[] = denominations.map((denomination) => ({
-      denomination_id: denomination.id,
-      quantity: Number(counts[denomination.id]),
-    }));
+    const payload: DenominationCountInput[] = decomposeTotalIntoDenominations(
+      totalCountedCash,
+      denominations,
+    );
 
     await run(async () => {
       const result: CashSessionCloseResult = await cashIpc.submitCashSessionCount(token, current.id, payload);
@@ -686,25 +722,25 @@ export function CashSessionScreen() {
         <form className="sk-card sk-form" onSubmit={submitCount} data-testid="blind-count-form">
           <h2>{text.blindTitle}</h2>
           <Banner tone="warning">{text.blindHelp}</Banner>
-          {denominations.map((denomination) => (
-            <TextField
-              key={denomination.id}
-              label={`${denomination.value} DZD`}
-              value={counts[denomination.id] ?? '0'}
-              inputMode="numeric"
-              onChange={(event) => setCounts((previous) => ({
-                ...previous,
-                [denomination.id]: event.target.value,
-              }))}
-              error={!INTEGER_RE.test(counts[denomination.id] ?? '') ? t('errors.validation') : undefined}
-              required
-            />
-          ))}
+          <TextField
+            label={text.totalCountedLabel}
+            value={totalCountedCash}
+            inputMode="decimal"
+            placeholder={text.totalCountedPlaceholder}
+            onChange={(event) => setTotalCountedCash(event.target.value)}
+            error={
+              totalCountedCash.trim() !== '' && !AMOUNT_RE.test(totalCountedCash.trim())
+                ? text.totalCountedInvalid
+                : undefined
+            }
+            required
+            autoFocus
+          />
           <div className="sk-actions">
             <Button type="button" variant="secondary" disabled={busy} onClick={cancelClose}>
               {text.cancelClose}
             </Button>
-            <Button type="submit" variant="danger" loading={busy} disabled={!countsValid}>
+            <Button type="submit" variant="danger" loading={busy} disabled={!totalCountValid}>
               {text.submitCount}
             </Button>
           </div>

@@ -92,7 +92,7 @@ echo.
 echo ========================================================
 echo  [2/5] Running SQLx migrations...
 echo ========================================================
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-sqlx-migrations.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-sqlx-migrations.ps1" -DatabaseName stockiha_acceptance
 if errorlevel 1 (
     echo.
     echo  ERROR: Database migrations failed.
@@ -116,7 +116,7 @@ if not defined STOCKIHA_RESTORE_ADMIN_DATABASE_URL if exist "%SECRET_ROOT%\admin
 REM ---- Step 4: Read database credentials and build DB URL ----
 echo.
 echo ========================================================
-echo [4/5] Checking database credentials and building URL...
+echo  [3/5] Checking database credentials and building URL...
 echo ========================================================
 
 if not exist "%SECRET_ROOT%\runtime.key" (

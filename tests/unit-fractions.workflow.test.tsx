@@ -196,7 +196,7 @@ describe('unit create/rename carry allows_fractions (WS-D-13 A1-A4)', () => {
     // WS-D-14 Part 3: the code column shows plain text, never an input, even
     // while the row is being edited.
     expect(within(pcRow).getByTestId('coded-ref-code-1')).toHaveTextContent('PC');
-    fireEvent.click(within(pcRow).getByRole('button', { name: 'Rename' }));
+    fireEvent.click(within(pcRow).getByRole('button', { name: /Edit|Rename/i }));
     expect(within(pcRow).getByTestId('coded-ref-code-1')).toHaveTextContent('PC');
     expect(within(pcRow).queryByLabelText('Unit code')).not.toBeInTheDocument();
 
@@ -223,7 +223,7 @@ describe('unit create/rename carry allows_fractions (WS-D-13 A1-A4)', () => {
 
     const rows = screen.getAllByRole('row');
     const pcRow = rows.find((r) => r.textContent?.includes('Piece'))!;
-    fireEvent.click(within(pcRow).getByRole('button', { name: 'Rename' }));
+    fireEvent.click(within(pcRow).getByRole('button', { name: /Edit|Rename/i }));
 
     fireEvent.click(await screen.findByTestId('coded-ref-edit-flag-1'));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
