@@ -87,5 +87,6 @@ export function useI18n(): I18nContextValue {
   return ctx;
 }
 
+export { useI18n as useTranslation };
 export { LOCALES } from './locales';
 export type { Locale, MessageKey } from './locales';

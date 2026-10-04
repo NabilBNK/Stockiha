@@ -2,7 +2,7 @@
 mod application;
 pub mod commands;
 #[cfg_attr(not(test), allow(dead_code))]
-mod domain;
+pub mod domain;
 mod error;
 mod infrastructure;
 mod licence;
@@ -594,6 +594,23 @@ pub fn run() {
         commands::licence::activate_licence,
         commands::licence::remove_licence,
         commands::licence::refresh_licence_status,
+        // WS-P-1: Paper Book (history)
+        commands::paperbook::paperbook_get_settings,
+        commands::paperbook::paperbook_set_go_live_date,
+        commands::paperbook::paperbook_preview_import,
+        commands::paperbook::paperbook_commit_import,
+        commands::paperbook::paperbook_list_txns,
+        commands::paperbook::paperbook_list_totals,
+        commands::paperbook::paperbook_get_txn,
+        commands::paperbook::paperbook_create_manual,
+        commands::paperbook::paperbook_update_manual,
+        commands::paperbook::paperbook_delete_manual,
+        commands::paperbook::paperbook_autocomplete,
+        commands::paperbook::paperbook_list_names,
+        commands::paperbook::paperbook_name_suggestions,
+        commands::paperbook::paperbook_set_name_map,
+        commands::paperbook::paperbook_remove_name_map,
+        commands::paperbook::paperbook_dismiss_suggestion,
     ];
     let app = app
         .invoke_handler(move |invoke: tauri::ipc::Invoke<_>| {

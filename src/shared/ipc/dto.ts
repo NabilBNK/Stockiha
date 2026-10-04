@@ -1123,3 +1123,148 @@ export type SavePrintingSettingsPayload = Partial<
   Omit<PrintingSettingsDto, 'logo_file_name' | 'logo_updated_at' | 'updated_at'>
 >;
 
+// --- WS-P-1 Paper Book DTOs ---
+
+export interface PaperBookSettingsDto {
+  go_live_date: string | null;
+}
+
+export interface PaperBookIssue {
+  severity: 'error' | 'warning';
+  code: string;
+  row?: number | null;
+  col?: string | null;
+  message_key: string;
+  context?: Record<string, string | number | boolean> | null;
+}
+
+export interface PaperBookCurrentImportDto {
+  batch_id?: number | null;
+  file_name?: string | null;
+  file_sha256?: string | null;
+  imported_at?: string | null;
+  txn_count?: number | null;
+  line_count?: number | null;
+}
+
+export interface PaperBookPreviewSummaryDto {
+  transactions: number;
+  sell: number;
+  buy: number;
+  expense: number;
+  lines: number;
+  date_min?: string | null;
+  date_max?: string | null;
+  sell_total: string;
+  buy_total: string;
+  expense_total: string;
+  sell_benefit_total: string;
+  sells_with_benefit: number;
+  sell_total_with_benefit: string;
+  sell_not_paid_total: string;
+  buy_not_paid_total: string;
+  expense_not_paid_total: string;
+}
+
+export interface PaperBookPreviewDto {
+  file_name: string;
+  file_sha256: string;
+  sheet_name: string;
+  same_as_current: boolean;
+  current_import?: PaperBookCurrentImportDto | null;
+  manual_count: number;
+  summary?: PaperBookPreviewSummaryDto | null;
+  errors: PaperBookIssue[];
+  error_total: number;
+  warnings: PaperBookIssue[];
+  warning_total: number;
+  can_import: boolean;
+}
+
+export interface PaperBookImportResultDto {
+  batch_id: number;
+  txn_count: number;
+  line_count: number;
+  replaced_txn_count: number;
+}
+
+export interface PaperBookTxnRowDto {
+  id: number;
+  source: 'import' | 'manual';
+  batch_id?: number | null;
+  excel_first_row?: number | null;
+  excel_txn_no?: string | null;
+  txn_date: string;
+  txn_type: 'sell' | 'buy' | 'expense';
+  is_paid: boolean;
+  party_raw?: string | null;
+  party_label?: string | null;
+  what_label?: string | null;
+  benefit?: string | null;
+  page_no?: string | null;
+  note?: string | null;
+  total: string;
+  line_count: number;
+}
+
+export interface PaperBookListResponse {
+  txns: PaperBookTxnRowDto[];
+  total_count: number;
+}
+
+export interface PaperBookTotalsDto {
+  txn_count: number;
+  sell_total: string;
+  buy_total: string;
+  expense_total: string;
+  benefit_total: string;
+  not_paid_total: string;
+}
+
+export interface PaperBookLineDto {
+  id: number;
+  line_no: number;
+  excel_row?: number | null;
+  product_raw?: string | null;
+  product_label?: string | null;
+  brand_raw?: string | null;
+  brand_label?: string | null;
+  details_raw?: string | null;
+  details_label?: string | null;
+  quantity?: string | null;
+  unit_price?: string | null;
+  line_total: string;
+  total_overridden: boolean;
+  page_no?: string | null;
+}
+
+export interface PaperBookTxnDetailDto {
+  txn: PaperBookTxnRowDto;
+  lines: PaperBookLineDto[];
+}
+
+export interface PaperBookNameRowDto {
+  raw_key: string;
+  raw_label: string;
+  usage_count: number;
+  effective_key: string;
+  effective_label: string;
+  is_mapped: boolean;
+}
+
+export interface PaperBookNamesResponse {
+  names: PaperBookNameRowDto[];
+  total_count: number;
+}
+
+export interface PaperBookSuggestionDto {
+  field: string;
+  key_a: string;
+  label_a: string;
+  usage_a: number;
+  key_b: string;
+  label_b: string;
+  usage_b: number;
+}
+
+

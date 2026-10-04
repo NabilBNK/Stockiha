@@ -284,6 +284,24 @@ export const COMMANDS = {
   ACTIVATE_LICENCE: 'activate_licence',
   REMOVE_LICENCE: 'remove_licence',
   REFRESH_LICENCE_STATUS: 'refresh_licence_status',
+
+  // WS-P-1 — Paper Book (history)
+  PAPERBOOK_GET_SETTINGS: 'paperbook_get_settings',
+  PAPERBOOK_SET_GO_LIVE_DATE: 'paperbook_set_go_live_date',
+  PAPERBOOK_PREVIEW_IMPORT: 'paperbook_preview_import',
+  PAPERBOOK_COMMIT_IMPORT: 'paperbook_commit_import',
+  PAPERBOOK_LIST_TXNS: 'paperbook_list_txns',
+  PAPERBOOK_LIST_TOTALS: 'paperbook_list_totals',
+  PAPERBOOK_GET_TXN: 'paperbook_get_txn',
+  PAPERBOOK_CREATE_MANUAL: 'paperbook_create_manual',
+  PAPERBOOK_UPDATE_MANUAL: 'paperbook_update_manual',
+  PAPERBOOK_DELETE_MANUAL: 'paperbook_delete_manual',
+  PAPERBOOK_AUTOCOMPLETE: 'paperbook_autocomplete',
+  PAPERBOOK_LIST_NAMES: 'paperbook_list_names',
+  PAPERBOOK_NAME_SUGGESTIONS: 'paperbook_name_suggestions',
+  PAPERBOOK_SET_NAME_MAP: 'paperbook_set_name_map',
+  PAPERBOOK_REMOVE_NAME_MAP: 'paperbook_remove_name_map',
+  PAPERBOOK_DISMISS_SUGGESTION: 'paperbook_dismiss_suggestion',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

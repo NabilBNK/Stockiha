@@ -47,7 +47,7 @@ import { CashSessionScreen } from '../features/cash-session/CashSessionScreen';
 import { DocumentsScreen } from '../features/documents/DocumentsScreen';
 import { JournalsScreen } from '../features/accounting/JournalsScreen';
 import { CustomersScreen } from '../features/customers/CustomersScreen';
-import { HistoricalFinanceScreen } from '../features/onboarding/HistoricalFinanceScreen';
+import { PaperBookScreen } from '../features/paperbook';
 import { OpeningStateScreen } from '../features/onboarding/OpeningStateScreen';
 import { OpeningStateApplicationScreen } from '../features/onboarding/OpeningStateApplicationScreen';
 import { DrawerPolicySettingsScreen } from '../features/settings/DrawerPolicySettingsScreen';
@@ -542,7 +542,7 @@ function AuthenticatedApp() {
       {view === 'dashboard' && <DashboardScreen setView={setView} />}
       {view === 'reports' && <ReportsScreen setView={setView} />}
       {view === 'historical_finance' && (
-        <HistoricalFinanceScreen sessionToken={user?.token ?? ''} />
+        <PaperBookScreen sessionToken={user?.token ?? ''} />
       )}
       {view === 'opening_state' && openingStateStatus?.showDeferredAccess && (
         <OpeningStateScreen sessionToken={user?.token ?? ''} />

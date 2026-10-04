@@ -234,6 +234,10 @@ base64 = "=0.22.1"
 # verifies, never signs, so a leaked binary can never mint a licence.
 minisign-verify = "=0.2.5"
 
+# WS-P-1: read historical paper-book `.xlsx` files without Microsoft Office.
+# calamine is a pure-Rust, memory-efficient workbook reader.
+calamine = "0.26"
+
 # S0-005: Windows Credential Manager access (Win32 generic credentials).
 # S0-008: adds `Win32_Graphics_Printing` (OpenPrinterW/StartDocPrinterW/
 # StartPagePrinter/WritePrinter/EndPagePrinter/EndDocPrinter/AbortPrinter/

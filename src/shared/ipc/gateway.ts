@@ -53,6 +53,14 @@ import type {
   Unit,
   VariantInput,
   Warehouse,
+  PaperBookSettingsDto,
+  PaperBookPreviewDto,
+  PaperBookImportResultDto,
+  PaperBookListResponse,
+  PaperBookTotalsDto,
+  PaperBookTxnDetailDto,
+  PaperBookNamesResponse,
+  PaperBookSuggestionDto,
 } from './dto';
 
 export class GatewayError extends Error {
@@ -1234,6 +1242,139 @@ export function getPrimaryPacks(
     variantIds,
   });
 }
+
+// ============================================================================
+// WS-P-1 Paper Book
+// ============================================================================
+
+export function paperbookGetSettings(sessionToken: string): Promise<PaperBookSettingsDto> {
+  return call<PaperBookSettingsDto>(COMMANDS.PAPERBOOK_GET_SETTINGS, { sessionToken });
+}
+
+export function paperbookSetGoLiveDate(sessionToken: string, date: string): Promise<PaperBookSettingsDto> {
+  return call<PaperBookSettingsDto>(COMMANDS.PAPERBOOK_SET_GO_LIVE_DATE, { sessionToken, date });
+}
+
+export function paperbookPreviewImport(sessionToken: string, filePath: string): Promise<PaperBookPreviewDto> {
+  return call<PaperBookPreviewDto>(COMMANDS.PAPERBOOK_PREVIEW_IMPORT, { sessionToken, filePath });
+}
+
+export function paperbookCommitImport(
+  sessionToken: string,
+  filePath: string,
+  expectedSha256: string,
+  warningsAcknowledged: boolean,
+): Promise<PaperBookImportResultDto> {
+  return call<PaperBookImportResultDto>(COMMANDS.PAPERBOOK_COMMIT_IMPORT, {
+    sessionToken,
+    filePath,
+    expectedSha256,
+    warningsAcknowledged,
+  });
+}
+
+export function paperbookListTxns(
+  sessionToken: string,
+  params: {
+    from?: string;
+    to?: string;
+    txnType?: string;
+    paid?: string;
+    source?: string;
+    search?: string;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<PaperBookListResponse> {
+  return call<PaperBookListResponse>(COMMANDS.PAPERBOOK_LIST_TXNS, {
+    sessionToken,
+    from: params.from ?? null,
+    to: params.to ?? null,
+    txnType: params.txnType ?? null,
+    paid: params.paid ?? null,
+    source: params.source ?? null,
+    search: params.search ?? null,
+    sort: params.sort ?? null,
+    limit: params.limit ?? null,
+    offset: params.offset ?? null,
+  });
+}
+
+export function paperbookListTotals(
+  sessionToken: string,
+  params: {
+    from?: string;
+    to?: string;
+    txnType?: string;
+    paid?: string;
+    source?: string;
+    search?: string;
+  },
+): Promise<PaperBookTotalsDto> {
+  return call<PaperBookTotalsDto>(COMMANDS.PAPERBOOK_LIST_TOTALS, {
+    sessionToken,
+    from: params.from ?? null,
+    to: params.to ?? null,
+    txnType: params.txnType ?? null,
+    paid: params.paid ?? null,
+    source: params.source ?? null,
+    search: params.search ?? null,
+  });
+}
+
+export function paperbookGetTxn(sessionToken: string, id: number): Promise<PaperBookTxnDetailDto> {
+  return call<PaperBookTxnDetailDto>(COMMANDS.PAPERBOOK_GET_TXN, { sessionToken, id });
+}
+
+export function paperbookCreateManual(sessionToken: string, payload: unknown): Promise<number> {
+  return call<number>(COMMANDS.PAPERBOOK_CREATE_MANUAL, { sessionToken, payload });
+}
+
+export function paperbookUpdateManual(sessionToken: string, id: number, payload: unknown): Promise<number> {
+  return call<number>(COMMANDS.PAPERBOOK_UPDATE_MANUAL, { sessionToken, id, payload });
+}
+
+export function paperbookDeleteManual(sessionToken: string, id: number): Promise<void> {
+  return call<void>(COMMANDS.PAPERBOOK_DELETE_MANUAL, { sessionToken, id });
+}
+
+export function paperbookAutocomplete(sessionToken: string, field: string, text: string, limit?: number): Promise<string[]> {
+  return call<string[]>(COMMANDS.PAPERBOOK_AUTOCOMPLETE, { sessionToken, field, text, limit: limit ?? null });
+}
+
+export function paperbookListNames(
+  sessionToken: string,
+  field: string,
+  search?: string,
+  limit?: number,
+  offset?: number,
+): Promise<PaperBookNamesResponse> {
+  return call<PaperBookNamesResponse>(COMMANDS.PAPERBOOK_LIST_NAMES, {
+    sessionToken,
+    field,
+    search: search ?? null,
+    limit: limit ?? null,
+    offset: offset ?? null,
+  });
+}
+
+export function paperbookNameSuggestions(sessionToken: string, field: string): Promise<PaperBookSuggestionDto[]> {
+  return call<PaperBookSuggestionDto[]>(COMMANDS.PAPERBOOK_NAME_SUGGESTIONS, { sessionToken, field });
+}
+
+export function paperbookSetNameMap(sessionToken: string, field: string, rawKey: string, label: string): Promise<void> {
+  return call<void>(COMMANDS.PAPERBOOK_SET_NAME_MAP, { sessionToken, field, rawKey, label });
+}
+
+export function paperbookRemoveNameMap(sessionToken: string, field: string, rawKey: string): Promise<void> {
+  return call<void>(COMMANDS.PAPERBOOK_REMOVE_NAME_MAP, { sessionToken, field, rawKey });
+}
+
+export function paperbookDismissSuggestion(sessionToken: string, field: string, keyA: string, keyB: string): Promise<void> {
+  return call<void>(COMMANDS.PAPERBOOK_DISMISS_SUGGESTION, { sessionToken, field, keyA, keyB });
+}
+
 
 
 

@@ -259,6 +259,7 @@ pub(crate) async fn add_attribute_value(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_unit(
     state: State<'_, DatabaseState>,
     session_token: String,

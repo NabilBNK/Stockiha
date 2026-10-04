@@ -1,0 +1,506 @@
+{
+  "history_valid.xlsx": {
+    "file": "history_valid.xlsx",
+    "sheet_used": "Transactions",
+    "go_live_date": "2026-03-01",
+    "today": "2026-09-27",
+    "errors": [],
+    "summary": {
+      "transactions": 19,
+      "sell": 7,
+      "buy": 9,
+      "expense": 3,
+      "lines": 30,
+      "date_min": "2025-05-03",
+      "date_max": "2025-06-12",
+      "sell_total": 236000,
+      "buy_total": 1189900,
+      "expense_total": 24500,
+      "sell_benefit_total": 46500,
+      "sells_with_benefit": 6,
+      "sell_total_with_benefit": 194000,
+      "sell_not_paid_total": 132000,
+      "buy_not_paid_total": 0,
+      "expense_not_paid_total": 18500
+    },
+    "warnings": [
+      {
+        "row": 11,
+        "code": "W_PRICE_UNUSUAL",
+        "detail": "couette / alpha / 1p bought at 2800, usual 5500"
+      },
+      {
+        "row": 17,
+        "code": "W_DATE_OUT_OF_ORDER",
+        "detail": "03/05/2025 between 01/06/2025 and 03/06/2025"
+      },
+      {
+        "row": 20,
+        "code": "W_LINE_ONLY_AMOUNT"
+      },
+      {
+        "row": 26,
+        "code": "W_TOTAL_OVERRIDDEN",
+        "detail": "10 x 500 = 5000, cell says 4500"
+      },
+      {
+        "row": 28,
+        "code": "W_BENEFIT_ABOVE_TOTAL",
+        "detail": "benefit 30000 > sale total 18000"
+      },
+      {
+        "row": 30,
+        "code": "W_DUPLICATE_IN_FILE",
+        "detail": "same as row 27"
+      }
+    ],
+    "name_suggestions": [
+      {
+        "field": "product",
+        "values": [
+          "pillow cover",
+          "pillow couver"
+        ]
+      },
+      {
+        "field": "details",
+        "values": [
+          "istanbul 2p",
+          "iatanbul 2p"
+        ]
+      }
+    ],
+    "normalisation_checks": {
+      "brand keys": "'Alpha' and 'ALPHA' are the same key 'alpha' (no suggestion needed)",
+      "product keys": "'pillow' and 'pillow ' are the same key 'pillow'",
+      "party keys": "'Client Amel' and 'client amel' are the same key 'client amel'",
+      "T11 paid": "cell 'not  paid' is read as Not Paid",
+      "T12 type": "cell 'sell ' is read as Sell",
+      "T2 numbers": "text '11 500', '1<NBSP>050', '115 000', '50<NBSP>400' read as 11500, 1050, 115000, 50400",
+      "T2 date": "text '18/05/2025' read as 2025-05-18",
+      "T6 page": "transaction page = '3' (first non-blank page among its rows)",
+      "T8": "Buy line with blank quantity, unit price 5000, manual total 25000 -> accepted, no warning"
+    },
+    "transactions": {
+      "T1": {
+        "first_row": 3,
+        "rows": [
+          3,
+          4,
+          5
+        ],
+        "type": "Buy",
+        "date": "2025-05-13",
+        "paid": "Paid",
+        "total": 230100,
+        "benefit": null
+      },
+      "T2": {
+        "first_row": 6,
+        "rows": [
+          6,
+          7
+        ],
+        "type": "Buy",
+        "date": "2025-05-18",
+        "paid": "Paid",
+        "total": 165400,
+        "benefit": null
+      },
+      "T3": {
+        "first_row": 8,
+        "rows": [
+          8
+        ],
+        "type": "Buy",
+        "date": "2025-05-20",
+        "paid": "Paid",
+        "total": 165000,
+        "benefit": null
+      },
+      "T4": {
+        "first_row": 9,
+        "rows": [
+          9,
+          10
+        ],
+        "type": "Buy",
+        "date": "2025-05-27",
+        "paid": "Paid",
+        "total": 135200,
+        "benefit": null
+      },
+      "T5": {
+        "first_row": 11,
+        "rows": [
+          11,
+          12
+        ],
+        "type": "Buy",
+        "date": "2025-05-29",
+        "paid": "Paid",
+        "total": 93000,
+        "benefit": null
+      },
+      "T6": {
+        "first_row": 13,
+        "rows": [
+          13,
+          14,
+          15,
+          16
+        ],
+        "type": "Buy",
+        "date": "2025-06-01",
+        "paid": "Paid",
+        "total": 280900,
+        "benefit": null
+      },
+      "T7": {
+        "first_row": 17,
+        "rows": [
+          17
+        ],
+        "type": "Buy",
+        "date": "2025-05-03",
+        "paid": "Paid",
+        "total": 64800,
+        "benefit": null
+      },
+      "T8": {
+        "first_row": 18,
+        "rows": [
+          18
+        ],
+        "type": "Buy",
+        "date": "2025-06-03",
+        "paid": "Paid",
+        "total": 25000,
+        "benefit": null
+      },
+      "T9": {
+        "first_row": 19,
+        "rows": [
+          19,
+          20
+        ],
+        "type": "Buy",
+        "date": "2025-06-05",
+        "paid": "Paid",
+        "total": 30500,
+        "benefit": null
+      },
+      "T10": {
+        "first_row": 21,
+        "rows": [
+          21
+        ],
+        "type": "Sell",
+        "date": "2025-06-06",
+        "paid": "Paid",
+        "total": 25500,
+        "benefit": 5000
+      },
+      "T11": {
+        "first_row": 22,
+        "rows": [
+          22,
+          23,
+          24
+        ],
+        "type": "Sell",
+        "date": "2025-06-06",
+        "paid": "Not Paid",
+        "total": 132000,
+        "benefit": 12000
+      },
+      "T12": {
+        "first_row": 25,
+        "rows": [
+          25
+        ],
+        "type": "Sell",
+        "date": "2025-06-07",
+        "paid": "Paid",
+        "total": 42000,
+        "benefit": null
+      },
+      "T13": {
+        "first_row": 26,
+        "rows": [
+          26
+        ],
+        "type": "Sell",
+        "date": "2025-06-08",
+        "paid": "Paid",
+        "total": 4500,
+        "benefit": -500
+      },
+      "T14": {
+        "first_row": 27,
+        "rows": [
+          27
+        ],
+        "type": "Sell",
+        "date": "2025-06-08",
+        "paid": "Paid",
+        "total": 7000,
+        "benefit": 0
+      },
+      "T15": {
+        "first_row": 28,
+        "rows": [
+          28
+        ],
+        "type": "Sell",
+        "date": "2025-06-09",
+        "paid": "Paid",
+        "total": 18000,
+        "benefit": 30000
+      },
+      "T16": {
+        "first_row": 29,
+        "rows": [
+          29
+        ],
+        "type": "Expense",
+        "date": "2025-06-10",
+        "paid": "Paid",
+        "total": 4000,
+        "benefit": null
+      },
+      "T17": {
+        "first_row": 30,
+        "rows": [
+          30
+        ],
+        "type": "Sell",
+        "date": "2025-06-08",
+        "paid": "Paid",
+        "total": 7000,
+        "benefit": 0
+      },
+      "T18": {
+        "first_row": 31,
+        "rows": [
+          31
+        ],
+        "type": "Expense",
+        "date": "2025-06-11",
+        "paid": "Paid",
+        "total": 2000,
+        "benefit": null
+      },
+      "T19": {
+        "first_row": 32,
+        "rows": [
+          32
+        ],
+        "type": "Expense",
+        "date": "2025-06-12",
+        "paid": "Not Paid",
+        "total": 18500,
+        "benefit": null
+      }
+    },
+    "last_data_row": 32,
+    "info_only": {
+      "empty_rows": "row 2 and the 60 residue rows (K shows 0) are skipped silently; their count may be shown in the preview but is NOT asserted"
+    },
+    "warnings_rule": "Asserted exactly: these 6 (row, code) pairs in this order, no more, no less (empty database, no current import, no manual records).",
+    "name_suggestions_rule": "After importing this file into an empty database, the suggestion lists are exactly these two pairs; party and brand have none."
+  },
+  "history_errors.xlsx": {
+    "file": "history_errors.xlsx",
+    "go_live_date": "2026-03-01",
+    "today": "2026-09-27",
+    "import_allowed": false,
+    "errors": [
+      {
+        "row": 2,
+        "column": "C",
+        "code": "E_ORPHAN_LINE",
+        "note": ""
+      },
+      {
+        "row": 3,
+        "column": "B",
+        "code": "E_DATE_INVALID",
+        "note": ""
+      },
+      {
+        "row": 4,
+        "column": "B",
+        "code": "E_DATE_MISSING",
+        "note": ""
+      },
+      {
+        "row": 5,
+        "column": "C",
+        "code": "E_TYPE_INVALID",
+        "note": ""
+      },
+      {
+        "row": 6,
+        "column": "D",
+        "code": "E_PAID_MISSING",
+        "note": ""
+      },
+      {
+        "row": 7,
+        "column": "D",
+        "code": "E_PAID_INVALID",
+        "note": ""
+      },
+      {
+        "row": 8,
+        "column": "L",
+        "code": "E_BENEFIT_NOT_SELL",
+        "note": ""
+      },
+      {
+        "row": 10,
+        "column": "L",
+        "code": "E_BENEFIT_NOT_FIRST_ROW",
+        "note": ""
+      },
+      {
+        "row": 11,
+        "column": "K",
+        "code": "E_LINE_AMOUNT_MISSING",
+        "note": ""
+      },
+      {
+        "row": 12,
+        "column": "I",
+        "code": "E_NOT_WHOLE",
+        "note": ""
+      },
+      {
+        "row": 13,
+        "column": "I",
+        "code": "E_QTY_NOT_POSITIVE",
+        "note": ""
+      },
+      {
+        "row": 14,
+        "column": "J",
+        "code": "E_NUMBER_INVALID",
+        "note": ""
+      },
+      {
+        "row": 15,
+        "column": "K",
+        "code": "E_CELL_ERROR",
+        "note": ""
+      },
+      {
+        "row": 16,
+        "column": "K",
+        "code": "E_AMOUNT_NEGATIVE",
+        "note": ""
+      },
+      {
+        "row": 18,
+        "column": "B",
+        "code": "E_CONTINUATION_DATE_DIFFERS",
+        "note": ""
+      },
+      {
+        "row": 20,
+        "column": "E",
+        "code": "E_CONTINUATION_PARTY_DIFFERS",
+        "note": ""
+      },
+      {
+        "row": 22,
+        "column": "D",
+        "code": "E_CONTINUATION_PAID_DIFFERS",
+        "note": ""
+      },
+      {
+        "row": 23,
+        "column": "B",
+        "code": "E_DATE_AFTER_GO_LIVE",
+        "note": ""
+      },
+      {
+        "row": 24,
+        "column": "B",
+        "code": "E_DATE_IN_FUTURE",
+        "note": ""
+      },
+      {
+        "row": 25,
+        "column": "B",
+        "code": "E_DATE_MISSING",
+        "note": ""
+      },
+      {
+        "row": 25,
+        "column": "D",
+        "code": "E_PAID_MISSING",
+        "note": ""
+      },
+      {
+        "row": 25,
+        "column": "K",
+        "code": "E_TXN_NO_LINES",
+        "note": ""
+      },
+      {
+        "row": 26,
+        "column": "K",
+        "code": "E_LINE_AMOUNT_MISSING",
+        "note": ""
+      },
+      {
+        "row": 27,
+        "column": "I",
+        "code": "E_QTY_NOT_POSITIVE",
+        "note": ""
+      },
+      {
+        "row": 28,
+        "column": "L",
+        "code": "E_NUMBER_INVALID",
+        "note": ""
+      }
+    ],
+    "note": "Row 29 is a valid Sell (2 x 8000 = 16000, benefit 2000) and must NOT produce an error.",
+    "errors_rule": "Asserted exactly: this list of (row, column, code) triples, no more, no less. Warnings are not computed when errors exist."
+  },
+  "history_bad_layout.xlsx": {
+    "file": "history_bad_layout.xlsx",
+    "import_allowed": false,
+    "errors": [
+      {
+        "row": 1,
+        "column": "L",
+        "code": "E_LAYOUT",
+        "note": "expected 'Benefit (Sell Only)', found 'Profit'. No row-level checks are run."
+      }
+    ]
+  },
+  "history_big_20k.xlsx": {
+    "file": "history_big_20k.xlsx",
+    "go_live_date": "2026-03-01",
+    "today": "2026-09-27",
+    "errors": [],
+    "summary": {
+      "transactions": 7052,
+      "sell": 3893,
+      "buy": 2453,
+      "expense": 706,
+      "lines": 20001,
+      "sell_total": 1498132000,
+      "buy_total": 673691350,
+      "expense_total": 5264500,
+      "sell_benefit_total": 299626400,
+      "date_max": "2025-10-16"
+    },
+    "performance": "preview < 5 s, commit < 10 s on the owner's PC",
+    "note": "Column A holds plain values (no formula) to keep the file small; the importer ignores column A anyway.",
+    "warnings_rule": "Errors must be 0. Warnings are not asserted (about 54 W_DUPLICATE_IN_FILE are expected: identical small transactions on the same day)."
+  }
+}

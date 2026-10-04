@@ -494,6 +494,7 @@ pub(crate) async fn list_attributes(
 /// genuinely NEW row — there is no code left for a caller to retype to mean
 /// "the same unit", so a name collision is resolved by suffixing the
 /// generated code, not by returning an existing unit.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_unit(
     pool: &PgPool,
     session_token: &str,
