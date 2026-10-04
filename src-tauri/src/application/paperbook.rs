@@ -1041,3 +1041,320 @@ pub async fn dismiss_suggestion(
 
     Ok(())
 }
+
+// ----------------------------------------------------------------------------
+// WS-P-2: Financial Analytics & Reporting DTOs and Queries
+// ----------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaperBookAnalyticsSummaryDto {
+    pub sell_total: String,
+    pub buy_total: String,
+    pub expense_total: String,
+    pub benefit_total: String,
+    pub net_profit: String,
+    pub margin_rate: String,
+    pub unpaid_sell_total: String,
+    pub unpaid_buy_total: String,
+    pub sell_count: i32,
+    pub buy_count: i32,
+    pub expense_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaperBookMonthlyPointDto {
+    pub year_month: String,
+    pub month_date: String,
+    pub sell_total: String,
+    pub buy_total: String,
+    pub expense_total: String,
+    pub benefit_total: String,
+    pub net_profit: String,
+    pub unpaid_sell_total: String,
+    pub txn_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaperBookTopProductDto {
+    pub product_label: String,
+    pub total_qty: String,
+    pub total_revenue: String,
+    pub txn_count: i32,
+    pub avg_price: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaperBookTopPartyDto {
+    pub party_label: String,
+    pub total_amount: String,
+    pub unpaid_amount: String,
+    pub txn_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaperBookTopBrandDto {
+    pub brand_label: String,
+    pub total_qty: String,
+    pub total_revenue: String,
+    pub txn_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaperBookExpenseCategoryDto {
+    pub category_label: String,
+    pub total_amount: String,
+    pub txn_count: i32,
+    pub percent_of_total: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaperBookAnalyticsPayloadDto {
+    pub summary: PaperBookAnalyticsSummaryDto,
+    pub monthly: Vec<PaperBookMonthlyPointDto>,
+    pub top_products: Vec<PaperBookTopProductDto>,
+    pub top_customers: Vec<PaperBookTopPartyDto>,
+    pub top_suppliers: Vec<PaperBookTopPartyDto>,
+    pub top_brands: Vec<PaperBookTopBrandDto>,
+    pub expenses: Vec<PaperBookExpenseCategoryDto>,
+}
+
+#[derive(FromRow)]
+struct AnalyticsSummaryDbRow {
+    sell_total: sqlx::types::Decimal,
+    buy_total: sqlx::types::Decimal,
+    expense_total: sqlx::types::Decimal,
+    benefit_total: sqlx::types::Decimal,
+    net_profit: sqlx::types::Decimal,
+    margin_rate: sqlx::types::Decimal,
+    unpaid_sell_total: sqlx::types::Decimal,
+    unpaid_buy_total: sqlx::types::Decimal,
+    sell_count: i32,
+    buy_count: i32,
+    expense_count: i32,
+}
+
+#[derive(FromRow)]
+struct MonthlyDbRow {
+    year_month: String,
+    month_date: Date,
+    sell_total: sqlx::types::Decimal,
+    buy_total: sqlx::types::Decimal,
+    expense_total: sqlx::types::Decimal,
+    benefit_total: sqlx::types::Decimal,
+    net_profit: sqlx::types::Decimal,
+    unpaid_sell_total: sqlx::types::Decimal,
+    txn_count: i32,
+}
+
+#[derive(FromRow)]
+struct TopProductDbRow {
+    product_label: String,
+    total_qty: sqlx::types::Decimal,
+    total_revenue: sqlx::types::Decimal,
+    txn_count: i32,
+    avg_price: sqlx::types::Decimal,
+}
+
+#[derive(FromRow)]
+struct TopCustomerDbRow {
+    customer_label: String,
+    total_spent: sqlx::types::Decimal,
+    unpaid_amount: sqlx::types::Decimal,
+    order_count: i32,
+}
+
+#[derive(FromRow)]
+struct TopSupplierDbRow {
+    supplier_label: String,
+    total_bought: sqlx::types::Decimal,
+    unpaid_amount: sqlx::types::Decimal,
+    txn_count: i32,
+}
+
+#[derive(FromRow)]
+struct TopBrandDbRow {
+    brand_label: String,
+    total_qty: sqlx::types::Decimal,
+    total_revenue: sqlx::types::Decimal,
+    txn_count: i32,
+}
+
+#[derive(FromRow)]
+struct ExpenseDbRow {
+    category_label: String,
+    total_amount: sqlx::types::Decimal,
+    txn_count: i32,
+    percent_of_total: sqlx::types::Decimal,
+}
+
+pub async fn get_analytics_report(
+    pool: &PgPool,
+    session_token: &str,
+    from: Option<Date>,
+    to: Option<Date>,
+) -> Result<PaperBookAnalyticsPayloadDto, AppError> {
+    // 1. Summary
+    let sum_row = query_as::<_, AnalyticsSummaryDbRow>(
+        "SELECT * FROM paperbook.get_analytics_summary($1, $2, $3)",
+    )
+    .bind(session_token)
+    .bind(from)
+    .bind(to)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    let summary = PaperBookAnalyticsSummaryDto {
+        sell_total: sum_row.sell_total.to_string(),
+        buy_total: sum_row.buy_total.to_string(),
+        expense_total: sum_row.expense_total.to_string(),
+        benefit_total: sum_row.benefit_total.to_string(),
+        net_profit: sum_row.net_profit.to_string(),
+        margin_rate: sum_row.margin_rate.to_string(),
+        unpaid_sell_total: sum_row.unpaid_sell_total.to_string(),
+        unpaid_buy_total: sum_row.unpaid_buy_total.to_string(),
+        sell_count: sum_row.sell_count,
+        buy_count: sum_row.buy_count,
+        expense_count: sum_row.expense_count,
+    };
+
+    // 2. Monthly timeline
+    let monthly_rows =
+        query_as::<_, MonthlyDbRow>("SELECT * FROM paperbook.get_analytics_monthly($1, $2, $3)")
+            .bind(session_token)
+            .bind(from)
+            .bind(to)
+            .fetch_all(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    let monthly = monthly_rows
+        .into_iter()
+        .map(|r| PaperBookMonthlyPointDto {
+            year_month: r.year_month,
+            month_date: r.month_date.to_string(),
+            sell_total: r.sell_total.to_string(),
+            buy_total: r.buy_total.to_string(),
+            expense_total: r.expense_total.to_string(),
+            benefit_total: r.benefit_total.to_string(),
+            net_profit: r.net_profit.to_string(),
+            unpaid_sell_total: r.unpaid_sell_total.to_string(),
+            txn_count: r.txn_count,
+        })
+        .collect();
+
+    // 3. Top Products
+    let prod_rows = query_as::<_, TopProductDbRow>(
+        "SELECT * FROM paperbook.get_analytics_top_products($1, $2, $3, 10)",
+    )
+    .bind(session_token)
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    let top_products = prod_rows
+        .into_iter()
+        .map(|r| PaperBookTopProductDto {
+            product_label: r.product_label,
+            total_qty: r.total_qty.to_string(),
+            total_revenue: r.total_revenue.to_string(),
+            txn_count: r.txn_count,
+            avg_price: r.avg_price.to_string(),
+        })
+        .collect();
+
+    // 4. Top Customers
+    let cust_rows = query_as::<_, TopCustomerDbRow>(
+        "SELECT * FROM paperbook.get_analytics_top_customers($1, $2, $3, 10)",
+    )
+    .bind(session_token)
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    let top_customers = cust_rows
+        .into_iter()
+        .map(|r| PaperBookTopPartyDto {
+            party_label: r.customer_label,
+            total_amount: r.total_spent.to_string(),
+            unpaid_amount: r.unpaid_amount.to_string(),
+            txn_count: r.order_count,
+        })
+        .collect();
+
+    // 5. Top Suppliers
+    let supp_rows = query_as::<_, TopSupplierDbRow>(
+        "SELECT * FROM paperbook.get_analytics_top_suppliers($1, $2, $3, 10)",
+    )
+    .bind(session_token)
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    let top_suppliers = supp_rows
+        .into_iter()
+        .map(|r| PaperBookTopPartyDto {
+            party_label: r.supplier_label,
+            total_amount: r.total_bought.to_string(),
+            unpaid_amount: r.unpaid_amount.to_string(),
+            txn_count: r.txn_count,
+        })
+        .collect();
+
+    // 6. Top Brands
+    let brand_rows = query_as::<_, TopBrandDbRow>(
+        "SELECT * FROM paperbook.get_analytics_top_brands($1, $2, $3, 10)",
+    )
+    .bind(session_token)
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::from_posting_error)?;
+
+    let top_brands = brand_rows
+        .into_iter()
+        .map(|r| PaperBookTopBrandDto {
+            brand_label: r.brand_label,
+            total_qty: r.total_qty.to_string(),
+            total_revenue: r.total_revenue.to_string(),
+            txn_count: r.txn_count,
+        })
+        .collect();
+
+    // 7. Expense breakdown
+    let exp_rows =
+        query_as::<_, ExpenseDbRow>("SELECT * FROM paperbook.get_analytics_expenses($1, $2, $3)")
+            .bind(session_token)
+            .bind(from)
+            .bind(to)
+            .fetch_all(pool)
+            .await
+            .map_err(AppError::from_posting_error)?;
+
+    let expenses = exp_rows
+        .into_iter()
+        .map(|r| PaperBookExpenseCategoryDto {
+            category_label: r.category_label,
+            total_amount: r.total_amount.to_string(),
+            txn_count: r.txn_count,
+            percent_of_total: r.percent_of_total.to_string(),
+        })
+        .collect();
+
+    Ok(PaperBookAnalyticsPayloadDto {
+        summary,
+        monthly,
+        top_products,
+        top_customers,
+        top_suppliers,
+        top_brands,
+        expenses,
+    })
+}

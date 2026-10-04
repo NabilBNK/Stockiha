@@ -611,6 +611,7 @@ pub fn run() {
         commands::paperbook::paperbook_set_name_map,
         commands::paperbook::paperbook_remove_name_map,
         commands::paperbook::paperbook_dismiss_suggestion,
+        commands::paperbook::paperbook_get_analytics_report,
     ];
     let app = app
         .invoke_handler(move |invoke: tauri::ipc::Invoke<_>| {

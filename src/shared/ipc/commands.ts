@@ -302,6 +302,8 @@ export const COMMANDS = {
   PAPERBOOK_SET_NAME_MAP: 'paperbook_set_name_map',
   PAPERBOOK_REMOVE_NAME_MAP: 'paperbook_remove_name_map',
   PAPERBOOK_DISMISS_SUGGESTION: 'paperbook_dismiss_suggestion',
+  // WS-P-2 — Paper Book Analytics
+  PAPERBOOK_GET_ANALYTICS_REPORT: 'paperbook_get_analytics_report',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

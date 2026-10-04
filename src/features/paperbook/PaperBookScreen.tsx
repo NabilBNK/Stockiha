@@ -3,17 +3,18 @@ import { useTranslation } from '../../shared/i18n';
 import { RecordsTab } from './RecordsTab';
 import { ImportTab } from './ImportTab';
 import { NamesTab } from './NamesTab';
+import { AnalyticsTab } from './AnalyticsTab';
 import './paperbook.css';
 
 interface Props {
   sessionToken: string;
 }
 
-type TabKey = 'records' | 'import' | 'names';
+type TabKey = 'analytics' | 'records' | 'import' | 'names';
 
 export const PaperBookScreen: React.FC<Props> = ({ sessionToken }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<TabKey>('records');
+  const [activeTab, setActiveTab] = useState<TabKey>('analytics');
 
   return (
     <div className="sk-paperbook-page">
@@ -36,6 +37,14 @@ export const PaperBookScreen: React.FC<Props> = ({ sessionToken }) => {
 
       {/* Navigation Tabs */}
       <div className="sk-paperbook-tabs">
+        <button
+          type="button"
+          className={`sk-paperbook-tab-btn ${activeTab === 'analytics' ? 'sk-paperbook-tab-btn--active' : ''}`}
+          onClick={() => setActiveTab('analytics')}
+        >
+          📊 {t('paperbook.tab.analytics')}
+        </button>
+
         <button
           type="button"
           className={`sk-paperbook-tab-btn ${activeTab === 'records' ? 'sk-paperbook-tab-btn--active' : ''}`}
@@ -62,6 +71,7 @@ export const PaperBookScreen: React.FC<Props> = ({ sessionToken }) => {
       </div>
 
       {/* Tab Content */}
+      {activeTab === 'analytics' && <AnalyticsTab sessionToken={sessionToken} />}
       {activeTab === 'records' && <RecordsTab sessionToken={sessionToken} />}
       {activeTab === 'import' && (
         <ImportTab

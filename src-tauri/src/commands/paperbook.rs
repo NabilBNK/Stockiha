@@ -276,3 +276,24 @@ pub(crate) async fn paperbook_dismiss_suggestion(
         .await
         .map_err(IpcError::from)
 }
+
+#[tauri::command]
+pub(crate) async fn paperbook_get_analytics_report(
+    state: State<'_, DatabaseState>,
+    session_token: String,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<paperbook::PaperBookAnalyticsPayloadDto, IpcError> {
+    let pool = db::pool_or_unavailable(state.inner()).map_err(IpcError::from)?;
+    let from_date = match from {
+        Some(s) if !s.is_empty() => Some(application::parse_iso_date(&s).map_err(IpcError::from)?),
+        _ => None,
+    };
+    let to_date = match to {
+        Some(s) if !s.is_empty() => Some(application::parse_iso_date(&s).map_err(IpcError::from)?),
+        _ => None,
+    };
+    paperbook::get_analytics_report(pool, &session_token, from_date, to_date)
+        .await
+        .map_err(IpcError::from)
+}

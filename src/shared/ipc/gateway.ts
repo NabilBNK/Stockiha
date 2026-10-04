@@ -61,6 +61,7 @@ import type {
   PaperBookTxnDetailDto,
   PaperBookNamesResponse,
   PaperBookSuggestionDto,
+  PaperBookAnalyticsPayloadDto,
 } from './dto';
 
 export class GatewayError extends Error {
@@ -1373,6 +1374,18 @@ export function paperbookRemoveNameMap(sessionToken: string, field: string, rawK
 
 export function paperbookDismissSuggestion(sessionToken: string, field: string, keyA: string, keyB: string): Promise<void> {
   return call<void>(COMMANDS.PAPERBOOK_DISMISS_SUGGESTION, { sessionToken, field, keyA, keyB });
+}
+
+export function paperbookGetAnalyticsReport(
+  sessionToken: string,
+  from?: string,
+  to?: string,
+): Promise<PaperBookAnalyticsPayloadDto> {
+  return call<PaperBookAnalyticsPayloadDto>(COMMANDS.PAPERBOOK_GET_ANALYTICS_REPORT, {
+    sessionToken,
+    from: from ?? null,
+    to: to ?? null,
+  });
 }
 
 

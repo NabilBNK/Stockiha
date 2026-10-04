@@ -1267,4 +1267,70 @@ export interface PaperBookSuggestionDto {
   usage_b: number;
 }
 
+// WS-P-2 — Paper Book Analytics DTOs
+export interface PaperBookAnalyticsSummaryDto {
+  sell_total: string;
+  buy_total: string;
+  expense_total: string;
+  benefit_total: string;
+  net_profit: string;
+  margin_rate: string;
+  unpaid_sell_total: string;
+  unpaid_buy_total: string;
+  sell_count: number;
+  buy_count: number;
+  expense_count: number;
+}
+
+export interface PaperBookMonthlyPointDto {
+  year_month: string;
+  month_date: string;
+  sell_total: string;
+  buy_total: string;
+  expense_total: string;
+  benefit_total: string;
+  net_profit: string;
+  unpaid_sell_total: string;
+  txn_count: number;
+}
+
+export interface PaperBookTopProductDto {
+  product_label: string;
+  total_qty: string;
+  total_revenue: string;
+  txn_count: number;
+  avg_price: string;
+}
+
+export interface PaperBookTopPartyDto {
+  party_label: string;
+  total_amount: string;
+  unpaid_amount: string;
+  txn_count: number;
+}
+
+export interface PaperBookTopBrandDto {
+  brand_label: string;
+  total_qty: string;
+  total_revenue: string;
+  txn_count: number;
+}
+
+export interface PaperBookExpenseCategoryDto {
+  category_label: string;
+  total_amount: string;
+  txn_count: number;
+  percent_of_total: string;
+}
+
+export interface PaperBookAnalyticsPayloadDto {
+  summary: PaperBookAnalyticsSummaryDto;
+  monthly: PaperBookMonthlyPointDto[];
+  top_products: PaperBookTopProductDto[];
+  top_customers: PaperBookTopPartyDto[];
+  top_suppliers: PaperBookTopPartyDto[];
+  top_brands: PaperBookTopBrandDto[];
+  expenses: PaperBookExpenseCategoryDto[];
+}
+
 

@@ -228,7 +228,7 @@ mod tests {
 
         assert_eq!(
             registered.len(),
-            249,
+            266,
             "A command was added or removed: update licence::gate::ALLOWED_IN_READ_ONLY \
              deliberately (see WS-K-7 plan §6.3) and change this count."
         );
