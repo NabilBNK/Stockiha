@@ -1130,11 +1130,13 @@ export interface PaperBookSettingsDto {
 }
 
 export interface PaperBookIssue {
-  severity: 'error' | 'warning';
+  severity?: 'error' | 'warning';
   code: string;
   row?: number | null;
+  column?: string | null;
   col?: string | null;
-  message_key: string;
+  params?: Record<string, string>;
+  message_key?: string;
   context?: Record<string, string | number | boolean> | null;
 }
 

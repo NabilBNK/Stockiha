@@ -225,7 +225,7 @@ describe('WS-P-2 AnalyticsTab', () => {
     expect(screen.getByText(/#1 Champion/i)).toBeInTheDocument();
 
     // Verify Pareto concentration indicator exists
-    expect(screen.getByText(/Concentration des ventes/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sales Concentration/i)).toBeInTheDocument();
 
     // Verify mode toggle buttons exist and can be clicked
     const qtyModeBtn = screen.getByRole('button', { name: /By Quantity/i });

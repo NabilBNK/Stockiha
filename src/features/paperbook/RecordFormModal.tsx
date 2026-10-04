@@ -182,7 +182,7 @@ export const RecordFormModal: React.FC<Props> = ({
     for (let i = 0; i < lines.length; i++) {
       const total = parseInt(lines[i].lineTotal, 10);
       if (isNaN(total) || total <= 0) {
-        setError(`Line #${i + 1}: Line total must be greater than zero.`);
+        setError(t('paperbook.form.error_line_total_invalid', { line: String(i + 1) }));
         return;
       }
     }
@@ -303,7 +303,7 @@ export const RecordFormModal: React.FC<Props> = ({
                   value={party}
                   onChange={(e) => handlePartyChange(e.target.value)}
                   onBlur={() => setTimeout(() => setPartySuggestions([]), 200)}
-                  placeholder="Customer or supplier name"
+                  placeholder={t('paperbook.form.party_placeholder')}
                   style={{
                     width: '100%',
                     height: '38px',
@@ -365,7 +365,7 @@ export const RecordFormModal: React.FC<Props> = ({
                   disabled={txnType !== 'sell'}
                   value={benefit}
                   onChange={(e) => setBenefit(e.target.value)}
-                  placeholder={txnType === 'sell' ? 'DZD' : 'N/A for non-sale'}
+                  placeholder={txnType === 'sell' ? 'DZD' : t('paperbook.form.na_for_non_sale')}
                   style={{
                     width: '100%',
                     height: '38px',
@@ -385,7 +385,7 @@ export const RecordFormModal: React.FC<Props> = ({
                   type="text"
                   value={pageNo}
                   onChange={(e) => setPageNo(e.target.value)}
-                  placeholder="e.g. 42"
+                  placeholder={t('paperbook.form.page_placeholder')}
                   style={{
                     width: '100%',
                     height: '38px',
@@ -407,7 +407,7 @@ export const RecordFormModal: React.FC<Props> = ({
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Optional notes or remarks"
+                placeholder={t('paperbook.form.note_placeholder')}
                 style={{
                   width: '100%',
                   height: '38px',

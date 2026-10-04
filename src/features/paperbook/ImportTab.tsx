@@ -91,12 +91,13 @@ export const ImportTab: React.FC<Props> = ({ sessionToken, onImportSuccess }) =>
   };
 
   const formatIssueMessage = (issue: PaperBookIssue): string => {
-    const rawMsg = t(issue.message_key as MessageKey);
-    // Replace contextual placeholders like {unitPrice}, {date}, etc.
-    let text = rawMsg || issue.code;
-    if (issue.context) {
-      for (const [k, v] of Object.entries(issue.context)) {
-        text = text.replace(`{${k}}`, String(v));
+    const key = `paperbook.issue.${issue.code}` as MessageKey;
+    const rawMsg = t(key);
+    let text = rawMsg && rawMsg !== key ? rawMsg : issue.code;
+    const params = issue.params || (issue as { context?: Record<string, unknown> }).context;
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
       }
     }
     return text;
@@ -130,7 +131,7 @@ export const ImportTab: React.FC<Props> = ({ sessionToken, onImportSuccess }) =>
             {filePath ? filePath.split(/[/\\]/).pop() : t('paperbook.import.dropzone')}
           </strong>
           <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--sk-muted)' }}>
-            {filePath || 'Click to select .xlsx file'}
+            {filePath || t('paperbook.import.click_to_select')}
           </p>
         </div>
         <button
@@ -148,7 +149,7 @@ export const ImportTab: React.FC<Props> = ({ sessionToken, onImportSuccess }) =>
 
       {loadingPreview && (
         <div style={{ textAlign: 'center', padding: '24px', color: 'var(--sk-muted)' }}>
-          <p>{t('common.loading')} Validating Excel transactions...</p>
+          <p>{t('paperbook.import.validating_transactions')}</p>
         </div>
       )}
 
@@ -237,17 +238,17 @@ export const ImportTab: React.FC<Props> = ({ sessionToken, onImportSuccess }) =>
                 <table className="sk-paperbook-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '8%' }}>Row</th>
-                      <th style={{ width: '8%' }}>Col</th>
-                      <th style={{ width: '18%' }}>Code</th>
-                      <th style={{ width: '66%' }}>Message & Context</th>
+                      <th style={{ width: '8%' }}>{t('paperbook.import.table.row')}</th>
+                      <th style={{ width: '8%' }}>{t('paperbook.import.table.col')}</th>
+                      <th style={{ width: '18%' }}>{t('paperbook.import.table.code')}</th>
+                      <th style={{ width: '66%' }}>{t('paperbook.import.table.message')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {preview.errors.map((err, idx) => (
                       <tr key={idx}>
                         <td style={{ fontWeight: 700 }}>{err.row ?? '—'}</td>
-                        <td style={{ fontWeight: 700 }}>{err.col ?? '—'}</td>
+                        <td style={{ fontWeight: 700 }}>{err.column ?? err.col ?? '—'}</td>
                         <td>
                           <span style={{ fontFamily: 'monospace', fontSize: '0.74rem', color: 'var(--sk-danger)' }}>
                             {err.code}
@@ -289,13 +290,13 @@ export const ImportTab: React.FC<Props> = ({ sessionToken, onImportSuccess }) =>
                 <div className="sk-paperbook-kpi-card sk-paperbook-kpi-card--info">
                   <div className="sk-paperbook-kpi-label">{t('paperbook.import.summary.buy_total')}</div>
                   <div className="sk-paperbook-kpi-value">{Number(summary.buy_total).toLocaleString()} DZD</div>
-                  <div className="sk-paperbook-kpi-sub">{summary.lines} total item lines</div>
+                  <div className="sk-paperbook-kpi-sub">{t('paperbook.import.summary.lines_count', { count: String(summary.lines) })}</div>
                 </div>
 
                 <div className="sk-paperbook-kpi-card sk-paperbook-kpi-card--warning">
                   <div className="sk-paperbook-kpi-label">{t('paperbook.import.summary.expense_total')}</div>
                   <div className="sk-paperbook-kpi-value">{Number(summary.expense_total).toLocaleString()} DZD</div>
-                  <div className="sk-paperbook-kpi-sub">Operating expenditures</div>
+                  <div className="sk-paperbook-kpi-sub">{t('paperbook.import.summary.operating_expenses')}</div>
                 </div>
 
                 <div className="sk-paperbook-kpi-card sk-paperbook-kpi-card--primary">
@@ -330,9 +331,9 @@ export const ImportTab: React.FC<Props> = ({ sessionToken, onImportSuccess }) =>
                 <table className="sk-paperbook-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '8%' }}>Row</th>
-                      <th style={{ width: '22%' }}>Code</th>
-                      <th style={{ width: '70%' }}>Notice</th>
+                      <th style={{ width: '8%' }}>{t('paperbook.import.table.row')}</th>
+                      <th style={{ width: '22%' }}>{t('paperbook.import.table.code')}</th>
+                      <th style={{ width: '70%' }}>{t('paperbook.import.table.notice')}</th>
                     </tr>
                   </thead>
                   <tbody>

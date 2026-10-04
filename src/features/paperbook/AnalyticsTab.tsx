@@ -387,7 +387,7 @@ export const AnalyticsTab: React.FC<Props> = ({ sessionToken }) => {
             <div className="sk-pb-section-card__header">
               <div>
                 <h3>🏆 {t('paperbook.analytics.products_chart_title')}</h3>
-                <p>Visual breakdown of top-performing items and catalog revenue concentration</p>
+                <p>{t('paperbook.analytics.products_chart_desc')}</p>
               </div>
 
               {/* Mode Toggle: Revenue vs Quantity vs Txns */}
@@ -718,6 +718,7 @@ interface PodiumProps {
 }
 
 const BestSellersPodium: React.FC<PodiumProps> = ({ products, totalRevenue, unitsLabel }) => {
+  const { t } = useTranslation();
   const totalRevNum = parseFloat(totalRevenue) || 0;
   const top3 = [...products]
     .sort((a, b) => (parseFloat(b.total_revenue) || 0) - (parseFloat(a.total_revenue) || 0))
@@ -726,9 +727,9 @@ const BestSellersPodium: React.FC<PodiumProps> = ({ products, totalRevenue, unit
   if (top3.length === 0) return null;
 
   const podiumRanks = [
-    { label: '#1 Champion', icon: '👑', classModifier: 'gold', badgeClass: 'gold' },
-    { label: '#2 Runner-up', icon: '🥈', classModifier: 'silver', badgeClass: 'silver' },
-    { label: '#3 Third Place', icon: '🥉', classModifier: 'bronze', badgeClass: 'bronze' },
+    { label: t('paperbook.analytics.podium_champion'), icon: '👑', classModifier: 'gold', badgeClass: 'gold' },
+    { label: t('paperbook.analytics.podium_runner_up'), icon: '🥈', classModifier: 'silver', badgeClass: 'silver' },
+    { label: t('paperbook.analytics.podium_third'), icon: '🥉', classModifier: 'bronze', badgeClass: 'bronze' },
   ];
 
   return (
@@ -745,7 +746,7 @@ const BestSellersPodium: React.FC<PodiumProps> = ({ products, totalRevenue, unit
               <span>{meta.icon}</span>
               <span>{meta.label}</span>
               <span className="sk-pb-badge sk-pb-badge--success" style={{ marginInlineStart: 'auto' }}>
-                {sharePct}% CA
+                {sharePct}% {t('paperbook.analytics.ca_share')}
               </span>
             </div>
 
@@ -781,6 +782,7 @@ interface ParetoProps {
 const PARETO_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#94a3b8'];
 
 const ParetoConcentrationBar: React.FC<ParetoProps> = ({ products, totalRevenue }) => {
+  const { t } = useTranslation();
   const totalRevNum = parseFloat(totalRevenue) || 0;
   if (totalRevNum <= 0 || !products || products.length === 0) return null;
 
@@ -805,16 +807,16 @@ const ParetoConcentrationBar: React.FC<ParetoProps> = ({ products, totalRevenue 
     { label: sorted[0]?.product_label ?? '#1', pct: (p1Rev / totalRevNum) * 100, color: PARETO_COLORS[0] },
     { label: sorted[1]?.product_label ?? '#2', pct: (p2Rev / totalRevNum) * 100, color: PARETO_COLORS[1] },
     { label: sorted[2]?.product_label ?? '#3', pct: (p3Rev / totalRevNum) * 100, color: PARETO_COLORS[2] },
-    { label: 'Top 4-5', pct: (p4p5Rev / totalRevNum) * 100, color: PARETO_COLORS[3] },
-    { label: 'Catalog', pct: (otherRev / totalRevNum) * 100, color: PARETO_COLORS[4] },
+    { label: t('paperbook.analytics.top_4_5'), pct: (p4p5Rev / totalRevNum) * 100, color: PARETO_COLORS[3] },
+    { label: t('paperbook.analytics.catalog'), pct: (otherRev / totalRevNum) * 100, color: PARETO_COLORS[4] },
   ].filter((s) => s.pct > 0.1);
 
   return (
     <div className="sk-pb-pareto-box">
       <div className="sk-pb-pareto-header">
-        <span>📊 Concentration des ventes (Pareto)</span>
+        <span>📊 {t('paperbook.analytics.pareto_title')}</span>
         <span style={{ color: 'var(--sk-primary)', fontVariantNumeric: 'tabular-nums' }}>
-          Top 3 = <strong>{top3Pct}%</strong> du CA total ({formatDisplayAmount(top3Sum.toFixed(2))}) — {top3Txns} transactions
+          Top 3 = <strong>{top3Pct}%</strong> {t('paperbook.analytics.pareto_desc_short')} ({formatDisplayAmount(top3Sum.toFixed(2))}) — {top3Txns} {t('paperbook.analytics.th.txns')}
         </span>
       </div>
 
@@ -854,8 +856,9 @@ interface ProductBarProps {
 }
 
 const ProductBarDiagram: React.FC<ProductBarProps> = ({ products, mode, avgPriceLabel, txnsLabel, unitsLabel }) => {
+  const { t } = useTranslation();
   if (!products || products.length === 0) {
-    return <div className="sk-pb-chart-empty">No product data available.</div>;
+    return <div className="sk-pb-chart-empty">{t('paperbook.records.no_records')}</div>;
   }
 
   // Sort according to active rank mode
@@ -953,6 +956,7 @@ interface DonutProps {
 }
 
 const ProductsDonutDiagram: React.FC<DonutProps> = ({ products, totalRevenue, otherLabel }) => {
+  const { t } = useTranslation();
   const totalRevNum = parseFloat(totalRevenue) || 0;
 
   const slices = useMemo(() => {
@@ -987,7 +991,7 @@ const ProductsDonutDiagram: React.FC<DonutProps> = ({ products, totalRevenue, ot
   }, [products, totalRevNum, otherLabel]);
 
   if (slices.length === 0) {
-    return <div className="sk-pb-chart-empty">No revenue data available.</div>;
+    return <div className="sk-pb-chart-empty">{t('paperbook.records.no_records')}</div>;
   }
 
   // Radius = 65, Circumference = 2 * PI * 65 ≈ 408.4
@@ -1038,7 +1042,7 @@ const ProductsDonutDiagram: React.FC<DonutProps> = ({ products, totalRevenue, ot
         {/* Center Text */}
         <div className="sk-pb-donut-center">
           <span className="sk-pb-donut-center__val">{top1Pct}%</span>
-          <span className="sk-pb-donut-center__label">#1 Product</span>
+          <span className="sk-pb-donut-center__label">{t('paperbook.analytics.top_product_label')}</span>
         </div>
       </div>
 
@@ -1103,6 +1107,7 @@ interface BrandBarProps {
 }
 
 const BrandBarDiagram: React.FC<BrandBarProps> = ({ brands }) => {
+  const { t } = useTranslation();
   if (!brands || brands.length === 0) return null;
 
   const maxRev = Math.max(1, ...brands.map((b) => parseFloat(b.total_revenue) || 0));
@@ -1118,7 +1123,7 @@ const BrandBarDiagram: React.FC<BrandBarProps> = ({ brands }) => {
             <div className="sk-pb-brand-bar-header">
               <span>{b.brand_label}</span>
               <span style={{ color: 'var(--sk-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                {formatDisplayAmount(b.total_revenue)} ({b.total_qty} units)
+                {formatDisplayAmount(b.total_revenue)} ({b.total_qty} {t('paperbook.analytics.units')})
               </span>
             </div>
             <div className="sk-pb-brand-bar-track">
@@ -1142,10 +1147,11 @@ interface MonthlyChartProps {
 }
 
 const MonthlyBarChart: React.FC<MonthlyChartProps> = ({ monthly, metric }) => {
+  const { t } = useTranslation();
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   if (!monthly || monthly.length === 0) {
-    return <div className="sk-pb-chart-empty">No historical data available for selected period.</div>;
+    return <div className="sk-pb-chart-empty">{t('paperbook.analytics.no_historical_data')}</div>;
   }
 
   // Parse numeric values (for visual bar scaling ONLY — display uses exact formatted string)
@@ -1194,25 +1200,25 @@ const MonthlyBarChart: React.FC<MonthlyChartProps> = ({ monthly, metric }) => {
         {(metric === 'all' || metric === 'sales') && (
           <div className="sk-pb-legend-item">
             <span className="sk-pb-legend-color sk-pb-legend-color--sales" />
-            <span>Revenue</span>
+            <span>{t('paperbook.analytics.kpi.revenue')}</span>
           </div>
         )}
         {(metric === 'all' || metric === 'profit') && (
           <div className="sk-pb-legend-item">
             <span className="sk-pb-legend-color sk-pb-legend-color--benefit" />
-            <span>Gross Benefit</span>
+            <span>{t('paperbook.analytics.kpi.gross_benefit')}</span>
           </div>
         )}
         {(metric === 'all' || metric === 'expenses') && (
           <div className="sk-pb-legend-item">
             <span className="sk-pb-legend-color sk-pb-legend-color--expenses" />
-            <span>Expenses</span>
+            <span>{t('paperbook.analytics.kpi.expenses')}</span>
           </div>
         )}
         {(metric === 'all' || metric === 'profit') && (
           <div className="sk-pb-legend-item">
             <span className="sk-pb-legend-color sk-pb-legend-color--net" />
-            <span>Net Profit</span>
+            <span>{t('paperbook.analytics.kpi.net_profit')}</span>
           </div>
         )}
       </div>
@@ -1404,16 +1410,16 @@ const MonthlyBarChart: React.FC<MonthlyChartProps> = ({ monthly, metric }) => {
             <strong>📅 {chartData[hoveredIdx].month}</strong>
           </div>
           <div className="sk-pb-chart-tooltip__grid">
-            <span style={{ color: 'var(--sk-primary)' }}>Revenue:</span>
+            <span style={{ color: 'var(--sk-primary)' }}>{t('paperbook.analytics.kpi.revenue')}:</span>
             <strong>{formatDisplayAmount(chartData[hoveredIdx].raw.sell_total)}</strong>
 
-            <span style={{ color: 'var(--sk-success)' }}>Gross Benefit:</span>
+            <span style={{ color: 'var(--sk-success)' }}>{t('paperbook.analytics.kpi.gross_benefit')}:</span>
             <strong>{formatDisplayAmount(chartData[hoveredIdx].raw.benefit_total)}</strong>
 
-            <span style={{ color: 'var(--sk-danger)' }}>Expenses:</span>
+            <span style={{ color: 'var(--sk-danger)' }}>{t('paperbook.analytics.kpi.expenses')}:</span>
             <strong>{formatDisplayAmount(chartData[hoveredIdx].raw.expense_total)}</strong>
 
-            <span>Net Profit:</span>
+            <span>{t('paperbook.analytics.kpi.net_profit')}:</span>
             <strong
               style={{
                 color: chartData[hoveredIdx].net_profit >= 0 ? 'var(--sk-success)' : 'var(--sk-danger)',
@@ -1422,10 +1428,10 @@ const MonthlyBarChart: React.FC<MonthlyChartProps> = ({ monthly, metric }) => {
               {formatDisplayAmount(chartData[hoveredIdx].raw.net_profit)}
             </strong>
 
-            <span>Purchases:</span>
+            <span>{t('paperbook.analytics.kpi.purchases')}:</span>
             <span>{formatDisplayAmount(chartData[hoveredIdx].raw.buy_total)}</span>
 
-            <span>Unpaid Sales:</span>
+            <span>{t('paperbook.analytics.kpi.unpaid_sales')}:</span>
             <span>{formatDisplayAmount(chartData[hoveredIdx].raw.unpaid_sell_total)}</span>
           </div>
         </div>

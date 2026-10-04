@@ -267,7 +267,7 @@ export const RecordsTab: React.FC<Props> = ({ sessionToken }) => {
                     )}
                   </td>
                   <td style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {row.what_label || (row.line_count > 0 ? `${row.line_count} line(s)` : '—')}
+                    {row.what_label || (row.line_count > 0 ? t('paperbook.records.lines_count', { count: String(row.line_count) }) : '—')}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                     {Number(row.total).toLocaleString()} DZD
@@ -282,7 +282,7 @@ export const RecordsTab: React.FC<Props> = ({ sessionToken }) => {
                   </td>
                   <td>
                     <span className={`sk-paperbook-badge sk-paperbook-badge--${row.source}`}>
-                      {row.source === 'import' ? 'Imported' : 'Manual'}
+                      {row.source === 'import' ? t('paperbook.records.filter_source_import') : t('paperbook.records.filter_source_manual')}
                     </span>
                   </td>
                   <td style={{ textAlign: 'center', color: 'var(--sk-muted)' }}>
@@ -311,7 +311,7 @@ export const RecordsTab: React.FC<Props> = ({ sessionToken }) => {
               disabled={page === 0 || loading}
               onClick={() => setPage(page - 1)}
             >
-              ← Previous
+              {t('paperbook.records.btn_previous')}
             </button>
             <button
               type="button"
@@ -319,7 +319,7 @@ export const RecordsTab: React.FC<Props> = ({ sessionToken }) => {
               disabled={(page + 1) * PAGE_SIZE >= totalCount || loading}
               onClick={() => setPage(page + 1)}
             >
-              Next →
+              {t('paperbook.records.btn_next')}
             </button>
           </div>
         </div>

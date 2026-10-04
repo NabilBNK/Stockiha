@@ -174,8 +174,10 @@ export const RecordDetailDrawer: React.FC<Props> = ({
                   </span>
                   {txn.source === 'import' ? (
                     <span>
-                      Excel Row {txn.excel_first_row ?? '—'}
-                      {txn.excel_txn_no ? ` (Txn #${txn.excel_txn_no})` : ''}
+                      {t('paperbook.detail.source_import', {
+                        row: String(txn.excel_first_row ?? '—'),
+                        no: String(txn.excel_txn_no ?? '—'),
+                      })}
                     </span>
                   ) : (
                     <span>{t('paperbook.detail.source_manual')}</span>
@@ -242,7 +244,7 @@ export const RecordDetailDrawer: React.FC<Props> = ({
                             {Number(l.line_total).toLocaleString()} DZD
                             {l.total_overridden && (
                               <span
-                                title="Line total overridden / preserved"
+                                title={t('paperbook.detail.total_overridden_tooltip')}
                                 style={{ marginInlineStart: '4px', color: 'var(--sk-warn, #f59e0b)' }}
                               >
                                 ⚠

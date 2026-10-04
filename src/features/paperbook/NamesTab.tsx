@@ -223,7 +223,7 @@ export const NamesTab: React.FC<Props> = ({ sessionToken }) => {
                     title={`Merge both to "${s.label_a}"`}
                     onClick={() => handleMerge(s.key_b, s.label_a)}
                   >
-                    Merge to «{s.label_a}»
+                    {t('paperbook.names.merge_to', { label: s.label_a })}
                   </button>
                   <button
                     type="button"
@@ -231,7 +231,7 @@ export const NamesTab: React.FC<Props> = ({ sessionToken }) => {
                     title={`Merge both to "${s.label_b}"`}
                     onClick={() => handleMerge(s.key_a, s.label_b)}
                   >
-                    Merge to «{s.label_b}»
+                    {t('paperbook.names.merge_to', { label: s.label_b })}
                   </button>
                   <button
                     type="button"
@@ -259,7 +259,7 @@ export const NamesTab: React.FC<Props> = ({ sessionToken }) => {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={`Search ${activeField} names...`}
+              placeholder={t('paperbook.names.search_placeholder')}
             />
           </div>
         </div>
@@ -284,7 +284,7 @@ export const NamesTab: React.FC<Props> = ({ sessionToken }) => {
               ) : names.length === 0 ? (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: '30px', color: 'var(--sk-muted)' }}>
-                    No names found.
+                    {t('paperbook.names.no_names')}
                   </td>
                 </tr>
               ) : (
@@ -307,7 +307,7 @@ export const NamesTab: React.FC<Props> = ({ sessionToken }) => {
                             color: 'var(--sk-primary)',
                           }}
                         >
-                          Mapped
+                          {t('paperbook.names.status_mapped')}
                         </span>
                       )}
                     </td>
@@ -327,7 +327,7 @@ export const NamesTab: React.FC<Props> = ({ sessionToken }) => {
                           <button
                             type="button"
                             className="sk-btn sk-btn--ghost sk-btn--sm"
-                            title="Reset to raw name"
+                            title={t('paperbook.names.reset_tooltip')}
                             onClick={() => handleReset(n.raw_key)}
                           >
                             {t('paperbook.names.reset_btn')}
@@ -378,7 +378,7 @@ export const NamesTab: React.FC<Props> = ({ sessionToken }) => {
                     value={standardLabel}
                     onChange={(e) => handleStandardLabelChange(e.target.value)}
                     onBlur={() => setTimeout(() => setAcSuggestions([]), 200)}
-                    placeholder="Standardized name"
+                    placeholder={t('paperbook.names.standardized_name_placeholder')}
                     style={{
                       width: '100%',
                       height: '40px',
