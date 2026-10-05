@@ -52,6 +52,8 @@ suites=(
   src-tauri/tests/recovery/r6_001_sqlx_metadata_backup_acl_integration.sql
   src-tauri/tests/recovery/r6_002_restore_verification_authorization_integration.sql
   src-tauri/tests/recovery/ws_h_003_recovery_foundation_integration.sql
+  src-tauri/tests/dashboard/ws_n_1_dashboard_helpers.sql
+  src-tauri/tests/dashboard/ws_n_1_dashboard_integration.sql
 )
 
 for suite in "${suites[@]}"; do

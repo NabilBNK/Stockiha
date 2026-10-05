@@ -174,6 +174,19 @@ pub(crate) const ALLOWED_IN_READ_ONLY: &[&str] = &[
     "get_product_history",
     "get_report_notifications",
     "get_today_overview",
+    // WS-N-1: dashboard data and calculation engine (reads only).
+    "dashboard_get_period",
+    "dashboard_get_money_summary",
+    "dashboard_get_stock_summary",
+    "dashboard_list_stock_items",
+    "dashboard_list_top_items",
+    "dashboard_list_top_customers",
+    "dashboard_list_top_debtors",
+    "dashboard_list_latest_sales",
+    "dashboard_get_sales_series",
+    "dashboard_get_sales_by_category",
+    "dashboard_get_busy_hours",
+    "dashboard_get_receivables_aging",
 ];
 
 #[cfg(test)]
@@ -228,7 +241,7 @@ mod tests {
 
         assert_eq!(
             registered.len(),
-            266,
+            278,
             "A command was added or removed: update licence::gate::ALLOWED_IN_READ_ONLY \
              deliberately (see WS-K-7 plan §6.3) and change this count."
         );

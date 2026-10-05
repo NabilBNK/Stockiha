@@ -304,6 +304,20 @@ export const COMMANDS = {
   PAPERBOOK_DISMISS_SUGGESTION: 'paperbook_dismiss_suggestion',
   // WS-P-2 — Paper Book Analytics
   PAPERBOOK_GET_ANALYTICS_REPORT: 'paperbook_get_analytics_report',
+
+  // WS-N-1 — Dashboard Data & Insights
+  DASHBOARD_GET_PERIOD: 'dashboard_get_period',
+  DASHBOARD_GET_MONEY_SUMMARY: 'dashboard_get_money_summary',
+  DASHBOARD_GET_STOCK_SUMMARY: 'dashboard_get_stock_summary',
+  DASHBOARD_LIST_STOCK_ITEMS: 'dashboard_list_stock_items',
+  DASHBOARD_LIST_TOP_ITEMS: 'dashboard_list_top_items',
+  DASHBOARD_LIST_TOP_CUSTOMERS: 'dashboard_list_top_customers',
+  DASHBOARD_LIST_TOP_DEBTORS: 'dashboard_list_top_debtors',
+  DASHBOARD_LIST_LATEST_SALES: 'dashboard_list_latest_sales',
+  DASHBOARD_GET_SALES_SERIES: 'dashboard_get_sales_series',
+  DASHBOARD_GET_SALES_BY_CATEGORY: 'dashboard_get_sales_by_category',
+  DASHBOARD_GET_BUSY_HOURS: 'dashboard_get_busy_hours',
+  DASHBOARD_GET_RECEIVABLES_AGING: 'dashboard_get_receivables_aging',
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

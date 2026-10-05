@@ -5,6 +5,7 @@ pub mod cash_session;
 pub mod catalog;
 pub mod credit_sale;
 pub mod customer;
+pub mod dashboard_insights;
 pub mod db_health;
 pub mod documents;
 pub mod drawer;
