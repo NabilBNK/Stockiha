@@ -13,6 +13,7 @@ vi.mock('../src/shared/ipc/reportsGateway', () => ({
   getSalesByCashier: vi.fn(),
   getSalesByHour: vi.fn(),
   getMarginAlerts: vi.fn(),
+  getReportNotifications: vi.fn().mockResolvedValue({ generated_at: '', items: [] }),
 }));
 
 vi.mock('../src/shared/documents/useOfficialDocumentContext', () => ({

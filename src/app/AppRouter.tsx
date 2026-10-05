@@ -539,7 +539,18 @@ function AuthenticatedApp() {
           </Button>
         </Banner>
       ) : null}
-      {view === 'dashboard' && <DashboardScreen setView={setView} />}
+      {view === 'dashboard' && (
+        <DashboardScreen
+          onNavigate={setView}
+          access={{
+            inventoryCapabilities,
+            inventoryCorrectionsEnabled,
+            procurementCapabilities,
+            customerCapabilities,
+            reportsCapabilities,
+          }}
+        />
+      )}
       {view === 'reports' && <ReportsScreen setView={setView} />}
       {view === 'historical_finance' && (
         <PaperBookScreen sessionToken={user?.token ?? ''} />

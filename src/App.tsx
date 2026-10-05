@@ -16,6 +16,7 @@ import './App.css';
 import './styles/global.css';
 import './styles/interaction-polish.css';
 import './styles/settings.css';
+import './styles/dashboard.css';
 
 function App() {
   return (

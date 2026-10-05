@@ -6,7 +6,7 @@
  * dashboard (backend-authoritative figures).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
@@ -128,8 +128,9 @@ describe('login', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'good' } });
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    // Dashboard renders with the backend-provided product count.
-    await waitFor(() => expect(screen.getAllByText('3')[0]).toBeInTheDocument());
+    // Dashboard renders with heading and Sales KPI label
+    await screen.findByRole('heading', { name: 'Dashboard' });
+    expect(screen.getByText('Sales')).toBeInTheDocument();
 
     const sidebarToggle = screen.getByTestId('sidebar-toggle');
     fireEvent.click(sidebarToggle);

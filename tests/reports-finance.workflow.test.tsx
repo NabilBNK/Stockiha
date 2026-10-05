@@ -23,6 +23,7 @@ vi.mock('../src/shared/ipc/reportsGateway', () => ({
   getTrialBalance: vi.fn(),
   getAccountLedger: vi.fn(),
   listReportAccounts: vi.fn(),
+  getReportNotifications: vi.fn().mockResolvedValue({ generated_at: '', items: [] }),
 }));
 
 vi.mock('../src/shared/documents/useOfficialDocumentContext', () => ({

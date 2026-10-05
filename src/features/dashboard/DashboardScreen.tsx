@@ -1,445 +1,381 @@
-/**
- * WS-I-3 STEP I3-08 — the "Today" home page: today's KPIs, hourly sales,
- * top products, notifications, money owed/owing, low stock and a
- * month-to-date strip, with a WhatsApp-ready daily summary. The former
- * Slice-1 operational dashboard (product/variant counts, warehouse, cash
- * session, pending jobs) moves unchanged into a collapsible
- * `home-system-status` section — every one of its old test ids stays.
- */
-import { useCallback, useEffect, useState } from 'react';
-
-import { Banner, Button, Spinner } from '../../shared/components';
-import { useI18n } from '../../shared/i18n';
-import { APP_VERSION_MARKER } from '../../shared/version';
-import { useErrorText } from '../../shared/hooks/useErrorText';
-import { useSession } from '../../shared/session/SessionContext';
-import { useAppData } from '../../app/AppDataContext';
-import * as ipc from '../../shared/ipc/gateway';
-import type { DashboardSummary } from '../../shared/ipc/dto';
+import { useState } from 'react';
 import type { AppView } from '../../app/AppShell';
-import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
-import { getTodayOverview } from '../../shared/ipc/reportsGateway';
-import type { TodayOverview } from '../../shared/ipc/reportsDto';
-import { NotificationPanel } from '../notifications/NotificationPanel';
-import { KpiCard } from '../reports/common/KpiCard';
-import { BarChart } from '../reports/common/charts/BarChart';
-import { ReportTable } from '../reports/common/ReportTable';
-import { REPORTS_LAST_TAB_STORAGE_KEY } from '../reports/ReportsScreen';
-import { useReportCopy } from '../reports/common/reportCopy';
-import { copyText } from '../reports/common/clipboard';
-import { buildDailySummary } from './dailySummaryText';
-import './dashboard.css';
+import type { NavAccess } from '../../app/navigationAccess';
+import { useI18n } from '../../shared/i18n';
+import { useSession } from '../../shared/session/SessionContext';
+import { APP_VERSION_MARKER } from '../../shared/version';
+import { formatDisplayAmount } from '../../shared/utils/formatters';
+import { formatCount, formatRange } from './dashboardFormat';
+import { resolveTarget } from './quickActions';
+import { useDashboardData } from './useDashboardData';
 
-export function DashboardScreen({ setView }: { setView: (v: AppView) => void }) {
+import { PeriodBar } from './components/PeriodBar';
+import { KpiStrip } from './components/KpiStrip';
+import { KpiCell } from './components/KpiCell';
+import { DeltaLine } from './components/DeltaLine';
+import { QuickActionsCard } from './components/QuickActionsCard';
+import { CashDrawerCard } from './components/CashDrawerCard';
+import { AlertsCard } from './components/AlertsCard';
+import { DebtorsList } from './components/DebtorsList';
+import { RunningLowList } from './components/RunningLowList';
+import { TopItemsList } from './components/TopItemsList';
+import { TopCustomersList } from './components/TopCustomersList';
+import { LatestSalesList } from './components/LatestSalesList';
+import { StockDialog } from './components/StockDialog';
+
+export interface DashboardScreenProps {
+  onNavigate?: (view: AppView) => void;
+  setView?: (view: AppView) => void;
+  access?: NavAccess;
+}
+
+const DEFAULT_ACCESS: NavAccess = {
+  inventoryCapabilities: {
+    can_manage_catalog: true,
+    can_view_inventory: true,
+    can_post_stock_receipt: true,
+    can_manage_inventory: true,
+  },
+  inventoryCorrectionsEnabled: true,
+  procurementCapabilities: {
+    can_manage_procurement: true,
+    can_post_purchase_receipt: true,
+    can_post_supplier_invoice: true,
+    can_post_supplier_return: true,
+    can_post_supplier_payment: true,
+  },
+  customerCapabilities: {
+    can_view_customers: true,
+    can_manage_customers: true,
+    can_post_credit_sale: true,
+    can_post_customer_payment: true,
+    can_post_customer_refund: true,
+    can_manage_drawer_policy: true,
+    can_override_credit_limit: true,
+    can_apply_sale_discount: true,
+  },
+  reportsCapabilities: {
+    can_view_reports: true,
+  },
+};
+
+export function DashboardScreen({
+  onNavigate,
+  setView,
+  access = DEFAULT_ACCESS,
+}: DashboardScreenProps) {
   const { t, locale } = useI18n();
-  const copy = useReportCopy();
-  const { user, workstationId } = useSession();
-  const { warehouses, selectedWarehouseId } = useAppData();
-  const errorText = useErrorText();
+  const { user, workstationId } = useSession() ?? {};
   const token = user?.token ?? '';
-  const { identity } = useOfficialDocumentContext(token);
 
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const nav = onNavigate ?? setView ?? (() => {});
 
-  const load = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setSummary(await ipc.getDashboardSummary(token, workstationId));
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [token, workstationId, errorText]);
+  const {
+    prefs,
+    updatedAt,
+    isAnyRefreshing,
+    period,
+    money,
+    topItems,
+    topCustomers,
+    stock,
+    runningLow,
+    debtors,
+    latest,
+    alerts,
+    system,
+    actions,
+  } = useDashboardData(token, workstationId);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const [stockDialogKind, setStockDialogKind] = useState<'low' | 'out' | 'dead' | null>(null);
 
-  const [today, setToday] = useState<TodayOverview | null>(null);
-  const [todayLoading, setTodayLoading] = useState(true);
-  const [todayDenied, setTodayDenied] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [fallbackText, setFallbackText] = useState<string | null>(null);
+  const prevRangeText =
+    period.data && period.data.prev_from && period.data.prev_to
+      ? formatRange(period.data.prev_from, period.data.prev_to, locale, t)
+      : '';
 
-  const loadToday = useCallback(async () => {
-    if (!token) return;
-    setTodayLoading(true);
-    try {
-      const result = await getTodayOverview(token);
-      setToday(result);
-      setTodayDenied(false);
-    } catch {
-      // Insufficient permission (VIEW_REPORTS) or any other failure: the
-      // "no reports access" banner covers both, per STEP I3-08.
-      setToday(null);
-      setTodayDenied(true);
-    } finally {
-      setTodayLoading(false);
-    }
-  }, [token]);
+  // KPI Targets
+  const salesTarget = resolveTarget(['M-REPORT-SALES'], access);
+  const profitTarget = resolveTarget(['M-REPORT-PROFIT'], access);
+  const receivablesTarget = resolveTarget(['M-REPORT-OWED', 'M-CUSTOMERS'], access);
+  const payablesTarget = resolveTarget(['M-REPORT-PAYABLES', 'M-SUPPLIERS'], access);
+  const stockValueTarget = resolveTarget(['M-REPORT-STOCK', 'M-INVENTORY'], access);
+  const docsTarget = resolveTarget(['M-DOCUMENTS'], access);
 
-  useEffect(() => {
-    void loadToday();
-    const interval = window.setInterval(() => void loadToday(), 2 * 60 * 1000);
-    return () => window.clearInterval(interval);
-  }, [loadToday]);
-
-  const selectedWarehouse = warehouses.find((w) => w.id === selectedWarehouseId);
-
-  function greeting(): string {
-    const hour = new Date().getHours();
-    if (hour < 12) return copy.greetingMorning;
-    if (hour < 18) return copy.greetingAfternoon;
-    return copy.greetingEvening;
-  }
-
-  function navigateToSubReport(tab: string, sub: string) {
-    try {
-      window.sessionStorage.setItem(REPORTS_LAST_TAB_STORAGE_KEY, `${tab}/${sub}`);
-    } catch {
-      // Best effort only.
-    }
-    setView('reports');
-  }
-
-  async function handleCopyDailySummary() {
-    if (!today) return;
-    const printLocale = identity?.printLocale ?? locale;
-    const text = buildDailySummary({
-      locale: printLocale,
-      shopName: identity?.shopName ?? '',
-      date: today.today.date,
-      netSales: today.today.summary.net_sales,
-      saleCount: today.today.summary.sale_count,
-      grossProfit: today.today.summary.gross_profit,
-      expected: today.drawer?.expected_now ?? null,
-      receivables: today.receivables_total,
-      overdue: today.overdue_total,
-      lowStock: today.low_stock_count,
-    });
-    const ok = await copyText(text);
-    if (ok) {
-      setFallbackText(null);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } else {
-      setFallbackText(text);
-    }
-  }
-
-  const hourlyPoints = (() => {
-    if (!today) return [];
-    const rows = today.hourly_today;
-    const hasOutsideCore = rows.some(
-      (r) => (r.hour < 7 || r.hour > 22) && Number(r.net_sales) > 0,
-    );
-    const filtered = hasOutsideCore ? rows : rows.filter((r) => r.hour >= 7 && r.hour <= 22);
-    return filtered.map((r) => ({ label: String(r.hour), value: Number(r.net_sales) }));
-  })();
+  const pendingDocsCount =
+    system.data
+      ? system.data.pending_generation_jobs + system.data.pending_print_jobs
+      : 0;
 
   return (
-    <section className="sk-page sk-dashboard sk-home">
-      <p className="sk-muted sk-home__version">[ version = {APP_VERSION_MARKER} ]</p>
+    <section className="sk-page sk-dash">
+      <PeriodBar
+        prefs={prefs}
+        period={period}
+        updatedAt={updatedAt}
+        isAnyRefreshing={isAnyRefreshing}
+        onChangePeriod={actions.changePeriod}
+        onRefresh={actions.refreshAll}
+        onToggleCompare={actions.toggleCompare}
+      />
 
-      <div className="sk-section-heading">
-        <div>
-          {/* Kept as the page's h1 with the same accessible name every other
-              screen's post-login assertion relies on ("Dashboard" heading);
-              the greeting itself is a secondary line, not a heading. */}
-          <h1>{t('dashboard.title')}</h1>
-          <p data-testid="home-greeting">{greeting()}</p>
+      {/* 1. Money Strip */}
+      <KpiStrip
+        title={t('dash.money.title')}
+        isError={money.status === 'error'}
+        errorMessage={money.errorMessage}
+        onRetry={() => actions.retry('money')}
+      >
+        <KpiCell
+          label={t('dash.kpi.sales')}
+          rawValue={money.data?.sales}
+          isMoney
+          loading={money.status === 'loading'}
+          refreshing={money.refreshing}
+          onClick={salesTarget ? () => nav(salesTarget) : undefined}
+          subtitle1={
+            <DeltaLine
+              kind={money.data?.sales_change_kind ?? 'NONE'}
+              pct={money.data?.sales_change_pct ?? null}
+              prevAmountText={formatDisplayAmount(money.data?.prev_sales)}
+              prevRange={prevRangeText}
+              compare={prefs.compare}
+            />
+          }
+          subtitle2={
+            money.data &&
+            money.data.discount_total &&
+            money.data.discount_total !== '0' &&
+            money.data.discount_total !== '0.00'
+              ? t('dash.kpi.discounts', {
+                  amount: formatDisplayAmount(money.data.discount_total),
+                })
+              : null
+          }
+        />
+
+        <KpiCell
+          label={t('dash.kpi.profit')}
+          rawValue={money.data?.profit}
+          isMoney
+          valueTone={money.data?.profit?.startsWith('-') ? 'danger' : 'normal'}
+          loading={money.status === 'loading'}
+          refreshing={money.refreshing}
+          onClick={profitTarget ? () => nav(profitTarget) : undefined}
+          subtitle1={
+            <DeltaLine
+              kind={money.data?.profit_change_kind ?? 'NONE'}
+              pct={money.data?.profit_change_pct ?? null}
+              prevAmountText={formatDisplayAmount(money.data?.prev_profit)}
+              prevRange={prevRangeText}
+              compare={prefs.compare}
+            />
+          }
+          subtitle2={
+            t('dash.kpi.margin', {
+              pct: money.data?.margin_pct ?? '—',
+            })
+          }
+        />
+
+        <KpiCell
+          label={t('dash.kpi.saleCount')}
+          rawValue={money.data ? formatCount(money.data.sale_count) : '0'}
+          loading={money.status === 'loading'}
+          refreshing={money.refreshing}
+          onClick={salesTarget ? () => nav(salesTarget) : undefined}
+          subtitle1={
+            <DeltaLine
+              kind={money.data?.count_change_kind ?? 'NONE'}
+              pct={money.data?.count_change_pct ?? null}
+              prevAmountText={money.data ? formatCount(money.data.prev_sale_count) : '0'}
+              prevRange={prevRangeText}
+              compare={prefs.compare}
+            />
+          }
+          subtitle2={
+            t('dash.kpi.average', {
+              amount: money.data?.average_sale
+                ? formatDisplayAmount(money.data.average_sale)
+                : '—',
+            })
+          }
+        />
+
+        <KpiCell
+          label={t('dash.kpi.receivables')}
+          rawValue={money.data?.receivables_total}
+          isMoney
+          loading={money.status === 'loading'}
+          refreshing={money.refreshing}
+          onClick={receivablesTarget ? () => nav(receivablesTarget) : undefined}
+          subtitle1={t('dash.kpi.asOfNow')}
+        />
+
+        <KpiCell
+          label={t('dash.kpi.payables')}
+          rawValue={money.data?.payables_total}
+          isMoney
+          loading={money.status === 'loading'}
+          refreshing={money.refreshing}
+          onClick={payablesTarget ? () => nav(payablesTarget) : undefined}
+          subtitle1={t('dash.kpi.asOfNow')}
+        />
+      </KpiStrip>
+
+      {/* 2. Stock Strip */}
+      <KpiStrip
+        title={t('dash.stock.title')}
+        isError={stock.status === 'error'}
+        errorMessage={stock.errorMessage}
+        onRetry={() => actions.retry('stock')}
+      >
+        <KpiCell
+          label={t('dash.kpi.stockValue')}
+          rawValue={stock.data?.stock_value}
+          isMoney
+          loading={stock.status === 'loading'}
+          refreshing={stock.refreshing}
+          onClick={stockValueTarget ? () => nav(stockValueTarget) : undefined}
+          subtitle1={t('dash.kpi.atCost')}
+        />
+
+        <KpiCell
+          label={t('dash.kpi.lowStock')}
+          rawValue={stock.data ? formatCount(stock.data.low_count) : '0'}
+          valueTone={stock.data && stock.data.low_count > 0 ? 'warn' : 'normal'}
+          loading={stock.status === 'loading'}
+          refreshing={stock.refreshing}
+          onClick={() => setStockDialogKind('low')}
+          subtitle1={t('dash.kpi.items')}
+        />
+
+        <KpiCell
+          label={t('dash.kpi.outOfStock')}
+          rawValue={stock.data ? formatCount(stock.data.out_count) : '0'}
+          valueTone={stock.data && stock.data.out_count > 0 ? 'danger' : 'normal'}
+          loading={stock.status === 'loading'}
+          refreshing={stock.refreshing}
+          onClick={() => setStockDialogKind('out')}
+          subtitle1={t('dash.kpi.items')}
+        />
+
+        <KpiCell
+          label={t('dash.kpi.deadStock')}
+          rawValue={stock.data ? formatCount(stock.data.dead_count) : '0'}
+          loading={stock.status === 'loading'}
+          refreshing={stock.refreshing}
+          onClick={() => setStockDialogKind('dead')}
+          subtitle1={t('dash.kpi.deadValue', {
+            amount: formatDisplayAmount(stock.data?.dead_value ?? '0'),
+          })}
+          subtitle2={
+            <select
+              aria-label={t('dash.kpi.deadDaysSelect')}
+              value={prefs.deadDays}
+              onChange={(e) => actions.changeDeadDays(Number(e.target.value) as 30 | 60 | 90 | 180)}
+              onClick={(e) => e.stopPropagation()}
+              className="sk-dash-select"
+            >
+              {[30, 60, 90, 180].map((d) => (
+                <option key={d} value={d}>
+                  {t('dash.kpi.days', { days: d })}
+                </option>
+              ))}
+            </select>
+          }
+        />
+      </KpiStrip>
+
+      {/* 3. Main Grid: Lists and Rail */}
+      <div className="sk-dash__main-grid">
+        <div className="sk-dash__lists">
+          <TopItemsList
+            topItems={topItems}
+            access={access}
+            onNavigate={nav}
+            onRetry={() => actions.retry('topItems')}
+          />
+          <TopCustomersList
+            topCustomers={topCustomers}
+            access={access}
+            onNavigate={nav}
+            onRetry={() => actions.retry('topCustomers')}
+          />
+          <LatestSalesList
+            latest={latest}
+            period={period}
+            access={access}
+            onNavigate={nav}
+            onRetry={() => actions.retry('latest')}
+          />
         </div>
+
+        <aside className="sk-dash__rail">
+          <QuickActionsCard access={access} onNavigate={nav} />
+          <CashDrawerCard
+            money={money}
+            access={access}
+            onNavigate={nav}
+            onRetry={() => actions.retry('money')}
+          />
+          <AlertsCard
+            alerts={alerts}
+            access={access}
+            onNavigate={nav}
+            onRetry={() => actions.retry('alerts')}
+          />
+          <DebtorsList
+            debtors={debtors}
+            access={access}
+            onNavigate={nav}
+            onRetry={() => actions.retry('debtors')}
+          />
+          <RunningLowList
+            runningLow={runningLow}
+            onOpenStockDialog={(kind) => setStockDialogKind(kind)}
+            onRetry={() => actions.retry('runningLow')}
+          />
+        </aside>
       </div>
 
-      {todayLoading ? (
-        <div className="sk-centered">
-          <Spinner />
-        </div>
-      ) : todayDenied || !today ? (
-        <Banner tone="info" testId="home-no-reports">
-          {copy.homeNoReports}
-        </Banner>
-      ) : (
-        <>
-          <div className="sk-kpi-grid">
-            <KpiCard
-              label={copy.kpiSales}
-              value={today.today.summary.net_sales}
-              previous={today.same_day_last_week.summary.net_sales}
-              testId="home-kpi-sales"
-            />
-            <KpiCard
-              label={copy.kpiProfit}
-              value={today.today.summary.gross_profit}
-              previous={today.same_day_last_week.summary.gross_profit}
-              testId="home-kpi-profit"
-            />
-            <KpiCard
-              label={copy.kpiCount}
-              value={String(today.today.summary.sale_count)}
-              previous={String(today.same_day_last_week.summary.sale_count)}
-              testId="home-kpi-count"
-            />
-            <KpiCard
-              label={copy.kpiBasket}
-              value={today.today.summary.avg_basket ?? '—'}
-              previous={today.same_day_last_week.summary.avg_basket}
-              testId="home-kpi-basket"
-            />
-            <div className="sk-kpi-card" data-testid="home-kpi-drawer">
-              <div className="sk-kpi-card__title">{copy.kpiDrawer}</div>
-              {today.drawer ? (
-                <div className="sk-kpi-card__value">{today.drawer.expected_now}</div>
-              ) : (
-                <>
-                  <div className="sk-kpi-card__value">{copy.noSessionOpen}</div>
-                  <button
-                    type="button"
-                    className="sk-btn sk-btn--secondary"
-                    data-testid="home-open-session"
-                    onClick={() => setView('session')}
-                  >
-                    {copy.openSession}
-                  </button>
-                </>
-              )}
-            </div>
+      {/* 4. Bottom Charts (Reserved for N-3, empty in N-2) */}
+      <section className="sk-dash__charts" aria-hidden="true" />
+
+      {/* 5. Footer */}
+      <footer className="sk-dash__footer">
+        {pendingDocsCount > 0 && (
+          <div className="sk-dash__system-warning">
+            <span className="sk-badge sk-badge--warning">
+              {t('dash.system.pendingDocs', { count: pendingDocsCount })}
+            </span>
+            {docsTarget && (
+              <button
+                type="button"
+                className="sk-dash-card__link"
+                onClick={() => nav(docsTarget)}
+              >
+                {t('dash.system.openDocuments')}
+              </button>
+            )}
           </div>
-
-          <div className="sk-home__columns">
-            <div className="sk-home__column">
-              <BarChart
-                points={hourlyPoints}
-                formatValue={(n) => String(n)}
-                testId="home-chart-hourly"
-                title={copy.hourlySalesToday}
-              />
-              <div className="sk-chart-card" data-testid="home-top-products">
-                <div className="sk-chart-card__header">
-                  <h3 className="sk-chart-card__title">{copy.topProductsToday}</h3>
-                </div>
-                <ReportTable
-                  testId="home-top-products-table"
-                  columns={[
-                    { key: 'product_name', label: copy.salesByProduct, align: 'start' },
-                    { key: 'net_revenue', label: copy.netSales, align: 'end' },
-                  ]}
-                  rows={today.top_products_today}
-                />
-              </div>
-            </div>
-
-            <div className="sk-home__column">
-              <div className="sk-chart-card" data-testid="home-notifications">
-                <div className="sk-chart-card__header">
-                  <h3 className="sk-chart-card__title">{copy.notifications}</h3>
-                </div>
-                <NotificationPanel setView={setView} onClose={() => {}} />
-              </div>
-
-              <div className="sk-chart-card" data-testid="home-receivables">
-                <div className="sk-chart-card__header">
-                  <h3 className="sk-chart-card__title">{copy.owedToYouHome}</h3>
-                </div>
-                <p>
-                  {copy.receivables}: {today.receivables_total} · {copy.daysOverdue}: {today.overdue_total}
-                </p>
-                <Button variant="secondary" onClick={() => navigateToSubReport('owed', 'receivables')}>
-                  {copy.notifGoTo}
-                </Button>
-              </div>
-
-              <div className="sk-chart-card" data-testid="home-payables">
-                <div className="sk-chart-card__header">
-                  <h3 className="sk-chart-card__title">{copy.youOweHome}</h3>
-                </div>
-                <p>{today.payables_total}</p>
-                <Button variant="secondary" onClick={() => navigateToSubReport('owed', 'suppliers')}>
-                  {copy.notifGoTo}
-                </Button>
-              </div>
-
-              <div className="sk-chart-card" data-testid="home-low-stock">
-                <div className="sk-chart-card__header">
-                  <h3 className="sk-chart-card__title">{copy.lowStockHome}</h3>
-                </div>
-                <p>
-                  {copy.lowStock}: {today.low_stock_count} · {copy.notifOutOfStockTitle}: {today.out_of_stock_count}
-                </p>
-                <Button variant="secondary" onClick={() => navigateToSubReport('stock', 'low-stock')}>
-                  {copy.notifGoTo}
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="sk-chart-card" data-testid="home-mtd">
-            <div className="sk-chart-card__header">
-              <h3 className="sk-chart-card__title">{copy.monthToDate}</h3>
-            </div>
-            <p>
-              {copy.netSales}: {today.month_to_date.net_sales} · {copy.grossProfit}: {today.month_to_date.gross_profit}
-            </p>
-          </div>
-
-          <Button
-            type="button"
-            variant="secondary"
-            data-testid="copy-daily-summary"
-            onClick={() => void handleCopyDailySummary()}
-          >
-            {copied ? copy.copied : copy.copyDailySummary}
-          </Button>
-          {fallbackText ? <textarea readOnly data-testid="copy-fallback" value={fallbackText} /> : null}
-        </>
-      )}
-
-      <details data-testid="home-system-status">
-        <summary>{copy.systemStatus}</summary>
-        <section className="sk-dashboard">
-          <div className="sk-dashboard__header">
-            <div>
-              <p>{t('dashboard.subtitle')}</p>
-            </div>
-            <Button variant="secondary" onClick={() => void load()}>
-              {t('jobs.refresh')}
-            </Button>
-          </div>
-          {loading ? (
-            <Spinner />
-          ) : error ? (
-            <Banner tone="error">{error}</Banner>
-          ) : summary ? (
-            <div className="sk-dashboard__layout" data-testid="dashboard">
-              <section className="sk-dashboard__catalog" aria-labelledby="dashboard-catalog-title">
-                <div className="sk-dashboard__section-heading">
-                  <div>
-                    <span className="sk-dashboard__eyebrow">{t('dashboard.inventoryOverview')}</span>
-                    <h2 id="dashboard-catalog-title">{t('dashboard.catalog')}</h2>
-                  </div>
-                  <span className="sk-dashboard__section-icon" aria-hidden>▦</span>
-                </div>
-                <div className="sk-dashboard__stats">
-                  <Metric label={t('dashboard.products')} value={String(summary.product_count)} icon="□" />
-                  <Metric label={t('dashboard.variants')} value={String(summary.variant_count)} icon="◇" />
-                </div>
-              </section>
-
-              <section className="sk-dashboard__operations" aria-labelledby="dashboard-operations-title">
-                <div className="sk-dashboard__section-heading">
-                  <div>
-                    <span className="sk-dashboard__eyebrow">{t('dashboard.currentStatus')}</span>
-                    <h2 id="dashboard-operations-title">{t('dashboard.operations')}</h2>
-                  </div>
-                  <span className="sk-dashboard__section-icon" aria-hidden>◎</span>
-                </div>
-                <DashboardDetail
-                  label={t('dashboard.warehouse')}
-                  value={
-                    selectedWarehouse
-                      ? `${selectedWarehouse.code} — ${selectedWarehouse.name}`
-                      : t('common.none')
-                  }
-                  icon="▣"
-                />
-                <DashboardDetail
-                  label={t('dashboard.session')}
-                  value={
-                    summary.active_cash_session_id
-                      ? t('header.session.open')
-                      : t('header.session.closed')
-                  }
-                  icon="◉"
-                  tone={summary.active_cash_session_id ? 'ok' : 'muted'}
-                />
-              </section>
-
-              <section className="sk-dashboard__activity" aria-labelledby="dashboard-activity-title">
-                <div className="sk-dashboard__section-heading">
-                  <div>
-                    <span className="sk-dashboard__eyebrow">{t('dashboard.processing')}</span>
-                    <h2 id="dashboard-activity-title">{t('dashboard.activity')}</h2>
-                  </div>
-                  <span className="sk-dashboard__section-icon" aria-hidden>↻</span>
-                </div>
-                <div className="sk-dashboard__activity-grid">
-                  <DashboardDetail
-                    label={t('dashboard.latestDocument')}
-                    value={summary.latest_document_number ?? t('common.none')}
-                    icon="▤"
-                  />
-                  <DashboardDetail
-                    label={t('dashboard.generationJobs')}
-                    value={String(summary.pending_generation_jobs)}
-                    icon="⚙"
-                    compact
-                  />
-                  <DashboardDetail
-                    label={t('dashboard.printJobs')}
-                    value={String(summary.pending_print_jobs)}
-                    icon="▧"
-                    compact
-                  />
-                  <DashboardDetail
-                    label={t('dashboard.pendingJobs')}
-                    value={String(summary.pending_generation_jobs + summary.pending_print_jobs)}
-                    icon="!"
-                    compact
-                    tone={
-                      summary.pending_generation_jobs + summary.pending_print_jobs > 0
-                        ? 'warning'
-                        : 'ok'
-                    }
-                  />
-                </div>
-              </section>
-            </div>
-          ) : null}
-        </section>
-      </details>
-    </section>
-  );
-}
-
-function Metric({ label, value, icon }: { label: string; value: string; icon: string }) {
-  return (
-    <div className="sk-metric">
-      <span className="sk-metric__icon" aria-hidden>{icon}</span>
-      <span className="sk-metric__value">{value}</span>
-      <span className="sk-metric__label">{label}</span>
-    </div>
-  );
-}
-
-function DashboardDetail({
-  label,
-  value,
-  icon,
-  compact = false,
-  tone,
-}: {
-  label: string;
-  value: string;
-  icon: string;
-  compact?: boolean;
-  tone?: 'ok' | 'muted' | 'warning';
-}) {
-  return (
-    <div className={`sk-dashboard-detail ${compact ? 'sk-dashboard-detail--compact' : ''}`}>
-      <span className="sk-dashboard-detail__icon" aria-hidden>{icon}</span>
-      <span className="sk-dashboard-detail__copy">
-        <span>{label}</span>
-        {tone ? (
-          <strong className={`sk-badge sk-badge--${tone}`}>{value}</strong>
-        ) : (
-          <strong>{value}</strong>
         )}
-      </span>
-    </div>
+
+        <div className="sk-muted sk-dash__version">
+          [ version = {APP_VERSION_MARKER} ]
+        </div>
+      </footer>
+
+      {/* 6. Stock Dialog Modal */}
+      {stockDialogKind && (
+        <StockDialog
+          kind={stockDialogKind}
+          deadDays={prefs.deadDays}
+          access={access}
+          onClose={() => setStockDialogKind(null)}
+          onNavigate={nav}
+        />
+      )}
+    </section>
   );
 }

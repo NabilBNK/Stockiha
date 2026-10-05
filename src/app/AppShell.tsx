@@ -29,6 +29,7 @@ import type {
 import type { CustomerCapabilities } from '../shared/ipc/customerDto';
 import type { ReportsCapabilities } from '../shared/ipc/reportsDto';
 import { NotificationBell } from '../features/notifications/NotificationBell';
+import { isNavViewVisible } from './navigationAccess';
 
 export type AppView =
   | 'dashboard'
@@ -394,26 +395,13 @@ export function AppShell({
    * capability read) is still stopped there, same as always.
    */
   function canShow(item: NavItem): boolean {
-    switch (item.view) {
-      case 'products':
-      case 'catalogueSetup':
-        return inventoryCapabilities?.can_manage_catalog ?? false;
-      case 'inventory':
-        return inventoryCapabilities?.can_view_inventory ?? false;
-      case 'stock':
-        return inventoryCapabilities?.can_post_stock_receipt ?? false;
-      case 'adjustment':
-        return (inventoryCapabilities?.can_manage_inventory ?? false) && inventoryCorrectionsEnabled === true;
-      case 'suppliers':
-      case 'purchases':
-        return procurementCapabilities?.can_manage_procurement ?? false;
-      case 'customers':
-        return customerCapabilities?.can_view_customers ?? false;
-      case 'reports':
-        return reportsCapabilities?.can_view_reports ?? false;
-      default:
-        return true;
-    }
+    return isNavViewVisible(item.view, {
+      inventoryCapabilities,
+      inventoryCorrectionsEnabled,
+      procurementCapabilities,
+      customerCapabilities,
+      reportsCapabilities,
+    });
   }
 
   return (

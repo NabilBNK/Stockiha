@@ -6,6 +6,7 @@
 export type DashboardPeriodKind = 'today' | 'week' | 'month' | 'year' | 'custom';
 export type SeriesBucket = 'HOUR' | 'DAY' | 'MONTH';
 export type ChangeKind = 'UP' | 'DOWN' | 'FLAT' | 'NO_BASE' | 'NONE';
+export type DeltaKind = ChangeKind;
 export type StockItemKind = 'low' | 'out' | 'dead';
 
 export interface DashboardPeriod {
@@ -104,6 +105,7 @@ export interface DashboardDebtor {
   oldest_open_on: string | null;
   oldest_open_days: number | null;
 }
+export type DashboardTopDebtor = DashboardDebtor;
 
 export interface DashboardLatestSale {
   document_id: number;
