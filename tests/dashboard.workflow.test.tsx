@@ -261,7 +261,7 @@ describe('Dashboard Integration Tests (Sub-plan N-2)', () => {
     expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(2);
 
     // 8. Best-selling items lists Oreiller blanc and Couette 2p
-    expect(screen.getByText('Oreiller blanc')).toBeInTheDocument();
+    expect(screen.getAllByText('Oreiller blanc').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Couette 2p').length).toBeGreaterThanOrEqual(1);
 
     // 9. Latest sales shows voided badge

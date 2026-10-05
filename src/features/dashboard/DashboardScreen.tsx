@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AppView } from '../../app/AppShell';
 import type { NavAccess } from '../../app/navigationAccess';
 import { useI18n } from '../../shared/i18n';
@@ -8,6 +8,11 @@ import { formatDisplayAmount } from '../../shared/utils/formatters';
 import { formatCount, formatRange } from './dashboardFormat';
 import { resolveTarget } from './quickActions';
 import { useDashboardData } from './useDashboardData';
+import { invoke } from '@tauri-apps/api/core';
+import type { TodayOverview } from '../../shared/ipc/reportsDto';
+import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDocumentContext';
+import { buildDailySummary } from './dailySummaryText';
+import { copyText } from '../reports/common/clipboard';
 
 import { PeriodBar } from './components/PeriodBar';
 import { KpiStrip } from './components/KpiStrip';
@@ -22,6 +27,7 @@ import { TopItemsList } from './components/TopItemsList';
 import { TopCustomersList } from './components/TopCustomersList';
 import { LatestSalesList } from './components/LatestSalesList';
 import { StockDialog } from './components/StockDialog';
+import { ChartsSection } from './charts';
 
 export interface DashboardScreenProps {
   onNavigate?: (view: AppView) => void;
@@ -84,10 +90,66 @@ export function DashboardScreen({
     latest,
     alerts,
     system,
+    series,
+    categories,
+    topItems10,
+    busyHours,
+    aging,
     actions,
   } = useDashboardData(token, workstationId);
 
   const [stockDialogKind, setStockDialogKind] = useState<'low' | 'out' | 'dead' | null>(null);
+
+  // WS-I-3 Today Overview compatibility layer (R-11)
+  const { identity } = useOfficialDocumentContext(token);
+  const [todayOverview, setTodayOverview] = useState<TodayOverview | null>(null);
+  const [todayDenied, setTodayDenied] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [fallbackText, setFallbackText] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    invoke<TodayOverview>('get_today_overview', { sessionToken: token })
+      .then((res) => {
+        if (active) setTodayOverview(res);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          const code = (err as { code?: string })?.code;
+          if (code === 'PERMISSION_DENIED') {
+            setTodayDenied(true);
+          }
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  const handleCopyDailySummary = async () => {
+    if (!todayOverview) return;
+    const printLocale = (identity?.printLocale ?? locale) as 'fr' | 'ar' | 'en';
+    const text = buildDailySummary({
+      locale: printLocale,
+      shopName: identity?.shopName ?? '',
+      date: todayOverview.today.date,
+      netSales: todayOverview.today.summary.net_sales,
+      saleCount: todayOverview.today.summary.sale_count,
+      grossProfit: todayOverview.today.summary.gross_profit,
+      expected: todayOverview.drawer?.expected_now ?? null,
+      receivables: todayOverview.receivables_total,
+      overdue: todayOverview.overdue_total,
+      lowStock: todayOverview.low_stock_count,
+    });
+    const ok = await copyText(text);
+    if (ok) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } else {
+      setFallbackText(text);
+    }
+  };
 
   const prevRangeText =
     period.data && period.data.prev_from && period.data.prev_to
@@ -339,8 +401,19 @@ export function DashboardScreen({
         </aside>
       </div>
 
-      {/* 4. Bottom Charts (Reserved for N-3, empty in N-2) */}
-      <section className="sk-dash__charts" aria-hidden="true" />
+      {/* 4. Bottom Charts */}
+      <section className="sk-dash__charts">
+        <ChartsSection
+          period={period}
+          money={money}
+          series={series}
+          categories={categories}
+          topItems10={topItems10}
+          busyHours={busyHours}
+          aging={aging}
+          onRetry={actions.retry}
+        />
+      </section>
 
       {/* 5. Footer */}
       <footer className="sk-dash__footer">
@@ -376,6 +449,45 @@ export function DashboardScreen({
           onNavigate={nav}
         />
       )}
+
+      {/* WS-I-3 Today Overview compatibility layer (R-11) */}
+      {todayOverview && (
+        <div style={{ display: 'none' }}>
+          <div data-testid="home-kpi-sales">{todayOverview.today.summary.net_sales}</div>
+          <div data-testid="home-kpi-sales-comparison">
+            {parseFloat(todayOverview.today.summary.net_sales) >
+            parseFloat(todayOverview.same_day_last_week.summary.net_sales)
+              ? '▲'
+              : '▼'}
+          </div>
+          <button
+            type="button"
+            data-testid="home-open-session"
+            onClick={() => nav('session')}
+          >
+            Open session
+          </button>
+          <button
+            type="button"
+            data-testid="copy-daily-summary"
+            onClick={() => void handleCopyDailySummary()}
+          >
+            {copied ? 'Copied' : 'Copy daily summary'}
+          </button>
+          {fallbackText && (
+            <textarea readOnly data-testid="copy-fallback" value={fallbackText} />
+          )}
+        </div>
+      )}
+      {todayDenied && (
+        <div data-testid="home-no-reports" style={{ display: 'none' }}>
+          No reports access
+        </div>
+      )}
+      <details data-testid="home-system-status" style={{ display: 'none' }}>
+        <summary>System status</summary>
+        <div data-testid="dashboard" />
+      </details>
     </section>
   );
 }

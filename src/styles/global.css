@@ -36,14 +36,24 @@
   --sk-warn: #a2630b;
   --sk-warn-soft: #fff6df;
   --sk-info-soft: #ebf1fe;
-  /* WS-J-1 Part 5a — chart series colours, promoted from a page-local
-     override in historical-finance.css so both themes can define them.
-     Legitimate exception to "read from a semantic token": a 4-series chart
-     needs 4 distinguishable hues, which no single semantic token provides. */
-  --sk-chart-sales: #16815d;
-  --sk-chart-purchases: #0e7490;
+  /* WS-N-3.3 — Chart colour tokens */
+  --sk-chart-sales: #2a78d6;
+  --sk-chart-profit: #eb6834;
+  --sk-chart-purchases: #19a875;
+  --sk-chart-credit: #86b6ef;
   --sk-chart-expenses: #a2630b;
   --sk-chart-benefit: #7c5ce5;
+  --sk-chart-age-1: #86b6ef;
+  --sk-chart-age-2: #3987e5;
+  --sk-chart-age-3: #1c5cab;
+  --sk-chart-age-4: #0d366b;
+  --sk-chart-heat-1: #86b6ef;
+  --sk-chart-heat-2: #5598e7;
+  --sk-chart-heat-3: #256abf;
+  --sk-chart-heat-4: #184f95;
+  --sk-chart-heat-5: #0d366b;
+  --sk-chart-grid: var(--sk-border);
+  --sk-chart-axis: var(--sk-border-strong);
   --sk-radius-sm: 8px;
   --sk-radius: 12px;
   --sk-radius-lg: 18px;
@@ -107,10 +117,24 @@
   /* The light-tuned chart hues above measure well under 3:1 on this dark
      surface (verified: #16815d 2.6:1, #0e7490 ~2.9:1, #a2630b ~3.4:1,
      #7c5ce5 2.7:1) — lightened per-theme so the chart stays legible. */
-  --sk-chart-sales: #54d2a3;
-  --sk-chart-purchases: #22b8cf;
+  /* WS-N-3.3 — Chart colour tokens (dark theme) */
+  --sk-chart-sales: #3987e5;
+  --sk-chart-profit: #d95926;
+  --sk-chart-purchases: #199e70;
+  --sk-chart-credit: #184f95;
   --sk-chart-expenses: #f2ba62;
   --sk-chart-benefit: #a78bfa;
+  --sk-chart-age-1: #184f95;
+  --sk-chart-age-2: #2a78d6;
+  --sk-chart-age-3: #6da7ec;
+  --sk-chart-age-4: #b7d3f6;
+  --sk-chart-heat-1: #184f95;
+  --sk-chart-heat-2: #256abf;
+  --sk-chart-heat-3: #3987e5;
+  --sk-chart-heat-4: #6da7ec;
+  --sk-chart-heat-5: #b7d3f6;
+  --sk-chart-grid: var(--sk-border);
+  --sk-chart-axis: var(--sk-border-strong);
   --sk-shadow: 0 1px 2px rgba(0, 0, 0, .18), 0 10px 26px rgba(0, 0, 0, .2);
   --sk-shadow-lg: 0 24px 70px rgba(0, 0, 0, .46);
 }

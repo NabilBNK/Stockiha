@@ -11,6 +11,10 @@ import {
   listDashboardStockItems,
   listDashboardTopDebtors,
   listDashboardLatestSales,
+  getDashboardSalesSeries,
+  getDashboardSalesByCategory,
+  getDashboardBusyHours,
+  getDashboardReceivablesAging,
 } from '../../shared/ipc/dashboardGateway';
 import { getReportNotifications } from '../../shared/ipc/reportsGateway';
 import { getDashboardSummary } from '../../shared/ipc/gateway';
@@ -23,6 +27,10 @@ import type {
   DashboardStockItem,
   DashboardTopDebtor,
   DashboardLatestSale,
+  DashboardSeriesRow,
+  DashboardCategoryRow,
+  DashboardBusyCell,
+  DashboardAgingRow,
 } from '../../shared/ipc/dashboardDto';
 import type { ReportNotifications } from '../../shared/ipc/reportsDto';
 import type { DashboardSummary } from '../../shared/ipc/dto';
@@ -51,7 +59,12 @@ export type SectionKey =
   | 'debtors'
   | 'latest'
   | 'alerts'
-  | 'system';
+  | 'system'
+  | 'series'
+  | 'categories'
+  | 'topItems10'
+  | 'busyHours'
+  | 'aging';
 
 export interface SectionState<T> {
   status: 'loading' | 'ready' | 'error';
@@ -88,6 +101,11 @@ export function useDashboardData(token: string, workstationId?: string | null) {
   const [latest, setLatest] = useState<SectionState<DashboardLatestSale[]>>(initialSection);
   const [alerts, setAlerts] = useState<SectionState<ReportNotifications>>(initialSection);
   const [system, setSystem] = useState<SectionState<DashboardSummary>>(initialSection);
+  const [series, setSeries] = useState<SectionState<DashboardSeriesRow[]>>(initialSection);
+  const [categories, setCategories] = useState<SectionState<DashboardCategoryRow[]>>(initialSection);
+  const [topItems10, setTopItems10] = useState<SectionState<DashboardTopItem[]>>(initialSection);
+  const [busyHours, setBusyHours] = useState<SectionState<DashboardBusyCell[]>>(initialSection);
+  const [aging, setAging] = useState<SectionState<DashboardAgingRow[]>>(initialSection);
 
   const periodRef = useRef<DashboardPeriod | null>(null);
 
@@ -103,6 +121,11 @@ export function useDashboardData(token: string, workstationId?: string | null) {
     latest: 0,
     alerts: 0,
     system: 0,
+    series: 0,
+    categories: 0,
+    topItems10: 0,
+    busyHours: 0,
+    aging: 0,
   });
 
   const nextSeq = (key: SectionKey): number => {
@@ -213,7 +236,127 @@ export function useDashboardData(token: string, workstationId?: string | null) {
         }
       });
 
-    return Promise.allSettled([pMoney, pItems, pCustomers]);
+    // 4. Sales Series
+    const serSeq = nextSeq('series');
+    setSeries((prev) => ({
+      ...prev,
+      status: isInitial ? 'loading' : prev.status,
+      refreshing: !isInitial,
+      errorMessage: null,
+    }));
+    const pSeries = Promise.resolve()
+      .then(() => getDashboardSalesSeries(token, targetPeriod.cur_from, targetPeriod.cur_to, targetPeriod.bucket))
+      .then((data) => {
+        if (isCurrentSeq('series', serSeq)) {
+          setSeries({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+        }
+      })
+      .catch((err) => {
+        handleSessionExpiry(err);
+        if (isCurrentSeq('series', serSeq)) {
+          setSeries((prev) => ({
+            ...prev,
+            status: 'error',
+            errorCode: extractErrorCode(err),
+            errorMessage: errorText(err),
+            refreshing: false,
+          }));
+        }
+      });
+
+    // 5. Sales by Category
+    const catSeq = nextSeq('categories');
+    setCategories((prev) => ({
+      ...prev,
+      status: isInitial ? 'loading' : prev.status,
+      refreshing: !isInitial,
+      errorMessage: null,
+    }));
+    const pCategories = Promise.resolve()
+      .then(() => getDashboardSalesByCategory(token, targetPeriod.cur_from, targetPeriod.cur_to))
+      .then((data) => {
+        if (isCurrentSeq('categories', catSeq)) {
+          setCategories({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+        }
+      })
+      .catch((err) => {
+        handleSessionExpiry(err);
+        if (isCurrentSeq('categories', catSeq)) {
+          setCategories((prev) => ({
+            ...prev,
+            status: 'error',
+            errorCode: extractErrorCode(err),
+            errorMessage: errorText(err),
+            refreshing: false,
+          }));
+        }
+      });
+
+    // 6. Top 10 Items
+    const it10Seq = nextSeq('topItems10');
+    setTopItems10((prev) => ({
+      ...prev,
+      status: isInitial ? 'loading' : prev.status,
+      refreshing: !isInitial,
+      errorMessage: null,
+    }));
+    const pTopItems10 = Promise.resolve()
+      .then(() => listDashboardTopItems(token, targetPeriod.cur_from, targetPeriod.cur_to, 10))
+      .then((data) => {
+        if (isCurrentSeq('topItems10', it10Seq)) {
+          setTopItems10({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+        }
+      })
+      .catch((err) => {
+        handleSessionExpiry(err);
+        if (isCurrentSeq('topItems10', it10Seq)) {
+          setTopItems10((prev) => ({
+            ...prev,
+            status: 'error',
+            errorCode: extractErrorCode(err),
+            errorMessage: errorText(err),
+            refreshing: false,
+          }));
+        }
+      });
+
+    // 7. Busy Hours
+    const bhSeq = nextSeq('busyHours');
+    setBusyHours((prev) => ({
+      ...prev,
+      status: isInitial ? 'loading' : prev.status,
+      refreshing: !isInitial,
+      errorMessage: null,
+    }));
+    const pBusyHours = Promise.resolve()
+      .then(() => getDashboardBusyHours(token, targetPeriod.cur_from, targetPeriod.cur_to))
+      .then((data) => {
+        if (isCurrentSeq('busyHours', bhSeq)) {
+          setBusyHours({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+        }
+      })
+      .catch((err) => {
+        handleSessionExpiry(err);
+        if (isCurrentSeq('busyHours', bhSeq)) {
+          setBusyHours((prev) => ({
+            ...prev,
+            status: 'error',
+            errorCode: extractErrorCode(err),
+            errorMessage: errorText(err),
+            refreshing: false,
+          }));
+        }
+      });
+
+    return Promise.allSettled([
+      pMoney,
+      pItems,
+      pCustomers,
+      pSeries,
+      pCategories,
+      pTopItems10,
+      pBusyHours,
+    ]);
   }, [token, errorText, handleSessionExpiry]);
 
   const loadRightNowSections = useCallback(async (
@@ -384,7 +527,35 @@ export function useDashboardData(token: string, workstationId?: string | null) {
         }
       });
 
-    return Promise.allSettled([pStock, pLow, pDebtors, pLatest, pAlerts, pSystem]);
+    // 7. Receivables Aging
+    const agSeq = nextSeq('aging');
+    setAging((prev) => ({
+      ...prev,
+      status: isInitial ? 'loading' : prev.status,
+      refreshing: !isInitial,
+      errorMessage: null,
+    }));
+    const pAging = Promise.resolve()
+      .then(() => getDashboardReceivablesAging(token))
+      .then((data) => {
+        if (isCurrentSeq('aging', agSeq)) {
+          setAging({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+        }
+      })
+      .catch((err) => {
+        handleSessionExpiry(err);
+        if (isCurrentSeq('aging', agSeq)) {
+          setAging((prev) => ({
+            ...prev,
+            status: 'error',
+            errorCode: extractErrorCode(err),
+            errorMessage: errorText(err),
+            refreshing: false,
+          }));
+        }
+      });
+
+    return Promise.allSettled([pStock, pLow, pDebtors, pLatest, pAlerts, pSystem, pAging]);
   }, [token, workstationId, errorText, handleSessionExpiry]);
 
   const refreshAll = useCallback(async (isInitial = false) => {
@@ -438,11 +609,15 @@ export function useDashboardData(token: string, workstationId?: string | null) {
           errorMessage: errorText(err),
           refreshing: false,
         }));
-        // Period failure marks money, topItems, topCustomers as error
+        // Period failure marks period-dependent sections as error
         const errMsg = errorText(err);
         setMoney((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
         setTopItems((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
         setTopCustomers((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
+        setSeries((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
+        setCategories((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
+        setTopItems10((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
+        setBusyHours((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
       }
       await rightNowPromise;
     } finally {
@@ -502,6 +677,10 @@ export function useDashboardData(token: string, workstationId?: string | null) {
         setMoney((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
         setTopItems((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
         setTopCustomers((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
+        setSeries((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
+        setCategories((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
+        setTopItems10((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
+        setBusyHours((prev) => ({ ...prev, status: 'error', errorMessage: errMsg, refreshing: false }));
       }
     }
   }, [token, loadPeriodSections, errorText, handleSessionExpiry]);
@@ -795,6 +974,163 @@ export function useDashboardData(token: string, workstationId?: string | null) {
         });
       return;
     }
+
+    if (section === 'series') {
+      if (currentPeriod) {
+        const serSeq = nextSeq('series');
+        setSeries((prev) => ({ ...prev, status: 'loading', errorMessage: null }));
+        Promise.resolve()
+          .then(() => getDashboardSalesSeries(token, currentPeriod.cur_from, currentPeriod.cur_to, currentPeriod.bucket))
+          .then((data) => {
+            if (isCurrentSeq('series', serSeq)) {
+              setSeries({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+            }
+          })
+          .catch((err) => {
+            handleSessionExpiry(err);
+            if (isCurrentSeq('series', serSeq)) {
+              setSeries((prev) => ({
+                ...prev,
+                status: 'error',
+                errorCode: extractErrorCode(err),
+                errorMessage: errorText(err),
+                refreshing: false,
+              }));
+            }
+          });
+      } else {
+        void changePeriod({
+          period: currentPrefs.period,
+          customFrom: currentPrefs.customFrom,
+          customTo: currentPrefs.customTo,
+        });
+      }
+      return;
+    }
+
+    if (section === 'categories') {
+      if (currentPeriod) {
+        const catSeq = nextSeq('categories');
+        setCategories((prev) => ({ ...prev, status: 'loading', errorMessage: null }));
+        Promise.resolve()
+          .then(() => getDashboardSalesByCategory(token, currentPeriod.cur_from, currentPeriod.cur_to))
+          .then((data) => {
+            if (isCurrentSeq('categories', catSeq)) {
+              setCategories({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+            }
+          })
+          .catch((err) => {
+            handleSessionExpiry(err);
+            if (isCurrentSeq('categories', catSeq)) {
+              setCategories((prev) => ({
+                ...prev,
+                status: 'error',
+                errorCode: extractErrorCode(err),
+                errorMessage: errorText(err),
+                refreshing: false,
+              }));
+            }
+          });
+      } else {
+        void changePeriod({
+          period: currentPrefs.period,
+          customFrom: currentPrefs.customFrom,
+          customTo: currentPrefs.customTo,
+        });
+      }
+      return;
+    }
+
+    if (section === 'topItems10') {
+      if (currentPeriod) {
+        const it10Seq = nextSeq('topItems10');
+        setTopItems10((prev) => ({ ...prev, status: 'loading', errorMessage: null }));
+        Promise.resolve()
+          .then(() => listDashboardTopItems(token, currentPeriod.cur_from, currentPeriod.cur_to, 10))
+          .then((data) => {
+            if (isCurrentSeq('topItems10', it10Seq)) {
+              setTopItems10({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+            }
+          })
+          .catch((err) => {
+            handleSessionExpiry(err);
+            if (isCurrentSeq('topItems10', it10Seq)) {
+              setTopItems10((prev) => ({
+                ...prev,
+                status: 'error',
+                errorCode: extractErrorCode(err),
+                errorMessage: errorText(err),
+                refreshing: false,
+              }));
+            }
+          });
+      } else {
+        void changePeriod({
+          period: currentPrefs.period,
+          customFrom: currentPrefs.customFrom,
+          customTo: currentPrefs.customTo,
+        });
+      }
+      return;
+    }
+
+    if (section === 'busyHours') {
+      if (currentPeriod) {
+        const bhSeq = nextSeq('busyHours');
+        setBusyHours((prev) => ({ ...prev, status: 'loading', errorMessage: null }));
+        Promise.resolve()
+          .then(() => getDashboardBusyHours(token, currentPeriod.cur_from, currentPeriod.cur_to))
+          .then((data) => {
+            if (isCurrentSeq('busyHours', bhSeq)) {
+              setBusyHours({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+            }
+          })
+          .catch((err) => {
+            handleSessionExpiry(err);
+            if (isCurrentSeq('busyHours', bhSeq)) {
+              setBusyHours((prev) => ({
+                ...prev,
+                status: 'error',
+                errorCode: extractErrorCode(err),
+                errorMessage: errorText(err),
+                refreshing: false,
+              }));
+            }
+          });
+      } else {
+        void changePeriod({
+          period: currentPrefs.period,
+          customFrom: currentPrefs.customFrom,
+          customTo: currentPrefs.customTo,
+        });
+      }
+      return;
+    }
+
+    if (section === 'aging') {
+      const agSeq = nextSeq('aging');
+      setAging((prev) => ({ ...prev, status: 'loading', errorMessage: null }));
+      Promise.resolve()
+        .then(() => getDashboardReceivablesAging(token))
+        .then((data) => {
+          if (isCurrentSeq('aging', agSeq)) {
+            setAging({ status: 'ready', data, errorCode: null, errorMessage: null, refreshing: false });
+          }
+        })
+        .catch((err) => {
+          handleSessionExpiry(err);
+          if (isCurrentSeq('aging', agSeq)) {
+            setAging((prev) => ({
+              ...prev,
+              status: 'error',
+              errorCode: extractErrorCode(err),
+              errorMessage: errorText(err),
+              refreshing: false,
+            }));
+          }
+        });
+      return;
+    }
   }, [token, period.data, workstationId, errorText, handleSessionExpiry, changePeriod, loadPeriodSections]);
 
   const toggleCompare = useCallback(() => {
@@ -813,7 +1149,12 @@ export function useDashboardData(token: string, workstationId?: string | null) {
     debtors.refreshing ||
     latest.refreshing ||
     alerts.refreshing ||
-    system.refreshing;
+    system.refreshing ||
+    series.refreshing ||
+    categories.refreshing ||
+    topItems10.refreshing ||
+    busyHours.refreshing ||
+    aging.refreshing;
 
   return {
     prefs,
@@ -829,6 +1170,11 @@ export function useDashboardData(token: string, workstationId?: string | null) {
     latest,
     alerts,
     system,
+    series,
+    categories,
+    topItems10,
+    busyHours,
+    aging,
     actions: {
       refreshAll: () => void refreshAll(false),
       changePeriod,

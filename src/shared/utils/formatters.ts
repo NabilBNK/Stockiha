@@ -17,25 +17,9 @@ export function formatDisplayAmount(amount: string | number | null | undefined):
   return `${intPart}.${paddedDec} DZD`;
 }
 
-/**
- * Formats a date string (YYYY-MM-DD or ISO string) into readable format according to locale.
- * e.g. "2026-08-12" -> "12 Aug 2026" (en), "12 août 2026" (fr), "12 أغسطس 2026" (ar).
- */
-export function formatDisplayDate(dateStr: string | null | undefined, locale: Locale = 'en'): string {
-  if (!dateStr) return '—';
-
-  const cleanDateStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-  const parts = cleanDateStr.split('-');
-  if (parts.length !== 3) return dateStr;
-
-  const year = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10) - 1;
-  const day = parseInt(parts[2], 10);
-
-  if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
-
-  const monthNamesEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const monthNamesFr = [
+export const MONTHS_SHORT: Record<Locale, string[]> = {
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  fr: [
     'janv.',
     'févr.',
     'mars',
@@ -48,8 +32,8 @@ export function formatDisplayDate(dateStr: string | null | undefined, locale: Lo
     'oct.',
     'nov.',
     'déc.',
-  ];
-  const monthNamesAr = [
+  ],
+  ar: [
     'يناير',
     'فبراير',
     'مارس',
@@ -62,15 +46,60 @@ export function formatDisplayDate(dateStr: string | null | undefined, locale: Lo
     'أكتوبر',
     'نوفمبر',
     'ديسمبر',
-  ];
+  ],
+};
 
-  if (locale === 'ar') {
-    return `${day} ${monthNamesAr[month]} ${year}`;
-  }
-  if (locale === 'fr') {
-    return `${day} ${monthNamesFr[month]} ${year}`;
-  }
-  return `${day} ${monthNamesEn[month]} ${year}`;
+function parseDateParts(dateStr: string | null | undefined): { year: number; month: number; day: number } | null {
+  if (!dateStr) return null;
+  const cleanDateStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  const parts = cleanDateStr.split('-');
+  if (parts.length !== 3) return null;
+
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+
+  if (isNaN(year) || isNaN(month) || isNaN(day) || month < 0 || month > 11) return null;
+  return { year, month, day };
+}
+
+/**
+ * Formats a date string (YYYY-MM-DD or ISO string) into readable format according to locale.
+ * e.g. "2026-08-12" -> "12 Aug 2026" (en), "12 août 2026" (fr), "12 أغسطس 2026" (ar).
+ */
+export function formatDisplayDate(dateStr: string | null | undefined, locale: Locale = 'en'): string {
+  if (!dateStr) return '—';
+  const parsed = parseDateParts(dateStr);
+  if (!parsed) return dateStr;
+
+  const monthName = (MONTHS_SHORT[locale] ?? MONTHS_SHORT.en)[parsed.month];
+  return `${parsed.day} ${monthName} ${parsed.year}`;
+}
+
+/**
+ * Formats a date string to day + short month.
+ * e.g. "2026-09-05" -> "5 Sep" (en), "5 sept." (fr), "5 سبتمبر" (ar).
+ */
+export function formatShortDate(dateStr: string | null | undefined, locale: Locale = 'en'): string {
+  if (!dateStr) return '—';
+  const parsed = parseDateParts(dateStr);
+  if (!parsed) return dateStr;
+
+  const monthName = (MONTHS_SHORT[locale] ?? MONTHS_SHORT.en)[parsed.month];
+  return `${parsed.day} ${monthName}`;
+}
+
+/**
+ * Formats a date string to short month + year.
+ * e.g. "2026-09-05" -> "Sep 2026" (en), "sept. 2026" (fr), "سبتمبر 2026" (ar).
+ */
+export function formatMonthYear(dateStr: string | null | undefined, locale: Locale = 'en'): string {
+  if (!dateStr) return '—';
+  const parsed = parseDateParts(dateStr);
+  if (!parsed) return dateStr;
+
+  const monthName = (MONTHS_SHORT[locale] ?? MONTHS_SHORT.en)[parsed.month];
+  return `${monthName} ${parsed.year}`;
 }
 
 /**
