@@ -171,7 +171,12 @@ export function SalesSummaryReport() {
           />
         </div>
       ) : null}
-      <LineChart series={chartSeries} formatValue={(n) => n.toFixed(2)} testId="chart-sales-daily" />
+      <LineChart
+        title={copy.salesOverTime}
+        series={chartSeries}
+        formatValue={(n) => n.toFixed(2)}
+        testId="chart-sales-daily"
+      />
       </ReportFrame>
     </>
   );

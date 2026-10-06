@@ -1,7 +1,6 @@
-// WS-I-1 §5.8 — the common chrome around every report: title, period text,
-// print/PDF/CSV actions, and the loading/error/empty states. Reuses the
-// existing .sk-section-heading / .sk-empty-card / .sk-centered system
-// instead of unstyled markup.
+// WS-I-1 §5.8 & WS-R — the common frame around every report: title, period text,
+// top-right export actions (Print, PDF, CSV), and loading/error/empty states.
+// Fully aligned with Stockiha's card-based design system.
 
 import type { ReactNode } from 'react';
 
@@ -47,29 +46,50 @@ export function ReportFrame({
         <div>
           <h2 className="sk-report-frame__title">{title}</h2>
           {period ? (
-            <p>{formatReportCopy(copy.periodText, { from: period.from, to: period.to })}</p>
+            <p className="sk-report-frame__period">
+              {formatReportCopy(copy.periodText, { from: period.from, to: period.to })}
+            </p>
           ) : null}
         </div>
         {hasActions ? (
           <div className="sk-section-heading__actions" data-testid="report-actions">
             {onPrint ? (
-              <Button type="button" variant="secondary" onClick={onPrint} disabled={exportBusy} data-testid="report-print">
-                {copy.print}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onPrint}
+                disabled={exportBusy}
+                data-testid="report-print"
+              >
+                🖨️ {copy.print}
               </Button>
             ) : null}
             {onPdf ? (
-              <Button type="button" variant="secondary" onClick={onPdf} disabled={exportBusy} data-testid="report-pdf">
-                {copy.pdf}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onPdf}
+                disabled={exportBusy}
+                data-testid="report-pdf"
+              >
+                📄 {copy.pdf}
               </Button>
             ) : null}
             {onCsv ? (
-              <Button type="button" variant="secondary" onClick={onCsv} disabled={exportBusy} data-testid="report-csv">
-                {copy.csv}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onCsv}
+                disabled={exportBusy}
+                data-testid="report-csv"
+              >
+                📊 {copy.csv}
               </Button>
             ) : null}
           </div>
         ) : null}
       </div>
+
       {loading ? (
         <div className="sk-centered sk-reports-loading">
           <Spinner />

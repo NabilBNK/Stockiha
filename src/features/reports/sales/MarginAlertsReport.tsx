@@ -121,17 +121,54 @@ export function MarginAlertsReport() {
   return (
     <>
       <PeriodPicker value={period} onChange={setPeriod} />
-      <label>
-        {copy.marginPct}
-        <input
-          type="number"
-          min={0}
-          max={50}
-          data-testid="margin-threshold"
-          value={thresholdInput}
-          onChange={(event) => setThresholdInput(event.target.value)}
-        />
-      </label>
+      <div className="sk-reports-threshold-bar">
+        <div className="sk-reports-threshold-info">
+          <span className="sk-reports-threshold-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </span>
+          <div className="sk-reports-threshold-labels">
+            <label htmlFor="margin-threshold-input" className="sk-reports-threshold-title">
+              {copy.marginAlertThreshold ?? copy.marginPct}
+            </label>
+            <span className="sk-reports-threshold-desc">
+              {copy.marginAlertDesc ?? 'Alerts for products with gross margin below this threshold'}
+            </span>
+          </div>
+        </div>
+
+        <div className="sk-reports-threshold-controls">
+          <div className="sk-reports-input-suffix-group">
+            <input
+              id="margin-threshold-input"
+              type="number"
+              min={0}
+              max={50}
+              className="sk-reports-threshold-input"
+              data-testid="margin-threshold"
+              value={thresholdInput}
+              onChange={(event) => setThresholdInput(event.target.value)}
+            />
+            <span className="sk-reports-input-suffix">%</span>
+          </div>
+
+          <div className="sk-reports-preset-chips" role="group" aria-label="Presets">
+            {['0', '5', '10', '15', '20'].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={`sk-reports-preset-chip ${thresholdInput === preset ? 'sk-reports-preset-chip--active' : ''}`}
+                onClick={() => setThresholdInput(preset)}
+              >
+                {preset}%
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
       <ReportFrame
         title={copy.marginAlerts}
         period={period}

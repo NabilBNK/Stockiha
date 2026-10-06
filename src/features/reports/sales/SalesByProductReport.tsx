@@ -149,19 +149,45 @@ export function SalesByProductReport() {
   return (
     <>
       <PeriodPicker value={period} onChange={setPeriod} />
-      <input
-        type="search"
-        data-testid="product-search"
-        value={searchInput}
-        onChange={(event) => setSearchInput(event.target.value)}
-      />
-      <select data-testid="product-sort" value={sort} onChange={(event) => { setOffset(0); setSort(event.target.value as Sort); }}>
-        <option value="REVENUE">{copy.netSales}</option>
-        <option value="QUANTITY">Quantity</option>
-        <option value="PROFIT">{copy.grossProfit}</option>
-        <option value="MARGIN">{copy.marginPct}</option>
-      </select>
-      {capped ? <p>{copy.exportCapped}</p> : null}
+      <div className="sk-reports-filter-toolbar">
+        <div className="sk-reports-search-wrap">
+          <span className="sk-reports-search-icon" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </span>
+          <input
+            type="search"
+            className="sk-reports-search-input"
+            data-testid="product-search"
+            placeholder={copy.searchProduct ?? copy.search ?? 'Search products...'}
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+          />
+        </div>
+        <div className="sk-reports-sort-wrap">
+          <label htmlFor="product-sort-select" className="sk-reports-sort-label">
+            {copy.sortBy ?? 'Sort by:'}
+          </label>
+          <select
+            id="product-sort-select"
+            className="sk-reports-sort-select"
+            data-testid="product-sort"
+            value={sort}
+            onChange={(event) => {
+              setOffset(0);
+              setSort(event.target.value as Sort);
+            }}
+          >
+            <option value="REVENUE">{copy.netSales}</option>
+            <option value="QUANTITY">{copy.quantity ?? 'Quantity'}</option>
+            <option value="PROFIT">{copy.grossProfit}</option>
+            <option value="MARGIN">{copy.marginPct}</option>
+          </select>
+        </div>
+      </div>
+      {capped ? <p className="sk-reports-capped-notice">{copy.exportCapped}</p> : null}
       <ReportFrame
         title={copy.salesByProduct}
         period={period}

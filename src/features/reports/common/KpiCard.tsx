@@ -1,11 +1,5 @@
-// WS-I-1 §5.8 — a single KPI figure with an optional comparison arrow.
-// Reuses the existing .sk-kpi-card system (src/styles/historical-finance.css)
-// rather than inventing new CSS, so Reports reads as the same design
-// language as the Historical Finance analytics dashboard. The arrow glyph
-// itself carries no colour (A7/A8 — printed output is monochrome and goes
-// through a completely separate render path, renderOfficialDocumentHtml,
-// that never touches this component); the on-screen accent bar/colour here
-// is purely a screen affordance.
+// WS-I-1 §5.8 & WS-R — a single KPI figure with comparison arrow and responsive card styling.
+// Follows Stockiha design system tokens (.sk-kpi-card, logical borders, tone accents).
 
 export interface KpiCardProps {
   label: string;
@@ -31,10 +25,15 @@ export function KpiCard({ label, value, previous, testId, invertGood }: KpiCardP
   const favourable = good === null ? null : invertGood ? !good : good;
   const variant = favourable === null ? '' : favourable ? 'sk-kpi-card--success' : 'sk-kpi-card--danger';
 
+  // Highlight negative amounts (e.g. negative profit/loss)
+  const isNegative = value.trim().startsWith('-');
+
   return (
     <div className={`sk-kpi-card ${variant}`} data-testid={testId}>
       <div className="sk-kpi-card__title">{label}</div>
-      <div className="sk-kpi-card__value">{value}</div>
+      <div className={`sk-kpi-card__value ${isNegative ? 'sk-kpi-card__value--danger' : ''}`}>
+        {value}
+      </div>
       {previous !== undefined ? (
         <div
           className="sk-kpi-card__subtitle"

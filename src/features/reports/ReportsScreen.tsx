@@ -31,13 +31,14 @@ import { StockValuationReport } from './stock/StockValuationReport';
 import { LowStockReport } from './stock/LowStockReport';
 import { SlowMoversReport } from './stock/SlowMoversReport';
 import { ProductHistoryReport } from './stock/ProductHistoryReport';
+import { CustomReportExplorer } from './custom/CustomReportExplorer';
 
 // Exported so the notifications bell/panel and the Today home can jump
 // straight to a sub-report (STEP I3-06's "Navigating to a sub-report").
 export const REPORTS_LAST_TAB_STORAGE_KEY = 'stockiha.reports.lastTab';
 const STORAGE_KEY = REPORTS_LAST_TAB_STORAGE_KEY;
 
-type TabId = 'sales' | 'finance' | 'owed' | 'accounting' | 'stock';
+type TabId = 'sales' | 'finance' | 'owed' | 'accounting' | 'stock' | 'custom';
 
 const SALES_SUB_IDS = [
   'summary',
@@ -60,6 +61,7 @@ const ACCOUNTING_SUB_IDS = ['trial-balance', 'account-ledger'] as const;
 // inconsistent naming scheme; the notifications panel/bell below target
 // these exact ids.
 const STOCK_SUB_IDS = ['valuation', 'low-stock', 'slow-movers', 'product-history'] as const;
+const CUSTOM_SUB_IDS = ['explorer'] as const;
 
 const SUB_IDS_BY_TAB: Record<TabId, readonly string[]> = {
   sales: SALES_SUB_IDS,
@@ -67,6 +69,7 @@ const SUB_IDS_BY_TAB: Record<TabId, readonly string[]> = {
   owed: OWED_SUB_IDS,
   accounting: ACCOUNTING_SUB_IDS,
   stock: STOCK_SUB_IDS,
+  custom: CUSTOM_SUB_IDS,
 };
 
 const DEFAULT_SUB_BY_TAB: Record<TabId, string> = {
@@ -75,6 +78,7 @@ const DEFAULT_SUB_BY_TAB: Record<TabId, string> = {
   owed: 'receivables',
   accounting: 'trial-balance',
   stock: 'valuation',
+  custom: 'explorer',
 };
 
 function readLastTab(): { tab: TabId; sub: string } {
@@ -126,14 +130,14 @@ export function ReportsScreen({ setView }: { setView: (v: AppView) => void }) {
 
   return (
     <div className="sk-reports-screen">
-      <nav className="sk-view-switcher" role="tablist" aria-label={copy.reports} data-testid="reports-view-switcher">
-        {(['sales', 'finance', 'owed', 'accounting', 'stock'] as const).map((id) => (
+      <nav className="sk-reports-nav-primary sk-view-switcher" role="tablist" aria-label={copy.reports} data-testid="reports-view-switcher">
+        {(['sales', 'finance', 'owed', 'accounting', 'stock', 'custom'] as const).map((id) => (
           <button
             key={id}
             type="button"
             role="tab"
             data-testid={`reports-tab-${id}`}
-            className={`sk-view-switcher__item ${tab === id ? 'sk-view-switcher__item--active' : ''}`}
+            className={`sk-reports-nav-item sk-view-switcher__item ${tab === id ? 'sk-reports-nav-item--active sk-view-switcher__item--active' : ''}`}
             aria-selected={tab === id}
             onClick={() => selectTab(id)}
           >
@@ -141,7 +145,7 @@ export function ReportsScreen({ setView }: { setView: (v: AppView) => void }) {
           </button>
         ))}
       </nav>
-      <div className="sk-analytics-tabs" role="tablist">
+      <div className="sk-reports-subtabs sk-analytics-tabs" role="tablist">
         {SUB_IDS_BY_TAB[tab].map((id) => (
           <button
             key={id}
@@ -149,7 +153,7 @@ export function ReportsScreen({ setView }: { setView: (v: AppView) => void }) {
             role="tab"
             data-testid={`reports-sub-${id}`}
             aria-selected={sub === id}
-            className={`sk-tab-btn ${sub === id ? 'sk-tab-btn--active' : ''}`}
+            className={`sk-reports-subtab-chip sk-tab-btn ${sub === id ? 'sk-reports-subtab-chip--active sk-tab-btn--active' : ''}`}
             onClick={() => selectSub(tab, id)}
           >
             {SUB_LABEL(id, copy)}
@@ -188,6 +192,8 @@ export function ReportsScreen({ setView }: { setView: (v: AppView) => void }) {
       {tab === 'stock' && sub === 'low-stock' && <LowStockReport setView={setView} />}
       {tab === 'stock' && sub === 'slow-movers' && <SlowMoversReport />}
       {tab === 'stock' && sub === 'product-history' && <ProductHistoryReport />}
+
+      {tab === 'custom' && sub === 'explorer' && <CustomReportExplorer />}
     </div>
   );
 }
@@ -204,6 +210,8 @@ function TAB_LABEL(id: TabId, copy: Record<string, string>): string {
       return copy.tabAccounting;
     case 'stock':
       return copy.tabStock;
+    case 'custom':
+      return copy.tabCustom;
     default:
       return id;
   }
@@ -211,6 +219,8 @@ function TAB_LABEL(id: TabId, copy: Record<string, string>): string {
 
 function SUB_LABEL(id: string, copy: Record<string, string>): string {
   switch (id) {
+    case 'explorer':
+      return copy.customExplorer;
     case 'summary':
       return copy.salesSummary;
     case 'over-time':

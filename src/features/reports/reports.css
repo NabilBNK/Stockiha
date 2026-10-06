@@ -1,31 +1,309 @@
-/* WS-I redesign — the handful of report-specific classes with no existing
-   precedent elsewhere in the app. Everything else in the Reports feature
-   reuses the shared .sk-* system from global.css / historical-finance.css. */
+/* WS-I & WS-R — Reports screen and analytics styles.
+   Follows Stockiha design system tokens, logical properties (RTL support),
+   and dark mode tokens. */
 
 .sk-reports-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--sk-gap);
-  padding: 20px;
+  gap: var(--sk-gap, 16px);
+  padding: var(--sk-gap-lg, 24px);
+  max-width: 1600px;
+  margin-inline: auto;
+  width: 100%;
 }
+
+/* ====================================================================
+   Two-Tier Navigation
+   ==================================================================== */
+
+/* Primary Category Navigation (elevated tab bar) */
+.sk-reports-nav-primary,
+.sk-view-switcher {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 2px solid var(--sk-border, #e5e7eb);
+  padding-bottom: 2px;
+}
+
+.sk-reports-nav-item,
+.sk-view-switcher__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -4px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--sk-text-soft, #6b7280);
+  cursor: pointer;
+  transition: all 150ms ease;
+  border-radius: var(--sk-radius-sm, 6px) var(--sk-radius-sm, 6px) 0 0;
+}
+
+.sk-reports-nav-item:hover,
+.sk-view-switcher__item:hover {
+  color: var(--sk-text, #111827);
+  background: var(--sk-surface-hover, rgba(0, 0, 0, 0.03));
+}
+
+.sk-reports-nav-item--active,
+.sk-reports-nav-item[aria-selected="true"],
+.sk-view-switcher__item--active,
+.sk-view-switcher__item[aria-selected="true"] {
+  color: var(--sk-primary, #2563eb);
+  font-weight: 600;
+  border-bottom-color: var(--sk-primary, #2563eb);
+  background: transparent;
+}
+
+/* Secondary Sub-Report Navigation (chip pills) */
+.sk-reports-subtabs,
+.sk-analytics-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+  overflow-x: auto;
+}
+
+.sk-reports-subtab-chip,
+.sk-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 16px;
+  border-radius: 9999px;
+  border: 1px solid var(--sk-border, #e5e7eb);
+  background: var(--sk-surface, #ffffff);
+  color: var(--sk-text-soft, #4b5563);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 140ms ease;
+}
+
+.sk-reports-subtab-chip:hover,
+.sk-tab-btn:hover {
+  background: var(--sk-surface-hover, #f9fafb);
+  color: var(--sk-text, #111827);
+  border-color: var(--sk-border-strong, #d1d5db);
+}
+
+.sk-reports-subtab-chip--active,
+.sk-reports-subtab-chip[aria-selected="true"],
+.sk-tab-btn--active,
+.sk-tab-btn[aria-selected="true"] {
+  background: var(--sk-primary, #2563eb);
+  color: #ffffff;
+  border-color: var(--sk-primary, #2563eb);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
+}
+
+/* ====================================================================
+   Period Picker & Filter Controls
+   ==================================================================== */
+
+.sk-reports-period-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--sk-surface, #ffffff);
+  border: 1px solid var(--sk-border, #e5e7eb);
+  border-radius: var(--sk-radius-lg, 12px);
+  box-shadow: var(--sk-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
+}
+
+.sk-reports-period-presets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  background: var(--sk-surface-soft, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--sk-border, #e5e7eb);
+  border-radius: var(--sk-radius, 8px);
+  padding: 2px;
+  gap: 2px;
+}
+
+.sk-reports-period-btn {
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--sk-radius, 8px) - 2px);
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--sk-text-soft, #4b5563);
+  cursor: pointer;
+  transition: all 120ms ease;
+  min-height: 32px;
+}
+
+.sk-reports-period-btn:hover {
+  color: var(--sk-text, #111827);
+}
+
+.sk-reports-period-btn--active,
+.sk-reports-period-btn[aria-pressed="true"] {
+  background: var(--sk-surface, #ffffff);
+  color: var(--sk-text, #111827);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.sk-reports-custom-range {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sk-reports-custom-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--sk-text-soft, #4b5563);
+}
+
+.sk-reports-date-input {
+  padding: 5px 10px;
+  border: 1px solid var(--sk-border, #d1d5db);
+  border-radius: var(--sk-radius-sm, 6px);
+  background: var(--sk-surface, #ffffff);
+  color: var(--sk-text, #111827);
+  font-size: 0.85rem;
+}
+
+/* ====================================================================
+   KPI Grid & KPI Cards
+   ==================================================================== */
+
+.sk-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sk-gap, 16px);
+  margin-block: 8px 16px;
+}
+
+.sk-kpi-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 20px;
+  background: var(--sk-surface, #ffffff);
+  border: 1px solid var(--sk-border, #e5e7eb);
+  border-radius: var(--sk-radius-lg, 12px);
+  box-shadow: var(--sk-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
+  transition: transform 150ms ease, box-shadow 150ms ease;
+  min-height: 105px;
+}
+
+.sk-kpi-card:hover {
+  box-shadow: var(--sk-shadow, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
+}
+
+.sk-kpi-card__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--sk-text-soft, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sk-kpi-card__value {
+  font-size: 1.625rem;
+  font-weight: 700;
+  color: var(--sk-text, #111827);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.sk-kpi-card__subtitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--sk-text-soft, #6b7280);
+}
+
+.sk-kpi-card--success {
+  border-inline-start: 4px solid var(--sk-success, #10b981);
+}
+
+.sk-kpi-card--success .sk-kpi-card__subtitle,
+.sk-kpi-card--success .sk-kpi-card__subtitle[data-good="true"] {
+  color: var(--sk-success, #10b981);
+}
+
+.sk-kpi-card--danger {
+  border-inline-start: 4px solid var(--sk-danger, #ef4444);
+}
+
+.sk-kpi-card--danger .sk-kpi-card__subtitle,
+.sk-kpi-card--danger .sk-kpi-card__subtitle[data-good="false"] {
+  color: var(--sk-danger, #ef4444);
+}
+
+/* ====================================================================
+   Report Frame & Table Styling
+   ==================================================================== */
 
 .sk-report-frame {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
+  background: var(--sk-surface, #ffffff);
+  border: 1px solid var(--sk-border, #e5e7eb);
+  border-radius: var(--sk-radius-lg, 12px);
+  padding: 24px;
+  box-shadow: var(--sk-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05));
+}
+
+.sk-report-frame .sk-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--sk-border, #e5e7eb);
 }
 
 .sk-report-frame__title {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.35rem;
   font-weight: 700;
-  color: var(--sk-text);
+  color: var(--sk-text, #111827);
+}
+
+.sk-report-frame__period {
+  margin: 4px 0 0 0;
+  color: var(--sk-text-soft, #6b7280);
+  font-size: 0.875rem;
 }
 
 .sk-report-frame__footnote {
   margin: 0;
-  color: var(--sk-text-soft);
-  font-size: .88rem;
+  color: var(--sk-text-soft, #6b7280);
+  font-size: 0.88rem;
+}
+
+.sk-section-heading__actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .sk-reports-table-block {
@@ -35,7 +313,7 @@
 }
 
 .sk-reports-loading {
-  min-height: 160px;
+  min-height: 180px;
 }
 
 .sk-reports-table-pagination {
@@ -43,9 +321,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-block-start: 10px;
-  color: var(--sk-text-soft);
-  font-size: .92rem;
+  padding-block-start: 12px;
+  color: var(--sk-text-soft, #6b7280);
+  font-size: 0.92rem;
 }
 
 .sk-report-toggle,
@@ -64,10 +342,10 @@
   list-style: none;
   max-height: 220px;
   overflow-y: auto;
-  border: 1px solid var(--sk-border);
-  border-radius: var(--sk-radius-sm);
-  background: var(--sk-surface);
-  box-shadow: var(--sk-shadow);
+  border: 1px solid var(--sk-border, #e5e7eb);
+  border-radius: var(--sk-radius-sm, 6px);
+  background: var(--sk-surface, #ffffff);
+  box-shadow: var(--sk-shadow, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
 }
 
 .sk-picker-list li {
@@ -78,14 +356,355 @@
   flex: 1;
   padding: 8px 10px;
   border: 0;
-  border-radius: var(--sk-radius-sm);
+  border-radius: var(--sk-radius-sm, 6px);
   background: transparent;
-  color: var(--sk-text);
+  color: var(--sk-text, #111827);
   text-align: start;
   cursor: pointer;
-  transition: background-color .15s;
+  transition: background-color 150ms ease;
 }
 
 .sk-picker-list button:hover {
-  background: var(--sk-surface-hover);
+  background: var(--sk-surface-hover, rgba(0, 0, 0, 0.05));
 }
+
+/* ====================================================================
+   Custom Report Explorer
+   ==================================================================== */
+
+.sk-custom-report {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sk-custom-report__toolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  background: var(--sk-surface-soft, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--sk-border, #e5e7eb);
+  border-radius: var(--sk-radius-lg, 12px);
+  padding: 18px;
+}
+
+.sk-custom-report__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sk-custom-report__field label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--sk-text-soft, #4b5563);
+}
+
+.sk-custom-report__actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* ====================================================================
+   Filter & Search Toolbar (Sales by product & other sub-reports)
+   ==================================================================== */
+
+.sk-reports-filter-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--sk-surface, #ffffff);
+  border: 1px solid var(--sk-border, #e5e7eb);
+  border-radius: var(--sk-radius-lg, 12px);
+  box-shadow: var(--sk-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
+}
+
+.sk-reports-search-wrap {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  min-width: 240px;
+  max-width: 480px;
+}
+
+.sk-reports-search-icon {
+  position: absolute;
+  inset-inline-start: 12px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--sk-text-soft, #9ca3af);
+  pointer-events: none;
+}
+
+.sk-reports-search-input {
+  width: 100%;
+  padding: 8px 14px;
+  padding-inline-start: 36px;
+  font-size: 0.875rem;
+  color: var(--sk-text, #111827);
+  background: var(--sk-surface-soft, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--sk-border, #d1d5db);
+  border-radius: var(--sk-radius, 8px);
+  transition: all 150ms ease;
+  outline: none;
+}
+
+.sk-reports-search-input:focus {
+  background: var(--sk-surface, #ffffff);
+  border-color: var(--sk-primary, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.sk-reports-sort-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sk-reports-sort-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--sk-text-soft, #4b5563);
+  white-space: nowrap;
+}
+
+.sk-reports-sort-select {
+  padding: 7px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--sk-text, #111827);
+  background: var(--sk-surface, #ffffff);
+  border: 1px solid var(--sk-border, #d1d5db);
+  border-radius: var(--sk-radius, 8px);
+  cursor: pointer;
+  transition: all 150ms ease;
+  outline: none;
+}
+
+.sk-reports-sort-select:focus {
+  border-color: var(--sk-primary, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.sk-reports-capped-notice {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--sk-warning, #d97706);
+  font-weight: 500;
+}
+
+/* ====================================================================
+   Margin Alerts Threshold Bar
+   ==================================================================== */
+
+.sk-reports-threshold-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 14px 20px;
+  background: var(--sk-surface, #ffffff);
+  border: 1px solid var(--sk-border, #e5e7eb);
+  border-inline-start: 4px solid var(--sk-warning, #f59e0b);
+  border-radius: var(--sk-radius-lg, 12px);
+  box-shadow: var(--sk-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
+}
+
+.sk-reports-threshold-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sk-reports-threshold-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--sk-radius, 8px);
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--sk-warning, #d97706);
+  flex-shrink: 0;
+}
+
+.sk-reports-threshold-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sk-reports-threshold-title {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--sk-text, #111827);
+  cursor: pointer;
+}
+
+.sk-reports-threshold-desc {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--sk-text-soft, #6b7280);
+}
+
+.sk-reports-threshold-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sk-reports-input-suffix-group {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+.sk-reports-threshold-input {
+  width: 96px;
+  padding: 7px 12px;
+  padding-inline-end: 30px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  color: var(--sk-text, #111827);
+  background: var(--sk-surface, #ffffff);
+  border: 1px solid var(--sk-border, #d1d5db);
+  border-radius: var(--sk-radius, 8px);
+  outline: none;
+  transition: all 150ms ease;
+}
+
+.sk-reports-threshold-input:focus {
+  border-color: var(--sk-primary, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.sk-reports-input-suffix {
+  position: absolute;
+  inset-inline-end: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--sk-text-soft, #6b7280);
+  pointer-events: none;
+}
+
+.sk-reports-preset-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sk-reports-preset-chip {
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: var(--sk-radius-sm, 6px);
+  border: 1px solid var(--sk-border, #e5e7eb);
+  background: var(--sk-surface-soft, rgba(0, 0, 0, 0.03));
+  color: var(--sk-text-soft, #4b5563);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.sk-reports-preset-chip:hover {
+  background: var(--sk-surface-hover, #f3f4f6);
+  color: var(--sk-text, #111827);
+  border-color: var(--sk-border-strong, #d1d5db);
+}
+
+.sk-reports-preset-chip--active {
+  background: var(--sk-primary, #2563eb);
+  color: #ffffff;
+  border-color: var(--sk-primary, #2563eb);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
+}
+
+/* ====================================================================
+   Chart Card & SVG Enhancements
+   ==================================================================== */
+
+.sk-chart-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: var(--sk-surface, #ffffff);
+  border: 1px solid var(--sk-border, #e5e7eb);
+  border-radius: var(--sk-radius-lg, 12px);
+  box-shadow: var(--sk-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05));
+}
+
+.sk-chart-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--sk-border, #f3f4f6);
+}
+
+.sk-chart-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--sk-text, #111827);
+}
+
+.sk-chart-container {
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.sk-chart-svg {
+  display: block;
+  width: 100%;
+}
+
+.sk-chart-grid-line line {
+  transition: stroke 150ms ease;
+}
+
+.sk-chart-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.sk-chart-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--sk-text-soft, #4b5563);
+}
+
+.sk-chart-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.sk-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  color: var(--sk-text-soft, #9ca3af);
+  font-size: 0.9rem;
+}
+
