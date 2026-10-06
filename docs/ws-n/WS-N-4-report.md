@@ -86,4 +86,5 @@ NOT RUN — Tauri packaging is reserved for packaging and installer milestones; 
 - Windows real runtime visual inspection of Arabic RTL font rendering in WebView2 (must be verified by the owner on Windows hardware).
 
 Branch: `task/ws-n-4-dashboard-translations`
-Pushed: no (pending owner approval)
+Commit: `d2a7ce1`
+Pushed: yes
