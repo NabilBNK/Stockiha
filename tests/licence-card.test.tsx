@@ -138,20 +138,14 @@ describe('WS-K-7-B LicenceSettingsCard', () => {
     expect((screen.getByTestId('licence-key-input') as HTMLTextAreaElement).value).toBe('STKL1.abc.def');
   });
 
-  it('Remove asks for confirmation, and cancel calls nothing', async () => {
-    const removeLicence = vi.fn();
+  it('does not render remove licence button so installed key cannot be removed', async () => {
     wireInvoke({
       get_licence_status: () => status(),
-      remove_licence: removeLicence,
     });
     renderCard();
 
-    fireEvent.click(await screen.findByTestId('licence-remove'));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
-
-    expect(removeLicence).not.toHaveBeenCalled();
-    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(await screen.findByTestId('licence-installed-details')).toBeInTheDocument();
+    expect(screen.queryByTestId('licence-remove')).not.toBeInTheDocument();
   });
 
   it('Check again calls refresh_licence_status', async () => {

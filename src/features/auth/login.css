@@ -1,0 +1,280 @@
+/* Stockiha — Modern Split-Panel Login Styles */
+
+.sk-login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--sk-bg, #f8fafc);
+  position: relative;
+}
+
+.sk-login-card {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  max-width: 920px;
+  min-height: 560px;
+  background: var(--sk-surface, #ffffff);
+  border: 1px solid var(--sk-border, #e2e8f0);
+  border-radius: var(--sk-radius-lg, 16px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+/* --- Left Brand Panel --- */
+.sk-login-brand {
+  flex: 1 1 42%;
+  background: linear-gradient(155deg, #0f172a 0%, #1e293b 55%, #1e1b4b 100%);
+  color: #ffffff;
+  padding: 44px 38px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.sk-login-brand::after {
+  content: '';
+  position: absolute;
+  top: -60px;
+  inset-inline-end: -60px;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(234, 88, 12, 0.18) 0%, transparent 70%);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.sk-login-brand__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sk-login-brand__logo {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--sk-primary, #ea580c);
+  color: #ffffff;
+  font-size: 1.5rem;
+  font-weight: 900;
+  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35);
+}
+
+.sk-login-brand__title-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.sk-login-brand__title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.sk-login-brand__subtitle {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.sk-login-brand__body {
+  margin: 36px 0;
+}
+
+.sk-login-brand__heading {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 18px 0;
+  line-height: 1.35;
+}
+
+.sk-login-brand__features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sk-login-brand__feature-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.4;
+}
+
+.sk-login-brand__feature-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fb923c;
+  flex-shrink: 0;
+}
+
+.sk-login-brand__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.sk-login-brand__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+}
+
+/* --- Right Form Panel --- */
+.sk-login-form-panel {
+  flex: 1 1 58%;
+  padding: 44px 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: var(--sk-surface, #ffffff);
+}
+
+.sk-login-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.sk-login-top-bar__status {
+  font-size: 0.8rem;
+  color: var(--sk-muted);
+}
+
+.sk-login-header {
+  margin-bottom: 22px;
+}
+
+.sk-login-header h1 {
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--sk-text);
+  margin: 0 0 6px 0;
+  line-height: 1.25;
+}
+
+.sk-login-header p {
+  font-size: 0.88rem;
+  color: var(--sk-muted);
+  margin: 0;
+}
+
+/* Form Styles */
+.sk-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sk-password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.sk-password-input-wrap .sk-field__input {
+  width: 100%;
+  padding-inline-end: 42px;
+}
+
+.sk-password-toggle-btn {
+  position: absolute;
+  inset-inline-end: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--sk-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.sk-password-toggle-btn:hover {
+  color: var(--sk-text);
+  background: var(--sk-surface-hover, rgba(0, 0, 0, 0.04));
+}
+
+.sk-login-submit-btn {
+  margin-top: 6px;
+  height: 44px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.sk-login-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  font-size: 0.78rem;
+  color: var(--sk-muted);
+}
+
+/* --- Responsive Breakpoints --- */
+@media (max-width: 860px) {
+  .sk-login-card {
+    flex-direction: column;
+    max-width: 480px;
+    min-height: auto;
+  }
+
+  .sk-login-brand {
+    padding: 28px 24px;
+  }
+
+  .sk-login-brand__body {
+    display: none;
+  }
+
+  .sk-login-form-panel {
+    padding: 32px 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sk-login-container {
+    padding: 12px;
+  }
+
+  .sk-login-form-panel {
+    padding: 24px 18px;
+  }
+}

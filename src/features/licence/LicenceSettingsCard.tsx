@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
-import { Banner, Button, ConfirmDialog, Spinner } from '../../shared/components';
+import { Banner, Button, Spinner } from '../../shared/components';
 import { useI18n } from '../../shared/i18n';
 import { useErrorText } from '../../shared/hooks/useErrorText';
 import { formatDisplayDate } from '../../shared/utils/formatters';
@@ -15,7 +15,6 @@ import {
   activateLicence,
   getLicenceStatus,
   refreshLicenceStatus,
-  removeLicence,
 } from '../../shared/ipc/licenceGateway';
 import type { LicenceStatus } from '../../shared/ipc/licenceDto';
 
@@ -30,7 +29,6 @@ export function LicenceSettingsCard({ sessionToken }: { sessionToken: string }) 
   const [busy, setBusy] = useState(false);
   const [formBanner, setFormBanner] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,20 +76,6 @@ export function LicenceSettingsCard({ sessionToken }: { sessionToken: string }) 
       setFormBanner({ tone: 'error', text: errorText(err) });
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function handleRemove() {
-    setBusy(true);
-    try {
-      const next = await removeLicence(sessionToken);
-      setStatus(next);
-      void refreshContext();
-    } catch (err) {
-      setFormBanner({ tone: 'error', text: errorText(err) });
-    } finally {
-      setBusy(false);
-      setConfirmingRemove(false);
     }
   }
 
@@ -225,30 +209,7 @@ export function LicenceSettingsCard({ sessionToken }: { sessionToken: string }) 
             {t('licence.checkAgain')}
           </Button>
 
-          {status.licence ? (
-            <Button
-              type="button"
-              variant="danger"
-              data-testid="licence-remove"
-              onClick={() => setConfirmingRemove(true)}
-            >
-              {t('licence.remove')}
-            </Button>
-          ) : null}
         </>
-      ) : null}
-
-      {confirmingRemove ? (
-        <ConfirmDialog
-          title={t('licence.remove')}
-          body={t('licence.removeConfirm')}
-          confirmLabel={t('common.confirm')}
-          cancelLabel={t('common.cancel')}
-          onConfirm={() => void handleRemove()}
-          onCancel={() => setConfirmingRemove(false)}
-          confirmVariant="danger"
-          busy={busy}
-        />
       ) : null}
       </div>
     </section>
