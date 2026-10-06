@@ -111,7 +111,7 @@ describe('WS-K-7-B LicenceSettingsCard', () => {
 
     await screen.findByTestId('licence-card-banner');
     expect(screen.getByTestId('licence-card-banner')).toHaveTextContent('Licence activated.');
-    expect((screen.getByTestId('licence-key-input') as HTMLTextAreaElement).value).toBe('');
+    expect(screen.queryByTestId('licence-key-input')).not.toBeInTheDocument();
   });
 
   it.each([

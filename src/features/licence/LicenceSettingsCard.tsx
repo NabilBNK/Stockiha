@@ -176,29 +176,31 @@ export function LicenceSettingsCard({ sessionToken }: { sessionToken: string }) 
             </div>
           ) : null}
 
-          <form className="sk-form" onSubmit={(e) => void handleActivate(e)}>
-            <label className="sk-field__label" htmlFor="licence-key-input">
-              {t('licence.keyLabel')}
-            </label>
-            <textarea
-              id="licence-key-input"
-              data-testid="licence-key-input"
-              className="sk-field__input"
-              style={{ fontFamily: 'monospace' }}
-              rows={4}
-              placeholder={'STKL1.…'}
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-            />
-            <Button
-              type="submit"
-              data-testid="licence-activate"
-              loading={busy}
-              disabled={!keyInput.trim() || busy}
-            >
-              {t('licence.activate')}
-            </Button>
-          </form>
+          {!status.licence ? (
+            <form className="sk-form" onSubmit={(e) => void handleActivate(e)}>
+              <label className="sk-field__label" htmlFor="licence-key-input">
+                {t('licence.keyLabel')}
+              </label>
+              <textarea
+                id="licence-key-input"
+                data-testid="licence-key-input"
+                className="sk-field__input"
+                style={{ fontFamily: 'monospace' }}
+                rows={4}
+                placeholder={'STKL1.…'}
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+              />
+              <Button
+                type="submit"
+                data-testid="licence-activate"
+                loading={busy}
+                disabled={!keyInput.trim() || busy}
+              >
+                {t('licence.activate')}
+              </Button>
+            </form>
+          ) : null}
 
           <Button
             type="button"

@@ -635,7 +635,15 @@ export function AppShell({
             <span aria-hidden>{isNarrow && mobileNavigationOpen ? '×' : '☰'}</span>
           </button>
           <div className="sk-shell__brand">
-            <span className="sk-shell__logo" aria-hidden>S</span>
+            <span className="sk-shell__logo" aria-hidden>
+              <img
+                src="/logo.svg"
+                alt=""
+                width={24}
+                height={24}
+                style={{ filter: 'brightness(0) invert(1)', display: 'block' }}
+              />
+            </span>
             <span className="sk-shell__brand-copy">
               <strong>{t('app.name')}</strong>
               <small>{t('app.tagline')}</small>

@@ -134,7 +134,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       await ipc.bootstrapFirstAdmin(form);
       const token = await login(form.username, form.password);
       setSetupSessionToken(token);
-      setStep('opening-choice');
+      onComplete();
     } catch (err) {
       setError(errorText(err));
     } finally {

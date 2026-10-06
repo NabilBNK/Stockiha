@@ -450,3 +450,109 @@
   white-space: nowrap;
   border-width: 0;
 }
+
+/* =============================================================================
+   Backup Result Card & Details Grid
+   ============================================================================= */
+
+.sk-backup-result-card {
+  margin-top: 16px;
+  background: var(--sk-surface-soft);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sk-backup-result-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--sk-border);
+}
+
+.sk-backup-result-card__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sk-backup-result-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--sk-success) 14%, transparent);
+  color: var(--sk-success);
+  border: 1px solid color-mix(in srgb, var(--sk-success) 28%, transparent);
+}
+
+.sk-backup-result-card__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--sk-text);
+}
+
+.sk-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px 14px;
+  margin: 0;
+  padding: 0;
+}
+
+.sk-details-grid__item {
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color .15s ease;
+}
+
+.sk-details-grid__item:hover {
+  border-color: var(--sk-border-strong);
+}
+
+.sk-details-grid__item--wide {
+  grid-column: 1 / -1;
+}
+
+.sk-details-grid dt {
+  font-size: 0.71875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sk-muted);
+  margin: 0;
+}
+
+.sk-details-grid dd {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--sk-text);
+  margin: 0;
+  word-break: break-all;
+}
+
+.sk-backup-bundle-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--sk-primary);
+  background: color-mix(in srgb, var(--sk-primary) 8%, transparent);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--sk-primary) 18%, transparent);
+  display: inline-block;
+}

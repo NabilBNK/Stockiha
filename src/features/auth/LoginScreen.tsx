@@ -91,7 +91,13 @@ export function LoginScreen() {
           <div className="sk-login-brand">
             <div className="sk-login-brand__header">
               <span className="sk-login-brand__logo" aria-hidden="true">
-                S
+                <img
+                  src="/logo.svg"
+                  alt=""
+                  width={28}
+                  height={28}
+                  style={{ filter: 'brightness(0) invert(1)', display: 'block' }}
+                />
               </span>
               <div className="sk-login-brand__title-group">
                 <span className="sk-login-brand__title">Stockiha</span>
