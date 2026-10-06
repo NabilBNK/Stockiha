@@ -37,8 +37,8 @@ export function NotificationBell({ setView }: { setView: (v: AppView) => void })
         onClick={() => setOpen((v) => !v)}
       >
         <svg
-          width="19"
-          height="19"
+          width="20"
+          height="20"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -51,7 +51,7 @@ export function NotificationBell({ setView }: { setView: (v: AppView) => void })
           <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
         </svg>
         {badgeCount > 0 ? (
-          <span className="sk-badge sk-badge--danger sk-notification-badge" data-testid="notification-badge">
+          <span className="sk-notification-badge" data-testid="notification-badge">
             {badgeCount}
           </span>
         ) : null}

@@ -7,23 +7,27 @@
 
 .sk-notification-badge {
   position: absolute;
-  top: -2px;
-  inset-inline-end: -2px;
+  top: 1px;
+  inset-inline-end: 1px;
   min-width: 17px;
   height: 17px;
-  padding: 0 4px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: .65rem;
-  font-weight: 800;
-  line-height: 1;
-  background-color: var(--sk-danger, #ef4444);
-  color: #fff;
-  border: 2px solid var(--sk-surface, #fff);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  min-height: 17px !important;
+  max-height: 17px !important;
+  padding: 0 4px !important;
+  border-radius: 999px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0.65rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  border: 2px solid var(--sk-surface, #ffffff) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
   pointer-events: none;
+  box-sizing: border-box !important;
+  z-index: 2;
 }
 
 .sk-notification-panel {
