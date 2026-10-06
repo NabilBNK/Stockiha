@@ -6,12 +6,192 @@ import { useI18n, type Locale } from '../../shared/i18n';
 import { getJournalDetail, searchJournals } from '../../shared/ipc/gateway';
 import type { JournalDetail, JournalLineDto, JournalSearchResult } from '../../shared/ipc/dto';
 
+const ACCOUNT_TRANSLATIONS: Record<string, { scf: string; ar: string; fr: string; en: string }> = {
+  INVENTORY_MERCHANDISE: {
+    scf: '30',
+    ar: 'مخزون البضائع',
+    fr: 'Stocks de marchandises',
+    en: 'Merchandise inventory',
+  },
+  GOODS_RECEIVED_NOT_INVOICED: {
+    scf: '408',
+    ar: 'موردون - فواتير لم تصل بعد',
+    fr: 'Fournisseurs - factures non parvenues',
+    en: 'Suppliers - invoices not received',
+  },
+  ACCOUNTS_PAYABLE: {
+    scf: '401',
+    ar: 'موردو المخزون والخدمات',
+    fr: 'Fournisseurs de stocks et services',
+    en: 'Trade suppliers',
+  },
+  ACCOUNTS_RECEIVABLE: {
+    scf: '411',
+    ar: 'الزبائن',
+    fr: 'Clients',
+    en: 'Customers',
+  },
+  TAX_PAYABLE: {
+    scf: '445',
+    ar: 'الدولة - ضرائب على المبيعات',
+    fr: 'État - taxes sur le chiffre d’affaires',
+    en: 'State - turnover taxes',
+  },
+  OTHER_ASSET: {
+    scf: '462',
+    ar: 'مدينون متنوعون',
+    fr: 'Débiteurs divers',
+    en: 'Sundry debtors',
+  },
+  OTHER_LIABILITY: {
+    scf: '463',
+    ar: 'دائنون متنوعون',
+    fr: 'Créditeurs divers',
+    en: 'Sundry creditors',
+  },
+  BANK_ACCOUNT: {
+    scf: '512',
+    ar: 'البنوك - حسابات جارية',
+    fr: 'Banques - comptes courants',
+    en: 'Banks - current accounts',
+  },
+  CASH_DESK: {
+    scf: '530',
+    ar: 'الصندوق',
+    fr: 'Caisse',
+    en: 'Cash on hand',
+  },
+  CASH: {
+    scf: '530',
+    ar: 'الصندوق',
+    fr: 'Caisse',
+    en: 'Cash on hand',
+  },
+  COGS: {
+    scf: '600',
+    ar: 'تكلفة البضاعة المباعة',
+    fr: 'Achats de marchandises vendues',
+    en: 'Cost of goods sold',
+  },
+  PROCUREMENT_VARIANCE: {
+    scf: '658',
+    ar: 'فروقات الشراء والتكاليف الملحقة',
+    fr: 'Autres charges opérationnelles',
+    en: 'Procurement variance',
+  },
+  SALES_REVENUE: {
+    scf: '700',
+    ar: 'مبيعات البضائع',
+    fr: 'Ventes de marchandises',
+    en: 'Sales of goods',
+  },
+  OWNER_CAPITAL: {
+    scf: '101',
+    ar: 'رأس المال',
+    fr: 'Capital émis',
+    en: 'Issued capital',
+  },
+  RETAINED_EARNINGS: {
+    scf: '110',
+    ar: 'الأرباح المرحلة',
+    fr: 'Report à nouveau',
+    en: 'Retained earnings',
+  },
+  LOAN_PAYABLE: {
+    scf: '164',
+    ar: 'قروض مؤسسات القرض',
+    fr: 'Emprunts auprès des établissements de crédit',
+    en: 'Loans from credit institutions',
+  },
+  INVENTORY_ADJUSTMENT_GAIN: {
+    scf: '758',
+    ar: 'فائض تسوية المخزون',
+    fr: 'Produits exceptionnels de gestion',
+    en: 'Inventory adjustment gain',
+  },
+  INVENTORY_ADJUSTMENT_LOSS: {
+    scf: '658',
+    ar: 'عجز تسوية المخزون',
+    fr: 'Charges exceptionnelles de gestion',
+    en: 'Inventory adjustment loss',
+  },
+  PURCHASE_RETURN_CLEARING: {
+    scf: '409',
+    ar: 'تسوية مردودات المشتريات',
+    fr: 'Fournisseurs débiteurs',
+    en: 'Supplier debit clearing',
+  },
+  CUSTOMER_ADVANCE: {
+    scf: '419',
+    ar: 'تسبيقات الزبائن',
+    fr: 'Clients créditeurs',
+    en: 'Customer advances',
+  },
+};
+
 function accountLineLabel(line: JournalLineDto, locale: Locale): string {
-  const localized =
+  const trans = ACCOUNT_TRANSLATIONS[line.account_code];
+  const scf = line.scf_code || trans?.scf;
+  const rawLocalized =
     (locale === 'ar' ? line.name_ar : locale === 'en' ? line.name_en : line.name_fr) ||
-    line.name_fr ||
-    line.account_code;
-  return line.scf_code ? `${line.scf_code} · ${localized}` : line.account_code;
+    line.name_fr;
+  const name =
+    rawLocalized && rawLocalized !== line.account_code
+      ? rawLocalized
+      : trans?.[locale] || rawLocalized || line.account_code;
+
+  return scf ? `${scf} · ${name}` : name;
+}
+
+function translateWorkstation(workstationId: string | null | undefined, locale: Locale): string {
+  if (!workstationId) return '—';
+  const clean = workstationId.trim().toUpperCase();
+  const MAP: Record<string, Record<Locale, string>> = {
+    'DIRECT-PURCHASE': { en: 'Direct Purchase', fr: 'Achat direct', ar: 'شراء مباشر' },
+    'DIRECT_PURCHASE': { en: 'Direct Purchase', fr: 'Achat direct', ar: 'شراء مباشر' },
+    'POS': { en: 'POS Terminal', fr: 'Poste caisse', ar: 'نقطة البيع' },
+    'POS-SALE': { en: 'POS Sale', fr: 'Vente caisse', ar: 'مبيعات نقطة البيع' },
+    'STOCK-ADJUSTMENT': { en: 'Inventory Adjustment', fr: 'Ajustement de stock', ar: 'تسوية المخزون' },
+  };
+  return MAP[clean]?.[locale] ?? workstationId;
+}
+
+function translateJournalDescription(desc: string | null | undefined, locale: Locale): string {
+  if (!desc) return '';
+  const trimmed = desc.trim();
+  const MAP: Record<string, Record<Locale, string>> = {
+    'Direct Purchase acceptance': {
+      en: 'Direct Purchase acceptance',
+      fr: 'Acceptation d’achat direct',
+      ar: 'قبول الشراء المباشر',
+    },
+    'Direct purchase receipt': {
+      en: 'Direct purchase receipt',
+      fr: 'Réception d’achat direct',
+      ar: 'سند استلام شراء مباشر',
+    },
+    'Stock adjustment gain': {
+      en: 'Stock adjustment gain',
+      fr: 'Gain d’ajustement de stock',
+      ar: 'فائض تسوية المخزون',
+    },
+    'Stock adjustment loss': {
+      en: 'Stock adjustment loss',
+      fr: 'Perte d’ajustement de stock',
+      ar: 'عجز تسوية المخزون',
+    },
+    'Cash sale': {
+      en: 'Cash sale',
+      fr: 'Vente au comptant',
+      ar: 'بيع نقدي',
+    },
+    'Credit sale': {
+      en: 'Credit sale',
+      fr: 'Vente à crédit',
+      ar: 'بيع بالآجل',
+    },
+  };
+  return MAP[trimmed]?.[locale] ?? desc;
 }
 import { useSession } from '../../shared/session/SessionContext';
 import {
@@ -583,10 +763,10 @@ export function JournalDetailModal({
         statusText: detail.is_balanced ? text.balanced : text.unbalanced,
         sourceLabel: text.sourceType,
         sourceValue: `${humanDocumentType(detail.source_type, locale)}${detail.source_document_number ? ` · ${detail.source_document_number}` : detail.source_id ? ` · #${detail.source_id}` : ''}`,
-        description: detail.description,
+        description: translateJournalDescription(detail.description, printIdentity.printLocale),
         lines: detail.lines.map((line) => ({
-          account: line.account_code,
-          label: line.account_name,
+          account: line.scf_code || ACCOUNT_TRANSLATIONS[line.account_code]?.scf || line.account_code,
+          label: accountLineLabel(line, printIdentity.printLocale),
           debit: Number(line.debit) > 0 ? formatDisplayAmount(line.debit) : '—',
           credit: Number(line.credit) > 0 ? formatDisplayAmount(line.credit) : '—',
         })),
@@ -721,7 +901,7 @@ export function JournalDetailModal({
               <span className="sk-detail-dialog__metric-card-val">
                 {detail.created_by_username ?? '—'}
                 {detail.created_on_workstation_id ? (
-                  <div className="sk-muted sk-small">{detail.created_on_workstation_id}</div>
+                  <div className="sk-muted sk-small">{translateWorkstation(detail.created_on_workstation_id, locale)}</div>
                 ) : null}
               </span>
             </div>
@@ -732,7 +912,7 @@ export function JournalDetailModal({
             <section className="sk-detail-dialog__section">
               <div className="sk-detail-dialog__field">
                 <span className="sk-detail-dialog__field-label">{text.description}</span>
-                <span className="sk-detail-dialog__field-val">{detail.description}</span>
+                <span className="sk-detail-dialog__field-val">{translateJournalDescription(detail.description, locale)}</span>
               </div>
             </section>
           ) : null}

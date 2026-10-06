@@ -1,33 +1,61 @@
 /* Procurement Module Styles — Compact ERP Aesthetic */
 
+/* Metric summary grid with balanced 3 columns across desktop */
+.pr-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 860px) {
+  .pr-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 540px) {
+  .pr-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Procurement metric cards matching standard ERP density */
+.sk-metric.pr-metric-card,
 .pr-metric-card {
-  min-height: 108px;
-  padding: 16px 20px;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: flex-start !important;
+  min-height: 96px !important;
+  padding: 16px 20px !important;
   border: 1px solid var(--sk-border);
   border-radius: var(--sk-radius);
   background: var(--sk-surface);
-  box-shadow: var(--sk-shadow);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
+  box-shadow: var(--sk-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
+  gap: 6px !important;
 }
 
+.sk-metric.pr-metric-card .sk-metric__label,
 .pr-metric-card .sk-metric__label {
-  font-size: 0.75rem;
+  font-size: 0.76rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--sk-muted);
+  align-self: flex-start !important;
+  margin: 0 !important;
 }
 
+.sk-metric.pr-metric-card .sk-metric__value,
 .pr-metric-card .sk-metric__value {
-  font-size: 1.6rem;
+  font-size: 1.65rem;
   font-weight: 800;
   color: var(--sk-text);
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
+  align-self: flex-start !important;
+  white-space: nowrap;
+  margin: 0 !important;
 }
 
 /* Accounting impact section */

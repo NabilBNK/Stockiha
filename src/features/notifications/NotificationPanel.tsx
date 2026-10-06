@@ -8,11 +8,6 @@ import { formatReportCopy, useReportCopy } from '../reports/common/reportCopy';
 import { REPORTS_LAST_TAB_STORAGE_KEY } from '../reports/ReportsScreen';
 import { useNotifications, type AnyNotificationId, type NotificationItem } from './NotificationsContext';
 
-const SEVERITY_MARK: Record<NotificationItem['severity'], string> = {
-  CRITICAL: '!!',
-  WARNING: '!',
-  INFO: 'i',
-};
 
 function titleFor(id: AnyNotificationId, copy: Record<string, string>, t: ReturnType<typeof useI18n>['t']): string {
   switch (id) {
@@ -147,14 +142,70 @@ export function NotificationPanel({
 
   return (
     <div className="sk-notification-panel" data-testid="notification-panel" role="menu">
+      <div className="sk-notification-panel__header">
+        <div className="sk-notification-panel__header-title">
+          <span>{copy.notifications}</span>
+          {visible.length > 0 && (
+            <span className="sk-notification-panel__count">{visible.length}</span>
+          )}
+        </div>
+        <button
+          type="button"
+          className="sk-notification-panel__close"
+          onClick={onClose}
+          aria-label="Close"
+          title="Close"
+        >
+          ✕
+        </button>
+      </div>
+
       {visible.length === 0 ? (
-        <p className="sk-notification-panel__empty">{copy.noNotifications}</p>
+        <div className="sk-notification-panel__empty-state">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={{ opacity: 0.35, margin: '8px auto 4px auto', display: 'block' }}
+          >
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+          </svg>
+          <p className="sk-notification-panel__empty">{copy.noNotifications}</p>
+        </div>
       ) : (
         <ul className="sk-notification-panel__list">
           {visible.map((item) => (
-            <li key={item.id} className="sk-notification-panel__row">
+            <li
+              key={item.id}
+              className={`sk-notification-panel__row sk-notification-panel__row--${item.severity.toLowerCase()}`}
+            >
               <span className={`sk-notification-panel__mark sk-notification-panel__mark--${item.severity.toLowerCase()}`}>
-                {SEVERITY_MARK[item.severity]}
+                {item.severity === 'CRITICAL' ? (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                ) : item.severity === 'WARNING' ? (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                )}
               </span>
               <span className="sk-notification-panel__copy">
                 <strong>{titleFor(item.id, copy, t)}</strong>
@@ -163,7 +214,7 @@ export function NotificationPanel({
               <span className="sk-notification-panel__actions">
                 <button
                   type="button"
-                  className="sk-btn sk-btn--secondary"
+                  className="sk-btn sk-btn--primary sk-btn--sm"
                   data-testid={`notification-action-${item.id}`}
                   onClick={() => {
                     handleAction(item.id, setView);
@@ -174,7 +225,7 @@ export function NotificationPanel({
                 </button>
                 <button
                   type="button"
-                  className="sk-btn sk-btn--secondary"
+                  className="sk-btn sk-btn--secondary sk-btn--sm"
                   data-testid={`notification-dismiss-${item.id}`}
                   onClick={() => dismiss(item.id)}
                 >

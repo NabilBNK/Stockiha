@@ -193,9 +193,6 @@ export default function SuppliersScreen({ sessionToken }: Props) {
       <header className="sk-screen__header">
         <div>
           <h1>{t('nav.suppliers')}</h1>
-          <p className="sk-muted" style={{ margin: '4px 0 0 0', fontSize: '0.88rem' }}>
-            {text.suppliersTitle}
-          </p>
         </div>
         <button
           type="button"
@@ -214,7 +211,7 @@ export default function SuppliersScreen({ sessionToken }: Props) {
       )}
 
       {/* Top Metric Summary Cards */}
-      <div className="sk-cards" style={{ marginBottom: '22px' }}>
+      <div className="pr-metrics-grid" style={{ marginBottom: '22px' }}>
         <div className="sk-metric pr-metric-card" data-testid="metric-total-suppliers">
           <span className="sk-metric__label">{text.totalSuppliers}</span>
           <strong className="sk-metric__value">{totalSuppliersCount}</strong>
@@ -454,21 +451,21 @@ export default function SuppliersScreen({ sessionToken }: Props) {
             <table className="sk-table" data-testid="suppliers-table">
               <thead>
                 <tr>
-                  <th style={{ width: '120px' }}>{text.code}</th>
+                  <th style={{ width: '130px', whiteSpace: 'nowrap' }}>{text.code}</th>
                   <th>{text.name}</th>
                   <th>{text.contact}</th>
                   <th>{text.phone}</th>
                   <th>{text.taxId}</th>
-                  <th style={{ width: '110px' }}>{text.status}</th>
-                  <th className="sk-num">{text.returned}</th>
-                  <th className="sk-num" style={{ width: '150px' }}>{text.balanceDue}</th>
+                  <th style={{ width: '110px', whiteSpace: 'nowrap' }}>{text.status}</th>
+                  <th className="sk-num" style={{ whiteSpace: 'nowrap' }}>{text.returned}</th>
+                  <th className="sk-num" style={{ width: '150px', whiteSpace: 'nowrap' }}>{text.balanceDue}</th>
                   <th style={{ width: '190px', whiteSpace: 'nowrap' }}>{text.actions}</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredSuppliers.map((s) => (
                   <tr key={s.id} data-testid={`supplier-row-${s.id}`}>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       <strong style={{ fontFamily: 'monospace', fontSize: '0.92rem' }}>{s.code}</strong>
                     </td>
                     <td>
@@ -479,27 +476,27 @@ export default function SuppliersScreen({ sessionToken }: Props) {
                     <td>
                       {s.tax_id ? <code style={{ fontSize: '0.82rem' }}>{s.tax_id}</code> : '—'}
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       <span className={`sk-badge ${s.is_active ? 'sk-badge--success' : 'sk-badge--secondary'}`}>
                         {s.is_active ? text.active : text.inactive}
                       </span>
                     </td>
-                    <td className="sk-num" data-testid={`supplier-returned-${s.id}`}>
+                    <td className="sk-num" data-testid={`supplier-returned-${s.id}`} style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                       {balances.find((item) => item.supplier_id === s.id)?.total_returned ?? '0.00'} DZD
                     </td>
-                    <td className="sk-num" data-testid={`supplier-balance-${s.id}`}>
+                    <td className="sk-num" data-testid={`supplier-balance-${s.id}`} style={{ whiteSpace: 'nowrap' }}>
                       {(() => {
                         const bal = balances.find((item) => item.supplier_id === s.id)?.balance_due ?? '0.00';
                         const isDue = bal !== '0.00' && bal !== '0';
                         return isDue ? (
                           <span
                             className="sk-badge sk-badge--warning"
-                            style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+                            style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
                           >
                             {bal} DZD
                           </span>
                         ) : (
-                          <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--sk-muted)' }}>
+                          <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--sk-muted)', whiteSpace: 'nowrap' }}>
                             {bal} DZD
                           </span>
                         );

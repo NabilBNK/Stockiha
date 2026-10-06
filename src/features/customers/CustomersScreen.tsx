@@ -83,6 +83,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     readOnly: 'Read-only customer access',
     activated: 'Customer activated successfully.',
     deactivated: 'Customer deactivated successfully.',
+    searchPlaceholder: 'Search by code, name, contact...',
+    closeDetail: 'Close detail',
+    noMatching: 'No matching customers found.',
     payment: 'Record payment',
     openInvoices: 'Open invoices',
     original: 'Original',
@@ -153,6 +156,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     readOnly: 'Accès client en lecture seule',
     activated: 'Client activé avec succès.',
     deactivated: 'Client désactivé avec succès.',
+    searchPlaceholder: 'Rechercher par code, nom, contact...',
+    closeDetail: 'Fermer le détail',
+    noMatching: 'Aucun client correspondant trouvé.',
     payment: 'Enregistrer un paiement',
     openInvoices: 'Factures ouvertes',
     original: 'Original',
@@ -223,6 +229,9 @@ const COPY: Record<Locale, Record<string, string>> = {
     readOnly: 'صلاحية عرض العملاء فقط',
     activated: 'تم تفعيل العميل بنجاح.',
     deactivated: 'تم تعطيل العميل بنجاح.',
+    searchPlaceholder: 'البحث بالرمز، الاسم، جهة الاتصال...',
+    closeDetail: 'إغلاق التفاصيل',
+    noMatching: 'لم يتم العثور على عملاء مطابقين.',
     payment: 'تسجيل دفعة',
     openInvoices: 'الفواتير المفتوحة',
     original: 'الأصلي',
@@ -293,6 +302,18 @@ export function CustomersScreen({ sessionToken }: Props) {
   const [creditLimit, setCreditLimit] = useState('0');
   const [paymentTermsDays, setPaymentTermsDays] = useState('0');
   const [maxOverdueDays, setMaxOverdueDays] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredCustomers = useMemo(() => {
+    if (!searchQuery.trim()) return customers;
+    const q = searchQuery.toLowerCase().trim();
+    return customers.filter(
+      (c) =>
+        c.code.toLowerCase().includes(q) ||
+        c.name.toLowerCase().includes(q) ||
+        (c.contact_name && c.contact_name.toLowerCase().includes(q)),
+    );
+  }, [customers, searchQuery]);
 
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
@@ -751,85 +772,19 @@ export function CustomersScreen({ sessionToken }: Props) {
         </form>
       ) : null}
 
-      <div className="sk-card">
-        {loading ? <div>{text.title}…</div> : (
-          <div className="sk-table-wrap sk-table-wrap--flat">
-            <table className="sk-table" data-testid="customers-table">
-              <thead>
-                <tr>
-                  <th>{text.code}</th>
-                  <th>{text.name}</th>
-                  <th>{text.credit}</th>
-                  <th>{text.creditLimit}</th>
-                  <th>{text.exposure}</th>
-                  <th>{text.available}</th>
-                  <th>{text.active}</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {customers.length === 0 ? (
-                  <tr><td colSpan={8}>{text.none}</td></tr>
-                ) : customers.map((customer) => (
-                  <tr
-                    key={customer.id}
-                    className={customer.is_active ? undefined : 'sk-row--inactive'}
-                    data-testid={`customer-row-${customer.id}`}
-                  >
-                    <td><strong>{customer.code}</strong></td>
-                    <td>{customer.name}</td>
-                    <td>{customer.credit_enabled ? text.credit : text.cashOnly}</td>
-                    <td>{customer.credit_limit}</td>
-                    <td>{customer.exposure_amount}</td>
-                    <td>{customer.available_credit}</td>
-                    <td>
-                      <span className={`sk-badge ${customer.is_active ? 'sk-badge--success' : 'sk-badge--danger'}`}>
-                        {customer.is_active ? text.active : text.inactive}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="sk-action-group">
-                        <button
-                          type="button"
-                          className="sk-button sk-button--small"
-                          onClick={() => void openFinancialDetail(customer)}
-                        >
-                          {text.view}
-                        </button>
-                        {canManage ? (
-                          <>
-                            <button
-                              type="button"
-                              className="sk-button sk-button--small sk-button--secondary"
-                              onClick={() => resetForm(customer)}
-                            >
-                              {text.edit}
-                            </button>
-                            <button
-                              type="button"
-                              className={`sk-button sk-button--small ${customer.is_active ? 'sk-button--danger' : 'sk-button--success'}`}
-                              disabled={busy}
-                              onClick={() => void toggleActive(customer)}
-                            >
-                              {customer.is_active ? text.deactivate : text.activate}
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       {selected ? (
         <div className="sk-card" data-testid="customer-financial-detail">
           <div className="sk-screen__header">
             <h2>{selected.name}</h2>
             <div className="sk-action-group">
+              <button
+                type="button"
+                className="sk-button sk-button--small sk-button--secondary"
+                onClick={() => setSelected(null)}
+                data-testid="close-customer-detail-btn"
+              >
+                ✕ {text.closeDetail}
+              </button>
               {canPostPayment && openInvoices.length > 0 ? (
                 <button
                   type="button"
@@ -1111,6 +1066,93 @@ export function CustomersScreen({ sessionToken }: Props) {
           </table>
         </div>
       ) : null}
+
+      <div className="sk-card">
+        {loading ? <div>{text.title}…</div> : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={text.searchPlaceholder}
+                className="sk-input"
+                style={{ maxWidth: '340px' }}
+                data-testid="customers-search-input"
+              />
+            </div>
+            <div className="sk-table-wrap sk-table-wrap--flat">
+              <table className="sk-table" data-testid="customers-table">
+                <thead>
+                  <tr>
+                    <th>{text.code}</th>
+                    <th>{text.name}</th>
+                    <th>{text.credit}</th>
+                    <th>{text.creditLimit}</th>
+                    <th>{text.exposure}</th>
+                    <th>{text.available}</th>
+                    <th>{text.active}</th>
+                    <th className="sk-actions-col" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCustomers.length === 0 ? (
+                    <tr><td colSpan={8}>{customers.length === 0 ? text.none : text.noMatching}</td></tr>
+                  ) : filteredCustomers.map((customer) => (
+                    <tr
+                      key={customer.id}
+                      className={customer.is_active ? undefined : 'sk-row--inactive'}
+                      data-testid={`customer-row-${customer.id}`}
+                    >
+                      <td><strong>{customer.code}</strong></td>
+                      <td>{customer.name}</td>
+                      <td>{customer.credit_enabled ? text.credit : text.cashOnly}</td>
+                      <td>{customer.credit_limit}</td>
+                      <td>{customer.exposure_amount}</td>
+                      <td>{customer.available_credit}</td>
+                      <td>
+                        <span className={`sk-badge ${customer.is_active ? 'sk-badge--success' : 'sk-badge--danger'}`}>
+                          {customer.is_active ? text.active : text.inactive}
+                        </span>
+                      </td>
+                      <td className="sk-actions-cell">
+                        <div className="sk-action-group sk-action-group--nowrap sk-customer-actions">
+                          <button
+                            type="button"
+                            className="sk-button sk-button--small"
+                            onClick={() => void openFinancialDetail(customer)}
+                          >
+                            {text.view}
+                          </button>
+                          {canManage ? (
+                            <>
+                              <button
+                                type="button"
+                                className="sk-button sk-button--small sk-button--secondary"
+                                onClick={() => resetForm(customer)}
+                              >
+                                {text.edit}
+                              </button>
+                              <button
+                                type="button"
+                                className={`sk-button sk-button--small ${customer.is_active ? 'sk-button--danger' : 'sk-button--success'}`}
+                                disabled={busy}
+                                onClick={() => void toggleActive(customer)}
+                              >
+                                {customer.is_active ? text.deactivate : text.activate}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
     </section>
   );
 }

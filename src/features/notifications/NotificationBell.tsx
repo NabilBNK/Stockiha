@@ -30,12 +30,26 @@ export function NotificationBell({ setView }: { setView: (v: AppView) => void })
     <div className="sk-notification-bell-root" ref={rootRef} style={{ position: 'relative' }}>
       <button
         type="button"
-        className="sk-shell__icon-button"
+        className="sk-shell__icon-button sk-notification-bell-btn"
         data-testid="notification-bell"
         aria-label="Notifications"
+        style={{ position: 'relative' }}
         onClick={() => setOpen((v) => !v)}
       >
-        <span aria-hidden>🔔</span>
+        <svg
+          width="19"
+          height="19"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+        </svg>
         {badgeCount > 0 ? (
           <span className="sk-badge sk-badge--danger sk-notification-badge" data-testid="notification-badge">
             {badgeCount}

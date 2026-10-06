@@ -40,19 +40,50 @@ interface SessionContextValue {
 
 export const SessionContext = createContext<SessionContextValue | null>(null);
 
+const SESSION_STORAGE_KEY = 'stockiha.session';
+
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [user, setUser] = useState<AuthenticatedUser | null>(() => {
+    if (import.meta.env.MODE === 'test') {
+      return null;
+    }
+    try {
+      const stored = window.sessionStorage?.getItem(SESSION_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as AuthenticatedUser;
+        if (parsed?.username && parsed?.token) return parsed;
+      }
+    } catch {
+      // Best effort only
+    }
+    return null;
+  });
   const [activeCashSession, setActiveCashSession] = useState<ActiveCashSession | null>(null);
 
   const login = useCallback(async (username: string, password: string) => {
     const result = await ipc.login(username, password, WORKSTATION_ID);
-    setUser({ username, token: result.session_token });
+    const authUser = { username, token: result.session_token };
+    setUser(authUser);
+    if (import.meta.env.MODE !== 'test') {
+      try {
+        window.sessionStorage?.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));
+      } catch {
+        // Best effort
+      }
+    }
     return result.session_token;
   }, []);
 
   const clearSession = useCallback(() => {
     setUser(null);
     setActiveCashSession(null);
+    if (import.meta.env.MODE !== 'test') {
+      try {
+        window.sessionStorage?.removeItem(SESSION_STORAGE_KEY);
+      } catch {
+        // Best effort
+      }
+    }
   }, []);
 
   const logout = useCallback(async () => {
