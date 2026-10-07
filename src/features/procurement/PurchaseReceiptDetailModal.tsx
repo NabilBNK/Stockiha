@@ -137,7 +137,7 @@ export function PurchaseReceiptDetailModal({
 
   return (
     <div
-      className="sk-modal-overlay pr-detail-modal-overlay"
+      className={`sk-modal-overlay pr-detail-modal-overlay ${isMaximized ? 'pr-detail-modal-overlay--maximized' : ''}`}
       data-testid="purchase-receipt-detail-modal"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -204,7 +204,7 @@ export function PurchaseReceiptDetailModal({
         <div
           ref={modalBodyRef}
           className="sk-detail-dialog__body"
-          style={{ minHeight: 0, flex: '1 1 auto', overflowY: 'auto' }}
+          style={{ minHeight: 0, flex: '1 1 0%', overflowY: 'auto' }}
         >
           {error && (
             <div className="sk-banner sk-banner--error" data-testid="receipt-detail-error">

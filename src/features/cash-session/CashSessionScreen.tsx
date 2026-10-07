@@ -26,6 +26,7 @@ import { useOfficialDocumentContext } from '../../shared/documents/useOfficialDo
 import { buildSessionReportModel } from '../../shared/documents/models/sessionReportModel';
 import { buildThermalSessionReport } from './sessionReportBuilder';
 import { formatDisplayDate } from '../../shared/utils/formatters';
+import './cashSession.css';
 
 const AMOUNT_RE = /^\d+(\.\d{1,2})?$/;
 
@@ -589,99 +590,183 @@ export function CashSessionScreen() {
       ) : null}
 
       {current ? (
-        <div className="sk-card" data-testid="cash-session-lifecycle">
-          <p><strong>{text.state}:</strong> {current.status}</p>
-          <p><strong>{text.currentCashier}:</strong> {current.current_cashier_display_name}</p>
-          <p><strong>{t('session.openingFloat')}:</strong> {current.opening_float}</p>
+        <div className="sk-session-overview" data-testid="cash-session-lifecycle">
+          <div className="sk-session-grid">
+            <div className="sk-session-tile">
+              <span className="sk-session-tile__label">{text.state}</span>
+              <div className="sk-session-tile__value">
+                <span
+                  className={`sk-badge ${
+                    current.status === 'OPEN'
+                      ? 'sk-badge--success'
+                      : current.status === 'CLOSING' || current.status === 'SUSPENDED'
+                      ? 'sk-badge--warning'
+                      : 'sk-badge--danger'
+                  }`}
+                  style={{ fontSize: '0.88rem', padding: '3px 10px' }}
+                >
+                  {current.status}
+                </span>
+              </div>
+            </div>
+
+            <div className="sk-session-tile">
+              <span className="sk-session-tile__label">{text.currentCashier}</span>
+              <div className="sk-session-tile__value">
+                <span aria-hidden>👤</span>
+                <span>{current.current_cashier_display_name}</span>
+              </div>
+            </div>
+
+            <div className="sk-session-tile">
+              <span className="sk-session-tile__label">{t('session.openingFloat')}</span>
+              <div className="sk-session-tile__value">
+                <span aria-hidden>💵</span>
+                <span>{current.opening_float} DZD</span>
+              </div>
+            </div>
+
+            {current.workstation_id ? (
+              <div className="sk-session-tile">
+                <span className="sk-session-tile__label">Poste</span>
+                <div className="sk-session-tile__value">
+                  <span aria-hidden>💻</span>
+                  <span>{current.workstation_id}</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
       {current && current.status === 'OPEN' ? (
-        <section className="sk-card sk-form" data-testid="cash-movement-panel">
-          <h3>{text.movementsTitle}</h3>
-          <p>{text.movementsHelp}</p>
+        <section className="sk-movement-card" data-testid="cash-movement-panel">
+          <div className="sk-movement-header">
+            <h3>{text.movementsTitle}</h3>
+            <p>{text.movementsHelp}</p>
+          </div>
 
-          <form onSubmit={recordMovement}>
-            <label>
-              {text.direction}
-              <select
-                value={movementDirection}
-                onChange={(e) => setMovementDirection(e.target.value as CashMovementDirection)}
-                data-testid="cash-movement-direction"
-              >
-                <option value="CASH_OUT">{text.cashOut}</option>
-                <option value="CASH_IN">{text.cashIn}</option>
-              </select>
-            </label>
+          <form className="sk-movement-form" onSubmit={recordMovement}>
+            <div className="sk-movement-form-grid">
+              <div className="sk-movement-form-field">
+                <label htmlFor="cash-movement-direction-select">{text.direction}</label>
+                <select
+                  id="cash-movement-direction-select"
+                  className="sk-movement-select"
+                  value={movementDirection}
+                  onChange={(e) => setMovementDirection(e.target.value as CashMovementDirection)}
+                  data-testid="cash-movement-direction"
+                >
+                  <option value="CASH_OUT">{text.cashOut}</option>
+                  <option value="CASH_IN">{text.cashIn}</option>
+                </select>
+              </div>
 
-            <TextField
-              label={`${text.amount} (DZD)`}
-              value={movementAmount}
-              onChange={(e) => setMovementAmount(e.target.value)}
-              data-testid="cash-movement-amount"
-            />
-
-            <label>
-              {text.reason}
-              <select
-                value={movementReason}
-                onChange={(e) => setMovementReason(e.target.value as CashMovementReason)}
-                data-testid="cash-movement-reason"
-              >
-                <option value="EXPENSE">{text.reasonExpense}</option>
-                <option value="SUPPLIER_PAYMENT">{text.reasonSupplier}</option>
-                <option value="CHANGE_FLOAT">{text.reasonChange}</option>
-                <option value="CORRECTION">{text.reasonCorrection}</option>
-                <option value="OTHER">{text.reasonCustom}</option>
-              </select>
-            </label>
-
-            <TextField
-              label={movementReason === 'OTHER' ? text.customDescription : text.note}
-              value={movementNote}
-              onChange={(e) => setMovementNote(e.target.value)}
-              data-testid="cash-movement-note"
-            />
-
-            {needsCashOutApproval ? (
-              <div data-testid="cash-out-approval">
-                <h4>{text.cashOutApprovalTitle}</h4>
-                <p>{text.cashOutApprovalHelp}</p>
+              <div className="sk-movement-form-field">
                 <TextField
-                  label={text.managerUsername}
-                  value={approverUsername}
-                  onChange={(event) => setApproverUsername(event.target.value)}
-                  data-testid="cash-out-approver-username"
-                />
-                <TextField
-                  label={text.managerPassword}
-                  type="password"
-                  value={approverPassword}
-                  onChange={(event) => setApproverPassword(event.target.value)}
-                  data-testid="cash-out-approver-password"
+                  label={`${text.amount} (DZD)`}
+                  value={movementAmount}
+                  onChange={(e) => setMovementAmount(e.target.value)}
+                  data-testid="cash-movement-amount"
                 />
               </div>
-            ) : null}
 
-            <Button type="submit" disabled={busy} data-testid="cash-movement-submit">
-              {text.recordMovement}
-            </Button>
+              <div className="sk-movement-form-field">
+                <label htmlFor="cash-movement-reason-select">{text.reason}</label>
+                <select
+                  id="cash-movement-reason-select"
+                  className="sk-movement-select"
+                  value={movementReason}
+                  onChange={(e) => setMovementReason(e.target.value as CashMovementReason)}
+                  data-testid="cash-movement-reason"
+                >
+                  <option value="EXPENSE">{text.reasonExpense}</option>
+                  <option value="SUPPLIER_PAYMENT">{text.reasonSupplier}</option>
+                  <option value="CHANGE_FLOAT">{text.reasonChange}</option>
+                  <option value="CORRECTION">{text.reasonCorrection}</option>
+                  <option value="OTHER">{text.reasonCustom}</option>
+                </select>
+              </div>
+
+              <div className="sk-movement-form-field" style={{ flexGrow: 1 }}>
+                <TextField
+                  label={movementReason === 'OTHER' ? text.customDescription : text.note}
+                  value={movementNote}
+                  onChange={(e) => setMovementNote(e.target.value)}
+                  data-testid="cash-movement-note"
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%' }}>
+                <Button type="submit" disabled={busy} data-testid="cash-movement-submit" style={{ height: 38 }}>
+                  {text.recordMovement}
+                </Button>
+              </div>
+            </div>
+
+            {needsCashOutApproval ? (
+              <div className="sk-movement-approval-box" data-testid="cash-out-approval">
+                <h4 style={{ margin: '0 0 4px 0' }}>{text.cashOutApprovalTitle}</h4>
+                <p style={{ margin: '0 0 10px 0', fontSize: '0.88rem', color: 'var(--sk-muted)' }}>{text.cashOutApprovalHelp}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                  <TextField
+                    label={text.managerUsername}
+                    value={approverUsername}
+                    onChange={(event) => setApproverUsername(event.target.value)}
+                    data-testid="cash-out-approver-username"
+                  />
+                  <TextField
+                    label={text.managerPassword}
+                    type="password"
+                    value={approverPassword}
+                    onChange={(event) => setApproverPassword(event.target.value)}
+                    data-testid="cash-out-approver-password"
+                  />
+                </div>
+              </div>
+            ) : null}
           </form>
 
-          <table data-testid="cash-movement-list">
-            <tbody>
-              {movements
-                .filter((m) => m.movement_type === 'CASH_IN' || m.movement_type === 'CASH_OUT')
-                .map((m) => (
-                  <tr key={m.movement_id} data-testid={`cash-movement-${m.movement_id}`}>
-                    <td>{m.movement_type === 'CASH_OUT' ? text.cashOut : text.cashIn}</td>
-                    <td>{m.amount} DZD</td>
-                    <td>{m.reason_code ? text[`reasonTag_${m.reason_code}`] : ''}</td>
-                    <td>{m.note ?? ''}</td>
+          <div className="sk-movement-table-container">
+            <table className="sk-movement-table" data-testid="cash-movement-list">
+              <thead>
+                <tr>
+                  <th style={{ width: '15%' }}>{text.direction}</th>
+                  <th style={{ width: '20%' }}>{text.amount}</th>
+                  <th style={{ width: '25%' }}>{text.reason}</th>
+                  <th>{text.note}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.filter((m) => m.movement_type === 'CASH_IN' || m.movement_type === 'CASH_OUT').length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', color: 'var(--sk-muted)', padding: '24px 16px' }}>
+                      {locale === 'ar'
+                        ? 'لا توجد حركات نقدية مسجلة في هذه الجلسة حتى الآن'
+                        : locale === 'fr'
+                        ? 'Aucun mouvement de caisse enregistré dans cette session pour l’instant'
+                        : 'No cash movements recorded in this session yet'}
+                    </td>
                   </tr>
-                ))}
-            </tbody>
-          </table>
+                ) : (
+                  movements
+                    .filter((m) => m.movement_type === 'CASH_IN' || m.movement_type === 'CASH_OUT')
+                    .map((m) => (
+                      <tr key={m.movement_id} data-testid={`cash-movement-${m.movement_id}`}>
+                        <td>
+                          <span className={m.movement_type === 'CASH_OUT' ? 'sk-movement-badge-out' : 'sk-movement-badge-in'}>
+                            {m.movement_type === 'CASH_OUT' ? text.cashOut : text.cashIn}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{m.amount} DZD</td>
+                        <td>{m.reason_code ? text[`reasonTag_${m.reason_code}`] : '—'}</td>
+                        <td style={{ color: m.note ? 'var(--sk-text)' : 'var(--sk-muted)' }}>{m.note || '—'}</td>
+                      </tr>
+                    ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
 
@@ -690,8 +775,11 @@ export function CashSessionScreen() {
       ) : null}
 
       {current?.status === 'OPEN' ? (
-        <>
-          <div className="sk-card sk-form">
+        <div className="sk-session-actions-card">
+          <h3 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--sk-text)' }}>
+            {locale === 'ar' ? 'إجراءات الجلسة' : locale === 'fr' ? 'Actions de session' : 'Session actions'}
+          </h3>
+          <div className="sk-session-actions-row">
             <Button type="button" variant="danger" loading={busy} onClick={beginClose}>
               {text.beginClose}
             </Button>
@@ -704,18 +792,21 @@ export function CashSessionScreen() {
               🖨️ {text.sessionReportPrint}
             </Button>
           </div>
-          <form className="sk-card sk-form" onSubmit={suspend}>
-            <TextField
-              label={text.suspensionReason}
-              value={suspensionReason}
-              onChange={(event) => setSuspensionReason(event.target.value)}
-              required
-            />
-            <Button type="submit" variant="secondary" loading={busy} disabled={!suspensionReason.trim()}>
+
+          <form className="sk-suspend-box" onSubmit={suspend} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 280px' }}>
+              <TextField
+                label={text.suspensionReason}
+                value={suspensionReason}
+                onChange={(event) => setSuspensionReason(event.target.value)}
+                required
+              />
+            </div>
+            <Button type="submit" variant="secondary" loading={busy} disabled={!suspensionReason.trim()} style={{ height: 38 }}>
               {text.suspend}
             </Button>
           </form>
-        </>
+        </div>
       ) : null}
 
       {current?.status === 'CLOSING' ? (

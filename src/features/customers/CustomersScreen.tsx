@@ -1071,15 +1071,49 @@ export function CustomersScreen({ sessionToken }: Props) {
         {loading ? <div>{text.title}…</div> : (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={text.searchPlaceholder}
-                className="sk-input"
-                style={{ maxWidth: '340px' }}
-                data-testid="customers-search-input"
-              />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', maxWidth: '380px' }}>
+                <span aria-hidden="true" style={{ position: 'absolute', insetInlineStart: '12px', color: 'var(--sk-muted, #888)', pointerEvents: 'none', display: 'flex', alignItems: 'center', fontSize: '14px' }}>
+                  🔍
+                </span>
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={text.searchPlaceholder}
+                  className="sk-input"
+                  style={{
+                    width: '100%',
+                    paddingInlineStart: '34px',
+                    paddingInlineEnd: searchQuery ? '32px' : '12px',
+                    height: '38px',
+                    borderRadius: '8px',
+                  }}
+                  data-testid="customers-search-input"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      insetInlineEnd: '8px',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      color: 'var(--sk-muted, #888)',
+                      fontSize: '12px',
+                      lineHeight: 1,
+                    }}
+                    title="Clear"
+                  >
+                    ✕
+                  </button>
+                ) : null}
+              </div>
+              <span className="sk-muted" style={{ fontSize: '13px' }}>
+                {filteredCustomers.length} / {customers.length}
+              </span>
             </div>
             <div className="sk-table-wrap sk-table-wrap--flat">
               <table className="sk-table" data-testid="customers-table">

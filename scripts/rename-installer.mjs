@@ -4,7 +4,7 @@
 // is read from src/shared/version.ts, the same single source the dashboard
 // and setup screen render, so the file name can never disagree with what
 // the app shows. Runs after every `npm run tauri:build`.
-import { readFileSync, readdirSync, renameSync, existsSync, unlinkSync } from 'node:fs';
+import { readFileSync, readdirSync, renameSync, existsSync, unlinkSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const versionSource = readFileSync('src/shared/version.ts', 'utf8');
@@ -19,3 +19,15 @@ const target = join(dir, `Stockiha_${marker}-setup.exe`);
 if (existsSync(target)) unlinkSync(target);
 renameSync(join(dir, built), target);
 console.log(`installer: ${target}`);
+
+const sigBuilt = `${built}.sig`;
+const sigBuiltPath = join(dir, sigBuilt);
+if (existsSync(sigBuiltPath)) {
+  const targetSig = `${target}.sig`;
+  if (existsSync(targetSig)) unlinkSync(targetSig);
+  copyFileSync(sigBuiltPath, targetSig);
+  console.log(`signature: ${targetSig}`);
+  console.log('\n--- Signature for latest.json ---');
+  console.log(readFileSync(sigBuiltPath, 'utf8').trim());
+  console.log('---------------------------------\n');
+}

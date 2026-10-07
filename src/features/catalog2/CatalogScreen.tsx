@@ -238,15 +238,19 @@ export function CatalogScreen({
           <span>{inStockOnly ? t('pos.inStockOnly') : t('pos.allStock')}</span>
         </button>
 
-        <label className="sk-catalog2__checkbox">
-          <input
-            type="checkbox"
-            checked={includeInactive}
-            onChange={(e) => changeIncludeInactive(e.target.checked)}
-            data-testid="catalog2-include-inactive"
-          />
+        <button
+          type="button"
+          className={`sk-inactive-toggle-btn ${includeInactive ? 'sk-inactive-toggle-btn--active' : 'sk-inactive-toggle-btn--inactive'}`}
+          onClick={() => changeIncludeInactive(!includeInactive)}
+          aria-pressed={includeInactive}
+          aria-label={t('inventory.includeInactive')}
+          title={t('inventory.includeInactive')}
+          data-testid="catalog2-include-inactive"
+          style={{ height: '36px', alignSelf: 'flex-end', marginBottom: '2px' }}
+        >
+          <span aria-hidden>{includeInactive ? '👁️' : '👁️‍🗨️'}</span>
           <span>{t('inventory.includeInactive')}</span>
-        </label>
+        </button>
       </form>
 
       {error ? (

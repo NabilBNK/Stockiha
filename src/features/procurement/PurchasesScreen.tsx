@@ -896,6 +896,7 @@ export default function PurchasesScreen({ sessionToken, capabilities, openFiscal
           <PurchaseItemPicker
             isOpen={pickerOpen}
             items={products}
+            showStock={true}
             disabledVariantIds={pickerTargetIndex === null ? lines.map((line) => line.variant_id) : []}
             multiSelect={pickerTargetIndex === null}
             onSelect={handlePickerSelect}

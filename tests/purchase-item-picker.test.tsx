@@ -151,4 +151,40 @@ describe('PurchaseItemPicker - side filters', () => {
     expect(screen.queryByTestId('purchase-item-option-101')).not.toBeInTheDocument();
     expect(screen.getByTestId('purchase-item-option-102')).toBeInTheDocument();
   });
+
+  it('filters by toolbar in-stock toggle button', () => {
+    const itemsWithStock: (PurchaseProductOption & { quantity_on_hand?: string })[] = [
+      {
+        ...sampleItems[0],
+        variant_id: 201,
+        quantity_on_hand: '15',
+      },
+      {
+        ...sampleItems[1],
+        variant_id: 202,
+        quantity_on_hand: '0',
+      },
+    ];
+
+    render(
+      <I18nProvider>
+        <PurchaseItemPicker
+          isOpen={true}
+          items={itemsWithStock}
+          disabledVariantIds={[]}
+          showStock={true}
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId('purchase-item-option-201')).toBeInTheDocument();
+    expect(screen.getByTestId('purchase-item-option-202')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('purchase-picker-toolbar-in-stock-btn'));
+
+    expect(screen.getByTestId('purchase-item-option-201')).toBeInTheDocument();
+    expect(screen.queryByTestId('purchase-item-option-202')).not.toBeInTheDocument();
+  });
 });

@@ -483,12 +483,12 @@ function AuthenticatedApp() {
       )}
       {view === 'settings' && (
         <>
-          <LicenceSettingsCard sessionToken={user?.token ?? ''} />
           <DrawerPolicySettingsScreen sessionToken={user?.token ?? ''} />
           <InventoryCorrectionsSettingsScreen sessionToken={user?.token ?? ''} />
           <RecoverySettingsScreen sessionToken={user?.token ?? ''} />
           <UserManagementSettingsScreen sessionToken={user?.token ?? ''} />
           <PrintingSettingsScreen sessionToken={user?.token ?? ''} />
+          <LicenceSettingsCard sessionToken={user?.token ?? ''} />
         </>
       )}
       {view === 'products' && (

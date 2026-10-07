@@ -198,7 +198,7 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
       .filter((item) => item.is_active)
       .filter((item) => matchesPurchaseOption(item, query))
       .filter((item) => {
-        if (showStock && inStockOnly && !isExactDecimalPositive(item.quantity_on_hand ?? '0')) {
+        if (inStockOnly && !isExactDecimalPositive(item.quantity_on_hand ?? '0')) {
           return false;
         }
         if (selectedUnit && item.default_unit_code !== selectedUnit) {
@@ -429,17 +429,47 @@ export function PurchaseItemPicker<T extends GenericPickerItem = PurchaseProduct
 
           {/* Right Main Column (Search & Results) */}
           <div className="pr-picker-main">
-            <div className="pr-picker-search-wrap">
-              <input
-                ref={inputRef}
-                type="text"
-                className="pr-picker-search-input"
-                placeholder={text.searchItemsPlaceholder}
-                aria-label={text.searchItemsPlaceholder}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                data-testid="purchase-item-picker-input"
-              />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', marginBottom: 8 }}>
+              <div className="pr-picker-search-wrap" style={{ flex: 1, margin: 0 }}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  className="pr-picker-search-input"
+                  placeholder={text.searchItemsPlaceholder}
+                  aria-label={text.searchItemsPlaceholder}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  data-testid="purchase-item-picker-input"
+                />
+              </div>
+              <button
+                type="button"
+                className={`sk-inactive-toggle-btn ${
+                  inStockOnly ? 'sk-inactive-toggle-btn--active' : 'sk-inactive-toggle-btn--inactive'
+                }`}
+                onClick={() => setInStockOnly((prev) => !prev)}
+                data-testid="purchase-picker-toolbar-in-stock-btn"
+                style={{
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  height: 'auto',
+                  padding: '0 14px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <span>📦</span>
+                <span>
+                  {locale === 'ar'
+                    ? 'المتوفر فقط'
+                    : locale === 'fr'
+                    ? 'En stock uniquement'
+                    : 'In stock only'}
+                </span>
+              </button>
             </div>
 
             <div className="pr-picker-results-meta">

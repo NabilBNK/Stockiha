@@ -1,0 +1,205 @@
+/* Cash Session Screen Styling */
+
+.sk-session-overview {
+  padding: 16px 20px;
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  margin-bottom: 24px;
+}
+
+.sk-session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.sk-session-tile {
+  background: var(--sk-surface-soft);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 72px;
+  justify-content: center;
+}
+
+.sk-session-tile__label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sk-muted);
+}
+
+.sk-session-tile__value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--sk-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Cash movement card */
+.sk-movement-card {
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.sk-movement-header {
+  margin-bottom: 16px;
+}
+
+.sk-movement-header h3 {
+  margin: 0 0 4px 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--sk-text);
+}
+
+.sk-movement-header p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--sk-muted);
+}
+
+.sk-movement-form {
+  background: var(--sk-surface-soft);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.sk-movement-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  align-items: flex-end;
+}
+
+.sk-movement-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sk-movement-form-field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sk-text-soft);
+}
+
+.sk-movement-select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--sk-border-strong);
+  border-radius: var(--sk-radius-sm);
+  background: var(--sk-surface);
+  color: var(--sk-text);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.sk-movement-select:focus {
+  border-color: var(--sk-primary);
+}
+
+.sk-movement-approval-box {
+  margin-top: 14px;
+  padding: 14px;
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border-strong);
+  border-radius: var(--sk-radius-sm);
+}
+
+.sk-movement-table-container {
+  overflow-x: auto;
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius-sm);
+}
+
+.sk-movement-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.sk-movement-table th {
+  background: var(--sk-surface-soft);
+  padding: 10px 14px;
+  text-align: start;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sk-muted);
+  border-bottom: 1px solid var(--sk-border);
+}
+
+.sk-movement-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--sk-border);
+  color: var(--sk-text);
+  vertical-align: middle;
+}
+
+.sk-movement-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sk-movement-badge-in {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: var(--sk-ok-soft);
+  color: var(--sk-ok);
+  border: 1px solid var(--sk-ok);
+}
+
+.sk-movement-badge-out {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: var(--sk-warn-soft);
+  color: var(--sk-warn);
+  border: 1px solid var(--sk-warn);
+}
+
+/* Actions card */
+.sk-session-actions-card {
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border);
+  border-radius: var(--sk-radius);
+  padding: 18px 20px;
+  margin-top: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.sk-session-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.sk-suspend-box {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--sk-border);
+}

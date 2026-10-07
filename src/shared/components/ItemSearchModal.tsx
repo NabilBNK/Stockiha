@@ -244,6 +244,7 @@ export function ItemSearchModal({
     selectedCategory,
     selectedUnit,
     selectedAttributes,
+    inStockOnly,
   ]);
 
   const visibleVariantIds = useMemo(
@@ -523,70 +524,100 @@ export function ItemSearchModal({
 
           {/* Right Main Column (Search & Results) */}
           <div className="pr-picker-main">
-            <div
-              className="pr-picker-search-wrap"
-              style={{ position: "relative" }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{
-                  position: "absolute",
-                  insetInlineStart: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "var(--sk-muted)",
-                  pointerEvents: "none",
-                }}
-                aria-hidden
+            <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', marginBottom: 8 }}>
+              <div
+                className="pr-picker-search-wrap"
+                style={{ position: "relative", flex: 1, margin: 0 }}
               >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                id={searchInputId}
-                ref={searchInputRef}
-                type="text"
-                className="pr-picker-search-input"
-                style={{
-                  paddingInlineStart: 36,
-                  paddingInlineEnd: searchQuery ? 36 : 14,
-                }}
-                placeholder={resolvedPlaceholder}
-                aria-label={resolvedPlaceholder}
-                value={searchQuery}
-                onChange={(e) => handleQueryChange(e.target.value)}
-                onKeyDown={handleInputKeyDown}
-                autoComplete="off"
-                data-testid="item-search-input"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  className="pr-picker-clear-btn"
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                   style={{
                     position: "absolute",
-                    insetInlineEnd: 12,
+                    insetInlineStart: 12,
                     top: "50%",
                     transform: "translateY(-50%)",
-                    background: "transparent",
-                    border: "none",
-                    fontSize: "1rem",
                     color: "var(--sk-muted)",
-                    cursor: "pointer",
+                    pointerEvents: "none",
                   }}
-                  onClick={() => handleQueryChange("")}
-                  aria-label="Clear search"
+                  aria-hidden
                 >
-                  ✕
-                </button>
-              )}
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  id={searchInputId}
+                  ref={searchInputRef}
+                  type="text"
+                  className="pr-picker-search-input"
+                  style={{
+                    paddingInlineStart: 36,
+                    paddingInlineEnd: searchQuery ? 36 : 14,
+                  }}
+                  placeholder={resolvedPlaceholder}
+                  aria-label={resolvedPlaceholder}
+                  value={searchQuery}
+                  onChange={(e) => handleQueryChange(e.target.value)}
+                  onKeyDown={handleInputKeyDown}
+                  autoComplete="off"
+                  data-testid="item-search-input"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    className="pr-picker-clear-btn"
+                    style={{
+                      position: "absolute",
+                      insetInlineEnd: 12,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "transparent",
+                      border: "none",
+                      fontSize: "1rem",
+                      color: "var(--sk-muted)",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => handleQueryChange("")}
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                className={`sk-inactive-toggle-btn ${
+                  inStockOnly ? "sk-inactive-toggle-btn--active" : "sk-inactive-toggle-btn--inactive"
+                }`}
+                onClick={() => setInStockOnly((prev) => !prev)}
+                data-testid="item-search-toolbar-in-stock-btn"
+                style={{
+                  flexShrink: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  height: "auto",
+                  padding: "0 14px",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <span>📦</span>
+                <span>
+                  {locale === "ar"
+                    ? "المتوفر فقط"
+                    : locale === "fr"
+                    ? "En stock uniquement"
+                    : "In stock only"}
+                </span>
+              </button>
             </div>
 
             {notice ? (

@@ -1466,6 +1466,43 @@ fieldset.sk-form {
   border-color: var(--sk-primary);
 }
 
+.sk-inactive-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-inline: 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.sk-inactive-toggle-btn--active {
+  background: var(--sk-surface-hover, #f1f5f9);
+  color: var(--sk-primary, #2563eb);
+  border: 1px solid var(--sk-primary, #2563eb);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.sk-inactive-toggle-btn--inactive {
+  background: var(--sk-surface-soft, #f8fafc);
+  color: var(--sk-muted, #64748b);
+  border: 1px solid var(--sk-border-strong, #cbd5e1);
+}
+
+.sk-inactive-toggle-btn--inactive:hover {
+  background: var(--sk-surface, #fff);
+  color: var(--sk-text, #1e293b);
+  border-color: var(--sk-primary, #2563eb);
+}
+
 .sk-pos__search:focus-within {
   border-color: var(--sk-primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--sk-primary) 15%, transparent);

@@ -157,9 +157,11 @@ function documentBandHtml(model: OfficialDocumentModel): string {
     : '';
   return `<div class="document-band">
     <div class="doc-title">${escapeHtml(model.title)}</div>
-    <div class="doc-number">${escapeHtml(model.documentNumber)}</div>
+    <div class="doc-number-row">
+      <span class="doc-number">${escapeHtml(model.documentNumber)}</span>
+      ${statusHtml}
+    </div>
     <div class="doc-date">${escapeHtml(model.documentDateText)}</div>
-    ${statusHtml}
   </div>`;
 }
 
@@ -182,7 +184,7 @@ function infoBlockHtml(block: { title: string; rows: OfficialDocumentInfoRow[] }
         `<div class="info-row"><span class="info-label">${escapeHtml(row.label)}</span><span class="info-value">${escapeHtml(row.value)}</span></div>`,
     )
     .join('');
-  return `<div class="box info-block"><div class="info-block-title">${escapeHtml(block.title)}</div>${rowsHtml}</div>`;
+  return `<div class="info-block"><div class="info-block-title">${escapeHtml(block.title)}</div><div class="info-block-body">${rowsHtml}</div></div>`;
 }
 
 function tableHtml(
@@ -226,7 +228,7 @@ function totalsHtml(model: OfficialDocumentModel, isRtl: boolean): string {
         `<tr class="${total.emphasis ? 'grand-total' : ''}"><td class="total-label">${escapeHtml(total.label)}</td><td class="total-value">${escapeHtml(total.value)}</td></tr>`,
     )
     .join('');
-  return `<div class="totals-wrapper" style="justify-content:${isRtl ? 'flex-start' : 'flex-end'};"><table class="totals-table">${rows}</table></div>`;
+  return `<div class="totals-wrapper" style="justify-content:${isRtl ? 'flex-start' : 'flex-end'};"><div class="totals-card"><table class="totals-table">${rows}</table></div></div>`;
 }
 
 function amountInWordsHtml(model: OfficialDocumentModel, identity: OfficialDocumentIdentity, strings: ReturnType<typeof getPrintStrings>): string {
@@ -247,46 +249,176 @@ function footerHtml(identity: OfficialDocumentIdentity, strings: ReturnType<type
 }
 
 const HTML_STYLE = `
-  @page { size: A4 portrait; margin: 12mm; }
+  @page { size: A4 portrait; margin: 12mm 14mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-    font-size: 9pt;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 8.5pt;
+    line-height: 1.4;
     color: #000;
     background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-  .identity-band { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
-  .logo { max-width: 28mm; max-height: 18mm; object-fit: contain; }
-  .identity-text { flex: 1; }
-  .shop-name { font-size: 13pt; font-weight: 700; text-transform: uppercase; }
-  .legal-name { font-size: 8pt; }
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 10px;
+    margin-bottom: 8px;
+    border-bottom: 2px solid #000;
+  }
+  .identity-band { display: flex; align-items: flex-start; gap: 10px; max-width: 55%; }
+  .logo { max-width: 32mm; max-height: 20mm; object-fit: contain; }
+  .identity-text { display: flex; flex-direction: column; gap: 1px; }
+  .shop-name { font-size: 14pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #000; line-height: 1.2; margin-bottom: 2px; }
+  .legal-name { font-size: 8.5pt; font-weight: 600; color: #000; }
   .identity-line { font-size: 8pt; color: #444; }
-  .document-band { text-align: right; }
-  .doc-title { font-size: 16pt; font-weight: 700; text-transform: uppercase; }
-  .doc-number { font-size: 11pt; font-family: 'Consolas', 'Courier New', monospace; }
+  .document-band { text-align: end; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .doc-title { font-size: 16pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.8px; color: #000; line-height: 1.1; }
+  .doc-number-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+  .doc-number { font-size: 11pt; font-family: 'Consolas', 'Courier New', monospace; font-weight: 700; color: #000; }
   .doc-date { font-size: 8.5pt; color: #444; }
-  .status-box { display: inline-block; margin-top: 4px; padding: 1px 6px; border: 1px solid #000; font-size: 7.5pt; text-transform: uppercase; }
-  .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-  .legal-line { font-size: 7pt; border-top: 1px solid #888; border-bottom: 1px solid #888; padding: 3px 0; margin-bottom: 8px; }
-  .blocks-row { display: flex; gap: 8px; margin-bottom: 8px; }
-  .box { border: 1px solid #888; padding: 4px 6px; flex: 1; page-break-inside: avoid; }
-  .info-block-title { font-size: 8pt; font-weight: 700; text-transform: uppercase; margin-bottom: 3px; }
-  .info-row { display: flex; justify-content: space-between; font-size: 8.5pt; }
-  table.data-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 8px; }
+  .status-box {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: #f2f2f2;
+    border: 1px solid #000;
+    color: #000;
+  }
+  .legal-line {
+    font-size: 7pt;
+    color: #444;
+    background: #f2f2f2;
+    border: 1px solid #888;
+    border-radius: 4px;
+    padding: 3px 6px;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .blocks-row { display: flex; gap: 10px; margin-bottom: 12px; }
+  .info-block {
+    flex: 1;
+    background: #f2f2f2;
+    border: 1px solid #888;
+    border-radius: 4px;
+    padding: 6px 8px;
+    page-break-inside: avoid;
+  }
+  .info-block-title {
+    font-size: 7.5pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #000;
+    padding-bottom: 3px;
+    margin-bottom: 5px;
+    border-bottom: 1px solid #888;
+  }
+  .info-block-body { display: flex; flex-direction: column; gap: 2px; }
+  .info-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 8pt; }
+  .info-label { color: #444; font-size: 7.5pt; }
+  .info-value { font-weight: 600; color: #000; font-variant-numeric: tabular-nums; }
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5pt;
+    margin-bottom: 12px;
+    border: 1px solid #888;
+  }
   table.data-table.fixed { table-layout: fixed; }
-  table.data-table thead { display: table-header-group; }
-  table.data-table th { background: #f2f2f2; border: 1px solid #888; padding: 3pt 4pt; }
-  table.data-table td { border: 1px solid #888; padding: 3pt 4pt; word-wrap: break-word; }
+  thead { display: table-header-group; }
+  table.data-table thead { background: #f2f2f2; }
+  table.data-table th {
+    background: #f2f2f2;
+    color: #000;
+    font-weight: 800;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid #000;
+    border-inline-end: 1px solid #888;
+    padding: 5pt 6pt;
+  }
+  table.data-table th:last-child { border-inline-end: none; }
+  table.data-table td {
+    border-bottom: 1px solid #888;
+    border-inline-end: 1px solid #888;
+    padding: 4.5pt 6pt;
+    word-wrap: break-word;
+    color: #000;
+  }
+  table.data-table td:last-child { border-inline-end: none; }
+  table.data-table tr:last-child td { border-bottom: none; }
   table.data-table tr { page-break-inside: avoid; }
-  .no-lines { text-align: center; color: #444; }
-  .totals-wrapper { display: flex; margin-bottom: 8px; }
-  .totals-table { width: 60mm; border-collapse: collapse; font-size: 8.5pt; }
-  .totals-table td { padding: 2px 4px; }
-  .totals-table tr.grand-total { border-top: 1px solid #000; border-bottom: 1px solid #000; font-size: 10pt; font-weight: 700; }
-  .amount-in-words { font-style: italic; font-size: 8pt; margin-bottom: 8px; }
-  .notes { font-size: 8pt; margin-bottom: 8px; }
-  .doc-footer { display: flex; justify-content: space-between; border-top: 1px solid #888; padding-top: 4px; font-size: 6.5pt; }
-  .footer-made-with { color: #888; }
+  .no-lines { text-align: center; color: #444; font-style: italic; padding: 12pt !important; }
+  .totals-wrapper { display: flex; margin-bottom: 12px; page-break-inside: avoid; }
+  .totals-card {
+    width: 78mm;
+    background: #f2f2f2;
+    border: 1px solid #888;
+    border-radius: 4px;
+    padding: 6px 8px;
+  }
+  .totals-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+  .totals-table td { padding: 2.5px 2px; }
+  .totals-table .total-label { color: #444; font-size: 8pt; }
+  .totals-table .total-value { text-align: end; font-weight: 600; font-variant-numeric: tabular-nums; color: #000; }
+  .totals-table tr.grand-total {
+    border-top: 1.5px solid #000;
+    border-bottom: 1.5px solid #000;
+  }
+  .totals-table tr.grand-total td {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .totals-table tr.grand-total .total-label {
+    font-size: 9pt;
+    font-weight: 800;
+    color: #000;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .totals-table tr.grand-total .total-value {
+    font-size: 10pt;
+    font-weight: 800;
+    color: #000;
+  }
+  .amount-in-words {
+    font-size: 8pt;
+    color: #444;
+    font-style: italic;
+    background: #f2f2f2;
+    border-inline-start: 3px solid #000;
+    padding: 4px 8px;
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+  .notes {
+    font-size: 8pt;
+    color: #444;
+    background: #f2f2f2;
+    border: 1px solid #888;
+    border-radius: 4px;
+    padding: 5px 8px;
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+  .doc-footer {
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px solid #888;
+    padding-top: 4px;
+    margin-top: 10px;
+    font-size: 7pt;
+    color: #444;
+  }
+  .footer-made-with { font-weight: 600; color: #000; }
 `;
 
 /**

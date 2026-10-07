@@ -78,23 +78,28 @@ export function InventoryScreen() {
       </div>
 
       <form className="sk-card sk-form" onSubmit={submitSearch} aria-label={t('inventory.filters')}>
-        <div className="sk-form__grid">
-
-
-          <TextField
-            label={t('inventory.search')}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-
-          <label className="sk-checkbox-row">
-            <input
-              type="checkbox"
-              checked={includeInactive}
-              onChange={(event) => setIncludeInactive(event.target.checked)}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
+          <div style={{ flex: '1 1 280px', minWidth: 200 }}>
+            <TextField
+              label={t('inventory.search')}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
             />
+          </div>
+
+          <button
+            type="button"
+            className={`sk-inactive-toggle-btn ${includeInactive ? 'sk-inactive-toggle-btn--active' : 'sk-inactive-toggle-btn--inactive'}`}
+            onClick={() => setIncludeInactive(!includeInactive)}
+            aria-pressed={includeInactive}
+            aria-label={t('inventory.includeInactive')}
+            title={t('inventory.includeInactive')}
+            data-testid="inventory-include-inactive"
+            style={{ height: '40px', marginBottom: '2px', flex: '0 0 auto' }}
+          >
+            <span aria-hidden>{includeInactive ? '👁️' : '👁️‍🗨️'}</span>
             <span>{t('inventory.includeInactive')}</span>
-          </label>
+          </button>
         </div>
 
       </form>

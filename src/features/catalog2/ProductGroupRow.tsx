@@ -104,7 +104,6 @@ export function ProductGroupRow({
       <td className="sk-catalog2__num">
         <span className="sk-catalog2__stock">
           <span className="sk-catalog2__stock-value">{format(group.totalStock)}</span>
-          <span className="sk-catalog2__stock-badge" />
         </span>
       </td>
 
