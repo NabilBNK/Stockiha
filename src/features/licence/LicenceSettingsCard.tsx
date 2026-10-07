@@ -29,6 +29,7 @@ export function LicenceSettingsCard({ sessionToken }: { sessionToken: string }) 
   const [busy, setBusy] = useState(false);
   const [formBanner, setFormBanner] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showRenewForm, setShowRenewForm] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,6 +70,7 @@ export function LicenceSettingsCard({ sessionToken }: { sessionToken: string }) 
       const next = await activateLicence(sessionToken, trimmed);
       setStatus(next);
       setKeyInput('');
+      setShowRenewForm(false);
       setFormBanner({ tone: 'success', text: t('licence.activated') });
       void refreshContext();
     } catch (err) {
@@ -176,7 +178,20 @@ export function LicenceSettingsCard({ sessionToken }: { sessionToken: string }) 
             </div>
           ) : null}
 
-          {!status.licence ? (
+          {status.licence && status.status === 'ACTIVE' && !showRenewForm ? (
+            <div>
+              <Button
+                type="button"
+                variant="secondary"
+                data-testid="licence-show-renew"
+                onClick={() => setShowRenewForm(true)}
+              >
+                {t('licence.keyLabel')}
+              </Button>
+            </div>
+          ) : null}
+
+          {!status.licence || status.status !== 'ACTIVE' || showRenewForm ? (
             <form className="sk-form" onSubmit={(e) => void handleActivate(e)}>
               <label className="sk-field__label" htmlFor="licence-key-input">
                 {t('licence.keyLabel')}

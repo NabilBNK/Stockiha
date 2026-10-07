@@ -159,4 +159,28 @@ describe('WS-K-7-B LicenceSettingsCard', () => {
     fireEvent.click(await screen.findByTestId('licence-refresh'));
     await waitFor(() => expect(refreshLicenceStatus).toHaveBeenCalled());
   });
+
+  it('renders licence key input when installed licence is expired to allow renewal', async () => {
+    wireInvoke({
+      get_licence_status: () => status({ status: 'EXPIRED', days_left: -1 }),
+    });
+    renderCard();
+
+    expect(await screen.findByTestId('licence-installed-details')).toBeInTheDocument();
+    expect(await screen.findByTestId('licence-key-input')).toBeInTheDocument();
+    expect(await screen.findByTestId('licence-activate')).toBeInTheDocument();
+  });
+
+  it('allows showing renewal input when active licence is clicked to renew', async () => {
+    wireInvoke({
+      get_licence_status: () => status({ status: 'ACTIVE' }),
+    });
+    renderCard();
+
+    expect(await screen.findByTestId('licence-installed-details')).toBeInTheDocument();
+    expect(screen.queryByTestId('licence-key-input')).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByTestId('licence-show-renew'));
+    expect(await screen.findByTestId('licence-key-input')).toBeInTheDocument();
+  });
 });
